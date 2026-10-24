@@ -30,6 +30,9 @@ extends _BASE_
 @export var obstacle_push_mass_limit: float = 65.0
 @export var obstacle_push_duration_max: float = 2.5
 
+## Fallback reverse patrol when route is permanently blocked
+@export var enable_fallback_patrol: bool = true
+
 ## Target destination (if not patrolling a path)
 @export var target_node: Node3D
 
@@ -57,6 +60,10 @@ var _blocked_retry_timer: float = 0.0
 var _is_pushing_obstacle: bool = false
 var _push_attempt_timer: float = 0.0
 var _current_push_target_body: RigidBody3D = null
+
+var _patrol_direction: int = 1
+var _is_reversing_patrol: bool = false
+var _blocked_waypoint_index: int = -1
 
 var _debug_lines_mesh: MeshInstance3D = null
 var _carrot_node: Node3D = null
@@ -219,6 +226,9 @@ func _update_debug_visuals(delta: float) -> void:
 			elif _is_pushing_obstacle:
 				carrot_label.text = "📦 Pushing Obstacle"
 				carrot_label.modulate = Color(1.0, 0.65, 0.1)
+			elif _is_reversing_patrol:
+				carrot_label.text = "🔄 Fallback Patrol"
+				carrot_label.modulate = Color(0.9, 0.45, 1.0)
 			elif _is_detouring:
 				carrot_label.text = "↪️ Detour (NavMesh)"
 				carrot_label.modulate = Color(0.2, 0.9, 1.0)
@@ -440,6 +450,8 @@ func _physics_process(delta: float) -> void:
 				if nav_agent.is_target_reachable():
 					_is_path_blocked = false
 					_is_detouring = true
+				elif enable_fallback_patrol:
+					_trigger_fallback_reverse_patrol()
 		return
 
 	# 2. Handle STUCK_RECOVERY state (backtrack step to break out of corner/wall friction)
@@ -557,6 +569,25 @@ func _physics_process(delta: float) -> void:
 		_apply_velocity_and_move(desired_velocity, delta)
 
 
+func _trigger_fallback_reverse_patrol() -> void:
+	if not patrol_path or not patrol_path.curve:
+		return
+	_is_path_blocked = false
+	_is_detouring = false
+	_is_pushing_obstacle = false
+	_is_reversing_patrol = true
+	_blocked_waypoint_index = current_waypoint_index
+
+	_patrol_direction = -_patrol_direction
+	var curve: Curve3D = patrol_path.curve
+	var pt_count := curve.point_count
+	if loop_patrol:
+		current_waypoint_index = (current_waypoint_index + _patrol_direction + pt_count) % pt_count
+	else:
+		current_waypoint_index = clampi(current_waypoint_index + _patrol_direction, 0, pt_count - 1)
+	_advance_patrol_destination()
+
+
 func _trigger_unstuck_and_detour() -> void:
 	_stuck_timer = 0.0
 	if patrol_path and patrol_path.curve:
@@ -569,8 +600,12 @@ func _trigger_unstuck_and_detour() -> void:
 			if nav_agent.is_target_reachable():
 				current_waypoint_index = next_wp
 			else:
-				_is_path_blocked = true
-				return
+				if enable_fallback_patrol:
+					_trigger_fallback_reverse_patrol()
+					return
+				else:
+					_is_path_blocked = true
+					return
 	else:
 		if not nav_agent.is_target_reachable():
 			_is_path_blocked = true
@@ -836,10 +871,35 @@ func _advance_waypoint() -> void:
 	var curve: Curve3D = patrol_path.curve
 	if not curve:
 		return
-	current_waypoint_index += 1
-	if current_waypoint_index >= curve.point_count:
-		if loop_patrol:
-			current_waypoint_index = 0
+
+	var pt_count := curve.point_count
+	var next_idx := current_waypoint_index + _patrol_direction
+	if loop_patrol:
+		next_idx = (next_idx + pt_count) % pt_count
+
+	# If reversing due to blockage and we approach the blocked waypoint again, test if it cleared
+	if _is_reversing_patrol and next_idx == _blocked_waypoint_index:
+		var test_target: Vector3 = patrol_path.to_global(curve.get_point_position(_blocked_waypoint_index))
+		nav_agent.target_position = test_target
+		if nav_agent.is_target_reachable():
+			_is_reversing_patrol = false
+			_blocked_waypoint_index = -1
 		else:
-			return
+			# Still blocked: reverse direction again to keep patrolling open area
+			_patrol_direction = -_patrol_direction
+			next_idx = current_waypoint_index + _patrol_direction
+			if loop_patrol:
+				next_idx = (next_idx + pt_count) % pt_count
+
+	if loop_patrol:
+		current_waypoint_index = next_idx
+	else:
+		if next_idx >= pt_count:
+			_patrol_direction = -1
+			current_waypoint_index = pt_count - 2
+		elif next_idx < 0:
+			_patrol_direction = 1
+			current_waypoint_index = 1
+		else:
+			current_waypoint_index = next_idx
 	_advance_patrol_destination()

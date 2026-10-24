@@ -163,3 +163,14 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
     - **Vizuální indikátor**:
       - Během tlačení 3D mrkvička / stavový label svítí oranžově s textem `📦 Pushing Obstacle`.
     - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
+
+11. **Reverzní patrola při trvalém závalu — Fáze 3 (Fallback Reverse Patrol) — [HOTOVO]**:
+    - **Automatické otočení patroly (`_trigger_fallback_reverse_patrol`)**:
+      - Pokud je trasa trvale zablokovaná (`is_target_reachable() == false` nebo selže odtlačení i objížďka), NPC nezůstane bezradně stát na místě.
+      - Po 1s vyhodnocení situace NPC zahlásí stav (`Zaval: Cesta zablokovana, obracim patrolu!`), otočí směr patroly (`_npc_path_direction = -_npc_path_direction`) a začne procházet dostupné waypointy v obráceném pořadí.
+    - **Cyklické testování uvolnění překážky**:
+      - Když NPC při reverzní patrole obejde otevřenou část mapy a přiblíží se zpět k zablokovanému waypointu, automaticky otestuje průchodnost.
+      - Pokud hráč mezitím překážku odstranil, NPC plynule naváže na původní plnou trasu. Pokud zával trvá, otočí se a pokračuje v patrole po bezpečné zóně.
+    - **Vizuální indikátor**:
+      - 3D značka mrkvičky v reálném čase zobrazuje `🔄 Fallback Patrol` (fialový indikátor).
+    - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
