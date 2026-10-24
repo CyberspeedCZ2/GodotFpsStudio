@@ -83,3 +83,16 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - V `is_at_destination()` přidána kontrola postupu podél křivky (`progress_past`), takže minití bodu při projíždění oblouku (např. kvůli RVO avoidance) nezasekne waypoint cíl a NPC plynule přechází mezi body.
    - Sestaveno, podepsáno a otestováno v `Godot FPS Studio.app`. Commitnuto a pushnuto na GitHub (`main`).
 
+5. **Plynulé zpomalování před cílem (Deceleration profiling) a perzistence běhu (`Run`) — [HOTOVO]**:
+   - **Plynulé zpomalování (Deceleration)**:
+     - Namísto okamžitého brzdění na 20–30 cm před cílem byl implementován přirozený brzdný profil na vzdálenost 1.6–4.2 m (podle aktuální rychlosti) využívající `smoothstep` křivku.
+     - NPC při přiblížení k zastavovacímu bodu (`wait`, `look_at`, konec trasy) plynule zpomalí z plného sprintu/chůze na dojezdovou rychlost a hladce zastaví přímo na bodě bez trhání a klouzání.
+     - Průchozí body (`move`, `run`, Bézier zaoblení) si zachovávají plnou rychlost.
+   - **Perzistence běhu (`Run` vs `Move`)**:
+     - Nastavení akce `Run` na waypointu nyní aktivuje stav `_active_route_locomotion = LOCOMOTION_RUN`, který zůstává aktivní i při přechodu na akční body (`wait`, `look_at`). NPC tedy sprintuje po celém úseku až k cílovému čekacímu bodu.
+     - Akce `Move` přepíná zpět na standardní chůzi.
+     - Nastavení `locomotion_style = Run` na samotném NPC vynucuje běh po celé trase.
+     - `nav_agent.max_speed` automaticky škáluje s `run_speed * 1.5`, aby RVO avoidance neomezoval rychlost běhu.
+   - Sestaveno, otestováno a ověřeno headless simulací. Commitnuto a pushnuto na GitHub (`main`).
+
+
