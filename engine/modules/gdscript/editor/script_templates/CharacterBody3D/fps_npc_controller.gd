@@ -27,6 +27,10 @@ var current_speed: float = 3.2
 var active_locomotion: String = "move"
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 
+var _avoidance_side: float = 0.0 # -1.0 = right, +1.0 = left
+var _avoidance_clear_time: float = 0.0
+var _current_avoidance_angle: float = 0.0
+
 
 func _ready() -> void:
 	# Enforce FPS collision configuration:
@@ -102,7 +106,7 @@ func _physics_process(delta: float) -> void:
 	if to_target.length_squared() > 0.04:
 		var move_dir: Vector3 = to_target.normalized()
 		# Probe forward for dynamic and heavy obstacles to steer smoothly around them
-		move_dir = _probe_obstacle_avoidance(move_dir)
+		move_dir = _probe_obstacle_avoidance(move_dir, delta)
 		var target_speed: float = current_speed
 
 		# Smooth deceleration profile when approaching stopping points
@@ -151,53 +155,104 @@ func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
 
 
 ## Casts forward spatial probes to proactively steer around Layer 2 Heavy Obstacles
-func _probe_obstacle_avoidance(base_dir: Vector3) -> Vector3:
+func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	var space_state := get_world_3d().direct_space_state
 	if not space_state:
 		return base_dir
 
 	var from_pos := global_position + Vector3(0.0, 0.45, 0.0)
 	var mask := (1 << 1) # Layer 2: Heavy Obstacle
-	var probe_dist := 2.2
+	var probe_dist := 2.6
+	var body_half_width := 0.35
+	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
 
-	var center_query := PhysicsRayQueryParameters3D.create(from_pos, from_pos + base_dir * probe_dist, mask, [get_rid()])
-	var center_hit := space_state.intersect_ray(center_query)
+	# 1. Center probe
+	var center_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + base_dir * probe_dist, mask, [get_rid()])
+	var center_hit := space_state.intersect_ray(center_q)
 
-	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(28.0))
-	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-28.0))
+	# 2. Parallel body-width probes (left and right corridor)
+	var left_from := from_pos - side_normal * body_half_width
+	var right_from := from_pos + side_normal * body_half_width
+	var left_q := PhysicsRayQueryParameters3D.create(left_from, left_from + base_dir * (probe_dist * 0.9), mask, [get_rid()])
+	var right_q := PhysicsRayQueryParameters3D.create(right_from, right_from + base_dir * (probe_dist * 0.9), mask, [get_rid()])
+	var left_hit := space_state.intersect_ray(left_q)
+	var right_hit := space_state.intersect_ray(right_q)
 
-	var left_query := PhysicsRayQueryParameters3D.create(from_pos, from_pos + left_dir * 1.8, mask, [get_rid()])
-	var right_query := PhysicsRayQueryParameters3D.create(from_pos, from_pos + right_dir * 1.8, mask, [get_rid()])
+	# 3. Angled whiskers (30° out)
+	var whisker_l_dir := base_dir.rotated(Vector3.UP, deg_to_rad(30.0))
+	var whisker_r_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-30.0))
+	var whisker_l_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + whisker_l_dir * 1.8, mask, [get_rid()])
+	var whisker_r_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + whisker_r_dir * 1.8, mask, [get_rid()])
+	var whisker_l_hit := space_state.intersect_ray(whisker_l_q)
+	var whisker_r_hit := space_state.intersect_ray(whisker_r_q)
 
-	var left_hit := space_state.intersect_ray(left_query)
-	var right_hit := space_state.intersect_ray(right_query)
+	var has_hit := not center_hit.is_empty() or not left_hit.is_empty() or not right_hit.is_empty() or not whisker_l_hit.is_empty() or not whisker_r_hit.is_empty()
 
-	if center_hit.is_empty() and left_hit.is_empty() and right_hit.is_empty():
-		return base_dir
+	if not has_hit:
+		_avoidance_clear_time += delta
+		if _avoidance_clear_time >= 0.3:
+			_avoidance_side = 0.0
+		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(120.0))
+		if is_zero_approx(_current_avoidance_angle):
+			return base_dir
+		return base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
 
-	var side_dir := Vector3.ZERO
-	var steer_weight := 1.0
+	_avoidance_clear_time = 0.0
 
+	# Find closest obstacle distance
+	var min_hit_dist := probe_dist
 	if not center_hit.is_empty():
-		var hit_dist := from_pos.distance_to(center_hit.position)
-		steer_weight = clampf((probe_dist - hit_dist) / (probe_dist * 0.75), 0.6, 1.8)
+		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(center_hit.position))
+	if not left_hit.is_empty():
+		min_hit_dist = minf(min_hit_dist, left_from.distance_to(left_hit.position))
+	if not right_hit.is_empty():
+		min_hit_dist = minf(min_hit_dist, right_from.distance_to(right_hit.position))
+	if not whisker_l_hit.is_empty():
+		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(whisker_l_hit.position))
+	if not whisker_r_hit.is_empty():
+		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(whisker_r_hit.position))
 
-		if left_hit.is_empty() and not right_hit.is_empty():
-			side_dir = Vector3(-base_dir.z, 0.0, base_dir.x) # Steer left
-		elif right_hit.is_empty() and not left_hit.is_empty():
-			side_dir = Vector3(base_dir.z, 0.0, -base_dir.x) # Steer right
+	# Decide or maintain avoidance side (-1.0 = right, +1.0 = left)
+	if _avoidance_side == 0.0:
+		var left_blocked := not left_hit.is_empty() or not whisker_l_hit.is_empty()
+		var right_blocked := not right_hit.is_empty() or not whisker_r_hit.is_empty()
+
+		if left_blocked and not right_blocked:
+			_avoidance_side = -1.0 # Steer right
+		elif right_blocked and not left_blocked:
+			_avoidance_side = 1.0 # Steer left
 		else:
-			var hit_norm := Vector3(center_hit.normal.x, 0.0, center_hit.normal.z).normalized()
-			if base_dir.cross(hit_norm).y > 0.0:
-				side_dir = Vector3(-base_dir.z, 0.0, base_dir.x)
-			else:
-				side_dir = Vector3(base_dir.z, 0.0, -base_dir.x)
-	elif not left_hit.is_empty():
-		side_dir = Vector3(base_dir.z, 0.0, -base_dir.x) * 0.6 # Gently nudge right
-	elif not right_hit.is_empty():
-		side_dir = Vector3(-base_dir.z, 0.0, base_dir.x) * 0.6 # Gently nudge left
+			var wide_l_q := PhysicsRayQueryParameters3D.create(from_pos - side_normal * 0.7, (from_pos - side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
+			var wide_r_q := PhysicsRayQueryParameters3D.create(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
+			var wide_l_hit := space_state.intersect_ray(wide_l_q)
+			var wide_r_hit := space_state.intersect_ray(wide_r_q)
 
-	return (base_dir + side_dir * (1.2 * steer_weight)).normalized()
+			if not wide_r_hit.is_empty() and wide_l_hit.is_empty():
+				_avoidance_side = 1.0 # Steer left
+			elif not wide_l_hit.is_empty() and wide_r_hit.is_empty():
+				_avoidance_side = -1.0 # Steer right
+			else:
+				var hit_center := Vector3.ZERO
+				if not center_hit.is_empty():
+					hit_center = center_hit.position
+				elif not left_hit.is_empty():
+					hit_center = left_hit.position
+				else:
+					hit_center = right_hit.position
+				var to_hit := hit_center - from_pos
+				if side_normal.dot(to_hit) >= 0.0:
+					_avoidance_side = 1.0 # Steer left
+				else:
+					_avoidance_side = -1.0 # Steer right
+
+	# Smoothly calculate avoidance steer angle (bounded strictly between 18° and 40°)
+	var max_steer_deg := 40.0
+	var min_steer_deg := 18.0
+	var urgency := clampf((probe_dist - min_hit_dist) / (probe_dist - 0.6), 0.0, 1.0)
+	var target_deg := lerpf(min_steer_deg, max_steer_deg, urgency) * _avoidance_side
+
+	_current_avoidance_angle = move_toward(_current_avoidance_angle, deg_to_rad(target_deg), delta * deg_to_rad(140.0))
+	return base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
 
 
 func _apply_velocity_and_move(target_horizontal_vel: Vector3, delta: float) -> void:

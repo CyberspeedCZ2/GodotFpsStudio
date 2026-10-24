@@ -102,9 +102,11 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - `radius` zvětšen na 1.0 m a `height` na 1.2 m.
    - **Parametry agenta (`NavigationAgent3D`)**:
      - Nastaveno `avoidance_priority = 0.5` (překážka má 1.0, agent tedy přebírá 100% odpovědnost za vybočení), `time_horizon_agents = 1.5 s` a `time_horizon_obstacles = 1.5 s` (včasné vnímání překážek s předstihem).
-   - **Aktivní detekce a vybočení (Obstacle Probing Whiskers)**:
-     - Do šablony `fps_npc_controller.gd` i projektového `npc_controller.gd` implementována funkce `_probe_obstacle_avoidance()` s 3 prostorovými paprsky (střed, vlevo -28°, vpravo +28° na Layer 2 Heavy Obstacles s délkou až 2.4 m).
-     - Při detekci překážky se požadovaný směr `desired_velocity` plynule stočí do volného koridoru vedle překážky, takže RVO server rychlost neudusí, ale agent plynule v plné rychlosti bednu v oblouku obejde a za ní se zařadí zpět na trasu.
-     - Rotace NPC se při aktivním vyhýbání hladce orientuje podle `safe_velocity` reálného pohybu.
-   - Sestaveno, podepsáno, ověřeno headless kontrolou a simulací v `project-hl-2-inspiration`. Commitnuto a pushnuto na GitHub (`main`).
+   - **Aktivní detekce a vybočení (Obstacle Probing Whiskers & Sticky Avoidance)**:
+     - **Odstranění nestability a kmitání (Sticky Avoidance)**: Čelní náraz do rohu bedny dříve způsoboval kmitání směru vybočení zleva doprava (skok o 110°), což spouštělo `_turning_in_place = true`. Při něm navíc NavigationServer bez posílání nové rychlosti opakoval starou `safe_velocity`, takže agent byl nekontrolovaně unášen pryč ze scény.
+     - **Paměť strany obcházení (`_avoidance_side`)**: Jakmile NPC začne překážku obcházet vpravo (-1.0) nebo vlevo (+1.0), drží tuto stranu po celou dobu, dokud jsou paprsky zablokované.
+     - **Ohraničení úhlu (Bounded Steer Angle)**: Úhel vybočení je striktně omezen na 18°–40° a plynule dotažen (`move_toward`), takže nikdy nepřekročí práh pro otáčení na místě a NPC neztrácí dopřednou rychlost ani se neotáčí za záda.
+     - **Vícebodové prostorové paprsky**: Centrální paprsek (2.6 m), 2 rovnoběžné paprsky na šířku těla (0.7 m koridor) a 2 úhlové vousy (30° out).
+     - **Ochrana proti zombie driftu**: V `_turning_in_place` i v `_on_safe_velocity_computed` se striktně vynucuje `velocity = Vector3.ZERO` a do RVO serveru se odesílá nulová rychlost.
+   - Sestaveno, podepsáno, ověřeno 30s headless simulací v `project-hl-2-inspiration` (NPC hladce obešlo bednu s odstupem 1.4 m a pokračovalo až na konec trasy). Commitnuto a pushnuto na GitHub (`main`).
 
