@@ -26,7 +26,7 @@ extends _BASE_
 
 ## Solo obstacle pushing (heavy crates, barrels up to specified mass)
 @export var can_push_obstacles: bool = true
-@export var obstacle_push_force: float = 95.0
+@export var obstacle_push_force: float = 360.0
 @export var obstacle_push_mass_limit: float = 65.0
 @export var obstacle_push_duration_max: float = 2.5
 
@@ -67,6 +67,8 @@ var _stuck_recovery_timer: float = 0.0
 var _stuck_recovery_dir := Vector3.ZERO
 var _forward_blocked: bool = false
 var _blocked_retry_timer: float = 0.0
+var _stuck_last_pos := Vector3.ZERO
+var _stuck_sample_timer: float = 0.0
 
 var _is_pushing_obstacle: bool = false
 var _push_attempt_timer: float = 0.0
@@ -198,8 +200,27 @@ func _setup_debug_visuals() -> void:
 	carrot_label.render_priority = 12
 	_carrot_node.add_child(carrot_label)
 
+	carrot_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	carrot_label.font_size = 24
+
 	_carrot_node.visible = false
 	add_child(_carrot_node)
+
+	# 3D stavovy stitek primo nad hlavou NPC
+	var state_lbl := Label3D.new()
+	state_lbl.name = "AIOverheadStateLabel"
+	state_lbl.text = "🥕 PATROLA"
+	state_lbl.position = Vector3(0.0, 2.35, 0.0)
+	state_lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	state_lbl.no_depth_test = true
+	state_lbl.render_priority = 25
+	state_lbl.font_size = 28
+	state_lbl.outline_size = 8
+	state_lbl.outline_modulate = Color(0.0, 0.0, 0.0, 0.95)
+	state_lbl.modulate = Color(1.0, 0.85, 0.2)
+	state_lbl.double_sided = true
+	state_lbl.visible = false
+	add_child(state_lbl)
 
 
 func _record_debug_probe(from: Vector3, to: Vector3, hit: Dictionary, ptype: String) -> void:
@@ -220,7 +241,12 @@ func _update_debug_visuals(delta: float) -> void:
 	if not _debug_lines_mesh or not _carrot_node:
 		return
 
-	if not _should_show_debug_visuals():
+	var should_show := _should_show_debug_visuals()
+	var state_lbl := get_node_or_null("AIOverheadStateLabel") as Label3D
+	if state_lbl:
+		state_lbl.visible = should_show
+
+	if not should_show:
 		_debug_lines_mesh.visible = false
 		_carrot_node.visible = false
 		return
@@ -234,35 +260,45 @@ func _update_debug_visuals(delta: float) -> void:
 		_carrot_node.global_position = _last_carrot_world_pos + Vector3(0.0, 0.45 + bob, 0.0)
 		_carrot_node.rotate_y(delta * 2.8)
 
+		var cur_state_text := "🥕 PATROLA"
+		var cur_state_color := Color(1.0, 0.85, 0.2)
+
+		if _is_path_blocked:
+			cur_state_text = "🛑 CESTA ZABLOKOVÁNA"
+			cur_state_color = Color(1.0, 0.2, 0.2)
+		elif _coop_role == COOP_ROLE_CALLER and _is_pushing_obstacle:
+			cur_state_text = "🤝 SPOLEČNÉ TLAČENÍ"
+			cur_state_color = Color(1.0, 0.85, 0.1)
+		elif _coop_role == COOP_ROLE_CALLER:
+			cur_state_text = "📢 ČEKÁ NA POSILU"
+			cur_state_color = Color(1.0, 0.7, 0.2)
+		elif _coop_role == COOP_ROLE_HELPER and _is_pushing_obstacle:
+			cur_state_text = "🤝 SPOLEČNÉ TLAČENÍ"
+			cur_state_color = Color(1.0, 0.85, 0.1)
+		elif _coop_role == COOP_ROLE_HELPER:
+			cur_state_text = "🏃 BĚŽÍ NA POMOC"
+			cur_state_color = Color(0.2, 0.9, 1.0)
+		elif _stuck_recovery_timer > 0.0:
+			cur_state_text = "↩️ UVOLNĚNÍ (Vycouvání)"
+			cur_state_color = Color(1.0, 0.95, 0.2)
+		elif _is_pushing_obstacle:
+			cur_state_text = "📦 TLAČÍ PŘEKÁŽKU"
+			cur_state_color = Color(1.0, 0.65, 0.1)
+		elif _is_reversing_patrol:
+			cur_state_text = "🔄 REVERZNÍ PATROLA"
+			cur_state_color = Color(0.9, 0.45, 1.0)
+		elif _is_detouring:
+			cur_state_text = "↪️ OBJÍŽĎKA (NavMesh Detour)"
+			cur_state_color = Color(0.2, 0.9, 1.0)
+
+		if state_lbl:
+			state_lbl.text = cur_state_text
+			state_lbl.modulate = cur_state_color
+
 		var carrot_label := _carrot_node.get_node_or_null("CarrotLabel") as Label3D
 		if carrot_label:
-			if _is_path_blocked:
-				carrot_label.text = "🛑 Path Blocked"
-				carrot_label.modulate = Color(1.0, 0.2, 0.2)
-			elif _coop_role == COOP_ROLE_CALLER and _is_pushing_obstacle:
-				carrot_label.text = "🤝 Co-op Pushing"
-				carrot_label.modulate = Color(1.0, 0.85, 0.1)
-			elif _coop_role == COOP_ROLE_CALLER:
-				carrot_label.text = "📢 Waiting for Partner"
-				carrot_label.modulate = Color(1.0, 0.7, 0.2)
-			elif _coop_role == COOP_ROLE_HELPER:
-				carrot_label.text = "🏃 Assisting Partner"
-				carrot_label.modulate = Color(0.2, 0.9, 1.0)
-			elif _stuck_recovery_timer > 0.0:
-				carrot_label.text = "↩️ Backtracking"
-				carrot_label.modulate = Color(1.0, 0.95, 0.2)
-			elif _is_pushing_obstacle:
-				carrot_label.text = "📦 Pushing Obstacle"
-				carrot_label.modulate = Color(1.0, 0.65, 0.1)
-			elif _is_reversing_patrol:
-				carrot_label.text = "🔄 Fallback Patrol"
-				carrot_label.modulate = Color(0.9, 0.45, 1.0)
-			elif _is_detouring:
-				carrot_label.text = "↪️ Detour (NavMesh)"
-				carrot_label.modulate = Color(0.2, 0.9, 1.0)
-			else:
-				carrot_label.text = "🥕 Carrot Target"
-				carrot_label.modulate = Color(1.0, 0.85, 0.2)
+			carrot_label.text = cur_state_text
+			carrot_label.modulate = cur_state_color
 	else:
 		_carrot_node.visible = false
 
@@ -574,15 +610,19 @@ func _physics_process(delta: float) -> void:
 
 		desired_velocity = move_dir * target_speed
 
-		# Stuck detection during curve patrol
-		if patrol_path and not _is_detouring:
-			var horiz_vel := Vector2(velocity.x, velocity.z).length()
-			if target_speed > 0.5 and horiz_vel < 0.35:
-				_stuck_timer += delta
-			else:
-				_stuck_timer = maxf(0.0, _stuck_timer - delta * 1.5)
+		# Fyzikalni detekce uviznuti (skutecny posun v 3D prostoru)
+		if _stuck_recovery_timer <= 0.0 and not _is_path_blocked:
+			_stuck_sample_timer += delta
+			if _stuck_sample_timer >= 0.25:
+				_stuck_sample_timer = 0.0
+				var moved_dist := global_position.distance_to(_stuck_last_pos)
+				_stuck_last_pos = global_position
+				if target_speed > 0.4 and moved_dist < 0.08:
+					_stuck_timer += 0.25
+				else:
+					_stuck_timer = maxf(0.0, _stuck_timer - 0.25)
 
-			if _stuck_timer >= 0.65 or (_forward_blocked and _stuck_timer >= 0.3):
+			if _stuck_timer >= 0.5 or (_forward_blocked and _stuck_timer >= 0.25):
 				_trigger_unstuck_and_detour()
 				return
 
@@ -639,11 +679,13 @@ func _trigger_unstuck_and_detour() -> void:
 			_is_path_blocked = true
 			return
 
-	_stuck_recovery_dir = -global_transform.basis.z
+	_avoidance_side = 0.0
+	_current_avoidance_angle = 0.0
+	_stuck_recovery_dir = global_transform.basis.z # Krok VZAD od prekazky
 	_stuck_recovery_dir.y = 0.0
-	if _stuck_recovery_dir.is_zero_approx():
+	if _stuck_recovery_dir.length_squared() < 0.01:
 		_stuck_recovery_dir = Vector3(0.0, 0.0, 1.0)
-	_stuck_recovery_timer = 0.55
+	_stuck_recovery_timer = 0.6
 
 
 func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
@@ -661,6 +703,12 @@ func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
 
 ## Casts forward spatial probes to proactively steer around Layer 2 Heavy Obstacles
 func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
+	if _is_detouring:
+		_avoidance_side = 0.0
+		_current_avoidance_angle = 0.0
+		_debug_steer_dir = base_dir
+		return base_dir
+
 	var space_state := get_world_3d().direct_space_state
 	if not space_state:
 		return base_dir
@@ -670,7 +718,7 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	var from_pos := global_position + Vector3(0.0, 0.45, 0.0)
 	var mask := (1 << 0) | (1 << 1) # Layer 1: World + Layer 2: Heavy Obstacle
 	var probe_dist := 2.6
-	var body_half_width := 0.35
+	var body_half_width := 0.38
 	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
 
 	# 1. Center probe
@@ -698,14 +746,18 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	_record_debug_probe(from_pos, from_pos + whisker_l_dir * 1.8, whisker_l_hit, "whisker")
 	_record_debug_probe(from_pos, from_pos + whisker_r_dir * 1.8, whisker_r_hit, "whisker")
 
-	_forward_blocked = not center_hit.is_empty() and not left_hit.is_empty() and not right_hit.is_empty()
-	var has_hit := not center_hit.is_empty() or not left_hit.is_empty() or not right_hit.is_empty() or not whisker_l_hit.is_empty() or not whisker_r_hit.is_empty()
+	var left_blocked := not left_hit.is_empty() or not whisker_l_hit.is_empty()
+	var right_blocked := not right_hit.is_empty() or not whisker_r_hit.is_empty()
+	var center_blocked := not center_hit.is_empty()
+
+	_forward_blocked = center_blocked or (left_blocked and right_blocked)
+	var has_hit := center_blocked or left_blocked or right_blocked
 
 	if not has_hit:
 		_avoidance_clear_time += delta
-		if _avoidance_clear_time >= 0.3:
+		if _avoidance_clear_time >= 0.2:
 			_avoidance_side = 0.0
-		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(120.0))
+		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
 		var clear_dir := base_dir
 		if not is_zero_approx(_current_avoidance_angle):
 			clear_dir = base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
@@ -714,7 +766,38 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 
 	_avoidance_clear_time = 0.0
 
-	# Find closest obstacle distance
+	# Pokud jsou OBE strany zablokovane, NESMI se zatacet do zdi ani do prekazky!
+	if left_blocked and right_blocked:
+		_avoidance_side = 0.0
+		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
+		_debug_steer_dir = base_dir
+		return base_dir
+
+	# Vyber strany: vyhybej se POUZE do volneho koridoru
+	if left_blocked and not right_blocked:
+		_avoidance_side = -1.0 # Uhni vpravo (volno)
+	elif right_blocked and not left_blocked:
+		_avoidance_side = 1.0 # Uhni vlevo (volno)
+	elif not left_blocked and not right_blocked and center_blocked:
+		var wide_l_q := PhysicsRayQueryParameters3D.create(from_pos - side_normal * 0.7, (from_pos - side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
+		var wide_r_q := PhysicsRayQueryParameters3D.create(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
+		var wide_l_hit := space_state.intersect_ray(wide_l_q)
+		var wide_r_hit := space_state.intersect_ray(wide_r_q)
+		if not wide_r_hit.is_empty() and wide_l_hit.is_empty():
+			_avoidance_side = 1.0
+		elif not wide_l_hit.is_empty() and wide_r_hit.is_empty():
+			_avoidance_side = -1.0
+		else:
+			var to_hit: Vector3 = Vector3(center_hit.get("position", from_pos)) - from_pos
+			_avoidance_side = 1.0 if side_normal.dot(to_hit) >= 0.0 else -1.0
+
+	# Kontrola bezpecnosti: Pokud strana, kam chceme uhnout, neni volna, okamzite zrusit vyboceni
+	if _avoidance_side > 0.0 and left_blocked:
+		_avoidance_side = 0.0
+	elif _avoidance_side < 0.0 and right_blocked:
+		_avoidance_side = 0.0
+
+	# Vypocet minimalni vzdalenosti
 	var min_hit_dist := probe_dist
 	if not center_hit.is_empty():
 		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(center_hit.position))
@@ -727,49 +810,15 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	if not whisker_r_hit.is_empty():
 		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(whisker_r_hit.position))
 
-	# Decide or maintain avoidance side (-1.0 = right, +1.0 = left)
-	if _avoidance_side == 0.0:
-		var left_blocked := not left_hit.is_empty() or not whisker_l_hit.is_empty()
-		var right_blocked := not right_hit.is_empty() or not whisker_r_hit.is_empty()
-
-		if left_blocked and not right_blocked:
-			_avoidance_side = -1.0 # Steer right
-		elif right_blocked and not left_blocked:
-			_avoidance_side = 1.0 # Steer left
-		else:
-			var wide_l_q := PhysicsRayQueryParameters3D.create(from_pos - side_normal * 0.7, (from_pos - side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
-			var wide_r_q := PhysicsRayQueryParameters3D.create(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
-			var wide_l_hit := space_state.intersect_ray(wide_l_q)
-			var wide_r_hit := space_state.intersect_ray(wide_r_q)
-			_record_debug_probe(from_pos - side_normal * 0.7, (from_pos - side_normal * 0.7) + base_dir * probe_dist, wide_l_hit, "wide")
-			_record_debug_probe(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, wide_r_hit, "wide")
-
-			if not wide_r_hit.is_empty() and wide_l_hit.is_empty():
-				_avoidance_side = 1.0 # Steer left
-			elif not wide_l_hit.is_empty() and wide_r_hit.is_empty():
-				_avoidance_side = -1.0 # Steer right
-			else:
-				var hit_center := Vector3.ZERO
-				if not center_hit.is_empty():
-					hit_center = center_hit.position
-				elif not left_hit.is_empty():
-					hit_center = left_hit.position
-				else:
-					hit_center = right_hit.position
-				var to_hit := hit_center - from_pos
-				if side_normal.dot(to_hit) >= 0.0:
-					_avoidance_side = 1.0 # Steer left
-				else:
-					_avoidance_side = -1.0 # Steer right
-
-	# Smoothly calculate avoidance steer angle (bounded strictly between 18° and 40°)
-	var max_steer_deg := 40.0
+	var max_steer_deg := 35.0
 	var min_steer_deg := 18.0
 	var urgency := clampf((probe_dist - min_hit_dist) / (probe_dist - 0.6), 0.0, 1.0)
 	var target_deg := lerpf(min_steer_deg, max_steer_deg, urgency) * _avoidance_side
 
 	_current_avoidance_angle = move_toward(_current_avoidance_angle, deg_to_rad(target_deg), delta * deg_to_rad(140.0))
-	var res := base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
+	var res := base_dir
+	if not is_zero_approx(_current_avoidance_angle):
+		res = base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
 	_debug_steer_dir = res
 	return res
 
@@ -805,6 +854,8 @@ func _handle_physics_push(delta: float) -> void:
 			# Solo pushable obstacle
 			body.sleeping = false
 			body.apply_central_force(normal_push * obstacle_push_force)
+			if body.linear_velocity.length() < 0.2:
+				body.apply_central_impulse(normal_push * (obstacle_push_force * 0.05))
 			pushing_this_frame = true
 			_current_push_target_body = body
 		elif can_push_obstacles and body.mass <= coop_push_mass_limit:
