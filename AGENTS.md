@@ -152,3 +152,14 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
    - **Vizuální zpětná vazba**:
      - Značka mrkve v reálném čase indikuje navigační stav: `🥕 Carrot Target` (Patrola), `↩️ Backtracking` (Vycouvání), `↪️ Detour (NavMesh)` (Objížďka po NavMeshi), `🛑 Path Blocked` (Zablokováno).
    - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
+
+10. **Fyzikální odtlačení lehkých a středních beden — Fáze 2 (Solo Push) — [HOTOVO]**:
+    - **Fyzikální tlačení překážek (`_handle_physics_push` / `_push_light_debris`)**:
+      - Rozšíření parametrů NPC: `can_push_obstacles = true`, `obstacle_push_mass_limit = 65.0 kg` (zahrnuje 45kg těžké bedny), `obstacle_push_force = 95.0 N`, `obstacle_push_duration_max = 2.5 s`.
+      - Rozlišení lehké suti (`body.mass <= 5.0 kg` -> okamžitý impuls) a těžších beden (`body.mass <= 65.0 kg` -> souvislá tlačná síla `apply_central_force`).
+      - Automatické probuzení uspaných fyzikálních těles (`body.sleeping = false`).
+    - **Časový limit tlačení & automatický přechod do objížďky**:
+      - Pokud se bedna nepohne do 2.5 sekund (např. je vzpříčená o zeď nebo zablokovaná jinou těžkou překážkou), NPC pokus o tlačení ukončí a automaticky přejde do `STUCK_RECOVERY` a `DETOUR` pro obejití závalu.
+    - **Vizuální indikátor**:
+      - Během tlačení 3D mrkvička / stavový label svítí oranžově s textem `📦 Pushing Obstacle`.
+    - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).

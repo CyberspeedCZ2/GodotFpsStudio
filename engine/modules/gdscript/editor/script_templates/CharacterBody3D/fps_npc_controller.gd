@@ -24,6 +24,12 @@ extends _BASE_
 @export var push_force: float = 3.5
 @export var push_mass_limit: float = 5.0
 
+## Solo obstacle pushing (heavy crates, barrels up to specified mass)
+@export var can_push_obstacles: bool = true
+@export var obstacle_push_force: float = 95.0
+@export var obstacle_push_mass_limit: float = 65.0
+@export var obstacle_push_duration_max: float = 2.5
+
 ## Target destination (if not patrolling a path)
 @export var target_node: Node3D
 
@@ -47,6 +53,10 @@ var _stuck_recovery_timer: float = 0.0
 var _stuck_recovery_dir := Vector3.ZERO
 var _forward_blocked: bool = false
 var _blocked_retry_timer: float = 0.0
+
+var _is_pushing_obstacle: bool = false
+var _push_attempt_timer: float = 0.0
+var _current_push_target_body: RigidBody3D = null
 
 var _debug_lines_mesh: MeshInstance3D = null
 var _carrot_node: Node3D = null
@@ -206,6 +216,9 @@ func _update_debug_visuals(delta: float) -> void:
 			elif _stuck_recovery_timer > 0.0:
 				carrot_label.text = "↩️ Backtracking"
 				carrot_label.modulate = Color(1.0, 0.95, 0.2)
+			elif _is_pushing_obstacle:
+				carrot_label.text = "📦 Pushing Obstacle"
+				carrot_label.modulate = Color(1.0, 0.65, 0.1)
 			elif _is_detouring:
 				carrot_label.text = "↪️ Detour (NavMesh)"
 				carrot_label.modulate = Color(0.2, 0.9, 1.0)
@@ -704,15 +717,46 @@ func _apply_velocity_and_move(target_horizontal_vel: Vector3, delta: float) -> v
 
 	move_and_slide()
 
-	# Physics filtering: push light debris out of the way smoothly
+	_handle_physics_push(delta)
+
+
+func _handle_physics_push(delta: float) -> void:
+	var pushing_this_frame := false
+
 	for i in get_slide_collision_count():
 		var col := get_slide_collision(i)
 		var body := col.get_collider() as RigidBody3D
-		if body and body.mass <= push_mass_limit:
-			var push_dir := -col.get_normal()
-			push_dir.y = 0.0
-			if push_dir.length_squared() > 0.01:
-				body.apply_central_impulse(push_dir.normalized() * push_force)
+		if not body or body.freeze:
+			continue
+
+		var normal_push := -col.get_normal()
+		normal_push.y = 0.0
+		if normal_push.length_squared() < 0.01:
+			continue
+		normal_push = normal_push.normalized()
+
+		if body.mass <= push_mass_limit:
+			# Light debris (cups, cans)
+			body.apply_central_impulse(normal_push * push_force)
+		elif can_push_obstacles and body.mass <= obstacle_push_mass_limit:
+			# Pushable heavy obstacle (crates, barrels)
+			body.sleeping = false
+			body.apply_central_force(normal_push * obstacle_push_force)
+			pushing_this_frame = true
+			_current_push_target_body = body
+
+	if pushing_this_frame:
+		_is_pushing_obstacle = true
+		_push_attempt_timer += delta
+		if _push_attempt_timer >= obstacle_push_duration_max:
+			_is_pushing_obstacle = false
+			_push_attempt_timer = 0.0
+			_trigger_unstuck_and_detour()
+	else:
+		if _is_pushing_obstacle:
+			_is_pushing_obstacle = false
+			_push_attempt_timer = 0.0
+			_current_push_target_body = null
 
 
 func _advance_patrol_destination() -> void:
