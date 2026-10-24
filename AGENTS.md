@@ -95,4 +95,16 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - `nav_agent.max_speed` automaticky škáluje s `run_speed * 1.5`, aby RVO avoidance neomezoval rychlost běhu.
    - Sestaveno, otestováno a ověřeno headless simulací. Commitnuto a pushnuto na GitHub (`main`).
 
+6. **Spolehlivé obcházení pevných a dynamických překážek (Obstacle Avoidance & Probing) — [HOTOVO]**:
+   - **Problém**: RVO simulace s pouhým `radius = 0.75` dělila vyhýbání 50/50 mezi agenty stejné priority; nehybná bedna neuhýbala a NPC se odklánělo jen napůl, což vedlo k zachytávání o roh a zaseknutí do fyziky. Na trase navíc bod křivky za bednou táhl vektor rychlosti v každém snímku zpět přímo do překážky.
+   - **Těžké překážky (`HeavyObstacle`)**:
+     - V `scene_tree_dock.cpp` a scéně doplněn polygonální obrys (`vertices`) se 4 body vymezujícími čtvercový koridor (1.3 × 1.3 m) s counter-clockwise vinutím, který v RVO vytváří tvrdou statickou bariéru vytlačující agenty ven.
+     - `radius` zvětšen na 1.0 m a `height` na 1.2 m.
+   - **Parametry agenta (`NavigationAgent3D`)**:
+     - Nastaveno `avoidance_priority = 0.5` (překážka má 1.0, agent tedy přebírá 100% odpovědnost za vybočení), `time_horizon_agents = 1.5 s` a `time_horizon_obstacles = 1.5 s` (včasné vnímání překážek s předstihem).
+   - **Aktivní detekce a vybočení (Obstacle Probing Whiskers)**:
+     - Do šablony `fps_npc_controller.gd` i projektového `npc_controller.gd` implementována funkce `_probe_obstacle_avoidance()` s 3 prostorovými paprsky (střed, vlevo -28°, vpravo +28° na Layer 2 Heavy Obstacles s délkou až 2.4 m).
+     - Při detekci překážky se požadovaný směr `desired_velocity` plynule stočí do volného koridoru vedle překážky, takže RVO server rychlost neudusí, ale agent plynule v plné rychlosti bednu v oblouku obejde a za ní se zařadí zpět na trasu.
+     - Rotace NPC se při aktivním vyhýbání hladce orientuje podle `safe_velocity` reálného pohybu.
+   - Sestaveno, podepsáno, ověřeno headless kontrolou a simulací v `project-hl-2-inspiration`. Commitnuto a pushnuto na GitHub (`main`).
 

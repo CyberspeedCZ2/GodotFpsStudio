@@ -40,6 +40,9 @@ func _ready() -> void:
 		nav_agent.avoidance_enabled = true
 		nav_agent.avoidance_mask = 1 | 2 # Avoid heavy dynamic obstacles and other NPCs
 		nav_agent.max_speed = maxf(run_speed, walk_speed) * 1.5
+		nav_agent.avoidance_priority = 0.5 # Yield priority to obstacles so agent steers around them
+		nav_agent.time_horizon_agents = 1.5
+		nav_agent.time_horizon_obstacles = 1.5
 		nav_agent.velocity_computed.connect(_on_safe_velocity_computed)
 
 	current_speed = walk_speed
@@ -98,6 +101,8 @@ func _physics_process(delta: float) -> void:
 	var desired_velocity: Vector3 = Vector3.ZERO
 	if to_target.length_squared() > 0.04:
 		var move_dir: Vector3 = to_target.normalized()
+		# Probe forward for dynamic and heavy obstacles to steer smoothly around them
+		move_dir = _probe_obstacle_avoidance(move_dir)
 		var target_speed: float = current_speed
 
 		# Smooth deceleration profile when approaching stopping points
@@ -121,9 +126,10 @@ func _physics_process(delta: float) -> void:
 			target_speed = lerpf(min_crawl, current_speed, smoothstep(0.0, 1.0, ratio))
 
 		desired_velocity = move_dir * target_speed
-		# Smoothly rotate towards movement direction
-		var look_rot: float = atan2(move_dir.x, move_dir.z)
-		rotation.y = lerp_angle(rotation.y, look_rot, 8.0 * delta)
+		if not nav_agent.avoidance_enabled:
+			# Smoothly rotate towards movement direction when avoidance is inactive
+			var look_rot: float = atan2(move_dir.x, move_dir.z)
+			rotation.y = lerp_angle(rotation.y, look_rot, 8.0 * delta)
 
 	if nav_agent.avoidance_enabled:
 		nav_agent.set_velocity(desired_velocity)
@@ -138,7 +144,60 @@ func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
 		return
 	# Called by NavigationServer with RVO-avoided velocity around heavy obstacles
 	var delta: float = get_physics_process_delta_time()
+	if Vector2(safe_velocity.x, safe_velocity.z).length_squared() > 0.04:
+		var travel_rot: float = atan2(safe_velocity.x, safe_velocity.z)
+		rotation.y = lerp_angle(rotation.y, travel_rot, 8.0 * delta)
 	_apply_velocity_and_move(safe_velocity, delta)
+
+
+## Casts forward spatial probes to proactively steer around Layer 2 Heavy Obstacles
+func _probe_obstacle_avoidance(base_dir: Vector3) -> Vector3:
+	var space_state := get_world_3d().direct_space_state
+	if not space_state:
+		return base_dir
+
+	var from_pos := global_position + Vector3(0.0, 0.45, 0.0)
+	var mask := (1 << 1) # Layer 2: Heavy Obstacle
+	var probe_dist := 2.2
+
+	var center_query := PhysicsRayQueryParameters3D.create(from_pos, from_pos + base_dir * probe_dist, mask, [get_rid()])
+	var center_hit := space_state.intersect_ray(center_query)
+
+	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(28.0))
+	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-28.0))
+
+	var left_query := PhysicsRayQueryParameters3D.create(from_pos, from_pos + left_dir * 1.8, mask, [get_rid()])
+	var right_query := PhysicsRayQueryParameters3D.create(from_pos, from_pos + right_dir * 1.8, mask, [get_rid()])
+
+	var left_hit := space_state.intersect_ray(left_query)
+	var right_hit := space_state.intersect_ray(right_query)
+
+	if center_hit.is_empty() and left_hit.is_empty() and right_hit.is_empty():
+		return base_dir
+
+	var side_dir := Vector3.ZERO
+	var steer_weight := 1.0
+
+	if not center_hit.is_empty():
+		var hit_dist := from_pos.distance_to(center_hit.position)
+		steer_weight = clampf((probe_dist - hit_dist) / (probe_dist * 0.75), 0.6, 1.8)
+
+		if left_hit.is_empty() and not right_hit.is_empty():
+			side_dir = Vector3(-base_dir.z, 0.0, base_dir.x) # Steer left
+		elif right_hit.is_empty() and not left_hit.is_empty():
+			side_dir = Vector3(base_dir.z, 0.0, -base_dir.x) # Steer right
+		else:
+			var hit_norm := Vector3(center_hit.normal.x, 0.0, center_hit.normal.z).normalized()
+			if base_dir.cross(hit_norm).y > 0.0:
+				side_dir = Vector3(-base_dir.z, 0.0, base_dir.x)
+			else:
+				side_dir = Vector3(base_dir.z, 0.0, -base_dir.x)
+	elif not left_hit.is_empty():
+		side_dir = Vector3(base_dir.z, 0.0, -base_dir.x) * 0.6 # Gently nudge right
+	elif not right_hit.is_empty():
+		side_dir = Vector3(-base_dir.z, 0.0, base_dir.x) * 0.6 # Gently nudge left
+
+	return (base_dir + side_dir * (1.2 * steer_weight)).normalized()
 
 
 func _apply_velocity_and_move(target_horizontal_vel: Vector3, delta: float) -> void:

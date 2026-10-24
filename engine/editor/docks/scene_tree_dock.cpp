@@ -1947,9 +1947,17 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			NavigationObstacle3D *nav_obstacle = memnew(NavigationObstacle3D);
 			nav_obstacle->set_name("NavigationObstacle3D");
 			nav_obstacle->set_avoidance_enabled(true);
-			nav_obstacle->set_radius(0.75);
-			nav_obstacle->set_height(1.0);
+			nav_obstacle->set_radius(1.0);
+			nav_obstacle->set_height(1.2);
 			nav_obstacle->set_avoidance_layers(1); // Avoidance Layer 1: Obstacles
+
+			PackedVector3Array vertices;
+			vertices.push_back(Vector3(-0.65, 0.0, -0.65));
+			vertices.push_back(Vector3(0.65, 0.0, -0.65));
+			vertices.push_back(Vector3(0.65, 0.0, 0.65));
+			vertices.push_back(Vector3(-0.65, 0.0, 0.65));
+			nav_obstacle->set_vertices(vertices);
+
 			body->add_child(nav_obstacle, true);
 		} break;
 		case FPS_GAMEPLAY_SMALL_DEBRIS: {
@@ -2018,6 +2026,9 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			agent->set_avoidance_enabled(true);
 			agent->set_radius(0.45);
 			agent->set_height(1.8);
+			agent->set_avoidance_priority(0.5);
+			agent->set_time_horizon_agents(1.5);
+			agent->set_time_horizon_obstacles(1.5);
 			agent->set_avoidance_layers(1 << 1); // Layer 2: NPC Avoidance
 			agent->set_avoidance_mask((1 << 0) | (1 << 1)); // Avoids Layer 1 (Obstacles) and Layer 2 (Other NPCs)
 			body->add_child(agent, true);
