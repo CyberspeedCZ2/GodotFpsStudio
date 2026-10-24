@@ -7,6 +7,8 @@ extends _BASE_
 @export var show_carrot: bool = true
 @export var show_avoidance_probes: bool = true
 @export var show_steer_vector: bool = true
+@export var show_route_curve: bool = true
+@export var show_nav_path: bool = true
 
 @export_group("Movement")
 ## Movement speeds
@@ -267,6 +269,94 @@ func _update_debug_visuals(delta: float) -> void:
 		debug_vertices.append(steer_end)
 		debug_colors.append(scol)
 		debug_vertices.append(steer_end + back_arrow - side_arrow)
+
+		# D) Celá patrol trasa (Path3D Curve3D s waypoints)
+	if show_route_curve and patrol_path and patrol_path.curve:
+		var curve: Curve3D = patrol_path.curve
+		var pt_count := curve.get_point_count()
+		var baked_len := curve.get_baked_length()
+
+		if baked_len > 0.1:
+			var step := 0.35
+			var prev_sample: Vector3 = patrol_path.to_global(curve.sample_baked(0.0)) + Vector3(0.0, 0.06, 0.0)
+			var d: float = step
+			var path_col := Color(0.25, 0.7, 1.0, 0.7)
+			while d <= baked_len:
+				var next_sample: Vector3 = patrol_path.to_global(curve.sample_baked(d)) + Vector3(0.0, 0.06, 0.0)
+				debug_colors.append(path_col)
+				debug_vertices.append(prev_sample)
+				debug_colors.append(path_col)
+				debug_vertices.append(next_sample)
+				prev_sample = next_sample
+				d += step
+			if curve.is_closed() or d > baked_len:
+				var end_sample: Vector3 = patrol_path.to_global(curve.sample_baked(baked_len)) + Vector3(0.0, 0.06, 0.0)
+				debug_colors.append(path_col)
+				debug_vertices.append(prev_sample)
+				debug_colors.append(path_col)
+				debug_vertices.append(end_sample)
+
+		var actions: Array = patrol_path.get_meta("_fps_npc_point_actions", [])
+		for idx in range(pt_count):
+			var wp_world: Vector3 = patrol_path.to_global(curve.get_point_position(idx)) + Vector3(0.0, 0.07, 0.0)
+			var is_current := (idx == current_waypoint_index)
+
+			var wp_col := Color(0.3, 0.8, 1.0, 0.85)
+			if idx < actions.size():
+				var act := str(actions[idx].get("action", "move")).to_lower()
+				if act == "run":
+					wp_col = Color(1.0, 0.5, 0.1, 0.9)
+				elif act == "wait":
+					wp_col = Color(0.2, 0.9, 0.35, 0.9)
+				elif act == "look_at":
+					wp_col = Color(0.85, 0.4, 1.0, 0.9)
+
+			if is_current:
+				wp_col = Color(1.0, 0.95, 0.2, 1.0)
+
+			var r: float = 0.35 if is_current else 0.22
+			var segments := 8
+			for s in range(segments):
+				var a1 := (float(s) / segments) * TAU
+				var a2 := (float(s + 1) / segments) * TAU
+				var p1 := wp_world + Vector3(cos(a1) * r, 0.0, sin(a1) * r)
+				var p2 := wp_world + Vector3(cos(a2) * r, 0.0, sin(a2) * r)
+				debug_colors.append(wp_col)
+				debug_vertices.append(p1)
+				debug_colors.append(wp_col)
+				debug_vertices.append(p2)
+
+			var pin_h: float = 0.7 if is_current else 0.35
+			debug_colors.append(wp_col)
+			debug_vertices.append(wp_world)
+			debug_colors.append(wp_col)
+			debug_vertices.append(wp_world + Vector3(0.0, pin_h, 0.0))
+
+	# E) Živá cesta NavigationAgent3D (reálná trajektorie po NavMeshi kolem překážek)
+	if show_nav_path and nav_agent and not is_waiting:
+		var nav_pts: PackedVector3Array = nav_agent.get_current_navigation_path()
+		if nav_pts.size() >= 2:
+			var nav_col := Color(1.0, 0.85, 0.15, 0.95)
+			var prev_pt := global_position + Vector3(0.0, 0.09, 0.0)
+			for pt_idx in range(nav_agent.get_current_navigation_path_index(), nav_pts.size()):
+				var next_pt := nav_pts[pt_idx] + Vector3(0.0, 0.09, 0.0)
+				debug_colors.append(nav_col)
+				debug_vertices.append(prev_pt)
+				debug_colors.append(nav_col)
+				debug_vertices.append(next_pt)
+
+				var d_size := 0.1
+				debug_colors.append(nav_col)
+				debug_vertices.append(next_pt - Vector3(d_size, 0.0, 0.0))
+				debug_colors.append(nav_col)
+				debug_vertices.append(next_pt + Vector3(d_size, 0.0, 0.0))
+
+				debug_colors.append(nav_col)
+				debug_vertices.append(next_pt - Vector3(0.0, 0.0, d_size))
+				debug_colors.append(nav_col)
+				debug_vertices.append(next_pt + Vector3(0.0, 0.0, d_size))
+
+				prev_pt = next_pt
 
 	if debug_vertices.is_empty():
 		return

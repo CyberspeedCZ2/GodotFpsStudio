@@ -123,3 +123,18 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - Rychlé manuální přepínání klávesou `F3` (`[F3] AI Paprsky & Mrkev`) se stavovou notifikací v HUD overlayi.
      - Export proměnná `@export var debug_visuals: bool = false` na NPC pro zapnutí přímo v inspektoru.
    - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
+
+8. **Zobrazení trasy a NavMesh cesty NPC (Route Curve & NavMesh Path Visuals) — [HOTOVO]**:
+   - **Křivka patrol trasy (`Curve3D` / Path3D)**:
+     - Vzorkování křivky trasy po 0.35 m s vykreslením plynulé azurové linie podél celé trasy (`show_route_curve = true`).
+     - 8hranné kroužky a vertikální piny na všech bodech waypointů.
+     - Barevné odlišení akcí: oranžová pro `Run`, zelená pro `Wait`, fialová pro `Look At`, světle modrá pro `Move`.
+     - Zvýraznění aktivního cílového waypointu: zářivě žlutý zvětšený kroužek s vysokým 3D pinem.
+   - **Živá NavMesh trajektorie (`NavigationAgent3D.get_current_navigation_path()`)**:
+     - Žlutá vodicí čára spojující NPC s jednotlivými uzly NavMeshe v reálném čase (`show_nav_path = true`).
+     - Na každém lomovém bodě NavMeshe se vykresluje žlutý 3D diamant.
+     - Při vyhýbání se překážce hráč přesně vidí, kudy NavMesh a RVO algoritmus agenta směrují.
+   - **Integrace a zobrazení**:
+     - Vše je součástí debug vrstvy (`debug_visuals`, klávesa `F3` nebo Godmode `F1`).
+     - Všechny linie mají `no_depth_test = true` a jemný výškový offset nad podlahou proti Z-fightingu, takže jsou plně čitelné i přes modely a zdi.
+   - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
