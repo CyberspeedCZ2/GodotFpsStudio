@@ -24,6 +24,7 @@ var current_waypoint_index: int = 0
 var is_waiting: bool = false
 var wait_timer: float = 0.0
 var current_speed: float = 3.2
+var active_locomotion: String = "move"
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 
 
@@ -38,6 +39,7 @@ func _ready() -> void:
 	if nav_agent:
 		nav_agent.avoidance_enabled = true
 		nav_agent.avoidance_mask = 1 | 2 # Avoid heavy dynamic obstacles and other NPCs
+		nav_agent.max_speed = maxf(run_speed, walk_speed) * 1.5
 		nav_agent.velocity_computed.connect(_on_safe_velocity_computed)
 
 	current_speed = walk_speed
@@ -96,7 +98,29 @@ func _physics_process(delta: float) -> void:
 	var desired_velocity: Vector3 = Vector3.ZERO
 	if to_target.length_squared() > 0.04:
 		var move_dir: Vector3 = to_target.normalized()
-		desired_velocity = move_dir * current_speed
+		var target_speed: float = current_speed
+
+		# Smooth deceleration profile when approaching stopping points
+		var is_stopping_point: bool = false
+		if patrol_path and patrol_path.curve:
+			if not loop_patrol and current_waypoint_index == patrol_path.curve.point_count - 1:
+				is_stopping_point = true
+			else:
+				var actions: Array = patrol_path.get_meta("_fps_npc_point_actions", [])
+				if current_waypoint_index < actions.size():
+					var act: String = str(actions[current_waypoint_index].get("action", "move")).to_lower()
+					is_stopping_point = (act == "wait" or act == "look_at" or act == "interact")
+		else:
+			is_stopping_point = true
+
+		if is_stopping_point and nav_agent:
+			var dist_to_target: float = global_position.distance_to(nav_agent.target_position)
+			var decel_distance: float = clampf(current_speed * 0.85, 1.6, 4.2)
+			var ratio: float = clampf((dist_to_target - nav_agent.target_desired_distance) / decel_distance, 0.0, 1.0)
+			var min_crawl: float = clampf(current_speed * 0.25, 0.35, 1.0)
+			target_speed = lerpf(min_crawl, current_speed, smoothstep(0.0, 1.0, ratio))
+
+		desired_velocity = move_dir * target_speed
 		# Smoothly rotate towards movement direction
 		var look_rot: float = atan2(move_dir.x, move_dir.z)
 		rotation.y = lerp_angle(rotation.y, look_rot, 8.0 * delta)
@@ -157,7 +181,15 @@ func _advance_patrol_destination() -> void:
 	var actions: Array = patrol_path.get_meta("_fps_npc_point_actions", [])
 	if current_waypoint_index < actions.size():
 		var pt_action: Dictionary = actions[current_waypoint_index]
-		current_speed = run_speed if str(pt_action.get("action", "move")) == "run" else walk_speed
+		var act: String = str(pt_action.get("action", "move")).to_lower()
+		if act == "run":
+			current_speed = run_speed
+		elif act == "move":
+			current_speed = run_speed if active_locomotion == "run" else walk_speed
+		else:
+			current_speed = run_speed if active_locomotion == "run" else walk_speed
+	else:
+		current_speed = run_speed if active_locomotion == "run" else walk_speed
 
 
 func _process_waypoint_action() -> void:
@@ -167,11 +199,12 @@ func _process_waypoint_action() -> void:
 	var actions: Array = patrol_path.get_meta("_fps_npc_point_actions", [])
 	if current_waypoint_index < actions.size():
 		var pt_action: Dictionary = actions[current_waypoint_index]
-		var act_name: String = pt_action.get("action", "move")
+		var act_name: String = str(pt_action.get("action", "move")).to_lower()
 		var duration: float = float(pt_action.get("duration", 0.0))
 
 		match act_name:
 			"run":
+				active_locomotion = "run"
 				current_speed = run_speed
 				_advance_waypoint()
 			"wait":
