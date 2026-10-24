@@ -78,10 +78,12 @@ func _physics_process(delta: float) -> void:
 		var local_pos: Vector3 = patrol_path.to_local(global_position)
 		var current_offset: float = curve.get_closest_offset(local_pos)
 		var carrot_offset: float = current_offset + 1.4
+		var target_offset: float = curve.get_closest_offset(curve.get_point_position(current_waypoint_index))
 		if current_waypoint_index == curve.point_count - 1 and not loop_patrol:
-			var target_offset: float = curve.get_closest_offset(curve.get_point_position(current_waypoint_index))
 			carrot_offset = minf(carrot_offset, target_offset)
-		elif loop_patrol and curve.get_baked_length() > 0.01:
+		else:
+			carrot_offset = minf(carrot_offset, target_offset + 0.6)
+		if loop_patrol and curve.get_baked_length() > 0.01:
 			carrot_offset = fposmod(carrot_offset, curve.get_baked_length())
 		var carrot_world: Vector3 = patrol_path.to_global(curve.sample_baked(carrot_offset))
 		to_target = carrot_world - global_position
