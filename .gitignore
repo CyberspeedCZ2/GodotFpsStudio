@@ -1,0 +1,48 @@
+# OS specific
+.DS_Store
+__MACOSX
+Thumbs.db
+
+# macOS application bundles and build backups
+*.app/
+.*.app/
+.godot-fps-build.*/
+*.zip
+
+# SCons / C++ compilation outputs
+engine/bin/
+engine/.sconf_temp/
+engine/.sconsign*.dblite
+engine/.scons_env.json
+engine/.scons_node_count
+engine/compile_commands.json
+*.gen.*
+*.gen.h
+*.gen.cpp
+engine/**/*.gen.*
+
+# Object and library files
+*.o
+*.os
+*.a
+*.so
+*.dylib
+*.dSYM/
+*.d
+
+# Cache directories
+.cache/
+engine/.cache/
+.clangd/
+engine/.clangd/
+__pycache__/
+*.pyc
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Generated packages
+*.pck
