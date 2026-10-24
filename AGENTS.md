@@ -78,5 +78,8 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - V `npc_controller.gd` i šabloně `fps_npc_controller.gd` zavedeno Lookahead vzorkování křivky (`sample_baked` s předstihem 1.4 m).
      - Průchozí body (`move`, `run`, oblouky zatáček) nezpůsobují zastavení ani kolísání rychlosti; NPC projíždí zatáčky v plné rychlosti.
      - Zastavovací body (`wait`, `look_at`, konec trasy) zachovávají přesné okamžité zastavení přímo na bodě.
+   - **Omezení předsunutí mrkve (Carrot clamp) a detekce postupu podél Curve3D**:
+     - Mrkev je striktně omezena na `target_offset + 0.6 m` pro průchozí body a přesně `target_offset` pro koncové body, takže nemůže utéct dopředu po trase.
+     - V `is_at_destination()` přidána kontrola postupu podél křivky (`progress_past`), takže minití bodu při projíždění oblouku (např. kvůli RVO avoidance) nezasekne waypoint cíl a NPC plynule přechází mezi body.
    - Sestaveno, podepsáno a otestováno v `Godot FPS Studio.app`. Commitnuto a pushnuto na GitHub (`main`).
 
