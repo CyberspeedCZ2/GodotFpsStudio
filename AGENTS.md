@@ -174,3 +174,18 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
     - **Vizuální indikátor**:
       - 3D značka mrkvičky v reálném čase zobrazuje `🔄 Fallback Patrol` (fialový indikátor).
     - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
+
+12. **Kooperativní odtlačení těžkých překážek — Fáze 4 (Co-op Push & Companions) — [HOTOVO]**:
+    - **Detekce nadlimitních překážek a volání posily (`_request_coop_help`)**:
+      - Pokud má překážka hmotnost přesahující limit pro jednoho (`mass > 65 kg`), ale do kooperativního limitu (`mass <= 140 kg`), nebo selže sólo pokus, NPC automaticky vyhledá nejbližšího volného spolubojovníka ze skupiny `"fps_npc"` v okruhu 24 metrů (`coop_call_radius`).
+      - Vyvolávající NPC přejde do role `COOP_ROLE_CALLER`, zastaví se a čeká na příchod parťáka (`📢 Waiting for Partner`).
+    - **Reakce spolubojovníka (`respond_to_coop_request` a `finish_coop_help`)**:
+      - Oslovené NPC přejde do role `COOP_ROLE_HELPER`, uloží si svůj aktuální navigační cíl a sprintem (`run_speed`) přispěchá na pomoc k boku volajícího parťáka (`🏃 Assisting Partner`).
+      - Po přiblížení k překážce (< 2 m) se zapojí do tlačení směrem od svého těla k překážce se znásobenou tlačnou silou (`1.5× obstacle_push_force`).
+      - Společná tlačná síla obou NPC dosahuje až 3.4násobku základní síly, což spolehlivě uvede do pohybu i masivní 140kg závaly.
+    - **Koordinované ukončení a návrat k hlídce**:
+      - Jakmile se překážka posune a uvolní průchod, nebo vyprší časový limit kooperace (`coop_push_duration_max = 3.5 s`), vyvolávající NPC automaticky uvědomí pomocníka (`finish_coop_help()`).
+      - Pomocník se plynule vrátí na svou původní patrolu a k uloženému waypointu, zatímco primární NPC pokračuje po uvolněné trase.
+    - **Vizuální indikátory**:
+      - Dynamické 3D stavové popisky: `🤝 Co-op Pushing` (žlutý indikátor), `📢 Waiting for Partner` (oranžový indikátor) a `🏃 Assisting Partner` (azurový indikátor).
+    - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).

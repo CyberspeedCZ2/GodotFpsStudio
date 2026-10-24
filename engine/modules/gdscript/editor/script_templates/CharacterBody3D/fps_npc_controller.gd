@@ -33,10 +33,21 @@ extends _BASE_
 ## Fallback reverse patrol when route is permanently blocked
 @export var enable_fallback_patrol: bool = true
 
+## Co-op assistance: call nearby companions to help push heavy obstacles
+@export_group("Co-op Assistance")
+@export var can_call_for_coop: bool = true
+@export var coop_call_radius: float = 24.0
+@export var coop_push_mass_limit: float = 140.0
+@export var coop_push_duration_max: float = 3.5
+
 ## Target destination (if not patrolling a path)
 @export var target_node: Node3D
 
 @onready var nav_agent: NavigationAgent3D = get_node_or_null("NavigationAgent3D")
+
+const COOP_ROLE_NONE := 0
+const COOP_ROLE_CALLER := 1
+const COOP_ROLE_HELPER := 2
 
 var current_waypoint_index: int = 0
 var is_waiting: bool = false
@@ -61,6 +72,13 @@ var _is_pushing_obstacle: bool = false
 var _push_attempt_timer: float = 0.0
 var _current_push_target_body: RigidBody3D = null
 
+var _coop_role: int = COOP_ROLE_NONE
+var _coop_partner: Node3D = null
+var _coop_target_obstacle: RigidBody3D = null
+var _coop_push_timer: float = 0.0
+var _saved_pre_coop_waypoint: int = -1
+var _saved_pre_coop_target := Vector3.ZERO
+
 var _patrol_direction: int = 1
 var _is_reversing_patrol: bool = false
 var _blocked_waypoint_index: int = -1
@@ -73,6 +91,7 @@ var _debug_steer_dir := Vector3.ZERO
 
 
 func _ready() -> void:
+	add_to_group("fps_npc")
 	# Enforce FPS collision configuration:
 	# Layer 5: NPC (bit 4, value 16)
 	# Mask: Layer 1 (World), Layer 2 (Heavy Obstacle), Layer 4 (Player), Layer 5 (NPC) -> 27
@@ -220,6 +239,15 @@ func _update_debug_visuals(delta: float) -> void:
 			if _is_path_blocked:
 				carrot_label.text = "🛑 Path Blocked"
 				carrot_label.modulate = Color(1.0, 0.2, 0.2)
+			elif _coop_role == COOP_ROLE_CALLER and _is_pushing_obstacle:
+				carrot_label.text = "🤝 Co-op Pushing"
+				carrot_label.modulate = Color(1.0, 0.85, 0.1)
+			elif _coop_role == COOP_ROLE_CALLER:
+				carrot_label.text = "📢 Waiting for Partner"
+				carrot_label.modulate = Color(1.0, 0.7, 0.2)
+			elif _coop_role == COOP_ROLE_HELPER:
+				carrot_label.text = "🏃 Assisting Partner"
+				carrot_label.modulate = Color(0.2, 0.9, 1.0)
 			elif _stuck_recovery_timer > 0.0:
 				carrot_label.text = "↩️ Backtracking"
 				carrot_label.modulate = Color(1.0, 0.95, 0.2)
@@ -774,24 +802,121 @@ func _handle_physics_push(delta: float) -> void:
 			# Light debris (cups, cans)
 			body.apply_central_impulse(normal_push * push_force)
 		elif can_push_obstacles and body.mass <= obstacle_push_mass_limit:
-			# Pushable heavy obstacle (crates, barrels)
+			# Solo pushable obstacle
 			body.sleeping = false
 			body.apply_central_force(normal_push * obstacle_push_force)
 			pushing_this_frame = true
 			_current_push_target_body = body
+		elif can_push_obstacles and body.mass <= coop_push_mass_limit:
+			# Very heavy obstacle -> co-op push
+			if _coop_role == COOP_ROLE_NONE:
+				if not _request_coop_help(body):
+					_trigger_fallback_reverse_patrol()
+					return
+			elif _coop_role == COOP_ROLE_CALLER or _coop_role == COOP_ROLE_HELPER:
+				body.sleeping = false
+				body.apply_central_force(normal_push * (obstacle_push_force * 1.9))
+				pushing_this_frame = true
+				_current_push_target_body = body
+
+	# Helper pushing if positioned near caller's obstacle
+	if _coop_role == COOP_ROLE_HELPER and is_instance_valid(_coop_target_obstacle):
+		var d_to_obs := global_position.distance_to(_coop_target_obstacle.global_position)
+		if d_to_obs < 2.0:
+			var push_dir := (_coop_target_obstacle.global_position - global_position)
+			push_dir.y = 0.0
+			if push_dir.length_squared() > 0.01:
+				_coop_target_obstacle.sleeping = false
+				_coop_target_obstacle.apply_central_force(push_dir.normalized() * (obstacle_push_force * 1.5))
+				pushing_this_frame = true
 
 	if pushing_this_frame:
 		_is_pushing_obstacle = true
 		_push_attempt_timer += delta
-		if _push_attempt_timer >= obstacle_push_duration_max:
+		if _coop_role != COOP_ROLE_NONE:
+			_coop_push_timer += delta
+
+		var max_dur := coop_push_duration_max if _coop_role != COOP_ROLE_NONE else obstacle_push_duration_max
+		if _push_attempt_timer >= max_dur:
+			if _coop_role == COOP_ROLE_CALLER and is_instance_valid(_coop_partner):
+				if _coop_partner.has_method("finish_coop_help"):
+					_coop_partner.finish_coop_help()
 			_is_pushing_obstacle = false
 			_push_attempt_timer = 0.0
+			_coop_role = COOP_ROLE_NONE
+			_coop_partner = null
+			_coop_target_obstacle = null
 			_trigger_unstuck_and_detour()
 	else:
 		if _is_pushing_obstacle:
+			if _coop_role == COOP_ROLE_CALLER and is_instance_valid(_coop_partner):
+				if _coop_partner.has_method("finish_coop_help"):
+					_coop_partner.finish_coop_help()
 			_is_pushing_obstacle = false
 			_push_attempt_timer = 0.0
+			_coop_role = COOP_ROLE_NONE
+			_coop_partner = null
+			_coop_target_obstacle = null
 			_current_push_target_body = null
+
+
+func is_available_for_coop() -> bool:
+	return _coop_role == COOP_ROLE_NONE and not _is_path_blocked
+
+
+func _request_coop_help(target_obstacle: RigidBody3D) -> bool:
+	if not can_call_for_coop or _coop_role != COOP_ROLE_NONE:
+		return false
+
+	var companions := get_tree().get_nodes_in_group("fps_npc")
+	var best_companion: Node3D = null
+	var best_dist := coop_call_radius * coop_call_radius
+
+	for c in companions:
+		if c == self or not is_instance_valid(c):
+			continue
+		if c.has_method("is_available_for_coop") and c.is_available_for_coop():
+			var d2 := global_position.distance_squared_to(c.global_position)
+			if d2 < best_dist:
+				best_dist = d2
+				best_companion = c
+
+	if best_companion and is_instance_valid(best_companion):
+		_coop_role = COOP_ROLE_CALLER
+		_coop_partner = best_companion
+		_coop_target_obstacle = target_obstacle
+		_coop_push_timer = 0.0
+		best_companion.respond_to_coop_request(self, target_obstacle)
+		return true
+
+	return false
+
+
+func respond_to_coop_request(caller: Node3D, target_obstacle: RigidBody3D) -> void:
+	_coop_role = COOP_ROLE_HELPER
+	_coop_partner = caller
+	_coop_target_obstacle = target_obstacle
+	_coop_push_timer = 0.0
+	_saved_pre_coop_waypoint = current_waypoint_index
+	_saved_pre_coop_target = nav_agent.target_position
+
+	var assist_pos := caller.global_position + caller.global_transform.basis.x * 1.1
+	if nav_agent:
+		nav_agent.target_position = assist_pos
+	current_speed = run_speed
+
+
+func finish_coop_help() -> void:
+	_coop_role = COOP_ROLE_NONE
+	_coop_partner = null
+	_coop_target_obstacle = null
+	_coop_push_timer = 0.0
+	if patrol_path and patrol_path.curve and _saved_pre_coop_waypoint >= 0:
+		current_waypoint_index = _saved_pre_coop_waypoint
+		_advance_patrol_destination()
+	elif _saved_pre_coop_target.length_squared() > 0.1 and nav_agent:
+		nav_agent.target_position = _saved_pre_coop_target
+	current_speed = walk_speed
 
 
 func _advance_patrol_destination() -> void:
