@@ -52,10 +52,14 @@ Tento soubor slouží jako primární instrukce a kontext pro asistenta Antigrav
 
 Uživatel zadal následující požadavky na waypoint systém a chování NPC:
 
-1. **Akce `Run` (Běh)**:
-   - Do seznamu akcí waypointů v `Path3DEditorPlugin` doplnit akci pro běh/sprint (`Run`), aby NPC muselo k bodu běžet.
-2. **Ikony akcí na waypointech ve 3D**:
-   - Pokud má waypoint přiřazenou akci (Wait, Run, Look At, Animation, Interact, Attack, Cover), přímo u bodu v 3D viewportu se musí zobrazit billboard ikona odpovídající dané akci, aby designér ihned viděl zamýšlené chování.
-3. **Inteligentní vyhýbání překážkám (Avoidance & Physics filtering)**:
+1. **Akce `Run` (Běh)** — [HOTOVO]:
+   - Do seznamu akcí waypointů v `Path3DEditorPlugin` doplněna akce pro běh/sprint (`Run`).
+   - Přidána barevná paleta pro `Run` (oranžová `Color(1.0, 0.45, 0.10)`).
+2. **Ikony akcí na waypointech ve 3D**: — [HOTOVO]:
+   - Vytvořeno 7 vysoce kontrastních SVG ikon v `engine/editor/icons/FPSRouteAction*.svg`.
+   - Vykreslování billboard quadů s vypnutým depth testem a maximální prioritou přímo u bodů trasy ve 3D viewportu s vertikálním offsetem a vodicí stopkou k bodu.
+   - Sestaveno, podepsáno a otestováno v `Godot FPS Studio.app`. Commitnuto a pushnuto na GitHub (`main`).
+
+3. **Inteligentní vyhýbání překážkám (Avoidance & Physics filtering) — [NÁSLEDUJÍCÍ KROK / FÁZE 2]**:
    - NPC se musí dokázat dynamicky vyhnout velkým předmětům na zemi (bedny, sudy) pomocí navigace / dynamic obstacles (RVO avoidance).
    - Malé předměty (kelímek, drobný nepořádek) nesmí NPC zastavit: NPC fyzika musí malé předměty ignorovat (pomocí oddělených kolizních vrstev a masek nebo váhového prahu / push síly), takže NPC do nich nenaráží jako do zdi.
