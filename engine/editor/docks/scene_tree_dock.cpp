@@ -66,11 +66,20 @@
 #include "editor/themes/editor_scale.h"
 #include "scene/2d/node_2d.h"
 #include "scene/3d/marker_3d.h"
+#include "scene/3d/mesh_instance_3d.h"
+#include "scene/3d/navigation/navigation_agent_3d.h"
 #include "scene/3d/navigation/navigation_link_3d.h"
+#include "scene/3d/navigation/navigation_obstacle_3d.h"
 #include "scene/3d/navigation/navigation_region_3d.h"
 #include "scene/3d/path_3d.h"
 #include "scene/3d/physics/area_3d.h"
+#include "scene/3d/physics/character_body_3d.h"
 #include "scene/3d/physics/collision_shape_3d.h"
+#include "scene/3d/physics/rigid_body_3d.h"
+#include "scene/resources/3d/box_shape_3d.h"
+#include "scene/resources/3d/capsule_shape_3d.h"
+#include "scene/resources/3d/cylinder_shape_3d.h"
+#include "scene/resources/3d/primitive_meshes.h"
 #include "scene/animation/animation_tree.h"
 #include "scene/audio/audio_stream_player.h"
 #include "scene/gui/box_container.h"
@@ -1906,6 +1915,112 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			group_name = "fps_navigation_link";
 			link->set_start_position(Vector3(0, 0, 0));
 			link->set_end_position(Vector3(0, 0, -4));
+		} break;
+		case FPS_GAMEPLAY_HEAVY_OBSTACLE: {
+			RigidBody3D *body = memnew(RigidBody3D);
+			created_node = body;
+			node_name = "HeavyObstacle";
+			action_name = "Create Heavy Obstacle";
+			group_name = "fps_heavy_obstacle";
+			body->set_collision_layer(1 << 1); // Layer 2: Heavy Obstacle
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 3) | (1 << 4)); // Layers 1 (World), 2 (Heavy Obstacle), 4 (Player), 5 (NPC)
+			body->set_mass(45.0);
+
+			CollisionShape3D *shape = memnew(CollisionShape3D);
+			shape->set_name("CollisionShape3D");
+			Ref<BoxShape3D> box_shape;
+			box_shape.instantiate();
+			box_shape->set_size(Vector3(1.0, 1.0, 1.0));
+			shape->set_shape(box_shape);
+			shape->set_position(Vector3(0.0, 0.5, 0.0));
+			body->add_child(shape, true);
+
+			MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+			mesh_instance->set_name("MeshInstance3D");
+			Ref<BoxMesh> box_mesh;
+			box_mesh.instantiate();
+			box_mesh->set_size(Vector3(1.0, 1.0, 1.0));
+			mesh_instance->set_mesh(box_mesh);
+			mesh_instance->set_position(Vector3(0.0, 0.5, 0.0));
+			body->add_child(mesh_instance, true);
+
+			NavigationObstacle3D *nav_obstacle = memnew(NavigationObstacle3D);
+			nav_obstacle->set_name("NavigationObstacle3D");
+			nav_obstacle->set_avoidance_enabled(true);
+			nav_obstacle->set_radius(0.75);
+			nav_obstacle->set_height(1.0);
+			nav_obstacle->set_avoidance_layers(1); // Avoidance Layer 1: Obstacles
+			body->add_child(nav_obstacle, true);
+		} break;
+		case FPS_GAMEPLAY_SMALL_DEBRIS: {
+			RigidBody3D *body = memnew(RigidBody3D);
+			created_node = body;
+			node_name = "SmallDebris";
+			action_name = "Create Small Debris";
+			group_name = "fps_debris";
+			body->set_collision_layer(1 << 2); // Layer 3: Debris
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 2)); // Layers 1 (World), 2 (Heavy Obstacle), 3 (Debris) - Excludes NPC Layer 5!
+			body->set_mass(0.2); // Lightweight (0.2 kg)
+
+			CollisionShape3D *shape = memnew(CollisionShape3D);
+			shape->set_name("CollisionShape3D");
+			Ref<CylinderShape3D> cyl_shape;
+			cyl_shape.instantiate();
+			cyl_shape->set_radius(0.12);
+			cyl_shape->set_height(0.25);
+			shape->set_shape(cyl_shape);
+			shape->set_position(Vector3(0.0, 0.125, 0.0));
+			body->add_child(shape, true);
+
+			MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+			mesh_instance->set_name("MeshInstance3D");
+			Ref<CylinderMesh> cyl_mesh;
+			cyl_mesh.instantiate();
+			cyl_mesh->set_top_radius(0.12);
+			cyl_mesh->set_bottom_radius(0.12);
+			cyl_mesh->set_height(0.25);
+			mesh_instance->set_mesh(cyl_mesh);
+			mesh_instance->set_position(Vector3(0.0, 0.125, 0.0));
+			body->add_child(mesh_instance, true);
+			// No NavigationObstacle3D, so NavigationAgent routes freely through/past it
+		} break;
+		case FPS_GAMEPLAY_NPC_CHARACTER: {
+			CharacterBody3D *body = memnew(CharacterBody3D);
+			created_node = body;
+			node_name = "FPSNPC";
+			action_name = "Create NPC Character";
+			group_name = "fps_npc";
+			body->set_collision_layer(1 << 4); // Layer 5: NPC
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 3) | (1 << 4)); // Layers 1 (World), 2 (Heavy Obstacle), 4 (Player), 5 (NPC) - EXCLUDES Layer 3 (Debris)!
+
+			CollisionShape3D *shape = memnew(CollisionShape3D);
+			shape->set_name("CollisionShape3D");
+			Ref<CapsuleShape3D> cap_shape;
+			cap_shape.instantiate();
+			cap_shape->set_radius(0.35);
+			cap_shape->set_height(1.8);
+			shape->set_shape(cap_shape);
+			shape->set_position(Vector3(0.0, 0.9, 0.0));
+			body->add_child(shape, true);
+
+			MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+			mesh_instance->set_name("MeshInstance3D");
+			Ref<CapsuleMesh> cap_mesh;
+			cap_mesh.instantiate();
+			cap_mesh->set_radius(0.35);
+			cap_mesh->set_height(1.8);
+			mesh_instance->set_mesh(cap_mesh);
+			mesh_instance->set_position(Vector3(0.0, 0.9, 0.0));
+			body->add_child(mesh_instance, true);
+
+			NavigationAgent3D *agent = memnew(NavigationAgent3D);
+			agent->set_name("NavigationAgent3D");
+			agent->set_avoidance_enabled(true);
+			agent->set_radius(0.45);
+			agent->set_height(1.8);
+			agent->set_avoidance_layers(1 << 1); // Layer 2: NPC Avoidance
+			agent->set_avoidance_mask((1 << 0) | (1 << 1)); // Avoids Layer 1 (Obstacles) and Layer 2 (Other NPCs)
+			body->add_child(agent, true);
 		} break;
 	}
 

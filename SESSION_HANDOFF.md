@@ -133,14 +133,21 @@ The user asked for live 3D viewport FPS and RAM readouts. FPS must measure the 3
   - Implemented 3D billboard quad rendering on `Path3DGizmo` with depth test disabled, render priority max, and stem line indicator connecting to the waypoint.
   - SCons arm64 compilation and packaging verified (clean 100% build), app signature verified, commit and push to `CyberspeedCZ2/GodotFpsStudio:main` completed.
 
+- **Phase 2 Completed**:
+  - Registered standard default 3D physics layers (World, Heavy Obstacle, Debris, Player, NPC, Hitbox, Interactable) and avoidance layers (Obstacles, NPCs, Player) in `register_scene_types.cpp`.
+  - Added Level Viewport RMB menu actions and `SceneTreeDock` builders for `Heavy Obstacle (Avoidance Crate)` on Layer 2 with `NavigationObstacle3D` RVO avoidance, `Small Debris (Cup/Can)` on Layer 3 without avoidance, and `NPC Character (with Avoidance)` on Layer 5 with mask excluding Layer 3 Debris.
+  - Added `NPC Controller Script...` to Content Browser (`FPS +` menu) and created a comprehensive built-in template `fps_npc_controller.gd` with RVO velocity computation, debris soft-pushing, waypoint patrol following, and action handling (`run`, `wait`, `look_at`).
+  - Compiled and packaged `Godot FPS Studio.app` for macOS arm64, codesign verified.
+
 ## Open items & Current work
 
-- **Phase 2: Intelligent Obstacle Avoidance & Physics Filtering (Requirement 3)**:
-  - Heavy dynamic props (crates, barrels) avoided via `NavigationObstacle3D` / RVO avoidance.
-  - Small props (cups, debris) filtered out via collision layers/masks and mass push thresholds so they do not block or halt NPC character physics.
-- Implement the larger roadmap items: runtime FPS player controller, NPC path/action execution in gameplay runtime, Hammer-style level tools, Action Director timeline in GDScript, and God Mode expansion.
+- Implement the larger roadmap items:
+  - Runtime FPS player controller and weapon mechanics.
+  - Hammer-style brush / blockout editing enhancements and entity wiring.
+  - Action Director timeline in GDScript for choreographed sequences.
+  - Play in Editor expansion & runtime God Mode toggle.
 
 ## Next action
 
-Implement Phase 2: NPC dynamic obstacle avoidance for heavy objects and physics collision filtering / soft pushing for small debris. Maintain editor closed unless explicitly requested to open.
+Await user direction on the next system to build or refine (e.g. gameplay testing, player controller, level authoring tools, or Action Director). Maintain editor closed unless explicitly requested to open.
 

@@ -345,6 +345,7 @@ private:
 	PopupMenu *fps_gameplay_submenu = nullptr;
 	PopupMenu *fps_player_submenu = nullptr;
 	PopupMenu *fps_npc_submenu = nullptr;
+	PopupMenu *fps_props_submenu = nullptr;
 	PopupMenu *fps_volume_submenu = nullptr;
 	PopupMenu *fps_navigation_submenu = nullptr;
 	PopupMenu *fps_unibuilder_submenu = nullptr;
@@ -387,6 +388,9 @@ private:
 		FPS_CONTEXT_ADD_NPC_SPAWN,
 		FPS_CONTEXT_ADD_NPC_COVER_POINT,
 		FPS_CONTEXT_ADD_OBJECTIVE_MARKER,
+		FPS_CONTEXT_ADD_HEAVY_OBSTACLE,
+		FPS_CONTEXT_ADD_SMALL_DEBRIS,
+		FPS_CONTEXT_ADD_NPC_CHARACTER,
 		FPS_CONTEXT_UNIBUILDER_SHAPE_BASE = 1000,
 	};
 

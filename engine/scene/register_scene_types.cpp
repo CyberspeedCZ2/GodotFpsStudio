@@ -1291,19 +1291,36 @@ void register_scene_types() {
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/3d_render"), i + 1), "");
 	}
 
+	static const char *default_3d_physics_layer_names[] = {
+		"World",
+		"Heavy Obstacle",
+		"Debris",
+		"Player",
+		"NPC",
+		"Hitbox",
+		"Interactable",
+	};
+	static const char *default_avoidance_layer_names[] = {
+		"Obstacles",
+		"NPCs",
+		"Player",
+	};
+
 	for (int i = 0; i < 32; i++) {
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/2d_physics"), i + 1), "");
 #ifndef NAVIGATION_2D_DISABLED
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/2d_navigation"), i + 1), "");
 #endif // NAVIGATION_2D_DISABLED
-		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/3d_physics"), i + 1), "");
+		const char *physics_3d_name = (i < (int)(sizeof(default_3d_physics_layer_names) / sizeof(default_3d_physics_layer_names[0]))) ? default_3d_physics_layer_names[i] : "";
+		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/3d_physics"), i + 1), physics_3d_name);
 #ifndef NAVIGATION_3D_DISABLED
 		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/3d_navigation"), i + 1), "");
 #endif // NAVIGATION_3D_DISABLED
 	}
 
 	for (int i = 0; i < 32; i++) {
-		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/avoidance"), i + 1), "");
+		const char *avoidance_name = (i < (int)(sizeof(default_avoidance_layer_names) / sizeof(default_avoidance_layer_names[0]))) ? default_avoidance_layer_names[i] : "";
+		GLOBAL_DEF_BASIC(vformat("%s/layer_%d", PNAME("layer_names/avoidance"), i + 1), avoidance_name);
 	}
 
 	if (RenderingServer::get_singleton()) {

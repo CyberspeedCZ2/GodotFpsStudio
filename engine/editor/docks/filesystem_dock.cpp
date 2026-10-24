@@ -1434,6 +1434,7 @@ MenuButton *FileSystemDock::_create_fps_actions_button() {
 	fps_actions->set_theme_type_variation("FlatMenuButton");
 	fps_actions->set_tooltip_text(TTRC("Create a starter script for a common FPS system."));
 	fps_actions->get_popup()->add_item(TTRC("Player Controller Script..."), FPS_CREATE_PLAYER_CONTROLLER);
+	fps_actions->get_popup()->add_item(TTRC("NPC Controller Script..."), FPS_CREATE_NPC_CONTROLLER);
 	fps_actions->get_popup()->add_item(TTRC("Weapon Script..."), FPS_CREATE_WEAPON);
 	fps_actions->get_popup()->add_item(TTRC("Interaction Script..."), FPS_CREATE_INTERACTION);
 	fps_actions->get_popup()->add_item(TTRC("Action Director Script..."), FPS_CREATE_ACTION_DIRECTOR);
@@ -1455,6 +1456,10 @@ void FileSystemDock::_fps_create_action(int p_id) {
 		case FPS_CREATE_PLAYER_CONTROLLER:
 			base_type = "CharacterBody3D";
 			file_name = "fps_player_controller.gd";
+			break;
+		case FPS_CREATE_NPC_CONTROLLER:
+			base_type = "CharacterBody3D";
+			file_name = "fps_npc_controller.gd";
 			break;
 		case FPS_CREATE_WEAPON:
 			base_type = "Node3D";

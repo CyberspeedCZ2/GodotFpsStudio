@@ -3471,6 +3471,15 @@ void Node3DEditorViewport::_fps_context_menu_item_pressed(int p_id) {
 		case FPS_CONTEXT_ADD_NAVIGATION_OBSTACLE:
 			scene_tree_dock->create_fps_gameplay_node_at("NavigationObstacle3D", fps_context_world_position);
 			break;
+		case FPS_CONTEXT_ADD_HEAVY_OBSTACLE:
+			scene_tree_dock->create_fps_gameplay_element_at(SceneTreeDock::FPS_GAMEPLAY_HEAVY_OBSTACLE, fps_context_world_position);
+			break;
+		case FPS_CONTEXT_ADD_SMALL_DEBRIS:
+			scene_tree_dock->create_fps_gameplay_element_at(SceneTreeDock::FPS_GAMEPLAY_SMALL_DEBRIS, fps_context_world_position);
+			break;
+		case FPS_CONTEXT_ADD_NPC_CHARACTER:
+			scene_tree_dock->create_fps_gameplay_element_at(SceneTreeDock::FPS_GAMEPLAY_NPC_CHARACTER, fps_context_world_position);
+			break;
 		case FPS_CONTEXT_ADD_DIRECTIONAL_LIGHT:
 			scene_tree_dock->create_fps_gameplay_node_at("DirectionalLight3D", fps_context_world_position);
 			break;
@@ -7489,6 +7498,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_gameplay_submenu = memnew(PopupMenu);
 	fps_player_submenu = memnew(PopupMenu);
 	fps_npc_submenu = memnew(PopupMenu);
+	fps_props_submenu = memnew(PopupMenu);
 	fps_volume_submenu = memnew(PopupMenu);
 	fps_navigation_submenu = memnew(PopupMenu);
 	fps_unibuilder_submenu = memnew(PopupMenu);
@@ -7498,6 +7508,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_context_menu->add_child(fps_gameplay_submenu);
 	fps_gameplay_submenu->add_child(fps_player_submenu);
 	fps_gameplay_submenu->add_child(fps_npc_submenu);
+	fps_gameplay_submenu->add_child(fps_props_submenu);
 	fps_gameplay_submenu->add_child(fps_volume_submenu);
 	fps_gameplay_submenu->add_child(fps_navigation_submenu);
 	fps_context_menu->add_child(fps_unibuilder_submenu);
@@ -7514,6 +7525,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 
 	fps_gameplay_submenu->add_submenu_node_item(TTRC("Player and Spawn"), fps_player_submenu);
 	fps_gameplay_submenu->add_submenu_node_item(TTRC("NPCs and Routes"), fps_npc_submenu);
+	fps_gameplay_submenu->add_submenu_node_item(TTRC("Props and Obstacles"), fps_props_submenu);
 	fps_gameplay_submenu->add_submenu_node_item(TTRC("Triggers and Interactions"), fps_volume_submenu);
 	fps_gameplay_submenu->add_submenu_node_item(TTRC("Navigation"), fps_navigation_submenu);
 
@@ -7522,11 +7534,15 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_player_submenu->add_item(TTRC("Checkpoint"), FPS_CONTEXT_ADD_CHECKPOINT);
 
 	fps_npc_submenu->add_item(TTRC("NPC Scene..."), FPS_CONTEXT_ADD_NPC_SCENE);
+	fps_npc_submenu->add_item(TTRC("NPC Character (with Avoidance)"), FPS_CONTEXT_ADD_NPC_CHARACTER);
 	fps_npc_submenu->add_item(TTRC("NPC Spawn Point"), FPS_CONTEXT_ADD_NPC_SPAWN);
 	fps_npc_submenu->add_item(TTRC("NPC Path"), FPS_CONTEXT_ADD_NPC_PATH);
 	fps_npc_submenu->add_item(TTRC("NPC Waypoint"), FPS_CONTEXT_ADD_NPC_WAYPOINT);
 	fps_npc_submenu->add_item(TTRC("NPC Action Point"), FPS_CONTEXT_ADD_NPC_ACTION_POINT);
 	fps_npc_submenu->add_item(TTRC("NPC Cover Point"), FPS_CONTEXT_ADD_NPC_COVER_POINT);
+
+	fps_props_submenu->add_item(TTRC("Heavy Obstacle (Avoidance Crate)"), FPS_CONTEXT_ADD_HEAVY_OBSTACLE);
+	fps_props_submenu->add_item(TTRC("Small Debris (Cup/Can)"), FPS_CONTEXT_ADD_SMALL_DEBRIS);
 
 	fps_volume_submenu->add_item(TTRC("Trigger Volume"), FPS_CONTEXT_ADD_TRIGGER);
 	fps_volume_submenu->add_item(TTRC("Interaction Area"), FPS_CONTEXT_ADD_INTERACTION_AREA);
@@ -7565,6 +7581,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_gameplay_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_player_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_npc_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
+	fps_props_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_volume_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_navigation_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_lights_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
@@ -7585,11 +7602,14 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	set_fps_tooltip(fps_player_submenu, FPS_CONTEXT_ADD_CHECKPOINT, TTR("Adds a checkpoint marker in the fps_checkpoint group for your respawn logic."));
 	set_fps_tooltip(fps_player_submenu, FPS_CONTEXT_ADD_OBJECTIVE_MARKER, TTR("Adds a visible objective location marker in the fps_objective_marker group."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_SCENE, TTR("Choose an NPC scene to place here. The scene must contain its own behavior and navigation logic."));
+	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_CHARACTER, TTR("Creates an FPS NPC CharacterBody3D with NavigationAgent3D avoidance enabled and collision mask ignoring debris."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_SPAWN, TTR("Marks an NPC spawn location in the fps_npc_spawn group; connect it to your spawn system."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_PATH, TTR("Creates an editable Path3D route with a PathFollow3D child for an NPC patrol."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_WAYPOINT, TTR("Adds a visible waypoint for NPC route or behavior scripts."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_ACTION_POINT, TTR("Adds an action marker with a default wait action. An NPC behavior script must execute it."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_COVER_POINT, TTR("Adds a cover marker. Its rotation indicates the direction the NPC should face."));
+	set_fps_tooltip(fps_props_submenu, FPS_CONTEXT_ADD_HEAVY_OBSTACLE, TTR("Creates a heavy RigidBody3D on Layer 2 with a NavigationObstacle3D child so NPCs dynamically steer around it."));
+	set_fps_tooltip(fps_props_submenu, FPS_CONTEXT_ADD_SMALL_DEBRIS, TTR("Creates a lightweight debris RigidBody3D on Layer 3 that NPCs ignore and push aside without blocking."));
 	set_fps_tooltip(fps_volume_submenu, FPS_CONTEXT_ADD_TRIGGER, TTR("Creates an Area3D trigger with a box collision shape. Connect its signals to gameplay actions."));
 	set_fps_tooltip(fps_volume_submenu, FPS_CONTEXT_ADD_INTERACTION_AREA, TTR("Creates a 2 m interaction Area3D that detects bodies on collision layer 1."));
 	set_fps_tooltip(fps_navigation_submenu, FPS_CONTEXT_ADD_NAVIGATION_REGION, TTR("Creates a NavigationRegion3D with starter settings. Add geometry as a child, then bake its navigation mesh."));
