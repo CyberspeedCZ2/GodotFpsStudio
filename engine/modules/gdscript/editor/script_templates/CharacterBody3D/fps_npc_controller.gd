@@ -137,6 +137,11 @@ func _advance_patrol_destination() -> void:
 	var world_pos: Vector3 = patrol_path.global_transform * local_pos
 	nav_agent.target_position = world_pos
 
+	var actions: Array = patrol_path.get_meta("_fps_npc_point_actions", [])
+	if current_waypoint_index < actions.size():
+		var pt_action: Dictionary = actions[current_waypoint_index]
+		current_speed = run_speed if str(pt_action.get("action", "move")) == "run" else walk_speed
+
 
 func _process_waypoint_action() -> void:
 	if not patrol_path:
