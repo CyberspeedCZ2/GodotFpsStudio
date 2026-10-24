@@ -72,9 +72,24 @@ func _physics_process(delta: float) -> void:
 			_process_waypoint_action()
 		return
 
-	var next_path_pos: Vector3 = nav_agent.get_next_path_position()
-	var to_target: Vector3 = next_path_pos - global_position
-	to_target.y = 0.0
+	var to_target: Vector3 = Vector3.ZERO
+	if patrol_path and patrol_path.curve:
+		var curve: Curve3D = patrol_path.curve
+		var local_pos: Vector3 = patrol_path.to_local(global_position)
+		var current_offset: float = curve.get_closest_offset(local_pos)
+		var carrot_offset: float = current_offset + 1.4
+		if current_waypoint_index == curve.point_count - 1 and not loop_patrol:
+			var target_offset: float = curve.get_closest_offset(curve.get_point_position(current_waypoint_index))
+			carrot_offset = minf(carrot_offset, target_offset)
+		elif loop_patrol and curve.get_baked_length() > 0.01:
+			carrot_offset = fposmod(carrot_offset, curve.get_baked_length())
+		var carrot_world: Vector3 = patrol_path.to_global(curve.sample_baked(carrot_offset))
+		to_target = carrot_world - global_position
+		to_target.y = 0.0
+	else:
+		var next_path_pos: Vector3 = nav_agent.get_next_path_position()
+		to_target = next_path_pos - global_position
+		to_target.y = 0.0
 
 	var desired_velocity: Vector3 = Vector3.ZERO
 	if to_target.length_squared() > 0.04:

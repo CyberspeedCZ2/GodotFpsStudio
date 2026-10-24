@@ -2051,11 +2051,11 @@ void Path3DEditorPlugin::_round_route_corner() {
 	if (Math::is_zero_approx(transform.basis.determinant())) {
 		return;
 	}
-	const NPCPathGeometry::CornerArc arc = NPCPathGeometry::create_corner_arc(
+	const NPCPathGeometry::CornerBezier bezier = NPCPathGeometry::create_corner_bezier(
 			transform.xform(before_curve->get_point_position(previous)),
 			transform.xform(before_curve->get_point_position(index)),
 			transform.xform(before_curve->get_point_position(next)), npc_corner_radius->get_value());
-	if (arc.points.is_empty()) {
+	if (!bezier.valid) {
 		_set_route_status(TTR("Select a corner, not a straight line or reversal"));
 		return;
 	}
@@ -2066,25 +2066,41 @@ void Path3DEditorPlugin::_round_route_corner() {
 			NavigationServer3D::get_singleton()->map_force_update(map);
 		}
 	}
+	Vector3 entry_pt = bezier.entry;
+	Vector3 exit_pt = bezier.exit;
+	if (npc_route_snap_to_navmesh) {
+		for (int s = 0; s <= 8; s++) {
+			const real_t t = real_t(s) / 8.0;
+			const real_t it = 1.0 - t;
+			const Vector3 sample_pt = bezier.entry * (it * it * it) +
+					(bezier.entry + bezier.entry_out_handle) * (3.0 * it * it * t) +
+					(bezier.exit + bezier.exit_in_handle) * (3.0 * it * t * t) +
+					bezier.exit * (t * t * t);
+			Vector3 nav_pt;
+			if (!_snap_npc_route_point_to_navmesh(sample_pt, nav_pt)) {
+				_set_route_status(TTR("Rounded Bezier arc leaves the NavigationMesh; no changes made"));
+				return;
+			}
+			if (s == 0) {
+				entry_pt = nav_pt;
+			} else if (s == 8) {
+				exit_pt = nav_pt;
+			}
+		}
+	}
 	Ref<Curve3D> after_curve = before_curve->duplicate();
 	after_curve->clear_points();
 	Array after_actions;
 	for (int i = 0; i < count; i++) {
 		if (i == index) {
-			for (const Vector3 &point : arc.points) {
-				Vector3 route_point = point;
-				Vector3 navmesh_point;
-				if (npc_route_snap_to_navmesh) {
-					if (!_snap_npc_route_point_to_navmesh(route_point, navmesh_point)) {
-						_set_route_status(TTR("Rounded corner leaves the NavigationMesh; no changes made"));
-						return;
-					}
-					route_point = navmesh_point;
-				}
-				after_curve->add_point(inverse.xform(route_point));
-				after_curve->set_point_tilt(after_curve->get_point_count() - 1, before_curve->get_point_tilt(index));
-				after_actions.push_back(action.duplicate(true));
-			}
+			// Replace corner with 2 Bezier arc points: entry and exit
+			after_curve->add_point(inverse.xform(entry_pt), Vector3(), inverse.basis.xform(bezier.entry_out_handle));
+			after_curve->set_point_tilt(after_curve->get_point_count() - 1, before_curve->get_point_tilt(index));
+			after_actions.push_back(action.duplicate(true));
+
+			after_curve->add_point(inverse.xform(exit_pt), inverse.basis.xform(bezier.exit_in_handle), Vector3());
+			after_curve->set_point_tilt(after_curve->get_point_count() - 1, before_curve->get_point_tilt(index));
+			after_actions.push_back(action.duplicate(true));
 		} else {
 			after_curve->add_point(before_curve->get_point_position(i), before_curve->get_point_in(i), before_curve->get_point_out(i));
 			after_curve->set_point_tilt(after_curve->get_point_count() - 1, before_curve->get_point_tilt(i));
@@ -2102,7 +2118,7 @@ void Path3DEditorPlugin::_round_route_corner() {
 	undo_redo->add_undo_method(this, "_refresh_route_action_display");
 	Node3DEditor::get_singleton()->clear_subgizmo_selection(path);
 	undo_redo->commit_action();
-	_set_route_status(vformat(TTR("Rounded radius: %.2f m"), arc.radius));
+	_set_route_status(vformat(TTR("Rounded radius (2-point Bezier arc): %.2f m"), bezier.radius));
 }
 
 void Path3DEditorPlugin::_check_route_reachability() {
@@ -2458,7 +2474,7 @@ Path3DEditorPlugin::Path3DEditorPlugin() {
 	npc_round_corner->set_text(TTR("Round"));
 	npc_round_corner->set_custom_minimum_size(Size2(72, 0) * EDSCALE);
 	npc_round_corner->set_disabled(true);
-	npc_round_corner->set_tooltip_text(TTR("Replace one selected Move waypoint with an arc of pass-through waypoints. Wait/action points and open route endpoints stay exact. Undo restores the original corner."));
+	npc_round_corner->set_tooltip_text(TTR("Replace one selected Move/Run waypoint with a smooth 2-point Bezier arc. Wait/action points and open route endpoints stay exact. Undo restores the original corner."));
 	npc_round_corner->connect(SceneStringName(pressed), callable_mp(this, &Path3DEditorPlugin::_round_route_corner));
 	add_route_control(npc_round_corner);
 
