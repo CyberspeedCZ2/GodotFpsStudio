@@ -86,7 +86,7 @@ class EditorResourcePreview : public Node {
 
 	List<QueueItem> queue;
 
-	Mutex preview_mutex;
+	mutable Mutex preview_mutex;
 	Semaphore preview_sem;
 	Thread thread;
 	SafeFlag exiting;

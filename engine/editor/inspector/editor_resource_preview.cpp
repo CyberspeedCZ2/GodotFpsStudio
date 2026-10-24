@@ -280,8 +280,12 @@ void EditorResourcePreview::_generate_preview(Ref<ImageTexture> &r_texture, Ref<
 }
 
 const Dictionary EditorResourcePreview::get_preview_metadata(const String &p_path) const {
-	ERR_FAIL_COND_V(!cache.has(p_path), Dictionary());
-	return cache[p_path].preview_metadata;
+	MutexLock lock(preview_mutex);
+	const Item *cached_item = cache.getptr(p_path);
+	if (!cached_item) {
+		return Dictionary();
+	}
+	return cached_item->preview_metadata;
 }
 
 void EditorResourcePreview::_iterate() {

@@ -537,14 +537,16 @@ func _physics_process(delta: float) -> void:
 			_process_waypoint_action()
 		return
 
-	# Re-join curve if detour brought us back near the path and corridor is clear
+	# Re-join curve only when actually past the blockage along the route
 	if _is_detouring and patrol_path and patrol_path.curve:
 		var local_pos: Vector3 = patrol_path.to_local(global_position)
 		var closest_offset: float = patrol_path.curve.get_closest_offset(local_pos)
-		var curve_pt: Vector3 = patrol_path.to_global(patrol_path.curve.sample_baked(closest_offset))
-		var dist_to_curve := global_position.distance_to(curve_pt)
-		if dist_to_curve < 0.85 and not _forward_blocked:
-			_is_detouring = false
+		var target_offset: float = patrol_path.curve.get_closest_offset(patrol_path.curve.get_point_position(current_waypoint_index))
+		var progress_past := (closest_offset - target_offset) * _patrol_direction
+		if progress_past > 1.2 and not _forward_blocked:
+			var curve_pt: Vector3 = patrol_path.to_global(patrol_path.curve.sample_baked(closest_offset))
+			if global_position.distance_to(curve_pt) < 1.0:
+				_is_detouring = false
 
 	var to_target: Vector3 = Vector3.ZERO
 	if patrol_path and patrol_path.curve and not _is_detouring:
@@ -626,10 +628,9 @@ func _physics_process(delta: float) -> void:
 				_trigger_unstuck_and_detour()
 				return
 
-		if not nav_agent.avoidance_enabled:
-			# Smoothly rotate towards movement direction when avoidance is inactive
-			var look_rot: float = atan2(move_dir.x, move_dir.z)
-			rotation.y = lerp_angle(rotation.y, look_rot, 8.0 * delta)
+		# Hladke otaceni celeho tela i pohledu primo do zamereneho smeru, nikoliv do zdi
+		var look_rot: float = atan2(move_dir.x, move_dir.z)
+		rotation.y = lerp_angle(rotation.y, look_rot, 8.0 * delta)
 
 	if nav_agent.avoidance_enabled:
 		nav_agent.set_velocity(desired_velocity)
@@ -681,6 +682,7 @@ func _trigger_unstuck_and_detour() -> void:
 
 	_avoidance_side = 0.0
 	_current_avoidance_angle = 0.0
+	_is_detouring = true
 	_stuck_recovery_dir = global_transform.basis.z # Krok VZAD od prekazky
 	_stuck_recovery_dir.y = 0.0
 	if _stuck_recovery_dir.length_squared() < 0.01:
@@ -695,9 +697,7 @@ func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
 		return
 	# Called by NavigationServer with RVO-avoided velocity around heavy obstacles
 	var delta: float = get_physics_process_delta_time()
-	if Vector2(safe_velocity.x, safe_velocity.z).length_squared() > 0.04:
-		var travel_rot: float = atan2(safe_velocity.x, safe_velocity.z)
-		rotation.y = lerp_angle(rotation.y, travel_rot, 8.0 * delta)
+	# Otaceni je spolehlive rizeno pohybovym smerem v _physics_process
 	_apply_velocity_and_move(safe_velocity, delta)
 
 
@@ -746,8 +746,20 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	_record_debug_probe(from_pos, from_pos + whisker_l_dir * 1.8, whisker_l_hit, "whisker")
 	_record_debug_probe(from_pos, from_pos + whisker_r_dir * 1.8, whisker_r_hit, "whisker")
 
-	var left_blocked := not left_hit.is_empty() or not whisker_l_hit.is_empty()
-	var right_blocked := not right_hit.is_empty() or not whisker_r_hit.is_empty()
+	# 4. Lateral clearance probes (check for wall within 0.85m to left or right)
+	var lat_dist := 0.85
+	var lat_l_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos - side_normal * lat_dist, mask, [get_rid()])
+	var lat_r_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + side_normal * lat_dist, mask, [get_rid()])
+	var lat_l_hit := space_state.intersect_ray(lat_l_q)
+	var lat_r_hit := space_state.intersect_ray(lat_r_q)
+	_record_debug_probe(from_pos, from_pos - side_normal * lat_dist, lat_l_hit, "lateral")
+	_record_debug_probe(from_pos, from_pos + side_normal * lat_dist, lat_r_hit, "lateral")
+
+	var left_has_wall := not lat_l_hit.is_empty()
+	var right_has_wall := not lat_r_hit.is_empty()
+
+	var left_blocked := not left_hit.is_empty() or not whisker_l_hit.is_empty() or left_has_wall
+	var right_blocked := not right_hit.is_empty() or not whisker_r_hit.is_empty() or right_has_wall
 	var center_blocked := not center_hit.is_empty()
 
 	_forward_blocked = center_blocked or (left_blocked and right_blocked)
@@ -766,38 +778,28 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 
 	_avoidance_clear_time = 0.0
 
-	# Pokud jsou OBE strany zablokovane, NESMI se zatacet do zdi ani do prekazky!
+	# If both sides are blocked, do not steer into walls
 	if left_blocked and right_blocked:
 		_avoidance_side = 0.0
 		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
 		_debug_steer_dir = base_dir
 		return base_dir
 
-	# Vyber strany: vyhybej se POUZE do volneho koridoru
-	if left_blocked and not right_blocked:
-		_avoidance_side = -1.0 # Uhni vpravo (volno)
-	elif right_blocked and not left_blocked:
-		_avoidance_side = 1.0 # Uhni vlevo (volno)
-	elif not left_blocked and not right_blocked and center_blocked:
-		var wide_l_q := PhysicsRayQueryParameters3D.create(from_pos - side_normal * 0.7, (from_pos - side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
-		var wide_r_q := PhysicsRayQueryParameters3D.create(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
-		var wide_l_hit := space_state.intersect_ray(wide_l_q)
-		var wide_r_hit := space_state.intersect_ray(wide_r_q)
-		if not wide_r_hit.is_empty() and wide_l_hit.is_empty():
-			_avoidance_side = 1.0
-		elif not wide_l_hit.is_empty() and wide_r_hit.is_empty():
-			_avoidance_side = -1.0
-		else:
-			var to_hit: Vector3 = Vector3(center_hit.get("position", from_pos)) - from_pos
-			_avoidance_side = 1.0 if side_normal.dot(to_hit) >= 0.0 else -1.0
-
-	# Kontrola bezpecnosti: Pokud strana, kam chceme uhnout, neni volna, okamzite zrusit vyboceni
-	if _avoidance_side > 0.0 and left_blocked:
-		_avoidance_side = 0.0
-	elif _avoidance_side < 0.0 and right_blocked:
+	if left_blocked and not right_blocked and not right_has_wall:
+		_avoidance_side = -1.0 # Steer right
+	elif right_blocked and not left_blocked and not left_has_wall:
+		_avoidance_side = 1.0 # Steer left
+	elif not left_blocked and not right_blocked and not left_has_wall and not right_has_wall and center_blocked:
+		var to_hit: Vector3 = Vector3(center_hit.get("position", from_pos)) - from_pos
+		_avoidance_side = 1.0 if side_normal.dot(to_hit) >= 0.0 else -1.0
+	else:
 		_avoidance_side = 0.0
 
-	# Vypocet minimalni vzdalenosti
+	if _avoidance_side > 0.0 and left_has_wall:
+		_avoidance_side = 0.0
+	elif _avoidance_side < 0.0 and right_has_wall:
+		_avoidance_side = 0.0
+
 	var min_hit_dist := probe_dist
 	if not center_hit.is_empty():
 		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(center_hit.position))
@@ -810,8 +812,8 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	if not whisker_r_hit.is_empty():
 		min_hit_dist = minf(min_hit_dist, from_pos.distance_to(whisker_r_hit.position))
 
-	var max_steer_deg := 35.0
-	var min_steer_deg := 18.0
+	var max_steer_deg := 30.0
+	var min_steer_deg := 15.0
 	var urgency := clampf((probe_dist - min_hit_dist) / (probe_dist - 0.6), 0.0, 1.0)
 	var target_deg := lerpf(min_steer_deg, max_steer_deg, urgency) * _avoidance_side
 
