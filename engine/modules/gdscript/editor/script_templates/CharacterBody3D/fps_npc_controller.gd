@@ -40,6 +40,14 @@ var _avoidance_side: float = 0.0 # -1.0 = right, +1.0 = left
 var _avoidance_clear_time: float = 0.0
 var _current_avoidance_angle: float = 0.0
 
+var _is_detouring: bool = false
+var _is_path_blocked: bool = false
+var _stuck_timer: float = 0.0
+var _stuck_recovery_timer: float = 0.0
+var _stuck_recovery_dir := Vector3.ZERO
+var _forward_blocked: bool = false
+var _blocked_retry_timer: float = 0.0
+
 var _debug_lines_mesh: MeshInstance3D = null
 var _carrot_node: Node3D = null
 var _last_carrot_world_pos := Vector3.ZERO
@@ -189,6 +197,21 @@ func _update_debug_visuals(delta: float) -> void:
 		var bob := sin(Time.get_ticks_msec() * 0.005) * 0.08
 		_carrot_node.global_position = _last_carrot_world_pos + Vector3(0.0, 0.45 + bob, 0.0)
 		_carrot_node.rotate_y(delta * 2.8)
+
+		var carrot_label := _carrot_node.get_node_or_null("CarrotLabel") as Label3D
+		if carrot_label:
+			if _is_path_blocked:
+				carrot_label.text = "🛑 Path Blocked"
+				carrot_label.modulate = Color(1.0, 0.2, 0.2)
+			elif _stuck_recovery_timer > 0.0:
+				carrot_label.text = "↩️ Backtracking"
+				carrot_label.modulate = Color(1.0, 0.95, 0.2)
+			elif _is_detouring:
+				carrot_label.text = "↪️ Detour (NavMesh)"
+				carrot_label.modulate = Color(0.2, 0.9, 1.0)
+			else:
+				carrot_label.text = "🥕 Carrot Target"
+				carrot_label.modulate = Color(1.0, 0.85, 0.2)
 	else:
 		_carrot_node.visible = false
 
@@ -390,14 +413,52 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		return
 
+	# 1. Handle BLOCKED state
+	if _is_path_blocked:
+		velocity.x = move_toward(velocity.x, 0.0, acceleration * delta)
+		velocity.z = move_toward(velocity.z, 0.0, acceleration * delta)
+		move_and_slide()
+		_blocked_retry_timer += delta
+		if _blocked_retry_timer >= 1.0:
+			_blocked_retry_timer = 0.0
+			if patrol_path and patrol_path.curve:
+				var target_wp_pos: Vector3 = patrol_path.to_global(patrol_path.curve.get_point_position(current_waypoint_index))
+				nav_agent.target_position = target_wp_pos
+				if nav_agent.is_target_reachable():
+					_is_path_blocked = false
+					_is_detouring = true
+		return
+
+	# 2. Handle STUCK_RECOVERY state (backtrack step to break out of corner/wall friction)
+	if _stuck_recovery_timer > 0.0:
+		_stuck_recovery_timer -= delta
+		var back_v := _stuck_recovery_dir.normalized() * (walk_speed * 0.75)
+		velocity.x = move_toward(velocity.x, back_v.x, acceleration * delta)
+		velocity.z = move_toward(velocity.z, back_v.z, acceleration * delta)
+		move_and_slide()
+		if _stuck_recovery_timer <= 0.0:
+			_is_detouring = true
+		return
+
 	# If reached current waypoint/destination
 	if nav_agent.is_navigation_finished():
+		if _is_detouring:
+			_is_detouring = false
 		if patrol_path:
 			_process_waypoint_action()
 		return
 
+	# Re-join curve if detour brought us back near the path and corridor is clear
+	if _is_detouring and patrol_path and patrol_path.curve:
+		var local_pos: Vector3 = patrol_path.to_local(global_position)
+		var closest_offset: float = patrol_path.curve.get_closest_offset(local_pos)
+		var curve_pt: Vector3 = patrol_path.to_global(patrol_path.curve.sample_baked(closest_offset))
+		var dist_to_curve := global_position.distance_to(curve_pt)
+		if dist_to_curve < 0.85 and not _forward_blocked:
+			_is_detouring = false
+
 	var to_target: Vector3 = Vector3.ZERO
-	if patrol_path and patrol_path.curve:
+	if patrol_path and patrol_path.curve and not _is_detouring:
 		var curve: Curve3D = patrol_path.curve
 		var local_pos: Vector3 = patrol_path.to_local(global_position)
 		var current_offset: float = curve.get_closest_offset(local_pos)
@@ -410,17 +471,31 @@ func _physics_process(delta: float) -> void:
 		if loop_patrol and curve.get_baked_length() > 0.01:
 			carrot_offset = fposmod(carrot_offset, curve.get_baked_length())
 		var carrot_world: Vector3 = patrol_path.to_global(curve.sample_baked(carrot_offset))
+		_last_carrot_world_pos = carrot_world
 		to_target = carrot_world - global_position
 		to_target.y = 0.0
 	else:
+		if patrol_path and patrol_path.curve and _is_detouring:
+			var target_wp_pos: Vector3 = patrol_path.to_global(patrol_path.curve.get_point_position(current_waypoint_index))
+			nav_agent.target_position = target_wp_pos
+			if not nav_agent.is_target_reachable():
+				var next_wp := (current_waypoint_index + 1) % patrol_path.curve.point_count
+				var next_target := patrol_path.to_global(patrol_path.curve.get_point_position(next_wp))
+				nav_agent.target_position = next_target
+				if nav_agent.is_target_reachable():
+					current_waypoint_index = next_wp
+				else:
+					_is_path_blocked = true
+					return
 		var next_path_pos: Vector3 = nav_agent.get_next_path_position()
+		_last_carrot_world_pos = next_path_pos
 		to_target = next_path_pos - global_position
 		to_target.y = 0.0
 
 	var desired_velocity: Vector3 = Vector3.ZERO
 	if to_target.length_squared() > 0.04:
 		var move_dir: Vector3 = to_target.normalized()
-		# Probe forward for dynamic and heavy obstacles to steer smoothly around them
+		# Probe forward for dynamic and heavy obstacles (Layers 1 & 2)
 		move_dir = _probe_obstacle_avoidance(move_dir, delta)
 		var target_speed: float = current_speed
 
@@ -445,6 +520,19 @@ func _physics_process(delta: float) -> void:
 			target_speed = lerpf(min_crawl, current_speed, smoothstep(0.0, 1.0, ratio))
 
 		desired_velocity = move_dir * target_speed
+
+		# Stuck detection during curve patrol
+		if patrol_path and not _is_detouring:
+			var horiz_vel := Vector2(velocity.x, velocity.z).length()
+			if target_speed > 0.5 and horiz_vel < 0.35:
+				_stuck_timer += delta
+			else:
+				_stuck_timer = maxf(0.0, _stuck_timer - delta * 1.5)
+
+			if _stuck_timer >= 0.65 or (_forward_blocked and _stuck_timer >= 0.3):
+				_trigger_unstuck_and_detour()
+				return
+
 		if not nav_agent.avoidance_enabled:
 			# Smoothly rotate towards movement direction when avoidance is inactive
 			var look_rot: float = atan2(move_dir.x, move_dir.z)
@@ -456,8 +544,34 @@ func _physics_process(delta: float) -> void:
 		_apply_velocity_and_move(desired_velocity, delta)
 
 
+func _trigger_unstuck_and_detour() -> void:
+	_stuck_timer = 0.0
+	if patrol_path and patrol_path.curve:
+		var target_wp_pos: Vector3 = patrol_path.to_global(patrol_path.curve.get_point_position(current_waypoint_index))
+		nav_agent.target_position = target_wp_pos
+		if not nav_agent.is_target_reachable():
+			var next_wp := (current_waypoint_index + 1) % patrol_path.curve.point_count
+			var next_target := patrol_path.to_global(patrol_path.curve.get_point_position(next_wp))
+			nav_agent.target_position = next_target
+			if nav_agent.is_target_reachable():
+				current_waypoint_index = next_wp
+			else:
+				_is_path_blocked = true
+				return
+	else:
+		if not nav_agent.is_target_reachable():
+			_is_path_blocked = true
+			return
+
+	_stuck_recovery_dir = -global_transform.basis.z
+	_stuck_recovery_dir.y = 0.0
+	if _stuck_recovery_dir.is_zero_approx():
+		_stuck_recovery_dir = Vector3(0.0, 0.0, 1.0)
+	_stuck_recovery_timer = 0.55
+
+
 func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
-	if is_waiting:
+	if is_waiting or _is_path_blocked or _stuck_recovery_timer > 0.0:
 		velocity.x = 0.0
 		velocity.z = 0.0
 		return
@@ -478,7 +592,7 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	_debug_probe_records.clear()
 
 	var from_pos := global_position + Vector3(0.0, 0.45, 0.0)
-	var mask := (1 << 1) # Layer 2: Heavy Obstacle
+	var mask := (1 << 0) | (1 << 1) # Layer 1: World + Layer 2: Heavy Obstacle
 	var probe_dist := 2.6
 	var body_half_width := 0.35
 	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
@@ -508,6 +622,7 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	_record_debug_probe(from_pos, from_pos + whisker_l_dir * 1.8, whisker_l_hit, "whisker")
 	_record_debug_probe(from_pos, from_pos + whisker_r_dir * 1.8, whisker_r_hit, "whisker")
 
+	_forward_blocked = not center_hit.is_empty() and not left_hit.is_empty() and not right_hit.is_empty()
 	var has_hit := not center_hit.is_empty() or not left_hit.is_empty() or not right_hit.is_empty() or not whisker_l_hit.is_empty() or not whisker_r_hit.is_empty()
 
 	if not has_hit:

@@ -138,3 +138,17 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - Vše je součástí debug vrstvy (`debug_visuals`, klávesa `F3` nebo Godmode `F1`).
      - Všechny linie mají `no_depth_test = true` a jemný výškový offset nad podlahou proti Z-fightingu, takže jsou plně čitelné i přes modely a zdi.
    - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
+
+9. **Inteligentní obcházení překážek a NavMesh vyřezávání — Fáze 1 (Dynamic Carving & Detour State) — [HOTOVO]**:
+   - **Dynamické vyřezávání NavMeshe (`affect_navigation_mesh` a `carve_navigation_mesh`)**:
+     - V `scene_tree_dock.cpp` i v testovací scéně u `NavigationObstacle3D` (Heavy Obstacle) zapnuto vyřezávání NavMeshe. Překážky v reálném čase přerušují průchodnost NavMeshe pod sebou.
+     - Detekční paprsky na NPC (`_probe_obstacle_avoidance`) nyní kontrolují i Layer 1 (World), takže senzory vnímají pevné zdi i těžké překážky.
+   - **Stavový automat navigace a detekce uvíznutí**:
+     - Detekce uvíznutí (`_stuck_timer` > 0.6 s nebo čelní blokáda všech paprsků):
+     - **`STUCK_RECOVERY`**: Krátký úkrok vzad (0.55 s) pro uvolnění tření o geometrii rohu/bedny.
+     - **`DETOUR`**: Dočasné opuštění křivky `Curve3D` a přechod na čistou NavMesh navigaci (`nav_agent.get_next_path_position()`) k cílovému waypointu okolo překážky/zdi.
+     - **Zpětné napojení**: Jakmile se NPC dostane zpět do blízkosti křivky trasy (< 0.85 m) a čelní koridor je volný, plynule naváže zpět na patrol křivku.
+     - **`BLOCKED`**: Pokud je cíl zcela nedostupný (`is_target_reachable() == false`), NPC plynule zabrzdí a čeká bez kmitání a tření.
+   - **Vizuální zpětná vazba**:
+     - Značka mrkve v reálném čase indikuje navigační stav: `🥕 Carrot Target` (Patrola), `↩️ Backtracking` (Vycouvání), `↪️ Detour (NavMesh)` (Objížďka po NavMeshi), `🛑 Path Blocked` (Zablokováno).
+   - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).

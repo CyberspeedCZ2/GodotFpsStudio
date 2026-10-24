@@ -1949,6 +1949,8 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			nav_obstacle->set_avoidance_enabled(true);
 			nav_obstacle->set_radius(1.0);
 			nav_obstacle->set_height(1.2);
+			nav_obstacle->set_affect_navigation_mesh(true);
+			nav_obstacle->set_carve_navigation_mesh(true);
 			nav_obstacle->set_avoidance_layers(1); // Avoidance Layer 1: Obstacles
 
 			PackedVector3Array vertices;
