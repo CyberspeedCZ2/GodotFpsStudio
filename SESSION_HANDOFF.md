@@ -123,16 +123,22 @@ The user asked for live 3D viewport FPS and RAM readouts. FPS must measure the 3
 - Removed repeated NavigationMesh `agent_height` precision warnings from the FPS-created Navigation Region. With the default 0.25 m cell height, Recast ceils 1.8 m to 2.0 m anyway, so the starter resource now records the effective 2.0 m value without changing the baked clearance. Rebuilt the macOS arm64 app; signature and `git diff --check` passed. The editor remains closed.
 - Extended that alignment to older FPS regions on bake. The native NavigationRegion3D bake button now rounds `agent_height` up to the current mesh's `cell_height` voxel grid only for nodes in `fps_navigation_region`, preserving the baked clearance while preventing repeated warnings from existing 1.8 m resources. Rebuilt the macOS arm64 app, verified its signature and `git diff --check`; the editor remains closed.
 
-## Open items
+- Configured clean project Git repository with root `.gitignore` filtering application bundles, backups, and compiler build artifacts.
+- Updated `tools/build_macos.sh` to build directly from the self-contained `engine/` source tree.
+- Committed the complete engine fork and project state, pushed to GitHub repository `git@github.com:CyberspeedCZ2/GodotFpsStudio.git` (`main` branch) and tagged with `v4.7.2-fps-studio-stable`.
+- Added `AGENTS.md` in the project root as the persistent context and instruction guide for Antigravity in all new chat sessions.
 
-- Add the first visible Hammer-style graybox level tool to the Level workspace; users have reported that the recent modularization work is not visible in the editor.
-- If macOS 11 support becomes a requirement, pin a compatible MoltenVK release (1.4.1 or earlier) and build against it instead of lowering the target under MoltenVK 1.4.2.
-- Continue polishing the UE5-inspired workspace, especially the right dock tab rail and persistent-open behavior, with UI verification only when appropriate.
-- Verify in the editor that multiple right rail docks can stay open, and that each side slot keeps its resized width after restart and after hide/show or embedded play.
-- Implement the larger roadmap items: Hammer-style level tools, runtime FPS player controller, NPC path/action execution, Action Director timeline in GDScript, and God Mode expansion.
-- The current measurement and RAM readout were not separately benchmarked or audited for exact memory accounting scope.
+## Open items & Current work
+
+- **Waypoint System Enhancements**:
+  1. Add `Run` action to NPC waypoints in `Path3DEditorPlugin` (allowing level designers to instruct NPCs to sprint/run to or at that point).
+  2. Display billboard action icons directly at waypoints in the 3D viewport for assigned actions (Wait, Run, Look At, Animation, Interact, Attack, Cover) so designers can visually inspect the route's behavior sequence at a glance.
+  3. Implement NPC dynamic obstacle avoidance and debris physics filtering:
+     - Heavy dynamic props (crates, barrels) avoided via `NavigationObstacle3D` / RVO avoidance.
+     - Small props (cups, debris) filtered out via collision layers/masks and mass push thresholds so they do not block or halt NPC character physics.
+- Implement the larger roadmap items: runtime FPS player controller, NPC path/action execution in gameplay runtime, Hammer-style level tools, Action Director timeline in GDScript, and God Mode expansion.
 
 ## Next action
 
-The metadata key initialization fix is included in the installed arm64 app. On the next user-opened editor session, create an NPC Path and add a waypoint to confirm there are no `Invalid metadata identifier` errors, then verify the route editor controls, deselected-route visibility, NavMesh link checks, and Undo/Redo behavior. The editor-side data does not execute NPC behavior yet; after visual confirmation, implement the FPS NPC runtime/controller that consumes route actions. Keep the app closed unless the user explicitly asks to launch it.
+Implement Phase 1 of the waypoint enhancements: add the `Run` action to `Path3DEditorPlugin` and render billboard action icons at waypoints in the 3D viewport gizmo. Maintain editor closed unless explicitly requested to open.
 
