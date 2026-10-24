@@ -2,6 +2,13 @@
 
 extends _BASE_
 
+@export_group("Debug Visuals")
+@export var debug_visuals: bool = false
+@export var show_carrot: bool = true
+@export var show_avoidance_probes: bool = true
+@export var show_steer_vector: bool = true
+
+@export_group("Movement")
 ## Movement speeds
 @export var walk_speed: float = 3.2
 @export var run_speed: float = 6.0
@@ -31,6 +38,12 @@ var _avoidance_side: float = 0.0 # -1.0 = right, +1.0 = left
 var _avoidance_clear_time: float = 0.0
 var _current_avoidance_angle: float = 0.0
 
+var _debug_lines_mesh: MeshInstance3D = null
+var _carrot_node: Node3D = null
+var _last_carrot_world_pos := Vector3.ZERO
+var _debug_probe_records: Array = []
+var _debug_steer_dir := Vector3.ZERO
+
 
 func _ready() -> void:
 	# Enforce FPS collision configuration:
@@ -51,6 +64,218 @@ func _ready() -> void:
 
 	current_speed = walk_speed
 	_advance_patrol_destination()
+	_setup_debug_visuals()
+
+
+func _process(delta: float) -> void:
+	_update_debug_visuals(delta)
+
+
+func _should_show_debug_visuals() -> bool:
+	if debug_visuals:
+		return true
+	var p := get_tree().get_first_node_in_group("player") as Node
+	if p:
+		var dev = p.get_node_or_null("DevTools")
+		if dev:
+			if ("is_ai_debug" in dev and dev.is_ai_debug) or ("is_dev_mode" in dev and dev.is_dev_mode) or ("is_godmode" in dev and dev.is_godmode):
+				return true
+		var hp = p.get_node_or_null("HealthSystem")
+		if hp and "is_godmode" in hp and hp.is_godmode:
+			return true
+	return false
+
+
+func _setup_debug_visuals() -> void:
+	_debug_lines_mesh = MeshInstance3D.new()
+	_debug_lines_mesh.name = "AIDebugRays"
+	_debug_lines_mesh.top_level = true
+	var imm := ImmediateMesh.new()
+	_debug_lines_mesh.mesh = imm
+
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.no_depth_test = true
+	mat.render_priority = 10
+	_debug_lines_mesh.material_override = mat
+	add_child(_debug_lines_mesh)
+
+	_carrot_node = Node3D.new()
+	_carrot_node.name = "AICarrotMarker"
+	_carrot_node.top_level = true
+
+	var carrot_body := MeshInstance3D.new()
+	carrot_body.name = "CarrotCone"
+	var body_mesh := CylinderMesh.new()
+	body_mesh.top_radius = 0.13
+	body_mesh.bottom_radius = 0.01
+	body_mesh.height = 0.42
+	carrot_body.mesh = body_mesh
+	carrot_body.rotation.x = PI
+
+	var body_mat := StandardMaterial3D.new()
+	body_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	body_mat.albedo_color = Color(1.0, 0.48, 0.05)
+	body_mat.no_depth_test = true
+	body_mat.render_priority = 11
+	carrot_body.material_override = body_mat
+	_carrot_node.add_child(carrot_body)
+
+	var carrot_greens := MeshInstance3D.new()
+	carrot_greens.name = "CarrotGreens"
+	var greens_mesh := CylinderMesh.new()
+	greens_mesh.top_radius = 0.09
+	greens_mesh.bottom_radius = 0.03
+	greens_mesh.height = 0.16
+	carrot_greens.mesh = greens_mesh
+	carrot_greens.position.y = 0.28
+
+	var greens_mat := StandardMaterial3D.new()
+	greens_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	greens_mat.albedo_color = Color(0.2, 0.9, 0.2)
+	greens_mat.no_depth_test = true
+	greens_mat.render_priority = 11
+	carrot_greens.material_override = greens_mat
+	_carrot_node.add_child(carrot_greens)
+
+	var carrot_label := Label3D.new()
+	carrot_label.name = "CarrotLabel"
+	carrot_label.text = "🥕 Carrot Target"
+	carrot_label.position.y = 0.46
+	carrot_label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	carrot_label.no_depth_test = true
+	carrot_label.font_size = 20
+	carrot_label.outline_size = 6
+	carrot_label.modulate = Color(1.0, 0.85, 0.2)
+	carrot_label.render_priority = 12
+	_carrot_node.add_child(carrot_label)
+
+	_carrot_node.visible = false
+	add_child(_carrot_node)
+
+
+func _record_debug_probe(from: Vector3, to: Vector3, hit: Dictionary, ptype: String) -> void:
+	var hit_pos := Vector3.ZERO
+	var is_hit := not hit.is_empty()
+	if is_hit:
+		hit_pos = hit.get("position", to)
+	_debug_probe_records.append({
+		"from": from,
+		"to": to,
+		"hit": is_hit,
+		"hit_pos": hit_pos,
+		"type": ptype
+	})
+
+
+func _update_debug_visuals(delta: float) -> void:
+	if not _debug_lines_mesh or not _carrot_node:
+		return
+
+	if not _should_show_debug_visuals():
+		_debug_lines_mesh.visible = false
+		_carrot_node.visible = false
+		return
+
+	_debug_lines_mesh.visible = true
+
+	var has_carrot := show_carrot and patrol_path and _last_carrot_world_pos.length_squared() > 0.01 and not is_waiting
+	if has_carrot:
+		_carrot_node.visible = true
+		var bob := sin(Time.get_ticks_msec() * 0.005) * 0.08
+		_carrot_node.global_position = _last_carrot_world_pos + Vector3(0.0, 0.45 + bob, 0.0)
+		_carrot_node.rotate_y(delta * 2.8)
+	else:
+		_carrot_node.visible = false
+
+	var imm: ImmediateMesh = _debug_lines_mesh.mesh as ImmediateMesh
+	if not imm:
+		return
+
+	imm.clear_surfaces()
+
+	var debug_vertices: Array[Vector3] = []
+	var debug_colors: Array[Color] = []
+	var origin := global_position + Vector3(0.0, 0.45, 0.0)
+
+	if has_carrot:
+		var carrot_top := _carrot_node.global_position
+		debug_colors.append(Color(1.0, 0.72, 0.1, 0.85))
+		debug_vertices.append(origin + Vector3(0.0, 0.4, 0.0))
+		debug_colors.append(Color(1.0, 0.48, 0.05, 0.95))
+		debug_vertices.append(carrot_top)
+
+	if show_avoidance_probes:
+		for rec in _debug_probe_records:
+			var from_pt: Vector3 = rec["from"]
+			var to_pt: Vector3 = rec["to"]
+			var is_hit: bool = rec["hit"]
+			var hit_pt: Vector3 = rec["hit_pos"]
+			var ptype: String = rec["type"]
+
+			if is_hit:
+				debug_colors.append(Color(1.0, 0.2, 0.2, 0.95))
+				debug_vertices.append(from_pt)
+				debug_colors.append(Color(1.0, 0.05, 0.05, 1.0))
+				debug_vertices.append(hit_pt)
+
+				var cross_size := 0.15
+				var ccol := Color(1.0, 0.1, 0.1, 1.0)
+				debug_colors.append(ccol)
+				debug_vertices.append(hit_pt - Vector3(cross_size, 0.0, 0.0))
+				debug_colors.append(ccol)
+				debug_vertices.append(hit_pt + Vector3(cross_size, 0.0, 0.0))
+				debug_colors.append(ccol)
+				debug_vertices.append(hit_pt - Vector3(0.0, cross_size, 0.0))
+				debug_colors.append(ccol)
+				debug_vertices.append(hit_pt + Vector3(0.0, cross_size, 0.0))
+				debug_colors.append(ccol)
+				debug_vertices.append(hit_pt - Vector3(0.0, 0.0, cross_size))
+				debug_colors.append(ccol)
+				debug_vertices.append(hit_pt + Vector3(0.0, 0.0, cross_size))
+			else:
+				var ray_col := Color(0.2, 1.0, 0.35, 0.8)
+				if ptype == "whisker":
+					ray_col = Color(0.85, 1.0, 0.2, 0.75)
+				elif ptype == "wide":
+					ray_col = Color(0.2, 0.8, 1.0, 0.7)
+
+				debug_colors.append(ray_col)
+				debug_vertices.append(from_pt)
+				debug_colors.append(ray_col)
+				debug_vertices.append(to_pt)
+
+	if show_steer_vector and not is_waiting and _debug_steer_dir.length_squared() > 0.01:
+		var steer_norm := _debug_steer_dir.normalized()
+		var steer_end := origin + steer_norm * 1.6
+		var scol := Color(0.0, 0.9, 1.0, 1.0)
+		debug_colors.append(scol)
+		debug_vertices.append(origin)
+		debug_colors.append(scol)
+		debug_vertices.append(steer_end)
+
+		var side_arrow := Vector3(-steer_norm.z, 0.0, steer_norm.x).normalized() * 0.16
+		var back_arrow := -steer_norm * 0.22
+		debug_colors.append(scol)
+		debug_vertices.append(steer_end)
+		debug_colors.append(scol)
+		debug_vertices.append(steer_end + back_arrow + side_arrow)
+
+		debug_colors.append(scol)
+		debug_vertices.append(steer_end)
+		debug_colors.append(scol)
+		debug_vertices.append(steer_end + back_arrow - side_arrow)
+
+	if debug_vertices.is_empty():
+		return
+
+	imm.surface_begin(Mesh.PRIMITIVE_LINES)
+	for i in debug_vertices.size():
+		imm.surface_set_color(debug_colors[i])
+		imm.surface_add_vertex(debug_vertices[i])
+	imm.surface_end()
 
 
 func _physics_process(delta: float) -> void:
@@ -160,6 +385,8 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	if not space_state:
 		return base_dir
 
+	_debug_probe_records.clear()
+
 	var from_pos := global_position + Vector3(0.0, 0.45, 0.0)
 	var mask := (1 << 1) # Layer 2: Heavy Obstacle
 	var probe_dist := 2.6
@@ -169,6 +396,7 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	# 1. Center probe
 	var center_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + base_dir * probe_dist, mask, [get_rid()])
 	var center_hit := space_state.intersect_ray(center_q)
+	_record_debug_probe(from_pos, from_pos + base_dir * probe_dist, center_hit, "center")
 
 	# 2. Parallel body-width probes (left and right corridor)
 	var left_from := from_pos - side_normal * body_half_width
@@ -177,6 +405,8 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	var right_q := PhysicsRayQueryParameters3D.create(right_from, right_from + base_dir * (probe_dist * 0.9), mask, [get_rid()])
 	var left_hit := space_state.intersect_ray(left_q)
 	var right_hit := space_state.intersect_ray(right_q)
+	_record_debug_probe(left_from, left_from + base_dir * (probe_dist * 0.9), left_hit, "corridor")
+	_record_debug_probe(right_from, right_from + base_dir * (probe_dist * 0.9), right_hit, "corridor")
 
 	# 3. Angled whiskers (30° out)
 	var whisker_l_dir := base_dir.rotated(Vector3.UP, deg_to_rad(30.0))
@@ -185,6 +415,8 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	var whisker_r_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + whisker_r_dir * 1.8, mask, [get_rid()])
 	var whisker_l_hit := space_state.intersect_ray(whisker_l_q)
 	var whisker_r_hit := space_state.intersect_ray(whisker_r_q)
+	_record_debug_probe(from_pos, from_pos + whisker_l_dir * 1.8, whisker_l_hit, "whisker")
+	_record_debug_probe(from_pos, from_pos + whisker_r_dir * 1.8, whisker_r_hit, "whisker")
 
 	var has_hit := not center_hit.is_empty() or not left_hit.is_empty() or not right_hit.is_empty() or not whisker_l_hit.is_empty() or not whisker_r_hit.is_empty()
 
@@ -193,9 +425,11 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 		if _avoidance_clear_time >= 0.3:
 			_avoidance_side = 0.0
 		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(120.0))
-		if is_zero_approx(_current_avoidance_angle):
-			return base_dir
-		return base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
+		var clear_dir := base_dir
+		if not is_zero_approx(_current_avoidance_angle):
+			clear_dir = base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
+		_debug_steer_dir = clear_dir
+		return clear_dir
 
 	_avoidance_clear_time = 0.0
 
@@ -226,6 +460,8 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 			var wide_r_q := PhysicsRayQueryParameters3D.create(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, mask, [get_rid()])
 			var wide_l_hit := space_state.intersect_ray(wide_l_q)
 			var wide_r_hit := space_state.intersect_ray(wide_r_q)
+			_record_debug_probe(from_pos - side_normal * 0.7, (from_pos - side_normal * 0.7) + base_dir * probe_dist, wide_l_hit, "wide")
+			_record_debug_probe(from_pos + side_normal * 0.7, (from_pos + side_normal * 0.7) + base_dir * probe_dist, wide_r_hit, "wide")
 
 			if not wide_r_hit.is_empty() and wide_l_hit.is_empty():
 				_avoidance_side = 1.0 # Steer left
@@ -252,7 +488,9 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	var target_deg := lerpf(min_steer_deg, max_steer_deg, urgency) * _avoidance_side
 
 	_current_avoidance_angle = move_toward(_current_avoidance_angle, deg_to_rad(target_deg), delta * deg_to_rad(140.0))
-	return base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
+	var res := base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
+	_debug_steer_dir = res
+	return res
 
 
 func _apply_velocity_and_move(target_horizontal_vel: Vector3, delta: float) -> void:

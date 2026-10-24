@@ -110,3 +110,16 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
      - **Ochrana proti zombie driftu**: V `_turning_in_place` i v `_on_safe_velocity_computed` se striktně vynucuje `velocity = Vector3.ZERO` a do RVO serveru se odesílá nulová rychlost.
    - Sestaveno, podepsáno, ověřeno 30s headless simulací v `project-hl-2-inspiration` (NPC hladce obešlo bednu s odstupem 1.4 m a pokračovalo až na konec trasy). Commitnuto a pushnuto na GitHub (`main`).
 
+7. **Živá 3D vizualizace chování NPC (Debug Visuals: Paprsky, Mrkev, Vektor řízení) — [HOTOVO]**:
+   - **3D model mrkvičky na prutu (`Carrot on a stick`)**:
+     - Dynamicky vytvořený 3D objekt `AICarrotMarker` (kónické oranžové tělo mrkve se zelenou natí a 3D štítkem `🥕 Carrot Target`), který se v reálném čase pohybuje po křivce trasy před NPC na vypočteném lookahead offsetu, vznáší se a rotuje.
+     - Z hrudi NPC k mrkvi vede zářivě oranžovo-žlutá vodicí linka („vlasec“).
+   - **Prostorové paprsky senzorů (`ImmediateMesh` s `no_depth_test`)**:
+     - Zelené čáry pro volné koridory (centrální paprsek, levý a pravý pruh šířky těla, 30° úhlové vousy).
+     - Jasně červené čáry při detekci překážky s červeným 3D křížkem přímo v bodě dopadu paprsku na těleso překážky.
+     - Azurová šipka znázorňující vypočtený vektor řízení a vybočení.
+   - **Integrace s Godmode a Dev režimem**:
+     - Automatická aktivace, jakmile má hráč zapnutý Godmode (`F1` / `is_godmode`).
+     - Rychlé manuální přepínání klávesou `F3` (`[F3] AI Paprsky & Mrkev`) se stavovou notifikací v HUD overlayi.
+     - Export proměnná `@export var debug_visuals: bool = false` na NPC pro zapnutí přímo v inspektoru.
+   - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
