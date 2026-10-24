@@ -56,9 +56,9 @@ func _physics_process(delta: float) -> void:
 			is_waiting = false
 			_advance_waypoint()
 		else:
-			# Decelerate while waiting
-			velocity.x = move_toward(velocity.x, 0.0, acceleration * delta)
-			velocity.z = move_toward(velocity.z, 0.0, acceleration * delta)
+			# Halt immediately on the waypoint during wait
+			velocity.x = 0.0
+			velocity.z = 0.0
 			move_and_slide()
 			return
 
@@ -91,6 +91,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
+	if is_waiting:
+		velocity.x = 0.0
+		velocity.z = 0.0
+		return
 	# Called by NavigationServer with RVO-avoided velocity around heavy obstacles
 	var delta: float = get_physics_process_delta_time()
 	_apply_velocity_and_move(safe_velocity, delta)
