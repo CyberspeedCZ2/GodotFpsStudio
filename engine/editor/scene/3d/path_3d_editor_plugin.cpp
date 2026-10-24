@@ -81,6 +81,8 @@ static Ref<CapsuleShape3D> _get_npc_route_clearance_shape() {
 
 static String _get_npc_route_action_name(int p_action) {
 	switch (p_action) {
+		case Path3DEditorPlugin::NPC_POINT_ACTION_RUN:
+			return "run";
 		case Path3DEditorPlugin::NPC_POINT_ACTION_WAIT:
 			return "wait";
 		case Path3DEditorPlugin::NPC_POINT_ACTION_LOOK_AT:
@@ -96,6 +98,41 @@ static String _get_npc_route_action_name(int p_action) {
 		default:
 			return "move";
 	}
+}
+
+static Ref<ArrayMesh> _get_route_action_quad_mesh() {
+	static Ref<ArrayMesh> mesh;
+	if (mesh.is_null()) {
+		mesh.instantiate();
+		const real_t scale = 0.07;
+		Vector<Vector3> vs = {
+			Vector3(-scale, scale, 0),
+			Vector3(scale, scale, 0),
+			Vector3(scale, -scale, 0),
+			Vector3(-scale, -scale, 0)
+		};
+		Vector<Vector2> uv = {
+			Vector2(0, 0),
+			Vector2(1, 0),
+			Vector2(1, 1),
+			Vector2(0, 1)
+		};
+		Vector<Color> colors = {
+			Color(1, 1, 1, 1),
+			Color(1, 1, 1, 1),
+			Color(1, 1, 1, 1),
+			Color(1, 1, 1, 1)
+		};
+		Vector<int> indices = { 0, 1, 2, 0, 2, 3 };
+		Array a;
+		a.resize(Mesh::ARRAY_MAX);
+		a[Mesh::ARRAY_VERTEX] = vs;
+		a[Mesh::ARRAY_TEX_UV] = uv;
+		a[Mesh::ARRAY_INDEX] = indices;
+		a[Mesh::ARRAY_COLOR] = colors;
+		mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, a);
+	}
+	return mesh;
 }
 
 String Path3DGizmo::get_handle_name(int p_id, bool p_secondary) const {
@@ -625,13 +662,22 @@ void Path3DGizmo::redraw() {
 		}
 
 		Array point_actions = path->get_meta(npc_route_actions_meta(), Array());
-		Vector<Vector3> points_by_action[7];
+		Vector<Vector3> points_by_action[Path3DEditorPlugin::NPC_POINT_ACTION_MAX];
+		Vector<Vector3> stem_lines[Path3DEditorPlugin::NPC_POINT_ACTION_MAX];
+		struct WaypointActionBillboard {
+			int action = 0;
+			Vector3 position;
+		};
+		Vector<WaypointActionBillboard> action_billboards;
+
 		for (int i = 0; i < route_curve->get_point_count(); i++) {
 			int action = Path3DEditorPlugin::NPC_POINT_ACTION_MOVE;
 			if (i < point_actions.size() && point_actions[i].get_type() == Variant::DICTIONARY) {
 				const Dictionary point_action = point_actions[i];
 				const String action_name = point_action.get("action", "move");
-				if (action_name == "wait") {
+				if (action_name == "run") {
+					action = Path3DEditorPlugin::NPC_POINT_ACTION_RUN;
+				} else if (action_name == "wait") {
 					action = Path3DEditorPlugin::NPC_POINT_ACTION_WAIT;
 				} else if (action_name == "look_at") {
 					action = Path3DEditorPlugin::NPC_POINT_ACTION_LOOK_AT;
@@ -645,11 +691,24 @@ void Path3DGizmo::redraw() {
 					action = Path3DEditorPlugin::NPC_POINT_ACTION_TAKE_COVER;
 				}
 			}
-			points_by_action[action].push_back(route_curve->get_point_position(i));
+			const Vector3 pt_pos = route_curve->get_point_position(i);
+			points_by_action[action].push_back(pt_pos);
+
+			if (action != Path3DEditorPlugin::NPC_POINT_ACTION_MOVE) {
+				const Vector3 icon_pos = pt_pos + Vector3(0.0, 0.40, 0.0);
+				WaypointActionBillboard wb;
+				wb.action = action;
+				wb.position = icon_pos;
+				action_billboards.push_back(wb);
+
+				stem_lines[action].push_back(pt_pos);
+				stem_lines[action].push_back(icon_pos - Vector3(0.0, 0.07, 0.0));
+			}
 		}
 
 		static const char *action_materials[] = {
 			"fps_route_move",
+			"fps_route_run",
 			"fps_route_wait",
 			"fps_route_look_at",
 			"fps_route_animation",
@@ -657,11 +716,38 @@ void Path3DGizmo::redraw() {
 			"fps_route_attack",
 			"fps_route_cover",
 		};
-		for (int action = 0; action < 7; action++) {
+		static const char *action_icon_materials[] = {
+			nullptr,
+			"fps_route_action_run",
+			"fps_route_action_wait",
+			"fps_route_action_look_at",
+			"fps_route_action_animation",
+			"fps_route_action_interact",
+			"fps_route_action_attack",
+			"fps_route_action_cover",
+		};
+
+		for (int action = 0; action < Path3DEditorPlugin::NPC_POINT_ACTION_MAX; action++) {
 			if (!points_by_action[action].is_empty()) {
 				add_vertices(points_by_action[action], gizmo_plugin->get_material(action_materials[action], this), Mesh::PRIMITIVE_POINTS, true);
 			}
+			if (!stem_lines[action].is_empty()) {
+				add_lines(stem_lines[action], gizmo_plugin->get_material(action_materials[action], this), false);
+			}
 		}
+
+		if (!action_billboards.is_empty()) {
+			Ref<ArrayMesh> action_billboard_mesh = _get_route_action_quad_mesh();
+			for (const WaypointActionBillboard &wb : action_billboards) {
+				if (wb.action > 0 && wb.action < Path3DEditorPlugin::NPC_POINT_ACTION_MAX && action_icon_materials[wb.action]) {
+					Ref<Material> icon_material = gizmo_plugin->get_material(action_icon_materials[wb.action], this);
+					if (icon_material.is_valid()) {
+						add_mesh(action_billboard_mesh, icon_material, Transform3D(Basis(), wb.position));
+					}
+				}
+			}
+		}
+
 		if (route_curve->get_point_count() > 0) {
 			Vector<Vector3> start_point;
 			start_point.push_back(route_curve->get_point_position(0));
@@ -1599,11 +1685,11 @@ void Path3DEditorPlugin::_update_route_controls() {
 		Dictionary point_action = actions[point_index];
 		const String action_name = point_action.get("action", "move");
 		const Ref<Curve3D> curve = path->get_curve();
-		const bool can_round = action_name == "move" && curve->get_point_count() >= 3 && (curve->is_closed() || (point_index > 0 && point_index < curve->get_point_count() - 1));
+		const bool can_round = (action_name == "move" || action_name == "run") && curve->get_point_count() >= 3 && (curve->is_closed() || (point_index > 0 && point_index < curve->get_point_count() - 1));
 		npc_round_corner->set_disabled(!can_round);
 		npc_corner_radius->set_editable(can_round);
 		int action_id = NPC_POINT_ACTION_MOVE;
-		for (int i = NPC_POINT_ACTION_MOVE; i <= NPC_POINT_ACTION_TAKE_COVER; i++) {
+		for (int i = NPC_POINT_ACTION_MOVE; i < NPC_POINT_ACTION_MAX; i++) {
 			if (_get_npc_route_action_name(i) == action_name) {
 				action_id = i;
 				break;
@@ -2310,6 +2396,7 @@ Path3DEditorPlugin::Path3DEditorPlugin() {
 	npc_point_action->set_custom_minimum_size(Size2(132, 0) * EDSCALE);
 	npc_point_action->set_clip_text(true);
 	npc_point_action->add_item(TTR("Move"), NPC_POINT_ACTION_MOVE);
+	npc_point_action->add_item(TTR("Run"), NPC_POINT_ACTION_RUN);
 	npc_point_action->add_item(TTR("Wait"), NPC_POINT_ACTION_WAIT);
 	npc_point_action->add_item(TTR("Look at Target"), NPC_POINT_ACTION_LOOK_AT);
 	npc_point_action->add_item(TTR("Play Animation"), NPC_POINT_ACTION_PLAY_ANIMATION);
@@ -2662,6 +2749,7 @@ Path3DGizmoPlugin::Path3DGizmoPlugin() {
 	const Pair<String, Color> route_materials[] = {
 		Pair<String, Color>("fps_route_start", Color(0.46, 1.0, 0.16)),
 		Pair<String, Color>("fps_route_move", Color(0.20, 0.88, 1.0)),
+		Pair<String, Color>("fps_route_run", Color(1.0, 0.45, 0.10)),
 		Pair<String, Color>("fps_route_centerline", Color(0.88, 0.98, 1.0, 0.96)),
 		Pair<String, Color>("fps_route_direction", Color(1.0, 0.94, 0.24, 0.98)),
 		Pair<String, Color>("fps_route_wait", Color(1.0, 0.72, 0.12)),
@@ -2677,6 +2765,7 @@ Path3DGizmoPlugin::Path3DGizmoPlugin() {
 		create_material(route_material.first, route_material.second);
 		const bool is_route_point_material = route_material.first == "fps_route_start" ||
 				route_material.first == "fps_route_move" ||
+				route_material.first == "fps_route_run" ||
 				route_material.first == "fps_route_wait" ||
 				route_material.first == "fps_route_look_at" ||
 				route_material.first == "fps_route_animation" ||
@@ -2692,6 +2781,26 @@ Path3DGizmoPlugin::Path3DGizmoPlugin() {
 			if (is_route_point_material) {
 				material->set_point_size(route_material.first == "fps_route_start" ? 22.0 : 18.0);
 			}
+			material->set_render_priority(StandardMaterial3D::RENDER_PRIORITY_MAX);
+		}
+	}
+
+	Ref<Theme> editor_theme = EditorNode::get_singleton()->get_editor_theme();
+	const Pair<String, StringName> action_icons[] = {
+		Pair<String, StringName>("fps_route_action_run", SNAME("FPSRouteActionRun")),
+		Pair<String, StringName>("fps_route_action_wait", SNAME("FPSRouteActionWait")),
+		Pair<String, StringName>("fps_route_action_look_at", SNAME("FPSRouteActionLookAt")),
+		Pair<String, StringName>("fps_route_action_animation", SNAME("FPSRouteActionAnimation")),
+		Pair<String, StringName>("fps_route_action_interact", SNAME("FPSRouteActionInteract")),
+		Pair<String, StringName>("fps_route_action_attack", SNAME("FPSRouteActionAttack")),
+		Pair<String, StringName>("fps_route_action_cover", SNAME("FPSRouteActionCover")),
+	};
+	for (const Pair<String, StringName> &action_icon : action_icons) {
+		create_icon_material(action_icon.first, editor_theme->get_icon(action_icon.second, EditorStringName(EditorIcons)), true);
+		for (Ref<StandardMaterial3D> material : materials[action_icon.first]) {
+			material->set_albedo(Color(1, 1, 1, 1));
+			material->set_transparency(StandardMaterial3D::TRANSPARENCY_ALPHA);
+			material->set_flag(StandardMaterial3D::FLAG_DISABLE_DEPTH_TEST, true);
 			material->set_render_priority(StandardMaterial3D::RENDER_PRIORITY_MAX);
 		}
 	}

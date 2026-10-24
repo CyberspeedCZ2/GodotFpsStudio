@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#ffa502" stroke="#fff2c5" stroke-width="5"/>
+  <!-- Clock body & hands -->
+  <circle cx="64" cy="64" r="32" fill="#fff9e6" stroke="#18232d" stroke-width="6"/>
+  <!-- Top stopwatch button -->
+  <path d="M57 18h14v6H57z" fill="#18232d"/>
+  <!-- Center hub and hands -->
+  <circle cx="64" cy="64" r="5" fill="#18232d"/>
+  <path d="M64 64V44M64 64l15 9" fill="none" stroke="#18232d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Hour ticks -->
+  <circle cx="64" cy="38" r="2.5" fill="#18232d"/>
+  <circle cx="90" cy="64" r="2.5" fill="#18232d"/>
+  <circle cx="64" cy="90" r="2.5" fill="#18232d"/>
+  <circle cx="38" cy="64" r="2.5" fill="#18232d"/>
+</svg>

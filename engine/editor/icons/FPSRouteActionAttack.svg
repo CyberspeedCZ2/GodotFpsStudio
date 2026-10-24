@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#eb4d4b" stroke="#ffc5c5" stroke-width="5"/>
+  <!-- Tactical crosshairs / attack reticle -->
+  <circle cx="64" cy="64" r="30" fill="none" stroke="#18232d" stroke-width="6"/>
+  <circle cx="64" cy="64" r="18" fill="none" stroke="#ffffff" stroke-width="4"/>
+  <circle cx="64" cy="64" r="6" fill="#ffffff" stroke="#18232d" stroke-width="3"/>
+  <!-- Reticle ticks -->
+  <path d="M64 24v18M64 86v18M24 64h18M86 64h18" stroke="#18232d" stroke-width="7" stroke-linecap="round"/>
+  <!-- Corner chevron brackets -->
+  <path d="M38 48V38h10M90 48V38H80M38 80v10h10M90 80v10H80" fill="none" stroke="#fff2c5" stroke-width="4" stroke-linecap="round"/>
+</svg>

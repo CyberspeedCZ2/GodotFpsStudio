@@ -42,14 +42,22 @@ scons -j"$JOBS" platform=macos arch=arm64 dev_build=yes "cxxflags=-fmodules-cach
 
 DEV_BINARY="$ENGINE/bin/godot.macos.editor.dev.arm64"
 UNIBUILDER_PACK="$ENGINE/bin/FPSStudioUnibuilder.pck"
-"$DEV_BINARY" --headless --path "$ROOT/fps_vertical_slice" --script "$ROOT/tools/pack_fps_studio_unibuilder.gd" -- "$ENGINE/editor/fps_studio/unibuilder" "$UNIBUILDER_PACK"
+APP_STAGE="$(mktemp -d "$ROOT/.godot-fps-build.XXXXXX")"
+trap 'rm -rf "$APP_STAGE"' EXIT
+
+PACK_PROJECT_PATH="$ROOT/fps_vertical_slice"
+if [[ ! -d "$PACK_PROJECT_PATH" ]]; then
+    PACK_PROJECT_PATH="$APP_STAGE/pack_project"
+    mkdir -p "$PACK_PROJECT_PATH"
+    touch "$PACK_PROJECT_PATH/project.godot"
+fi
+
+"$DEV_BINARY" --headless --path "$PACK_PROJECT_PATH" --script "$ROOT/tools/pack_fps_studio_unibuilder.gd" -- "$ENGINE/editor/fps_studio/unibuilder" "$UNIBUILDER_PACK"
 APP_FINAL="$ROOT/Godot FPS Studio.app"
 APP_BACKUP="$ROOT/.Godot FPS Studio.app.previous"
 if [[ -e "$APP_BACKUP" ]]; then
     fail "temporary app backup already exists at $APP_BACKUP; inspect it before rebuilding."
 fi
-APP_STAGE="$(mktemp -d "$ROOT/.godot-fps-build.XXXXXX")"
-trap 'rm -rf "$APP_STAGE"' EXIT
 APP="$APP_STAGE/Godot FPS Studio.app"
 APP_CONTENTS="$APP/Contents"
 APP_BINARY="$APP_CONTENTS/MacOS/Godot"

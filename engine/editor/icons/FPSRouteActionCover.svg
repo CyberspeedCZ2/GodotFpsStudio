@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#2bcbba" stroke="#dff9fb" stroke-width="5"/>
+  <!-- Defensive shield -->
+  <path d="M64 28 92 40v20c0 18-12 29-28 39-16-10-28-21-28-39V40z" fill="#ffffff" stroke="#18232d" stroke-width="6" stroke-linejoin="round"/>
+  <!-- Shield inner emblem with downward ducking arrow -->
+  <path d="M64 38 82 46v14c0 12-8 20-18 27-10-7-18-15-18-27V46z" fill="#18232d"/>
+  <path d="M64 48v22m-9-9 9 10 9-10" fill="none" stroke="#fff2c5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

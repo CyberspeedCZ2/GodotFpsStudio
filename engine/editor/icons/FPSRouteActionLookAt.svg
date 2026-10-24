@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#a55eea" stroke="#f1d4ff" stroke-width="5"/>
+  <!-- Stylized eye -->
+  <path d="M26 64c9-18 24-27 38-27s29 9 38 27c-9 18-24 27-38 27s-29-9-38-27z" fill="#ffffff" stroke="#18232d" stroke-width="6" stroke-linejoin="round"/>
+  <!-- Iris & pupil -->
+  <circle cx="64" cy="64" r="16" fill="#38ada9" stroke="#18232d" stroke-width="4"/>
+  <circle cx="64" cy="64" r="8" fill="#18232d"/>
+  <circle cx="68" cy="60" r="3" fill="#ffffff"/>
+  <!-- Target reticle marks -->
+  <path d="M64 24v8M64 96v8M24 64h8M96 64h8" fill="none" stroke="#fff2c5" stroke-width="5" stroke-linecap="round"/>
+</svg>

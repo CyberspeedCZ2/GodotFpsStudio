@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#2ed573" stroke="#e0f9b5" stroke-width="5"/>
+  <!-- Pointing interaction hand / button push -->
+  <circle cx="64" cy="36" r="11" fill="#ffffff" stroke="#18232d" stroke-width="5"/>
+  <path d="M64 47v15" stroke="#18232d" stroke-width="6" stroke-linecap="round"/>
+  <!-- Hand silhouette pressing upwards -->
+  <path d="M57 62h14v22h-14z" fill="#ffffff" stroke="#18232d" stroke-width="5"/>
+  <path d="M47 73c0-6 4-9 10-9v24H45c-2 0-3-1-3-3 0-5 2-8 5-12z" fill="#ffffff" stroke="#18232d" stroke-width="4"/>
+  <path d="M71 64c6 0 10 3 10 9v15h-10V64z" fill="#ffffff" stroke="#18232d" stroke-width="4"/>
+  <path d="M45 88h36v14H45z" fill="#18232d"/>
+  <!-- Click / pulse rings -->
+  <path d="M50 25c9-5 19-5 28 0M44 19c13-7 27-7 40 0" fill="none" stroke="#fff2c5" stroke-width="4" stroke-linecap="round"/>
+</svg>

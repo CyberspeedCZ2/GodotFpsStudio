@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#f39c12" stroke="#fff2c5" stroke-width="5"/>
+  <!-- Film clapperboard / play badge -->
+  <rect x="30" y="44" width="68" height="48" rx="6" fill="#ffffff" stroke="#18232d" stroke-width="6"/>
+  <!-- Clapper top slanted strip -->
+  <path d="m30 44 68-14v14H30z" fill="#18232d"/>
+  <path d="m42 32 8 10M60 28l8 10M78 24l8 10" stroke="#fff2c5" stroke-width="4" stroke-linecap="round"/>
+  <!-- Play triangle in center -->
+  <path d="m55 54 22 14-22 14z" fill="#18232d"/>
+</svg>

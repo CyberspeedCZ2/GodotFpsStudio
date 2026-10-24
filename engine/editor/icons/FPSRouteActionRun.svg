@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <circle cx="64" cy="64" r="56" fill="#18232d" stroke="#101820" stroke-width="8"/>
+  <circle cx="64" cy="64" r="46" fill="#ff793f" stroke="#ffeaa7" stroke-width="5"/>
+  <!-- Sprinting figure with motion lines -->
+  <circle cx="82" cy="38" r="9" fill="#18232d"/>
+  <path d="M72 49 57 65l13 7 15-13" fill="none" stroke="#18232d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M57 65 44 81 29 80" fill="none" stroke="#18232d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m66 71 14 17 19-3" fill="none" stroke="#18232d" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M49 51 60 48l13 7" fill="none" stroke="#18232d" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Motion streaks behind -->
+  <path d="M22 47h16M18 58h14M24 69h12" fill="none" stroke="#fff2c5" stroke-width="5" stroke-linecap="round"/>
+</svg>
