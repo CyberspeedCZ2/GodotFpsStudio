@@ -299,3 +299,76 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
     - Sestaveno a podepsáno v `Godot FPS Studio.app`. Commitnuto a pushnuto na GitHub (`main`).
 
 
+
+19. **Dynamické překážky: ověřený lokální plánovač a paměť cest — [HOTOVO, 25. 10. 2026]**:
+    - Nahrazuje destruktivní vkládání objížděk do `Curve3D` z bodů 14–18. Původní waypointy a jejich akce zůstávají zachované; objížďka má vlastní fyzikálně ověřený seznam bodů.
+    - Původní chybu ze snímků se podařilo reprodukovat headless: NPC stálo u waypointu 23 přes čtyři minuty simulovaného času a původní kód změnil křivku z 25 na 32 bodů.
+    - `VisionCamera` je debug pohled. Detekci pohybových překážek zajišťuje kapsle podle kolize NPC, včetně nízkých props a počátečních překryvů. Dotazy respektují skutečný `collision_mask`; speciální skupina ani `NavigationObstacle3D` nejsou pro prop nutné.
+    - Nový postup: zastavit → fyzikálně se rozhlédnout → ověřit NavMesh koridor → ověřit naučené cesty → lokální A* s kontrolou každé hrany kapslí a navigací → bezpečné zkrácení a následování cesty.
+    - Plánování má rozpočty: 0,5m buňky, lokální poloměr 12 m, nejvýše 2048 rozvinutých uzlů a 32 rozvinutí za fyzikální tick. Dlouhé úseky se opravují lokálně. Rampa se ověřuje svislou projekcí na NavMesh.
+    - Za běhu se kontroluje další úsek a skutečné zkracování zbývající cesty. Přesunutá nebo nově vložená bedna vyvolá přepočet. Waypointy s Wait/Look/Interact a dalšími akcemi se nepřeskakují.
+    - RVO pro props nesmí blokovat fyzicky ověřenou objížďku: při jejím následování se dočasně vyřadí avoidance vrstva props 1 z masky; avoidance mezi NPC na vrstvě 2 zůstává aktivní.
+    - Dokončené a znovu ověřené objížďky se ukládají do `user://npc_navigation/`; `remember_navigation_detours` a `persist_learned_detours` jsou standardně zapnuté. Cache má podpis trasy/akcí/transformace/vrstev/rozměrů a před použitím se znovu fyzikálně ověřuje.
+    - Opraveny `ActionMoveToPoint`, `ActionScanAndRepath` a `ConditionPathBlocked`. Skenování postupuje i po `stop()`, objížďka nepotlačuje detekci uvíznutí a pohyb proběhne nejvýše jednou za fyzikální snímek.
+    - Controller synchronizován v herním projektu i `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd`.
+    - Regrese: `../project-hl-2-inspiration/Tests/NPC/dynamic_navigation_headless.gd`. Prošly nízké/otočené props, cluster u zdi, změna aktivní objížďky, úplný zával, obsazený akční cíl, překryvy, vrstvy a hranice NavMeshe, rampa, cache, odstranění závalu, návrat a samostatná scan akce.
+    - V aktuálním uživatelském levelu dokončen průchod všemi 25 body tam i zpět za 88,95 s simulovaného času; s přesunem bedny do aktivní objížďky za 85,48 s. Křivka a metadata akcí zůstaly stejné.
+    - Sestaveno pro macOS arm64 (`dev_build=yes`, `-j4`), aktualizována aplikace na disku a ověřen její ad-hoc podpis (`codesign --verify --deep --strict`). Kompletní regrese prošla také z této nainstalované aplikace. Podrobnosti a reprodukční příkaz: `docs/npc_dynamic_navigation.md`. GUI editor ani běžící uživatelská hra nebyly restartovány; ověření proběhlo v samostatných headless procesech. Změny tohoto bodu jsou zatím v pracovních stromech; nebyly commitnuty ani pushnuty.
+
+20. **Trvalé pečení objížděk do trasy (`bake_detours_to_route`) a hladký návrat bez zkoumání — [HOTOVO, 25. 10. 2026]**:
+    - **Požadavek uživatele**: NPC sice objížďku našlo a prošlo, ale nová cesta se neuložila do trasy, takže při zpáteční cestě muselo znovu zastavovat a zkoumat překážku.
+    - **Vpečení do `Curve3D`**: Při nalezení platné objížďky (`bake_detours_to_route = true`) se ověřené body automaticky vloží přímo do `npc_path.curve`. Vpečené body i napojovací waypointy mají nastavené lineární tečny `Vector3.ZERO`, aby Bézier křivka nevyboulila do překážky.
+    - **Metadata akcí**: Do metadat trasy (`_fps_npc_point_actions`) jsou vloženy akce pro nové body s příznakem `"is_detour": true` a odpovídající rychlostí (`move` / `run`).
+    - **Lokální průchod a návrat s 0 replány**: Během prvního průchodu NPC následuje segmenty lokální objížďky až k cílovému waypointu za překážkou (`target_wp`), zatímco trasa je trvale aktualizována. Při návratu zpět prochází NPC vpečené body přímo po křivce trasy s **0 dodatečnými přepočty (0 return replans)**.
+    - **Filtrování šikmých ramp**: V `_navigation_probe` se jako volný sklon vyhodnocují pouze pochozí plochy statického světa na Layer 1 (`collider.collision_layer == 1` a `normal.y > 0.4`). Těžké a nízké překážky na Layer 2 jsou spolehlivě detekovány nezávisle na sklonu horní plošky.
+    - **Ověření**: Všech 10 headless testů v `Tests/NPC/dynamic_navigation_headless.gd` (včetně `test_baked_detour_real_level` a `test_cache`) prošlo bez jediné chyby (`failures: []`, exit kód 0). Celý level tam i zpět se zapečenými 29 body dokončen za 75,53 s (návratové replány = 0). Controller synchronizován v herním projektu i šabloně enginu.
+
+21. **Aktivní zraková detekce kamerou (4 prostorové body), plynulé lidské zpomalování a zkracování trasy — [HOTOVO, 25. 10. 2026]**:
+    - **Zraková kamera NPC (`Camera3D`) jako aktivní detektor**:
+      - NPC využívá svou zrakovou kameru (`VisionCamera` nebo libovolný existující `Camera3D` uzel v hlavě / stromu potomků) pro aktivní předstihové skenování trasy do vzdálenosti `vision_range` (až 6.8 m).
+      - Filtrování překážek se zaměřuje na dynamická tělesa (Layer 2 Heavy Obstacles, Layer 4 Player, Layer 5 NPC a skupiny `fps_obstacle`/`fps_heavy_obstacle`), takže běžné vzdálené zdi architektury na Layer 1 nezpůsobují falešný poplach.
+    - **4 detekční body vpřed a volba největší mezery (přesně podle nákresu 2)**:
+      - Jakmile kamera zaznamená překážku v dráze pohybu, okamžitě vyšle vějíř 4 prostorových paprsků (`-30°`, `-10°`, `+10°`, `+30°`) z očí na úroveň NavMeshe podlahy.
+      - Každý bod otestuje přítomnost podlahy (`_navigation_floor`), fyzikální volnost průchozího koridoru kapsle a vzdálenost k překážce.
+      - Algoritmus okamžitě vyhodnotí skóre a vybere největší a nejvýhodnější mezeru (`_vision_best_gap_idx`, `_vision_best_gap_dir`, `_vision_best_gap_pos`), ještě než NPC k překážce dorazí.
+    - **Plynulé lidské zpomalování (Smooth Deceleration)**:
+      - Místo aby NPC běželo plnou rychlostí a natvrdo narazilo/zastavilo těsně před překážkou, aktivuje se profil plynulého brzdění (`smoothstep`) v zóně od `vision_deceleration_distance` (5.2 m) do `vision_early_detour_distance` (3.6 m).
+      - Rychlost hladce klesá ze sprintu/běhu na manévrovací dojezdovou rychlost (~1.1 m/s), což působí zcela přirozeně a lidsky.
+    - **Včasné zahájení objížďky a zkracování zatáček (přesně podle nákresu 1)**:
+      - Při dosažení 3.6 m od překážky NPC zahájí manévr okamžitě bez čekání na pomalé koukání do stran (fáze rozhlížení se přeskočí, protože zraková kamera již našla nejlepší mezeru).
+      - V A* i corridor plánování probíhá string-pulling vyhlazení trasy (`_simplify_navigation_path`), takže NPC neobchází rohy po zbytečných mezibodech, ale přirozeně a plynule „řízne“ zatáčku po otevřeném NavMeshi (žlutá křivka z nákresu 1).
+    - **3D Debug vizualizace**:
+      - 4 zelené paprsky od očí k podlaze, 8hranné kroužky na zemi (zelená = volno, červená = blokováno).
+      - Vybraná největší mezera je zvýrazněna zářivě zlatou barvou se svislou vodicí stopkou a vodicí linkou po podlaze od nohou NPC přímo k mezeře.
+    - **Ověření a regrese**:
+      - Všech 10 testů v `dynamic_navigation_headless.gd` prošlo bez jediné chyby (`failures: []`, exit kód 0, čas 27.7 s). Zpáteční cesta se zapečenou trasou proběhla za 75.45 s s 0 replány. Synchronizováno do `fps_npc_controller.gd` i `npc_controller.gd`.
+
+22. **Kontinuální zrakový vějíř kamery, zvětšený dosah středového detektoru a zkracování rohů — [HOTOVO, 25. 10. 2026]**:
+    - **Problém původní detekce**:
+      - Kamera měla 4 detekční body vázané na podmínku `if not obstacle_hit: return` z pouhých 3 čelních paprsků pod nulovým úhlem. Pokud byla bedna mírně mimo osu (např. o 10°–20°), čelní paprsky ji minuly, vějíř 4 bodů se vůbec nespustil a NPC pokračovalo plnou rychlostí až do vzdálenosti 0.8 m.
+      - Středový detektor (`AISphereProbeCenter`) měl dosah omezený na pouhých 0.8–1.05 m (byl svázán vzorcem brzdné dráhy), takže visel těsně před nohama NPC a k reakci docházelo až těsně před nárazem.
+    - **Kontinuální zrakový vějíř kamery (Active Multi-Ray Camera Detector)**:
+      - Vějíř 4 detekčních bodů (`-30°`, `-10°`, `+10°`, `+30°`) i vícevýškové paprsky z kamery (`y = 1.45 m`) běží kontinuálně v každém zrakovém snímku (~20 Hz) s dosahem `vision_range` (až 8.5 m).
+      - Jakmile libovolný paprsek zorného pole zachytí překážku (Layer 2 Heavy Obstacle, Layer 16 NPC, skupina `fps_obstacle`/`fps_heavy_obstacle`), kamera ji ihned detekuje, spočte vzdálenost k překážce a vyhodnotí největší průchozí mezeru (`_vision_best_gap_idx`, `_vision_best_gap_dir`, `_vision_best_gap_pos`).
+      - NPC plynule zpomaluje z `vision_deceleration_distance` (6.5 m) a již ve vzdálenosti `vision_early_detour_distance` (3.8–4.0 m) před překážkou zahajuje vybočení do největší mezery bez nutnosti zastavovat.
+    - **Zvětšený dosah středového detektoru (`AISphereProbeCenter`)**:
+      - `lookahead_dist` mrkve na křivce dynamicky škáluje s rychlostí až na 2.4 m.
+      - Dosah středového detektoru v otevřeném koridoru zvětšen až na 2.4 m, přičemž v zapečených obloucích objížďky se adaptivně drží křivky trasy, aby nedocházelo k ořezávání rohů bedny.
+    - **Zkracování zatáček přes otevřený prostor (Ulehčení trasy dle nákresu 1)**:
+      - V `is_at_destination()` přidána kontrola volného průhledu k následujícímu waypointu (`_navigation_segment_clear`). Pokud má NPC volnou cestu, nemusí zacházet do rohu, ale plynule zkrátí roh až do vzdálenosti 2.8 m.
+    - **Oprava vpečení objížděk a 0 replánů při návratu**:
+      - `_install_local_detour` předává do `_bake_detour_to_curve` nezkrácený tvar trajektorie (`raw_candidate_path`), což zabraňuje předčasné redukci bodů a garantuje trvalé vpečení objížďky do `Curve3D`.
+    - **Ověření a regrese**:
+      - Všech 10 testů v `Tests/NPC/dynamic_navigation_headless.gd` prošlo bez jediné chyby (`failures: []`, exit kód 0, čas 38.3 s, `return_replans: 0`).
+      - Soubory `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd` a `Scripts/NPC/npc_controller.gd` jsou 100% synchronizované.
+
+## Aktuální stav dynamické navigace NPC — 25. 10. 2026
+
+Tento záznam má přednost před historickými body 18–20 výše: jejich skenování kamerou, lokální A*, paměť objížděk a jejich pečení do `Curve3D` byly odstraněny z aktivní implementace. V herním projektu byly odstraněny také detekční uzly Beehave `ActionScanAndRepath` a `ConditionPathBlocked`. Pasivní kamera z očí NPC zůstala zachovaná jako ladicí API. Klávesa F4 přepíná zobrazení trasy všech NPC: modře celou baked křivku patrolního `Path3D`, silnější zelenou/žlutou/červenou aktuální vypočtený úsek dynamického agenta. Modrá geometrie se vytváří jednou v souřadnicích světa a dynamická linka se obnovuje 10× za sekundu. Ovladač NPC také přeskočí nulový aktivní bod dynamické cesty, pokud za ním existuje další bod, a při trvalém nulovém bodu po 0,35 s vyžádá přepočítání. Zachovány jsou také patrolní waypointy a jejich akce, pohyb, reakce na hráče, zdraví/strach, push a co-op.
+
+Současný prototyp používá novou nativní třídu `DynamicNavigationAgent3D` vedle standardního `NavigationAgent3D`. Beehave `ActionMoveToPoint` zadává cíl a čeká na stavy agenta. Verze 1 fyzikálně ověřuje koridor kapslí a zkouší jednu objížďku kolem jedné překážky; při neúspěchu hlásí `BLOCKED` a opakuje pokus. Neumí zatím řešit shluky překážek ani ukládat naučené cesty. Další rozšiřování řídit ověřováním na uživatelském NPC a přidávat po jednom chování.
+
+Aktivní soubory: `engine/modules/navigation_3d/dynamic_navigation_agent_3d.h/.cpp`, `engine/modules/navigation_3d/register_types.cpp`, herní `Scenes/NPC/basic_npc.tscn`, `Scripts/NPC/npc_controller.gd`, `Scripts/NPC/BT/action_move_to_point.gd`, `Scripts/Character/player_dev_tools.gd`, `Scripts/Character/FPS_character_script.gd`, `Scripts/UI/hud_script.gd` a synchronizovaná šablona `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd`. Podrobnosti: `docs/npc_dynamic_navigation.md`.
+
+Ověření aktuální iterace: SCons build macOS arm64 dev buildu a headless parser GDScriptu proběhly. Editor ani hra se nespouštěly. Vizuální a gameplay ověření čeká na uživatele; neoznačovat prototyp jako kompletně ověřenou navigaci.
+
