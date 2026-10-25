@@ -189,3 +189,19 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
     - **Vizuální indikátory**:
       - Dynamické 3D stavové popisky: `🤝 Co-op Pushing` (žlutý indikátor), `📢 Waiting for Partner` (oranžový indikátor) a `🏃 Assisting Partner` (azurový indikátor).
     - Sestaveno, podepsáno, otestováno v headless režimu. Commitnuto a pushnuto na GitHub (`main`).
+
+13. **Dvoustupňový prostorový senzor (2-Tier Scout & Detour Probing) — [HOTOVO]**:
+    - **Problém**: Plně rozvinuté vyhodnocovací koule (radius 0.42 m) narážely do bočních zdí běžných chodeb, což způsobovalo škubání a falešné hlášení zablokování cesty v rovných úsecích. Zároveň v action_move_to_point.gd časový limit repath_after_seconds (2.5 s) chybně spouštěl reverzní patrolu uprostřed dlouhých přesunů.
+    - **1. Stupeň — Dopředná kontrolní hlídka (Scout Probe)**:
+      - V klidovém stavu (při volném pohybu v chodbách a místnostech) je aktivní **pouze jediná malá kontrolní koule** přímo vpřed (radius 0.18 m, délka 2.5 m).
+      - Boční koule a prstence jsou zcela neaktivní (dormant). NPC prochází chodbami s naprosto hladkou rychlostí a nulovou kolizí se stěnami.
+    - **2. Stupeň — Vyhodnocovací koule při překážce (Detour Evaluation Probes)**:
+      - Teprve při detekci překážky přímo před NPC (scout_res.safe_distance < 2.0 m) se aktivují prostorové koule o velikosti těla (radius 0.38 m) pro otestování obejití vlevo (+28°) a vpravo (-28°) a průchodnosti úžin na 1.2 m.
+      - Pokud se tělo nevejde do mezery mezi bednou a zdí, NPC se vyhne do volného prostoru na opačnou stranu.
+    - **Oprava v Behavior Tree (action_move_to_point.gd)**:
+      - Odstraněno nechtěné otáčení patroly po 2.5 sekundách. Reverzní patrola se spouští výhradně při skutečné nedosažitelnosti cíle (unreachable).
+    - **Dynamická 3D vizualizace**:
+      - V klidu se před NPC vznáší pouze malá zelená kontrolní koule (radius 0.18 m).
+      - Při detekci překážky koule zčervená a rozsvítí se prstence vyhodnocování (červený pro neprůchozí štěrbinu, zelený pro volnou trasu).
+    - Sestaveno, podepsáno, otestováno 5000snímkovou headless simulací. Commitnuto a pushnuto na GitHub (main).
+

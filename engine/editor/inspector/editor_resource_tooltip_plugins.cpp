@@ -42,10 +42,46 @@
 #include "scene/gui/label.h"
 #include "scene/gui/texture_rect.h"
 
-void EditorResourceTooltipPlugin::_thumbnail_ready(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, ObjectID p_trect_id) {
+static String _get_texture_preview_info(const Dictionary &p_metadata) {
+	const Vector2 dimensions = p_metadata.get("dimensions", Vector2());
+	if (dimensions.x <= 0.0 || dimensions.y <= 0.0) {
+		return String();
+	}
+
+	String info = vformat(TTR(U"%d × %d"), int(dimensions.x), int(dimensions.y));
+	const String format = p_metadata.get("format", String());
+	if (!format.is_empty()) {
+		info += "  ·  " + format;
+	}
+	return info;
+}
+
+void EditorResourceTooltipPlugin::_thumbnail_ready(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, ObjectID p_trect_id, ObjectID p_metadata_label_id) {
 	TextureRect *tr = ObjectDB::get_instance<TextureRect>(p_trect_id);
 	if (tr) {
 		tr->set_texture(p_preview);
+	}
+	if (p_metadata_label_id.is_valid()) {
+		// The preview request may call this synchronously while holding the cache mutex.
+		// Defer metadata lookup so it runs after that lock has been released.
+		callable_mp(this, &EditorResourceTooltipPlugin::_update_texture_info_label).call_deferred(p_path, p_metadata_label_id);
+	}
+}
+
+void EditorResourceTooltipPlugin::_update_texture_info_label(const String &p_path, ObjectID p_metadata_label_id) const {
+	Label *metadata_label = ObjectDB::get_instance<Label>(p_metadata_label_id);
+	if (!metadata_label) {
+		return;
+	}
+
+	EditorResourcePreview *resource_preview = EditorResourcePreview::get_singleton();
+	if (!resource_preview) {
+		return;
+	}
+	const Dictionary metadata = resource_preview->get_preview_metadata(p_path);
+	const String info = _get_texture_preview_info(metadata);
+	if (!info.is_empty()) {
+		metadata_label->set_text(info);
 	}
 }
 
@@ -97,9 +133,14 @@ VBoxContainer *EditorResourceTooltipPlugin::make_default_tooltip(const String &p
 	return vb;
 }
 
-void EditorResourceTooltipPlugin::request_thumbnail(const String &p_path, TextureRect *p_for_control) const {
+void EditorResourceTooltipPlugin::_request_thumbnail(const String &p_path, TextureRect *p_for_control, Label *p_metadata_label) const {
 	ERR_FAIL_NULL(p_for_control);
-	EditorResourcePreview::get_singleton()->queue_resource_preview(p_path, callable_mp(const_cast<EditorResourceTooltipPlugin *>(this), &EditorResourceTooltipPlugin::_thumbnail_ready).bind(p_for_control->get_instance_id()));
+	const ObjectID metadata_label_id = p_metadata_label ? p_metadata_label->get_instance_id() : ObjectID();
+	EditorResourcePreview::get_singleton()->queue_resource_preview(p_path, callable_mp(const_cast<EditorResourceTooltipPlugin *>(this), &EditorResourceTooltipPlugin::_thumbnail_ready).bind(p_for_control->get_instance_id(), metadata_label_id));
+}
+
+void EditorResourceTooltipPlugin::request_thumbnail(const String &p_path, TextureRect *p_for_control) const {
+	_request_thumbnail(p_path, p_for_control, nullptr);
 }
 
 bool EditorResourceTooltipPlugin::handles(const String &p_resource_type) const {
@@ -121,22 +162,31 @@ bool EditorTextureTooltipPlugin::handles(const String &p_resource_type) const {
 }
 
 Control *EditorTextureTooltipPlugin::make_tooltip_for_path(const String &p_resource_path, const Dictionary &p_metadata, Control *p_base) const {
-	HBoxContainer *hb = memnew(HBoxContainer);
 	VBoxContainer *vb = Object::cast_to<VBoxContainer>(p_base);
 	DEV_ASSERT(vb);
+	while (vb->get_child_count() > 0) {
+		Node *child = vb->get_child(0);
+		vb->remove_child(child);
+		memdelete(child);
+	}
+	vb->add_theme_constant_override("separation", 4 * EDSCALE);
 	vb->set_alignment(BoxContainer::ALIGNMENT_CENTER);
 
-	Vector2 dimensions = p_metadata.get("dimensions", Vector2());
-	Label *label = memnew(Label(vformat(TTR(U"Dimensions: %d × %d"), dimensions.x, dimensions.y)));
-	vb->add_child(label);
-
 	TextureRect *tr = memnew(TextureRect);
-	tr->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
-	hb->add_child(tr);
-	request_thumbnail(p_resource_path, tr);
+	tr->set_custom_minimum_size(Size2(384, 320) * EDSCALE);
+	tr->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	tr->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	tr->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
+	vb->add_child(tr);
 
-	hb->add_child(vb);
-	return hb;
+	Label *info_label = memnew(Label);
+	info_label->set_text(_get_texture_preview_info(p_metadata));
+	info_label->set_custom_minimum_size(Size2(0, 18) * EDSCALE);
+	info_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	vb->add_child(info_label);
+
+	_request_thumbnail(p_resource_path, tr, info_label);
+	return vb;
 }
 
 // EditorAudioStreamTooltipPlugin

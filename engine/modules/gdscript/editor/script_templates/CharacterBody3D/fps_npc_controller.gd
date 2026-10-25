@@ -49,7 +49,6 @@ extends _BASE_
 @export var obstacle_push_mass_limit: float = 65.0
 @export var obstacle_push_duration_max: float = 2.5
 ## Fallback reverse patrol when route is permanently blocked
-## Fallback reverse patrol when route is permanently blocked
 @export var enable_fallback_patrol: bool = true
 
 ## Co-op assistance: call nearby companions to help push heavy obstacles
@@ -373,6 +372,12 @@ func _update_debug_visuals(delta: float) -> void:
 			var smat := _debug_sphere_instance.material_override as StandardMaterial3D
 			if smat:
 				smat.albedo_color = _last_sphere_probe_color
+			var sp_mesh := _debug_sphere_instance.mesh as SphereMesh
+			if sp_mesh:
+				var is_alert := _forward_blocked or not is_zero_approx(_avoidance_side)
+				var trg_r: float = 0.38 if is_alert else 0.18
+				sp_mesh.radius = trg_r
+				sp_mesh.height = trg_r * 2.0
 		else:
 			_debug_sphere_instance.visible = false
 
@@ -1783,7 +1788,9 @@ func _cast_sphere_probe(space_state: PhysicsDirectSpaceState3D, from_pos: Vector
 	}
 
 
-## Prostorový senzor s reálným objemem těla hráče (SphereCast o poloměru 0.42m) pro bezpečné vyhýbání a detekci zúžení
+## Dvoustupňový prostorový senzor:
+## 1. Malá dopředná kontrolní hlídka (scout radius 0.18m) – v rovných chodbách a volných prostorech netestuje boční zdi, neničí rychlost a nezpůsobuje cukání.
+## 2. Teprve při detekci překážky přímo vpředu (< 2.0m) se aktivují vyhodnocovací koule o velikosti těla (radius 0.38m) pro bezpečné vybočení okolo zátarasu.
 func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	# Během objížďky (DETOUR) řídí trasu přímo NavMesh – senzory nesmí strhávat řízení do zdi
 	if _is_detouring:
@@ -1798,94 +1805,91 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 
 	_debug_probe_records.clear()
 
-	var from_pos := global_position + Vector3(0.0, 0.65, 0.0) # Výška středu těla / kapsle
+	var from_pos := global_position + Vector3(0.0, 0.55, 0.0) # Výška středu těla
 	var mask := (1 << 0) | (1 << 1) # Layer 1: World zdi + Layer 2: Heavy Obstacle
-	var probe_dist := 2.6
-	var sphere_radius := 0.42 # Odpovídá poloměru kapsle NPC (0.40m + 0.02m rezerva)
-	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
+	var forward_dist := 2.5
+	var scout_radius := 0.18 # Malá kontrolní koule dopředu
 
-	# 1. Čelní prostorový senzor (SphereCast ve směru pohybu o rozměru těla hráče)
-	var center_res := _cast_sphere_probe(space_state, from_pos, base_dir * probe_dist, mask, sphere_radius)
-	_record_debug_sphere(center_res, "center")
-	_last_sphere_probe_pos = center_res["hit_pos"] if center_res["hit"] else (from_pos + base_dir * minf(probe_dist, 1.8))
+	# 1. KROK: Malá dopředná kontrolní hlídka přímo ve směru pohybu
+	var scout_res := _cast_sphere_probe(space_state, from_pos, base_dir * forward_dist, mask, scout_radius)
+	var obstacle_detected: bool = scout_res["hit"] and scout_res["safe_distance"] < 2.0
 
-	# 2. Levý a pravý prostorový senzor (SphereCast o úhlu 28° o rozměru těla hráče)
-	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(28.0))
-	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-28.0))
-	var left_res := _cast_sphere_probe(space_state, from_pos, left_dir * (probe_dist * 0.9), mask, sphere_radius)
-	var right_res := _cast_sphere_probe(space_state, from_pos, right_dir * (probe_dist * 0.9), mask, sphere_radius)
-	_record_debug_sphere(left_res, "left")
-	_record_debug_sphere(right_res, "right")
-
-	# 3. Boční těsné senzory (detekce zdi přímo u ramene NPC do 0.55 m)
-	var lat_l_res := _cast_sphere_probe(space_state, from_pos, -side_normal * 0.55, mask, sphere_radius)
-	var lat_r_res := _cast_sphere_probe(space_state, from_pos, side_normal * 0.55, mask, sphere_radius)
-	_record_debug_sphere(lat_l_res, "lateral_left")
-	_record_debug_sphere(lat_r_res, "lateral_right")
-
-	var left_has_wall: bool = lat_l_res["safe_distance"] < 0.2
-	var right_has_wall: bool = lat_r_res["safe_distance"] < 0.2
-
-	# 4. Předstihová kontrola průchodnosti koridoru (Lookahead Bottleneck Clearance na 1.3 m před NPC)
-	# Zjišťuje, zda se v místě před překážkou vůbec vejde koule o průměru hráče (0.84 m)
-	var lookahead_pt := from_pos + base_dir * 1.3
-	var lookahead_gap_l := _cast_sphere_probe(space_state, lookahead_pt, -side_normal * 0.75, mask, sphere_radius)
-	var lookahead_gap_r := _cast_sphere_probe(space_state, lookahead_pt, side_normal * 0.75, mask, sphere_radius)
-	_record_debug_sphere(lookahead_gap_l, "gap_left")
-	_record_debug_sphere(lookahead_gap_r, "gap_right")
-
-	var left_gap_blocked: bool = lookahead_gap_l["safe_distance"] < 0.25
-	var right_gap_blocked: bool = lookahead_gap_r["safe_distance"] < 0.25
-
-	# Vyhodnocení průchodnosti pro tělo NPC
-	var center_blocked: bool = center_res["hit"] and center_res["safe_distance"] < 2.2
-	var left_viable: bool = not left_has_wall and not left_gap_blocked and (not left_res["hit"] or left_res["safe_distance"] >= 1.35)
-	var right_viable: bool = not right_has_wall and not right_gap_blocked and (not right_res["hit"] or right_res["safe_distance"] >= 1.35)
-
-	_forward_blocked = center_blocked or (not left_viable and not right_viable)
-
-	# Pokud je cesta před námi zcela volná
-	if not center_blocked and left_viable and right_viable:
+	# Pokud před námi NIC NENÍ (volná rovná chodba nebo otevřená místnost):
+	# Boční koule zůstávají zcela neaktivní -> žádné falešné zasekávání o boční zdi!
+	if not obstacle_detected:
+		_record_debug_sphere(scout_res, "scout")
+		_last_sphere_probe_pos = from_pos + base_dir * minf(forward_dist * 0.7, 1.8)
+		_last_sphere_probe_color = Color(0.2, 0.95, 0.4, 0.35) # Zelená malá kontrolní koule
 		_avoidance_clear_time += delta
 		if _avoidance_clear_time >= 0.2:
 			_avoidance_side = 0.0
 		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
+		_forward_blocked = false
 		var clear_dir := base_dir
 		if not is_zero_approx(_current_avoidance_angle):
 			clear_dir = base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
 		_debug_steer_dir = clear_dir
-		_last_sphere_probe_color = Color(0.2, 0.95, 0.4, 0.35)
 		return clear_dir
 
+	# 2. KROK: PŘEKÁŽKA DETEKOVÁNA PŘED NÁMI!
+	# Teprve nyní aktivujeme vyhodnocovací koule o velikosti těla hráče pro ověření obejití
 	_avoidance_clear_time = 0.0
+	_record_debug_sphere(scout_res, "center")
+	_last_sphere_probe_pos = scout_res["hit_pos"]
+	_last_sphere_probe_color = Color(1.0, 0.2, 0.15, 0.55) # Červená kontrolní koule u překážky
 
-	# Pokud se koule o šířce těla NEVEJDE ani doleva ani doprava (zúžený bottleneck / slepá ulička):
-	# NPC se NIKDY nesmí snažit vecpat do štěrbiny!
+	var body_radius := 0.38 # Reálná poloviční šířka těla kapsle
+	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
+
+	# Testujeme kandidátské směry obejití vlevo a vpravo
+	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(28.0))
+	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-28.0))
+	var left_res := _cast_sphere_probe(space_state, from_pos, left_dir * 2.2, mask, body_radius)
+	var right_res := _cast_sphere_probe(space_state, from_pos, right_dir * 2.2, mask, body_radius)
+	_record_debug_sphere(left_res, "left")
+	_record_debug_sphere(right_res, "right")
+
+	# Kontrola úzké štěrbiny přímo u překážky (např. mezi bednou a zdí na 1.2 m před NPC)
+	var lookahead_pt := from_pos + base_dir * 1.2
+	var gap_l := _cast_sphere_probe(space_state, lookahead_pt, -side_normal * 0.7, mask, body_radius)
+	var gap_r := _cast_sphere_probe(space_state, lookahead_pt, side_normal * 0.7, mask, body_radius)
+	_record_debug_sphere(gap_l, "gap_left")
+	_record_debug_sphere(gap_r, "gap_right")
+
+	var left_gap_blocked: bool = gap_l["hit"] and gap_l["safe_distance"] < 0.22
+	var right_gap_blocked: bool = gap_r["hit"] and gap_r["safe_distance"] < 0.22
+
+	# Vyhodnocení průchodnosti vlevo a vpravo
+	var left_viable: bool = not left_gap_blocked and (not left_res["hit"] or left_res["safe_distance"] >= 1.4)
+	var right_viable: bool = not right_gap_blocked and (not right_res["hit"] or right_res["safe_distance"] >= 1.4)
+
+	# Pokud ani jedna strana neposkytuje dostatek místa pro celé tělo (skutečný zátaras / zával):
 	if not left_viable and not right_viable:
+		_forward_blocked = true
 		_avoidance_side = 0.0
 		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
 		_debug_steer_dir = base_dir
-		_last_sphere_probe_color = Color(1.0, 0.15, 0.15, 0.55)
 		return base_dir
 
-	# Vyhýbání se POUZE do strany, kde má tělo NPC prokazatelně dostatek prostoru pro projití
+	_forward_blocked = false
+
+	# Vyhýbání se POUZE do strany, která má dostatečný profil pro celé tělo
 	if left_viable and not right_viable:
-		_avoidance_side = 1.0 # Uhni doleva do volného prostoru
+		_avoidance_side = 1.0 # Volno vlevo -> uhni doleva
 	elif right_viable and not left_viable:
-		_avoidance_side = -1.0 # Uhni doprava do volného prostoru
+		_avoidance_side = -1.0 # Volno vpravo -> uhni doprava
 	elif left_viable and right_viable:
-		# Obě strany volné -> držíme předchozí směr nebo vybereme stranu s větší rezervou
+		# Obě strany mají dostatek místa -> držíme směr nebo vybereme stranu s větší rezervou
 		if is_zero_approx(_avoidance_side):
 			_avoidance_side = 1.0 if left_res["safe_distance"] >= right_res["safe_distance"] else -1.0
 
-	# Plynulý výpočet úhlu vybočení (omezeno na 18° až 36°)
-	var min_hit_dist: float = center_res["safe_distance"] if center_res["hit"] else probe_dist
+	var min_hit_dist: float = scout_res["safe_distance"]
 	if left_res["hit"]:
 		min_hit_dist = minf(min_hit_dist, left_res["safe_distance"])
 	if right_res["hit"]:
 		min_hit_dist = minf(min_hit_dist, right_res["safe_distance"])
 
-	var target_avoid_deg := clampf(lerpf(36.0, 18.0, min_hit_dist / probe_dist), 18.0, 36.0)
+	var target_avoid_deg := clampf(lerpf(36.0, 18.0, min_hit_dist / forward_dist), 18.0, 36.0)
 	var target_angle := _avoidance_side * deg_to_rad(target_avoid_deg)
 	_current_avoidance_angle = move_toward(_current_avoidance_angle, target_angle, delta * deg_to_rad(130.0))
 

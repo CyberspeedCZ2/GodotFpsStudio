@@ -159,6 +159,7 @@ Ref<Texture2D> EditorTexturePreviewPlugin::generate(const Ref<Resource> &p_from,
 	}
 
 	p_metadata["dimensions"] = img->get_size();
+	p_metadata["format"] = Image::get_format_name(img->get_format());
 
 	img->clear_mipmaps();
 
@@ -196,6 +197,9 @@ Ref<Texture2D> EditorImagePreviewPlugin::generate(const Ref<Resource> &p_from, c
 	if (img.is_null() || img->is_empty()) {
 		return Ref<Texture2D>();
 	}
+
+	p_metadata["dimensions"] = img->get_size();
+	p_metadata["format"] = Image::get_format_name(img->get_format());
 
 	img = img->duplicate();
 	img->clear_mipmaps();

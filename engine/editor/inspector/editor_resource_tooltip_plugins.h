@@ -36,15 +36,18 @@
 
 class Texture2D;
 class TextureRect;
+class Label;
 class VBoxContainer;
 
 class EditorResourceTooltipPlugin : public RefCounted {
 	GDCLASS(EditorResourceTooltipPlugin, RefCounted);
 
-	void _thumbnail_ready(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, ObjectID p_trect_id);
+	void _thumbnail_ready(const String &p_path, const Ref<Texture2D> &p_preview, const Ref<Texture2D> &p_small_preview, ObjectID p_trect_id, ObjectID p_metadata_label_id);
+	void _update_texture_info_label(const String &p_path, ObjectID p_metadata_label_id) const;
 
 protected:
 	static void _bind_methods();
+	void _request_thumbnail(const String &p_path, TextureRect *p_for_control, Label *p_metadata_label) const;
 
 	GDVIRTUAL1RC(bool, _handles, String)
 	GDVIRTUAL3RC(Control *, _make_tooltip_for_path, String, Dictionary, Control *)
