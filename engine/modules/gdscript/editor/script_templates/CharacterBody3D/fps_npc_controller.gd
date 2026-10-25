@@ -1967,7 +1967,6 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	_last_sphere_probe_color = Color(1.0, 0.2, 0.15, 0.65) # Červená hlavní koule na překážce
 
 	var body_radius := 0.34
-	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
 	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(38.0))
 	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-38.0))
 
