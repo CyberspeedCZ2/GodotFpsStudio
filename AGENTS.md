@@ -276,3 +276,26 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Stisknutím `[F4]` se kamera hráče okamžitě přepne do očí NPC AI s notifikací v HUD overlayi (`[F4] NPC Zrak`). Dalším stiskem se kamera plynule vrátí k hráči.
     - Sestaveno a podepsáno do `Godot FPS Studio.app`. Ověřeno 14000snímkovou headless simulací v `AI_Beehave_Test_Level.tscn` (NPC provedlo kompletní okruh tam, bez jediného zaváhání obešlo bednu na zpáteční cestě a pokračovalo do dalšího kola). Commitnuto a pushnuto na GitHub (`main`).
 
+18. **Zastavení, rozhlížení se (Look-Around Scanning) a Beehave integrace při přemístění překážek — [HOTOVO]**:
+    - **Diagnostika problému (Zaseknutí po posunutí beden)**:
+      - **Příčina 1 (Trvalé označení v `_baked_detour_obstacles`)**: Jakmile byla pro bednu v určité pozici dříve napočtena objížďka, její ID bylo uloženo v poli `_baked_detour_obstacles`. Pokud hráč nebo fyzika bednu v levelu posunul (např. přímo do trasy ke zdi), kód považoval cluster za již zpracovaný (`already_baked = true`) a novou objížďku nikdy nezaložil.
+      - **Příčina 2 (Beehave ActionMoveToPoint přepisoval cíl)**: V `ActionMoveToPoint` proměnná `target` držela starý cíl z blackboardu. Při uvíznutí po 2.5 s (`repath_after_seconds`) akce pouze na 0.5 s zastavila a pak vynutila původní zablokovaný cíl, čímž přepsala dynamický cíl objížďky.
+    - **Sledování pozic překážek a automatická invalidace**:
+      - V `_baked_obstacle_positions` se ukládá reálná 3D pozice každé zpracované překážky.
+      - Pokud se jakákoliv překážka v clusteru pohne o $> 0.35\text{ m}$ (nebo je trasa před NPC zablokována), metoda `_invalidate_cluster_detours` okamžitě smaže staré záznamy a umožní přepočet nové trasy.
+    - **Sekvence zastavení a rozhlížení (Look-Around State Machine)**:
+      - Při čelní blokádě nebo po uvíznutí NPC okamžitě zabrzdí na nulu (`velocity = Vector3.ZERO`, `set_velocity(Vector3.ZERO)`).
+      - **Fáze 0 (0.25 s)**: Zastavení na místě, detekce clusteru před sebou a invalidace zastaralých objížděk.
+      - **Fáze 1 (0.45 s) — Pohled vlevo**: NPC plynule otočí hlavu a tělo o $+52^\circ$ doleva. Zrakový kužel a AI Vision Probes snímají volný prostor vlevo (`_look_around_left_clearance`).
+      - **Fáze 2 (0.55 s) — Pohled vpravo**: NPC plynule otočí pohled o $-52^\circ$ doprava a měří volný prostor vpravo (`_look_around_right_clearance`).
+      - **Fáze 3 — Vyhodnocení a pokračování**:
+        - NPC porovná naměřené hloubky koridorů: pokud je např. pravá strana zablokována zdí a levá strana vede do otevřené místnosti ($> 1.3\text{ m}$), zvolí levou stranu (`_avoidance_side = 1.0`).
+        - Okamžitě napočte a vloží novou hladkou Bézier objížďku (`_bake_detour_around_obstacle`) do `Curve3D`, otočí se do volného směru a plynule pokračuje v chůzi.
+        - Pokud jsou obě strany zablokované ($< 0.8\text{ m}$), NPC nahlásí zával a otočí patrolu na reverzní směr.
+    - **Plná integrace do Beehave (Behavior Tree)**:
+      - **`ActionMoveToPoint`**: Během rozhlížení a řešení překážek hlásí `is_handling_obstacle() == true`, takže Beehave nespouští timeout. Cíl v blackboardu (`wander_target`) se automaticky synchronizuje s nově napočteným waypointem objížďky (`npc.get_current_npc_path_target()`).
+      - **Nový Beehave uzel `ActionScanAndRepath` (`Scripts/NPC/BT/action_scan_and_repath.gd`)**: Samostatná Beehave akce pro stromeček chování — zastaví NPC, provede rozhlížení a vyhodnocení, napočte novou objížďku a po úspěchu předá nový cíl do blackboardu se statusem `SUCCESS`.
+      - **Nový Beehave uzel `ConditionPathBlocked` (`Scripts/NPC/BT/condition_path_blocked.gd`)**: Podmínka pro reaktivní selektor v Beehave reagující na detekci blokující překážky před NPC.
+    - Sestaveno a podepsáno v `Godot FPS Studio.app`. Commitnuto a pushnuto na GitHub (`main`).
+
+

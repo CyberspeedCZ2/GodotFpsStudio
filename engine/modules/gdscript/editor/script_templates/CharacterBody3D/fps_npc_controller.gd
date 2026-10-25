@@ -157,6 +157,14 @@ var _last_left_probe_color := Color(0.2, 0.95, 0.4, 0.35)
 var _last_right_probe_pos := Vector3.ZERO
 var _last_right_probe_color := Color(1.0, 0.15, 0.15, 0.5)
 var _baked_detour_obstacles: Array = []
+var _baked_obstacle_positions: Dictionary = {}
+var _is_looking_around: bool = false
+var _look_around_timer: float = 0.0
+var _look_around_stage: int = 0
+var _look_around_base_yaw: float = 0.0
+var _look_around_left_clearance: float = 0.0
+var _look_around_right_clearance: float = 0.0
+var _look_around_cooldown: float = 0.0
 var _vision_camera: Camera3D = null
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 
@@ -531,7 +539,7 @@ func _update_debug_visuals(delta: float) -> void:
 			_debug_sphere_right.visible = false
 
 	# 1. Aktualizace pozice a animace 3D mrkve
-	var has_carrot := show_carrot and uses_npc_path() and (_navigation_target_is_route or _is_detouring or _stuck_recovery_timer > 0.0 or _is_path_blocked) and _last_carrot_world_pos.length_squared() > 0.01 and is_moving
+	var has_carrot := show_carrot and uses_npc_path() and (_navigation_target_is_route or _is_detouring or _stuck_recovery_timer > 0.0 or _is_path_blocked or _is_looking_around) and _last_carrot_world_pos.length_squared() > 0.01 and (is_moving or _is_looking_around)
 	if has_carrot:
 		_carrot_node.visible = true
 		var bob := sin(Time.get_ticks_msec() * 0.005) * 0.08
@@ -544,7 +552,10 @@ func _update_debug_visuals(delta: float) -> void:
 	var cur_state_text := "🥕 PATROLA"
 	var cur_state_color := Color(1.0, 0.85, 0.2)
 
-	if _is_path_blocked:
+	if _is_looking_around:
+		cur_state_text = "👀 ROZHLÍŽÍM SE (Hledám cestu...)"
+		cur_state_color = Color(0.2, 1.0, 0.85)
+	elif _is_path_blocked:
 		cur_state_text = "🛑 CESTA ZABLOKOVÁNA"
 		cur_state_color = Color(1.0, 0.2, 0.2)
 	elif _coop_role == COOP_ROLE_CALLER and _is_pushing_obstacle:
@@ -777,6 +788,8 @@ func _update_debug_visuals(delta: float) -> void:
 		var state_col := Color(0.15, 0.85, 1.0, 0.75) # Výchozí azurová = volný výhled
 		if _forward_blocked:
 			state_col = Color(1.0, 0.15, 0.15, 0.95) # Červená = zablokováno překážkou
+		elif _is_looking_around:
+			state_col = Color(0.2, 1.0, 0.85, 0.95) # Zářivě tyrkysová = aktivní rozhlížení
 		elif _is_detouring or not is_zero_approx(_current_avoidance_angle):
 			state_col = Color(1.0, 0.75, 0.1, 0.85) # Zlatožlutá / oranžová = aktivní vybočení
 
@@ -812,6 +825,9 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 
+	if _look_around_cooldown > 0.0:
+		_look_around_cooldown = maxf(_look_around_cooldown - delta, 0.0)
+
 	_avoidance_velocity_sent = false
 	if is_moving and nav_agent:
 		_process_navigation(delta)
@@ -832,7 +848,145 @@ func _rotate_yaw_toward(current_yaw: float, target_yaw: float, max_delta: float)
 	return wrapf(next_yaw, -PI, PI)
 
 
+func _start_looking_around() -> void:
+	if _is_looking_around or _look_around_cooldown > 0.0:
+		return
+	_is_looking_around = true
+	_look_around_timer = 0.0
+	_look_around_stage = 0
+	_look_around_base_yaw = global_rotation.y
+	_look_around_left_clearance = 0.0
+	_look_around_right_clearance = 0.0
+	_avoidance_side = 0.0
+	_current_avoidance_angle = 0.0
+	# Okamžitě zastavit dopředný pohyb
+	velocity.x = 0.0
+	velocity.z = 0.0
+	if nav_agent and nav_agent.avoidance_enabled:
+		nav_agent.set_velocity(Vector3.ZERO)
+		_avoidance_velocity_sent = true
+	update_debug_state("👀 Zastavuji a rozhlížím se...")
+
+
+func _process_looking_around(delta: float) -> void:
+	# 1. Zastavit dopředný pohyb (NPC stojí na místě)
+	var stop_h := Vector3(velocity.x, 0.0, velocity.z).move_toward(Vector3.ZERO, maxf(acceleration, 0.1) * delta * 2.0)
+	velocity.x = stop_h.x
+	velocity.z = stop_h.z
+	if nav_agent and nav_agent.avoidance_enabled:
+		nav_agent.set_velocity(Vector3.ZERO)
+		_avoidance_velocity_sent = true
+
+	_look_around_timer += delta
+
+	var scan_speed := maxf(turn_speed * 0.9, 2.5) # Přirozená rychlost otáčení hlavy a těla
+	var scan_angle_rad := deg_to_rad(52.0) # Úhel pohledu do stran (cca 52°)
+
+	var eye_pos := global_position + Vector3(0.0, 1.45, 0.0)
+	var space_state := get_world_3d().direct_space_state
+	var mask := (1 << 0) | (1 << 1) # Layer 1: World + Layer 2: Heavy Obstacle
+
+	match _look_around_stage:
+		0:
+			# Fáze 0: Zastavení na místě a detekce překážky před sebou (0.25 s)
+			update_debug_state("👀 Rozhlížím se: Zastavuji...")
+			var forward_dir := -global_transform.basis.z.normalized()
+			var scout_res := _cast_sphere_probe(space_state, eye_pos, forward_dir * 3.5, mask, 0.25)
+			if scout_res["hit"] and is_instance_valid(scout_res.get("collider")):
+				var col = scout_res["collider"]
+				if _is_valid_detour_obstacle(col):
+					var cluster := _collect_obstacle_cluster(col, scout_res["hit_pos"], 4.5)
+					_invalidate_cluster_detours(cluster)
+
+			if _look_around_timer >= 0.25:
+				_look_around_timer = 0.0
+				_look_around_stage = 1
+
+		1:
+			# Fáze 1: Pohled vlevo (cca 0.45 s)
+			var target_left_yaw := wrapf(_look_around_base_yaw + scan_angle_rad, -PI, PI)
+			global_rotation.y = _rotate_yaw_toward(global_rotation.y, target_left_yaw, scan_speed * delta)
+
+			var current_dir := -global_transform.basis.z.normalized()
+			var left_res := _cast_sphere_probe(space_state, eye_pos, current_dir * 5.5, mask, 0.32)
+			_record_debug_sphere(left_res, "left")
+			_last_left_probe_pos = left_res["hit_pos"] if left_res["hit"] else (eye_pos + current_dir * 4.0)
+			_last_left_probe_color = Color(0.2, 0.95, 0.4, 0.6) if left_res["safe_distance"] >= 1.6 else Color(1.0, 0.2, 0.2, 0.6)
+			_look_around_left_clearance = maxf(_look_around_left_clearance, left_res["safe_distance"])
+			update_debug_state("👀 Hledám průchod: Vlevo (volno: %.1f m)..." % _look_around_left_clearance)
+
+			if _look_around_timer >= 0.45:
+				_look_around_timer = 0.0
+				_look_around_stage = 2
+
+		2:
+			# Fáze 2: Pohled vpravo (cca 0.55 s)
+			var target_right_yaw := wrapf(_look_around_base_yaw - scan_angle_rad, -PI, PI)
+			global_rotation.y = _rotate_yaw_toward(global_rotation.y, target_right_yaw, scan_speed * delta)
+
+			var current_dir := -global_transform.basis.z.normalized()
+			var right_res := _cast_sphere_probe(space_state, eye_pos, current_dir * 5.5, mask, 0.32)
+			_record_debug_sphere(right_res, "right")
+			_last_right_probe_pos = right_res["hit_pos"] if right_res["hit"] else (eye_pos + current_dir * 4.0)
+			_last_right_probe_color = Color(0.2, 0.95, 0.4, 0.6) if right_res["safe_distance"] >= 1.6 else Color(1.0, 0.2, 0.2, 0.6)
+			_look_around_right_clearance = maxf(_look_around_right_clearance, right_res["safe_distance"])
+			update_debug_state("👀 Hledám průchod: Vpravo (volno: %.1f m)..." % _look_around_right_clearance)
+
+			if _look_around_timer >= 0.55:
+				_look_around_timer = 0.0
+				_look_around_stage = 3
+
+		3:
+			# Fáze 3: Vyhodnocení a rozhodnutí kudy pokračovat!
+			var left_ok: bool = _look_around_left_clearance >= 1.3
+			var right_ok: bool = _look_around_right_clearance >= 1.3
+
+			if left_ok and not right_ok:
+				_avoidance_side = 1.0 # Vlevo je volno (např. do otevřené místnosti)
+			elif right_ok and not left_ok:
+				_avoidance_side = -1.0 # Vpravo je volno
+			elif left_ok and right_ok:
+				_avoidance_side = 1.0 if _look_around_left_clearance >= _look_around_right_clearance else -1.0
+			else:
+				_avoidance_side = 0.0 # Obě strany jsou zablokované
+
+			if not is_zero_approx(_avoidance_side):
+				var side_str := "vlevo" if _avoidance_side > 0.0 else "vpravo"
+				print("[NPC AI] Rozhlizeni dokonceno: Nalezen volny pruchod %s (L=%.1fm, P=%.1fm)" % [side_str, _look_around_left_clearance, _look_around_right_clearance])
+				update_debug_state("👀 Průchod nalezen (%s)! Pokračuji v cestě..." % side_str)
+				_is_looking_around = false
+				_look_around_cooldown = 1.5
+				_forward_blocked = false
+				_is_detouring = true
+
+				var base_forward := -Transform3D(Basis(Vector3.UP, _look_around_base_yaw), Vector3.ZERO).basis.z.normalized()
+				var steer_target := base_forward.rotated(Vector3.UP, _avoidance_side * deg_to_rad(35.0)).normalized()
+				_current_avoidance_angle = _avoidance_side * deg_to_rad(30.0)
+				_debug_steer_dir = steer_target
+
+				# Založit novou trasu (bake) okolo překážky na zvolené volné straně
+				if uses_npc_path() and has_valid_npc_path():
+					var scout_fwd := _cast_sphere_probe(space_state, eye_pos, base_forward * 3.5, mask, 0.3)
+					if scout_fwd["hit"] and is_instance_valid(scout_fwd.get("collider")):
+						var col = scout_fwd["collider"]
+						if _is_valid_detour_obstacle(col):
+							_bake_detour_around_obstacle(col, _avoidance_side, scout_fwd["hit_pos"], base_forward)
+			else:
+				print("[NPC AI] Rozhlizeni dokonceno: Zadny pruchod nenalezen (L=%.1fm, P=%.1fm). Obracim patrolu!" % [_look_around_left_clearance, _look_around_right_clearance])
+				update_debug_state("🛑 Zával: Žádný průchod nenalezen, obracím patrolu!")
+				_is_looking_around = false
+				_look_around_cooldown = 1.5
+				_is_path_blocked = true
+				if enable_fallback_patrol and uses_npc_path() and has_valid_npc_path():
+					_trigger_fallback_reverse_patrol()
+
+
 func _process_navigation(delta: float) -> void:
+	# 0. Handle LOOKING_AROUND state ("zastavil se, podival kudy by mohl jit a potom pokracoval")
+	if _is_looking_around:
+		_process_looking_around(delta)
+		return
+
 	# 1. Handle BLOCKED state
 	if _is_path_blocked:
 		var stop_v := Vector3(velocity.x, 0.0, velocity.z).move_toward(Vector3.ZERO, maxf(acceleration, 0.1) * delta)
@@ -861,6 +1015,7 @@ func _process_navigation(delta: float) -> void:
 		_push_light_debris()
 		if _stuck_recovery_timer <= 0.0:
 			_is_detouring = true
+			_start_looking_around()
 		return
 
 	# Detour se ukonci, kdyz jsme prekazku obesli a dostali se zpet k trase nebo do blizkosti cile
@@ -1078,7 +1233,7 @@ func _trigger_unstuck_and_detour() -> void:
 
 
 func _on_safe_velocity_computed(safe_velocity: Vector3) -> void:
-	if is_dead or not is_moving or _turning_in_place or _is_path_blocked or _stuck_recovery_timer > 0.0:
+	if is_dead or not is_moving or _turning_in_place or _is_path_blocked or _stuck_recovery_timer > 0.0 or _is_looking_around:
 		velocity.x = 0.0
 		velocity.z = 0.0
 		return
@@ -1175,7 +1330,7 @@ func _push_light_debris() -> void:
 
 
 func is_handling_obstacle() -> bool:
-	return _is_pushing_obstacle or _is_detouring or _stuck_recovery_timer > 0.0 or _coop_role != COOP_ROLE_NONE
+	return _is_pushing_obstacle or _is_detouring or _stuck_recovery_timer > 0.0 or _coop_role != COOP_ROLE_NONE or _is_looking_around
 
 
 func is_available_for_coop() -> bool:
@@ -2158,6 +2313,8 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 					return detour_steer
 
 	if _forward_blocked:
+		if not _is_looking_around and _look_around_cooldown <= 0.0:
+			_start_looking_around()
 		return base_dir
 
 	# Adaptivní úhel vybočení podle vzdálenosti (čím blíž k překážce, tím ostřejší vybočení, max 38°)
@@ -2191,6 +2348,20 @@ func _collect_obstacle_cluster(primary_obs: Object, hit_pos: Vector3, search_rad
 	return cluster
 
 
+## Invaliduje dříve napočítané objížďky pro cluster překážek (např. při jejich pohybu či blokádě)
+func _invalidate_cluster_detours(cluster: Array) -> void:
+	for obs in cluster:
+		if not is_instance_valid(obs):
+			continue
+		var o_id: int = obs.get_instance_id()
+		_baked_obstacle_positions.erase(o_id)
+		var prefix := "%d_dir_" % o_id
+		for i in range(_baked_detour_obstacles.size() - 1, -1, -1):
+			var k = str(_baked_detour_obstacles[i])
+			if k.begins_with(prefix) or k.begins_with("detour_"):
+				_baked_detour_obstacles.remove_at(i)
+
+
 ## Ověří, zda daná pozice koliduje nebo je příliš blízko k jakékoliv překážce v clusteru
 func _is_position_obstructed_by_cluster(pos: Vector3, cluster: Array, clearance_padding: float = 0.85) -> bool:
 	for obs in cluster:
@@ -2220,6 +2391,19 @@ func _is_position_obstructed_by_cluster(pos: Vector3, cluster: Array, clearance_
 	return false
 
 
+## Najde poslední čistý, nezablokovaný waypoint PŘED clusterem překážek
+func _find_clean_entry_waypoint(from_idx: int, direction: int, cluster: Array, _nav_map: RID) -> int:
+	var curve: Curve3D = npc_path.curve
+	var point_count := curve.get_point_count()
+	var check_idx := from_idx - direction
+	while check_idx >= 0 and check_idx < point_count:
+		var pt_pos := npc_path.to_global(curve.get_point_position(check_idx))
+		if not _is_position_obstructed_by_cluster(pt_pos, cluster, 0.85):
+			return check_idx
+		check_idx -= direction
+	return maxi(from_idx - direction, 0) if direction > 0 else mini(from_idx - direction, point_count - 1)
+
+
 ## Najde první čistý, nezablokovaný výstupní waypoint za clusterem překážek
 func _find_clean_exit_waypoint(from_idx: int, direction: int, cluster: Array, nav_map: RID) -> int:
 	var curve: Curve3D = npc_path.curve
@@ -2227,17 +2411,22 @@ func _find_clean_exit_waypoint(from_idx: int, direction: int, cluster: Array, na
 	var exit_idx := clampi(from_idx, 0, point_count - 1)
 	var check_idx := from_idx
 
+	var found_obstructed_on_way := false
 	for _i in range(point_count):
 		if check_idx < 0 or check_idx >= point_count:
 			break
 		var pt_pos := npc_path.to_global(curve.get_point_position(check_idx))
 		var is_obstructed := _is_position_obstructed_by_cluster(pt_pos, cluster, 0.85)
-		if not is_obstructed:
+		if is_obstructed:
+			found_obstructed_on_way = true
+		elif found_obstructed_on_way or _i > 0:
 			exit_idx = check_idx
 			if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
 				var closest := NavigationServer3D.map_get_closest_point(nav_map, pt_pos)
 				if closest.distance_to(pt_pos) < 0.65:
 					return exit_idx
+			else:
+				return exit_idx
 		check_idx += direction
 
 	return exit_idx
@@ -2334,6 +2523,22 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 	var cluster := _collect_obstacle_cluster(collider, hit_pos, 4.5)
 	var dir := 1 if _npc_path_direction >= 0 else -1
 
+	# Zkontrolovat, zda se jakákoliv překážka v clusteru nepohnula od posledního bakes
+	var obstacle_moved := false
+	for obs in cluster:
+		var o_id: int = obs.get_instance_id() if is_instance_valid(obs) else 0
+		if o_id != 0 and (obs is Node3D):
+			var cur_pos: Vector3 = (obs as Node3D).global_position
+			if o_id in _baked_obstacle_positions:
+				var last_pos: Vector3 = _baked_obstacle_positions[o_id]
+				if last_pos.distance_to(cur_pos) > 0.35:
+					obstacle_moved = true
+					break
+
+	if obstacle_moved:
+		print("[NPC Path] Detekovan pohyb prekazky v clusteru -> Invaliduji stary bake!")
+		_invalidate_cluster_detours(cluster)
+
 	# Zkontrolovat, zda již tento cluster nebyl dříve zpracován pro daný směr
 	var already_baked := false
 	for obs in cluster:
@@ -2346,11 +2551,13 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 	if grid_key in _baked_detour_obstacles or already_baked:
 		return Vector3.ZERO
 
-	# Označit všechny překážky v clusteru jako zpracované pro tento směr
+	# Označit všechny překážky v clusteru jako zpracované pro tento směr a uložit jejich pozice
 	for obs in cluster:
 		var o_id: int = obs.get_instance_id() if is_instance_valid(obs) else 0
 		if o_id != 0:
 			_baked_detour_obstacles.append("%d_dir_%d" % [o_id, dir])
+			if obs is Node3D:
+				_baked_obstacle_positions[o_id] = (obs as Node3D).global_position
 	_baked_detour_obstacles.append(grid_key)
 
 	var curve: Curve3D = npc_path.curve
@@ -2364,23 +2571,17 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 	var entry_pos := global_position
 
 	if dir > 0:
-		entry_idx = maxi(_npc_path_waypoint_index - 1, 0)
+		entry_idx = _find_clean_entry_waypoint(_npc_path_waypoint_index, dir, cluster, nav_map)
 		var entry_pt_pos := npc_path.to_global(curve.get_point_position(entry_idx))
-		if not _is_position_obstructed_by_cluster(entry_pt_pos, cluster, 0.85):
-			entry_pos = entry_pt_pos
-		else:
-			entry_pos = global_position
+		entry_pos = entry_pt_pos
 
 		exit_idx = _find_clean_exit_waypoint(_npc_path_waypoint_index, dir, cluster, nav_map)
 		if exit_idx <= entry_idx:
 			exit_idx = mini(entry_idx + 1, point_count - 1)
 	else:
-		entry_idx = mini(_npc_path_waypoint_index + 1, point_count - 1)
+		entry_idx = _find_clean_entry_waypoint(_npc_path_waypoint_index, dir, cluster, nav_map)
 		var entry_pt_pos := npc_path.to_global(curve.get_point_position(entry_idx))
-		if not _is_position_obstructed_by_cluster(entry_pt_pos, cluster, 0.85):
-			entry_pos = entry_pt_pos
-		else:
-			entry_pos = global_position
+		entry_pos = entry_pt_pos
 
 		exit_idx = _find_clean_exit_waypoint(_npc_path_waypoint_index, dir, cluster, nav_map)
 		if exit_idx >= entry_idx:
