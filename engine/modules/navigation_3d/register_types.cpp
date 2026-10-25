@@ -31,7 +31,6 @@
 #include "register_types.h"
 
 #include "3d/godot_navigation_server_3d.h"
-#include "dynamic_navigation_agent_3d.h"
 
 #ifndef DISABLE_DEPRECATED
 #include "3d/navigation_mesh_generator.h"
@@ -57,10 +56,6 @@ static NavigationServer3D *_createGodotNavigation3DCallback() {
 }
 
 void initialize_navigation_3d_module(ModuleInitializationLevel p_level) {
-	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
-		GDREGISTER_CLASS(DynamicNavigationAgent3D);
-	}
-
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		NavigationServer3DManager::get_singleton()->register_server("GodotNavigation3D", callable_mp_static(_createGodotNavigation3DCallback));
 		NavigationServer3DManager::get_singleton()->set_default_server("GodotNavigation3D");

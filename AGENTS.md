@@ -362,13 +362,11 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Všech 10 testů v `Tests/NPC/dynamic_navigation_headless.gd` prošlo bez jediné chyby (`failures: []`, exit kód 0, čas 38.3 s, `return_replans: 0`).
       - Soubory `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd` a `Scripts/NPC/npc_controller.gd` jsou 100% synchronizované.
 
-## Aktuální stav dynamické navigace NPC — 25. 10. 2026
+## Aktuální stav navigace NPC — 25. 10. 2026 (Čistý stůl)
 
-Tento záznam má přednost před historickými body 18–20 výše: jejich skenování kamerou, lokální A*, paměť objížděk a jejich pečení do `Curve3D` byly odstraněny z aktivní implementace. V herním projektu byly odstraněny také detekční uzly Beehave `ActionScanAndRepath` a `ConditionPathBlocked`. Pasivní kamera z očí NPC zůstala zachovaná jako ladicí API. Klávesa F4 přepíná zobrazení trasy všech NPC: modře celou baked křivku patrolního `Path3D`, silnější zelenou/žlutou/červenou aktuální vypočtený úsek dynamického agenta. Modrá geometrie se vytváří jednou v souřadnicích světa a dynamická linka se obnovuje 10× za sekundu. Ovladač NPC také přeskočí nulový aktivní bod dynamické cesty, pokud za ním existuje další bod, a při trvalém nulovém bodu po 0,35 s vyžádá přepočítání. Zachovány jsou také patrolní waypointy a jejich akce, pohyb, reakce na hráče, zdraví/strach, push a co-op.
-
-Současný prototyp používá novou nativní třídu `DynamicNavigationAgent3D` vedle standardního `NavigationAgent3D`. Beehave `ActionMoveToPoint` zadává cíl a čeká na stavy agenta. Verze 1 fyzikálně ověřuje koridor kapslí a zkouší jednu objížďku kolem jedné překážky; při neúspěchu hlásí `BLOCKED` a opakuje pokus. Neumí zatím řešit shluky překážek ani ukládat naučené cesty. Další rozšiřování řídit ověřováním na uživatelském NPC a přidávat po jednom chování.
-
-Aktivní soubory: `engine/modules/navigation_3d/dynamic_navigation_agent_3d.h/.cpp`, `engine/modules/navigation_3d/register_types.cpp`, herní `Scenes/NPC/basic_npc.tscn`, `Scripts/NPC/npc_controller.gd`, `Scripts/NPC/BT/action_move_to_point.gd`, `Scripts/Character/player_dev_tools.gd`, `Scripts/Character/FPS_character_script.gd`, `Scripts/UI/hud_script.gd` a synchronizovaná šablona `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd`. Podrobnosti: `docs/npc_dynamic_navigation.md`.
-
-Ověření aktuální iterace: SCons build macOS arm64 dev buildu a headless parser GDScriptu proběhly. Editor ani hra se nespouštěly. Vizuální a gameplay ověření čeká na uživatele; neoznačovat prototyp jako kompletně ověřenou navigaci.
+Experimentální třída `DynamicNavigationAgent3D`, skenování kamerou, pečení objížděk i staré Beehave stromy byly kompletně odstraněny.
+Engine i herní projekt mají čistý základ:
+- **Editor tras (Path3D)**: Plně funkční a uzavřený (waypoint akce, billboard ikony, 2-bodové Bézier zaoblení rohů, kontrola NavMeshe).
+- **NPC Controller**: Čistá kostra `CharacterBody3D` s výchozím `NavigationAgent3D`.
+- Připraveno pro čistou implementaci patrolního řízení od Kroku 1.
 

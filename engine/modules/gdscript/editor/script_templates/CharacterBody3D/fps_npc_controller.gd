@@ -75,12 +75,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _navigate_towards_target(delta: float) -> void:
-	var next_position: Vector3
-	var dynamic_agent := nav_agent as DynamicNavigationAgent3D
-	if dynamic_agent != null:
-		next_position = dynamic_agent.get_next_dynamic_path_position()
-	else:
-		next_position = nav_agent.get_next_path_position()
+	var next_position: Vector3 = nav_agent.get_next_path_position()
 
 	var direction := next_position - global_position
 	direction.y = 0.0
@@ -128,29 +123,18 @@ func move_to_position(target: Vector3, speed: float = -1.0) -> void:
 		current_speed = run_speed if locomotion_style == LOCOMOTION_RUN else walk_speed
 
 	if nav_agent != null:
-		var dynamic_agent := nav_agent as DynamicNavigationAgent3D
-		if dynamic_agent != null:
-			dynamic_agent.set_dynamic_target_position(target)
-		else:
-			nav_agent.target_position = target
+		nav_agent.target_position = target
 
 	is_moving = true
 
 
 func stop() -> void:
 	is_moving = false
-	if nav_agent != null:
-		var dynamic_agent := nav_agent as DynamicNavigationAgent3D
-		if dynamic_agent != null:
-			dynamic_agent.clear_dynamic_target()
 
 
 func is_at_destination() -> bool:
 	if nav_agent == null:
 		return true
-	var dynamic_agent := nav_agent as DynamicNavigationAgent3D
-	if dynamic_agent != null:
-		return dynamic_agent.is_dynamic_navigation_finished()
 	return nav_agent.is_navigation_finished()
 
 
