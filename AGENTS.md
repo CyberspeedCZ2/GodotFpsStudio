@@ -218,3 +218,19 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - NPC se plynule napojí na tyto body a po jejich průjezdu se vrátí na původní trasu. Při všech dalších průchodech patroly NPC automaticky prochází touto novou objízdnou křivkou bez jakéhokoliv zasekávání.
     - Sestaveno, podepsáno, otestováno a ověřeno 5500snímkovou headless simulací. Commitnuto a pushnuto na GitHub (`main`).
 
+15. **Doladění objízdných tras: Model offset 1.0 m, hladké Bézier oblouky, filtrování ramp a odstranění 2s pauzy — [HOTOVO]**:
+    - **Odstranění 2s pauz na dlouhých chodbách (`action_move_to_point.gd`)**:
+      - **Příčina**: V `ActionMoveToPoint` se zbývající vzdálenost `remaining` měřila k diskrétním rohům NavMeshe (`navigation_path[path_index]`). Při patrolu po `Curve3D` se však NPC naviguje pomocí mrkve, nikoliv po NavMesh rozích, takže `path_index` se neaktualizoval a vzdálenost k rohu po jeho minutí rostla. Po 2.5 sekundách (`repath_after_seconds`) akce vyvolala `npc.stop()` a `_recovery_pause = 0.5 s` (obnova cesty).
+      - **Řešení**: Zavedena kontrola `is_advancing`: pokud je NPC v pohybu (`velocity.length() > 0.35 m/s` nebo se otáčí), plynule postupuje a časovač uvíznutí se nuluje (`_elapsed_time = 0.0`). Na rovných úsecích a dlouhých chodbách (WP 18->19 a WP 26->27) NPC sprintuje plynule bez jakéhokoliv zastavování.
+    - **Dynamický offset 1.0 m od modelu překážky**:
+      - Funkce `_get_obstacle_horizontal_radius(collider)` dynamicky zjistí skutečné rozměry modelu/kolize z `CollisionShape3D` (`BoxShape3D`, `CylinderShape3D`, `SphereShape3D`), `NavigationObstacle3D` nebo `MeshInstance3D` AABB.
+      - Výsledný odstup `desired_clearance = obs_radius + 1.0 m` (namísto dřívějších přehnaných 3.2 m) vede trasu přirozeně a těsně okolo bedny s čistým 1m odstupem.
+      - Inteligentní detekce prostoru: pokud je mezi bednou a stěnou méně než `obs_radius + 0.75 m`, algoritmus automaticky zvolí druhou stranu do volného prostoru místnosti.
+    - **Hladké kubické Bézier oblouky (odstranění kostrbatosti)**:
+      - Detour body `pt_a` a `pt_b` již nejsou vkládány s nulovými tečnami (`Vector3.ZERO`).
+      - Do `Curve3D` se počítají hladké C1-spojité kubické Bézier tečny (`tangent_a` a `tangent_b`), které v patrol křivce vytvářejí elegantní plynulý oblouk okolo překážky.
+    - **Striktní filtrování architektury levelu a šikmých ramp**:
+      - `_is_valid_detour_obstacle(collider)` povoluje zakládání tras výhradně pro skutečné překážky (`RigidBody3D`, skupina `fps_heavy_obstacle` / `fps_obstacle`, vrstva 2 `Heavy Obstacle` nebo uzel s `NavigationObstacle3D`).
+      - Statická architektura levelu (stěny, dveře, šikmé rampy UniBuilderu a pochozí povrchy na NavMeshi) je v `_cast_sphere_probe` detekována jako pochozí terén a nikdy nespouští falešné objízdné body na hranách ramp.
+    - Sestaveno, otestováno 5500snímkovou headless simulací bez jediné chyby. Commitnuto a pushnuto na GitHub (`main`).
+

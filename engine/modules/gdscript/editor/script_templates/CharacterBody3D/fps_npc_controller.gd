@@ -1652,14 +1652,14 @@ func is_at_destination() -> bool:
 			var tgt_off := curve.get_closest_offset(npc_path.to_local(_requested_navigation_target))
 			var progress_past := (cur_off - tgt_off) * _npc_path_direction
 			if can_smoothly_advance_current_npc_path_waypoint():
-				if dist_authored <= 1.0 and progress_past >= -0.2:
+				if (dist_authored <= 1.5 and progress_past >= -0.2) or (progress_past >= 0.1 and dist_authored <= 2.5):
 					return true
 			else:
 				if dist_authored <= 0.35 or (dist_authored <= 0.65 and progress_past >= 0.0):
 					return true
 
 		# Pro plynulé projetí zatáčkou (radius): uznat přechod, pokud jsme minuli/proťali rovinu bodu ve směru trasy
-		if can_smoothly_advance_current_npc_path_waypoint() and dist_authored <= 1.0:
+		if can_smoothly_advance_current_npc_path_waypoint() and dist_authored <= 2.2:
 			var prev_idx := _npc_path_waypoint_index - _npc_path_direction
 			var curve: Curve3D = npc_path.curve if npc_path else null
 			if curve and prev_idx >= 0 and prev_idx < curve.get_point_count():
@@ -1833,8 +1833,16 @@ func _cast_sphere_probe(space_state: PhysicsDirectSpaceState3D, from_pos: Vector
 					collider_body = instance_from_id(col_id)
 				hit_normal = rest.get("normal", Vector3.ZERO)
 
-		# Šikmé rampy a podlahy (normal.y > 0.4) jsou pochozí terén, nikoliv překážka v cestě
-		if hit_normal.y > 0.4 and not (collider_body is RigidBody3D):
+		# Šikmé rampy a pochozí podlahy (normal.y > 0.3) nebo terén přímo na NavMeshi jsou pochozí terén
+		var is_ramp: bool = hit_normal.y > 0.3
+		var is_walkable_navmesh: bool = false
+		var nav_map := nav_agent.get_navigation_map() if nav_agent else RID()
+		if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+			var nav_pt := NavigationServer3D.map_get_closest_point(nav_map, hit_pos)
+			if nav_pt.distance_to(hit_pos) <= 0.35:
+				is_walkable_navmesh = true
+
+		if (is_ramp or is_walkable_navmesh) and not _is_valid_detour_obstacle(collider_body):
 			hit = false
 			safe_fraction = 1.0
 			safe_dist = motion.length()
@@ -1851,6 +1859,55 @@ func _cast_sphere_probe(space_state: PhysicsDirectSpaceState3D, from_pos: Vector
 		"to": from_pos + motion,
 		"radius": radius
 	}
+
+
+## Ověří, zda je kolidující objekt skutečnou herní/fyzikální překážkou (bedna, zával, prop)
+## a nikoliv statickou architekturou levelu (zeď, rampa, podlaha).
+func _is_valid_detour_obstacle(collider: Object) -> bool:
+	if not is_instance_valid(collider):
+		return false
+	if collider is RigidBody3D:
+		return true
+	if collider is Node:
+		var node := collider as Node
+		if node.is_in_group("fps_heavy_obstacle") or node.is_in_group("fps_obstacle"):
+			return true
+		if node.has_node("NavigationObstacle3D"):
+			return true
+	if collider is CollisionObject3D:
+		var col_obj := collider as CollisionObject3D
+		# Layer 2: Heavy Obstacle (bit 1)
+		if (col_obj.collision_layer & (1 << 1)) != 0:
+			return true
+	return false
+
+
+## Zjistí horizontální poloměr/rozměr modelu překážky z CollisionShape3D, NavigationObstacle3D nebo MeshInstance3D
+func _get_obstacle_horizontal_radius(collider: Object) -> float:
+	if not is_instance_valid(collider):
+		return 0.5
+	var rad: float = 0.5
+	if collider is Node:
+		var node := collider as Node
+		for child in node.get_children():
+			if child is CollisionShape3D:
+				var shape: Shape3D = (child as CollisionShape3D).shape
+				if shape is BoxShape3D:
+					rad = maxf(rad, maxf(shape.size.x, shape.size.z) * 0.5)
+				elif shape is CylinderShape3D:
+					rad = maxf(rad, shape.radius)
+				elif shape is SphereShape3D:
+					rad = maxf(rad, shape.radius)
+			elif child is NavigationObstacle3D:
+				var obs := child as NavigationObstacle3D
+				if obs.radius > 0.1:
+					rad = maxf(rad, obs.radius)
+		for child in node.get_children():
+			if child is MeshInstance3D:
+				var aabb: AABB = (child as MeshInstance3D).get_aabb()
+				if aabb.size.x > 0.1 and aabb.size.z > 0.1:
+					rad = maxf(rad, maxf(aabb.size.x, aabb.size.z) * 0.5)
+	return clampf(rad, 0.45, 2.5)
 
 
 ## Tří-koulvý prostorový senzor a dynamické založení objízdné trasy:
@@ -1960,15 +2017,18 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	_forward_blocked = false
 
 	# 4. KROK: Založení trvalé nové trasy (baking), aby příště nemusel detekovat znovu!
+	# Založení nové trasy provádíme VÝHRADNĚ pro skutečné překážky (bedny, závaly), nikoliv zdi
 	if uses_npc_path() and has_valid_npc_path():
-		var detour_target := _bake_detour_around_obstacle(scout_res.get("collider"), _avoidance_side, scout_res["hit_pos"], base_dir)
-		if detour_target.length_squared() > 0.01:
-			var to_detour := (detour_target - global_position)
-			to_detour.y = 0.0
-			if to_detour.length_squared() > 0.01:
-				var detour_steer := to_detour.normalized()
-				_debug_steer_dir = detour_steer
-				return detour_steer
+		var col: Object = scout_res.get("collider")
+		if _is_valid_detour_obstacle(col):
+			var detour_target := _bake_detour_around_obstacle(col, _avoidance_side, scout_res["hit_pos"], base_dir)
+			if detour_target.length_squared() > 0.01:
+				var to_detour := (detour_target - global_position)
+				to_detour.y = 0.0
+				if to_detour.length_squared() > 0.01:
+					var detour_steer := to_detour.normalized()
+					_debug_steer_dir = detour_steer
+					return detour_steer
 
 	var target_avoid_deg: float = 48.0
 	var target_angle := _avoidance_side * deg_to_rad(target_avoid_deg)
@@ -1979,9 +2039,11 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	return steer_dir
 
 
-## Trvale vytvoří a vloží novou objízdnou trasu do patrol křivky Curve3D okolo překážky
+## Trvale vytvoří a vloží novou plynulou Bézier objízdnou trasu do patrol křivky Curve3D okolo překážky
 func _bake_detour_around_obstacle(collider: Object, avoidance_side: float, hit_pos: Vector3, base_dir: Vector3) -> Vector3:
 	if not uses_npc_path() or not has_valid_npc_path():
+		return Vector3.ZERO
+	if not _is_valid_detour_obstacle(collider):
 		return Vector3.ZERO
 
 	# Identifikace překážky proti opakovanému vkládání bodů
@@ -1998,21 +2060,35 @@ func _bake_detour_around_obstacle(collider: Object, avoidance_side: float, hit_p
 		obs_pos = (collider as Node3D).global_position
 	obs_pos.y = global_position.y
 
+	# Zjistíme rozměr modelu a nastavíme offset přesně ~1.0 m od okraje modelu
+	var obs_radius := _get_obstacle_horizontal_radius(collider)
+	var desired_clearance: float = obs_radius + 1.0 # Přesně 1 metr od modelu překážky
+
 	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
 	# avoidance_side > 0.0 = VLEVO, < 0.0 = VPRAVO
 	var clear_dir := (-side_normal if avoidance_side > 0.0 else side_normal).normalized()
 
 	var space_state := get_world_3d().direct_space_state
 	var mask := (1 << 0) | (1 << 1)
-	var desired_clearance: float = 3.2
 	if space_state:
-		var side_probe := _cast_sphere_probe(space_state, obs_pos, clear_dir * desired_clearance, mask, 0.35)
-		if side_probe["hit"]:
-			desired_clearance = clampf(side_probe["safe_distance"] * 0.85, 1.8, 3.5)
+		# Zkontrolujeme zda máme na zvolené straně dost místa
+		var side_probe := _cast_sphere_probe(space_state, obs_pos, clear_dir * (desired_clearance + 0.3), mask, 0.3)
+		if side_probe["hit"] and side_probe["safe_distance"] < (obs_radius + 0.75):
+			# Na této straně je stěna příliš blízko! Vyzkoušíme opačnou stranu do volného prostoru
+			var alt_dir := -clear_dir
+			var alt_probe := _cast_sphere_probe(space_state, obs_pos, alt_dir * (desired_clearance + 0.3), mask, 0.3)
+			if not alt_probe["hit"] or alt_probe["safe_distance"] >= side_probe["safe_distance"]:
+				clear_dir = alt_dir
+				avoidance_side = -avoidance_side
+				if alt_probe["hit"]:
+					desired_clearance = clampf(alt_probe["safe_distance"] - 0.2, obs_radius + 0.6, desired_clearance)
+		elif side_probe["hit"]:
+			desired_clearance = clampf(side_probe["safe_distance"] - 0.2, obs_radius + 0.6, desired_clearance)
 
 	var nav_map := nav_agent.get_navigation_map()
-	var pt_a := obs_pos - base_dir * 1.4 + clear_dir * desired_clearance
-	var pt_b := obs_pos + base_dir * 1.4 + clear_dir * desired_clearance
+	var lead_dist := obs_radius + 0.8
+	var pt_a := obs_pos - base_dir * lead_dist + clear_dir * desired_clearance
+	var pt_b := obs_pos + base_dir * lead_dist + clear_dir * desired_clearance
 	if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
 		pt_a = NavigationServer3D.map_get_closest_point(nav_map, pt_a)
 		pt_b = NavigationServer3D.map_get_closest_point(nav_map, pt_b)
@@ -2024,8 +2100,15 @@ func _bake_detour_around_obstacle(collider: Object, avoidance_side: float, hit_p
 	var local_a := npc_path.to_local(pt_a)
 	var local_b := npc_path.to_local(pt_b)
 
-	npc_path.curve.add_point(local_a, Vector3.ZERO, Vector3.ZERO, insert_idx)
-	npc_path.curve.add_point(local_b, Vector3.ZERO, Vector3.ZERO, insert_idx + 1)
+	# Vypočet hladkých kubických Bézier tečen pro zaoblení do plynulého oblouku (žádné kostrbaté hrany!)
+	var handle_len := lead_dist * 0.45
+	var tangent_a_dir := (base_dir + clear_dir * 0.4).normalized()
+	var tangent_b_dir := (base_dir - clear_dir * 0.4).normalized()
+	var tangent_a_local := npc_path.to_local(pt_a + tangent_a_dir * handle_len) - local_a
+	var tangent_b_local := npc_path.to_local(pt_b + tangent_b_dir * handle_len) - local_b
+
+	npc_path.curve.add_point(local_a, -tangent_a_local, tangent_a_local, insert_idx)
+	npc_path.curve.add_point(local_b, -tangent_b_local, tangent_b_local, insert_idx + 1)
 
 	var meta_key := NPC_PATH_POINT_ACTIONS_META if npc_path.has_meta(NPC_PATH_POINT_ACTIONS_META) else LEGACY_NPC_PATH_POINT_ACTIONS_META
 	var raw_actions = npc_path.get_meta(meta_key, [])
@@ -2047,6 +2130,6 @@ func _bake_detour_around_obstacle(collider: Object, avoidance_side: float, hit_p
 	nav_agent.target_position = pt_a
 	_navigation_target_is_route = true
 	is_moving = true
-	print("[NPC Path] Do patrol trasy byly trvale vlozeny nove body objizdky: wp=%d a %d (prekazka=%s, odstup=%.2fm)" % [insert_idx + 1, insert_idx + 2, obs_pos, desired_clearance])
-	update_debug_state("Nova trasa objizdky zalozena")
+	print("[NPC Path] Do patrol trasy byly trvale vlozeny hladke Bezier body objizdky: wp=%d a %d (model_rad=%.2fm, odstup=%.2fm)" % [insert_idx + 1, insert_idx + 2, obs_radius, desired_clearance])
+	update_debug_state("Nova hladka trasa objizdky zalozena")
 	return pt_a
