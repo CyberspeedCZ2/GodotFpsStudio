@@ -2165,7 +2165,7 @@ func _calculate_variable_clearance_point(raw_pos: Vector3, cluster: Array, nav_m
 ## - Odstraní zablokované waypointy ("smazat cestu")
 ## - Spojí trasu přímo rovně ("na přímo rovně") nebo minimem čistých NavMesh Funnel bodů
 ## - Využívá variabilní offset (nikdy do stěny) a symetrické C1 tečny (nulové smyčky, spolehlivý návrat)
-func _bake_detour_around_obstacle(collider: Object, _avoidance_side: float, hit_pos: Vector3, _base_dir: Vector3) -> Vector3:
+func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: Vector3, _base_dir: Vector3) -> Vector3:
 	if not uses_npc_path() or not has_valid_npc_path():
 		return Vector3.ZERO
 	if not _is_valid_detour_obstacle(collider):
