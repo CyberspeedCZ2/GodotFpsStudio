@@ -146,7 +146,7 @@ void EditorResourcePreview::_thread_func(void *ud) {
 	erp->_thread();
 }
 
-void EditorResourcePreview::_preview_ready(const String &p_path, int p_hash, const Ref<Texture2D> &p_texture, const Ref<Texture2D> &p_small_texture, const Callable &p_callback, const Dictionary &p_metadata) {
+void EditorResourcePreview::_preview_ready(const String &p_path, int p_hash, const Ref<Texture2D> &p_texture, const Ref<Texture2D> &p_small_texture, const Callable &p_callback, const Dictionary &p_metadata, int p_preview_size) {
 	{
 		MutexLock lock(preview_mutex);
 
@@ -166,13 +166,14 @@ void EditorResourcePreview::_preview_ready(const String &p_path, int p_hash, con
 		item.last_hash = p_hash;
 		item.modified_time = modified_time;
 		item.preview_metadata = p_metadata;
+		item.preview_size = p_preview_size;
 
 		cache[p_path] = item;
 	}
 	p_callback.call_deferred(p_path, p_texture, p_small_texture);
 }
 
-void EditorResourcePreview::_generate_preview(Ref<ImageTexture> &r_texture, Ref<ImageTexture> &r_small_texture, const QueueItem &p_item, const String &cache_base, Dictionary &p_metadata) {
+void EditorResourcePreview::_generate_preview(Ref<ImageTexture> &r_texture, Ref<ImageTexture> &r_small_texture, const QueueItem &p_item, const String &cache_base, Dictionary &p_metadata, int p_thumbnail_size) {
 	String type;
 
 	uint64_t started_at = OS::get_singleton()->get_ticks_usec();
@@ -193,8 +194,7 @@ void EditorResourcePreview::_generate_preview(Ref<ImageTexture> &r_texture, Ref<
 		return; //could not guess type
 	}
 
-	int thumbnail_size = EDITOR_GET("filesystem/file_dialog/thumbnail_size");
-	thumbnail_size *= EDSCALE;
+	const int thumbnail_size = p_thumbnail_size;
 
 	r_texture = Ref<ImageTexture>();
 	r_small_texture = Ref<ImageTexture>();
@@ -301,23 +301,28 @@ void EditorResourcePreview::_iterate() {
 
 	if (cache.has(item.path)) {
 		Item cached_item = cache[item.path];
-		// Already has it because someone loaded it, just let it know it's ready.
-		_preview_ready(item.path, cached_item.last_hash, cached_item.preview, cached_item.small_preview, item.callback, cached_item.preview_metadata);
-		preview_mutex.unlock();
-		return;
+		if (item.thumbnail_size == 0 || cached_item.preview_size >= item.thumbnail_size) {
+			// Already has a large enough preview, just let the caller know it's ready.
+			_preview_ready(item.path, cached_item.last_hash, cached_item.preview, cached_item.small_preview, item.callback, cached_item.preview_metadata, cached_item.preview_size);
+			preview_mutex.unlock();
+			return;
+		}
 	}
 	preview_mutex.unlock();
 
 	Ref<ImageTexture> texture;
 	Ref<ImageTexture> small_texture;
 
-	int thumbnail_size = EDITOR_GET("filesystem/file_dialog/thumbnail_size");
-	thumbnail_size *= EDSCALE;
+	int thumbnail_size = item.thumbnail_size;
+	if (thumbnail_size <= 0) {
+		thumbnail_size = EDITOR_GET("filesystem/file_dialog/thumbnail_size");
+		thumbnail_size *= EDSCALE;
+	}
 
 	if (item.resource.is_valid()) {
 		Dictionary preview_metadata;
-		_generate_preview(texture, small_texture, item, String(), preview_metadata);
-		_preview_ready(item.path, item.resource->hash_edited_version_for_preview(), texture, small_texture, item.callback, preview_metadata);
+		_generate_preview(texture, small_texture, item, String(), preview_metadata, thumbnail_size);
+		_preview_ready(item.path, item.resource->hash_edited_version_for_preview(), texture, small_texture, item.callback, preview_metadata, thumbnail_size);
 		return;
 	}
 
@@ -325,6 +330,9 @@ void EditorResourcePreview::_iterate() {
 	String temp_path = EditorPaths::get_singleton()->get_cache_dir();
 	String cache_base = ProjectSettings::get_singleton()->globalize_path(item.path).md5_text();
 	cache_base = temp_path.path_join("resthumb-" + cache_base);
+	if (item.thumbnail_size > 0) {
+		cache_base += "-tooltip-" + itos(item.thumbnail_size);
+	}
 
 	// Does not have it, try to load a cached thumbnail.
 
@@ -332,7 +340,7 @@ void EditorResourcePreview::_iterate() {
 	Ref<FileAccess> f = FileAccess::open(file, FileAccess::READ);
 	if (f.is_null()) {
 		// No cache found, generate.
-		_generate_preview(texture, small_texture, item, cache_base, preview_metadata);
+		_generate_preview(texture, small_texture, item, cache_base, preview_metadata, thumbnail_size);
 	} else {
 		uint64_t modtime = FileAccess::get_modified_time(item.path);
 		String import_path = item.path + ".import";
@@ -402,10 +410,10 @@ void EditorResourcePreview::_iterate() {
 		}
 
 		if (!cache_valid) {
-			_generate_preview(texture, small_texture, item, cache_base, preview_metadata);
+			_generate_preview(texture, small_texture, item, cache_base, preview_metadata, thumbnail_size);
 		}
 	}
-	_preview_ready(item.path, 0, texture, small_texture, item.callback, preview_metadata);
+	_preview_ready(item.path, 0, texture, small_texture, item.callback, preview_metadata, thumbnail_size);
 }
 
 void EditorResourcePreview::_write_preview_cache(Ref<FileAccess> p_file, int p_thumbnail_size, bool p_has_small_texture, uint64_t p_modified_time, const String &p_hash, const Dictionary &p_metadata) {
@@ -527,6 +535,28 @@ void EditorResourcePreview::queue_resource_preview(const String &p_path, const C
 		QueueItem item;
 		item.path = p_path;
 		item.callback = p_callback;
+		queue.push_back(item);
+	}
+	preview_sem.post();
+}
+
+void EditorResourcePreview::queue_resource_preview_for_tooltip(const String &p_path, const Callable &p_callback) {
+	_update_thumbnail_sizes();
+	const int thumbnail_size = MAX((int)EDITOR_GET("filesystem/file_dialog/thumbnail_size") * EDSCALE, TOOLTIP_PREVIEW_SIZE * EDSCALE);
+
+	{
+		MutexLock lock(preview_mutex);
+
+		const Item *cached_item = cache.getptr(p_path);
+		if (cached_item && cached_item->preview_size >= thumbnail_size) {
+			p_callback.call(p_path, cached_item->preview, cached_item->small_preview);
+			return;
+		}
+
+		QueueItem item;
+		item.path = p_path;
+		item.callback = p_callback;
+		item.thumbnail_size = thumbnail_size;
 		queue.push_back(item);
 	}
 	preview_sem.post();

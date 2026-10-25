@@ -51,7 +51,7 @@ static String _get_texture_preview_info(const Dictionary &p_metadata) {
 	String info = vformat(TTR(U"%d × %d"), int(dimensions.x), int(dimensions.y));
 	const String format = p_metadata.get("format", String());
 	if (!format.is_empty()) {
-		info += "  ·  " + format;
+		info += vformat(TTR(U"  ·  %s"), format);
 	}
 	return info;
 }
@@ -133,14 +133,20 @@ VBoxContainer *EditorResourceTooltipPlugin::make_default_tooltip(const String &p
 	return vb;
 }
 
-void EditorResourceTooltipPlugin::_request_thumbnail(const String &p_path, TextureRect *p_for_control, Label *p_metadata_label) const {
+void EditorResourceTooltipPlugin::_request_thumbnail(const String &p_path, TextureRect *p_for_control, Label *p_metadata_label, bool p_large_preview) const {
 	ERR_FAIL_NULL(p_for_control);
 	const ObjectID metadata_label_id = p_metadata_label ? p_metadata_label->get_instance_id() : ObjectID();
-	EditorResourcePreview::get_singleton()->queue_resource_preview(p_path, callable_mp(const_cast<EditorResourceTooltipPlugin *>(this), &EditorResourceTooltipPlugin::_thumbnail_ready).bind(p_for_control->get_instance_id(), metadata_label_id));
+	EditorResourcePreview *resource_preview = EditorResourcePreview::get_singleton();
+	const Callable callback = callable_mp(const_cast<EditorResourceTooltipPlugin *>(this), &EditorResourceTooltipPlugin::_thumbnail_ready).bind(p_for_control->get_instance_id(), metadata_label_id);
+	if (p_large_preview) {
+		resource_preview->queue_resource_preview_for_tooltip(p_path, callback);
+	} else {
+		resource_preview->queue_resource_preview(p_path, callback);
+	}
 }
 
 void EditorResourceTooltipPlugin::request_thumbnail(const String &p_path, TextureRect *p_for_control) const {
-	_request_thumbnail(p_path, p_for_control, nullptr);
+	_request_thumbnail(p_path, p_for_control, nullptr, false);
 }
 
 bool EditorResourceTooltipPlugin::handles(const String &p_resource_type) const {
@@ -173,7 +179,7 @@ Control *EditorTextureTooltipPlugin::make_tooltip_for_path(const String &p_resou
 	vb->set_alignment(BoxContainer::ALIGNMENT_CENTER);
 
 	TextureRect *tr = memnew(TextureRect);
-	tr->set_custom_minimum_size(Size2(384, 320) * EDSCALE);
+	tr->set_custom_minimum_size(Size2(EditorResourcePreview::TOOLTIP_PREVIEW_SIZE, EditorResourcePreview::TOOLTIP_PREVIEW_SIZE * 5 / 6) * EDSCALE);
 	tr->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	tr->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
 	tr->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
@@ -185,7 +191,7 @@ Control *EditorTextureTooltipPlugin::make_tooltip_for_path(const String &p_resou
 	info_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	vb->add_child(info_label);
 
-	_request_thumbnail(p_resource_path, tr, info_label);
+	_request_thumbnail(p_resource_path, tr, info_label, true);
 	return vb;
 }
 

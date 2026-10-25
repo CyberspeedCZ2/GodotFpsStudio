@@ -47,7 +47,7 @@ class EditorResourceTooltipPlugin : public RefCounted {
 
 protected:
 	static void _bind_methods();
-	void _request_thumbnail(const String &p_path, TextureRect *p_for_control, Label *p_metadata_label) const;
+	void _request_thumbnail(const String &p_path, TextureRect *p_for_control, Label *p_metadata_label, bool p_large_preview) const;
 
 	GDVIRTUAL1RC(bool, _handles, String)
 	GDVIRTUAL3RC(Control *, _make_tooltip_for_path, String, Dictionary, Control *)

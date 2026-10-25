@@ -205,3 +205,16 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Při detekci překážky koule zčervená a rozsvítí se prstence vyhodnocování (červený pro neprůchozí štěrbinu, zelený pro volnou trasu).
     - Sestaveno, podepsáno, otestováno 5000snímkovou headless simulací. Commitnuto a pushnuto na GitHub (main).
 
+14. **Tří-koulvý prostorový senzor a dynamické založení objízdné trasy (3-Spheres & Route Detour Baking) — [HOTOVO]**:
+    - **3-koulvý systém senzorů**:
+      - **Hlavní středová koule (Center Scout)**: V klidu (rovné chodby, volné místnosti) je zelená, malá (radius 0.20 m) a kontroluje směr pohybu s lookahead předstihem 3.6 m.
+      - **Aktivace pomocných koulí (Left & Right)**: Jakmile hlavní koule detekuje překážku v dráze před cílovým waypointem (< 3.2 m), zčervená a okamžitě aktivuje dvě boční koule (vlevo +38°, vpravo -38°).
+      - **Rozpoznání volného prostoru**: Zablokovaná strana (stěna / bedna) se zbarví červeně, volná strana do otevřeného prostoru zeleně.
+      - **Natočení a vyčištění výhledu**: NPC se plynule natočí do volného směru (k zelené kouli). Po natočení středová koule míří do volného prostoru, nic nedetekuje a zezelená, pomocné koule se skryjí a NPC pokračuje rovně plnou rychlostí.
+      - **Filtrování šikmých ramp**: Šikmé pochozí povrchy a rampy (`normal.y > 0.4`) jsou automaticky filtrovány, takže nezpůsobují falešné objížďky.
+    - **Trvalé dynamické založení nové trasy (Route Detour Baking)**:
+      - Aby NPC nemuselo překážku při dalších kolech znovu detekovat ani se zastavovat, `_bake_detour_around_obstacle` vypočítá bezpečný průchozí koridor okolo překážky s odstupem 1.8–3.2 m do volného prostoru.
+      - Přímo do patrol křivky `Curve3D` v `npc_path.curve` vloží 2 nové navigační body a sesynchronizuje metadata `_fps_npc_point_actions` s akcí `"move"`.
+      - NPC se plynule napojí na tyto body a po jejich průjezdu se vrátí na původní trasu. Při všech dalších průchodech patroly NPC automaticky prochází touto novou objízdnou křivkou bez jakéhokoliv zasekávání.
+    - Sestaveno, podepsáno, otestováno a ověřeno 5500snímkovou headless simulací. Commitnuto a pushnuto na GitHub (`main`).
+

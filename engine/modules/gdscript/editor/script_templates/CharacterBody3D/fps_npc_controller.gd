@@ -1,6 +1,21 @@
-# meta-description: FPS NPC controller with RVO dynamic obstacle avoidance, path patrol, action execution, and debris physics filtering
+class_name NPCController
+extends CharacterBody3D
 
-extends _BASE_
+## Základní ovladač NPC pro kombinaci s NavigationAgent3D a Beehave Behavior Tree.
+## Tento skript se stará čistě o fyziku pohybu a navigaci:
+## - Výpočet trasy přes NavigationAgent3D
+## - Gravitace a otáčení těla
+## - Poskytuje čisté API pro Beehave akce (move_to, stop, is_navigation_finished)
+
+const MOVEMENT_MODE_RANDOM_WANDER := 0
+const MOVEMENT_MODE_ASSIGNED_PATH := 1
+const LOCOMOTION_WALK := 0
+const LOCOMOTION_RUN := 1
+const COOP_ROLE_NONE := 0
+const COOP_ROLE_CALLER := 1
+const COOP_ROLE_HELPER := 2
+const NPC_PATH_POINT_ACTIONS_META := "_fps_npc_point_actions"
+const LEGACY_NPC_PATH_POINT_ACTIONS_META := "fps_npc_point_actions"
 
 @export_group("Debug Visuals")
 @export var debug_visuals: bool = false
@@ -128,8 +143,16 @@ var _debug_probe_records: Array = []
 var _debug_steer_dir := Vector3.ZERO
 var _sphere_probe_shape: SphereShape3D = null
 var _debug_sphere_instance: MeshInstance3D = null
+var _debug_sphere_left: MeshInstance3D = null
+var _debug_sphere_right: MeshInstance3D = null
+var _aux_spheres_active: bool = false
 var _last_sphere_probe_pos := Vector3.ZERO
 var _last_sphere_probe_color := Color(0.2, 0.95, 0.4, 0.35)
+var _last_left_probe_pos := Vector3.ZERO
+var _last_left_probe_color := Color(0.2, 0.95, 0.4, 0.35)
+var _last_right_probe_pos := Vector3.ZERO
+var _last_right_probe_color := Color(1.0, 0.15, 0.15, 0.5)
+var _baked_detour_obstacles: Array = []
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 
 var _active_route_locomotion: int = LOCOMOTION_WALK
@@ -283,24 +306,30 @@ func _setup_debug_visuals() -> void:
 	state_lbl.visible = false
 	add_child(state_lbl)
 
-	# 4. 3D Prusvitna koule senzoru (Sphere Probe Volume) o velikosti tela hrace
-	_debug_sphere_instance = MeshInstance3D.new()
-	_debug_sphere_instance.name = "AISphereProbe"
-	_debug_sphere_instance.top_level = true
-	var sph_mesh := SphereMesh.new()
-	sph_mesh.radius = 0.42
-	sph_mesh.height = 0.84
-	_debug_sphere_instance.mesh = sph_mesh
+	# 4. 3D Prusvitne koule senzoru: Hlavni stredova (Center), Leva (Left) a Prava (Right)
+	_debug_sphere_instance = _create_debug_sphere_helper("AISphereProbeCenter", Color(0.2, 0.95, 0.4, 0.35))
+	_debug_sphere_left = _create_debug_sphere_helper("AISphereProbeLeft", Color(0.2, 0.95, 0.4, 0.35))
+	_debug_sphere_right = _create_debug_sphere_helper("AISphereProbeRight", Color(1.0, 0.15, 0.15, 0.5))
 
-	var sph_mat := StandardMaterial3D.new()
-	sph_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sph_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	sph_mat.no_depth_test = true
-	sph_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	sph_mat.render_priority = 9
-	sph_mat.albedo_color = Color(0.2, 0.95, 0.4, 0.35)
-	_debug_sphere_instance.material_override = sph_mat
-	add_child(_debug_sphere_instance)
+
+func _create_debug_sphere_helper(node_name: String, col: Color) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.name = node_name
+	mi.top_level = true
+	var sph := SphereMesh.new()
+	sph.radius = 0.32
+	sph.height = 0.64
+	mi.mesh = sph
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.no_depth_test = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.render_priority = 9
+	mat.albedo_color = col
+	mi.material_override = mat
+	add_child(mi)
+	return mi
 
 
 func _draw_debug_ring(debug_vertices: Array[Vector3], debug_colors: Array[Color], center: Vector3, normal: Vector3, radius: float, ring_color: Color, segments: int = 12) -> void:
@@ -366,7 +395,7 @@ func _update_debug_visuals(delta: float) -> void:
 
 	_debug_lines_mesh.visible = true
 	if _debug_sphere_instance:
-		if show_avoidance_probes and is_moving and _last_sphere_probe_pos.length_squared() > 0.01:
+		if should_show and show_avoidance_probes and is_moving and _last_sphere_probe_pos.length_squared() > 0.01:
 			_debug_sphere_instance.visible = true
 			_debug_sphere_instance.global_position = _last_sphere_probe_pos
 			var smat := _debug_sphere_instance.material_override as StandardMaterial3D
@@ -374,12 +403,31 @@ func _update_debug_visuals(delta: float) -> void:
 				smat.albedo_color = _last_sphere_probe_color
 			var sp_mesh := _debug_sphere_instance.mesh as SphereMesh
 			if sp_mesh:
-				var is_alert := _forward_blocked or not is_zero_approx(_avoidance_side)
-				var trg_r: float = 0.38 if is_alert else 0.18
+				var trg_r: float = 0.32 if _aux_spheres_active else 0.18
 				sp_mesh.radius = trg_r
 				sp_mesh.height = trg_r * 2.0
 		else:
 			_debug_sphere_instance.visible = false
+
+	if _debug_sphere_left:
+		if should_show and show_avoidance_probes and is_moving and _aux_spheres_active and _last_left_probe_pos.length_squared() > 0.01:
+			_debug_sphere_left.visible = true
+			_debug_sphere_left.global_position = _last_left_probe_pos
+			var smat := _debug_sphere_left.material_override as StandardMaterial3D
+			if smat:
+				smat.albedo_color = _last_left_probe_color
+		else:
+			_debug_sphere_left.visible = false
+
+	if _debug_sphere_right:
+		if should_show and show_avoidance_probes and is_moving and _aux_spheres_active and _last_right_probe_pos.length_squared() > 0.01:
+			_debug_sphere_right.visible = true
+			_debug_sphere_right.global_position = _last_right_probe_pos
+			var smat := _debug_sphere_right.material_override as StandardMaterial3D
+			if smat:
+				smat.albedo_color = _last_right_probe_color
+		else:
+			_debug_sphere_right.visible = false
 
 	# 1. Aktualizace pozice a animace 3D mrkve
 	var has_carrot := show_carrot and uses_npc_path() and (_navigation_target_is_route or _is_detouring or _stuck_recovery_timer > 0.0 or _is_path_blocked) and _last_carrot_world_pos.length_squared() > 0.01 and is_moving
@@ -1758,6 +1806,7 @@ func _cast_sphere_probe(space_state: PhysicsDirectSpaceState3D, from_pos: Vector
 	var safe_dist: float = motion.length()
 	var hit_pos: Vector3 = from_pos + motion
 	var collider_body: Object = null
+	var hit_normal := Vector3.ZERO
 
 	if motion_res.size() > 0:
 		hit = true
@@ -1765,16 +1814,31 @@ func _cast_sphere_probe(space_state: PhysicsDirectSpaceState3D, from_pos: Vector
 		safe_dist = safe_fraction * motion.length()
 		hit_pos = from_pos + motion.normalized() * safe_dist
 
-		var rest_query := PhysicsShapeQueryParameters3D.new()
-		rest_query.shape = _sphere_probe_shape
-		rest_query.transform = Transform3D(Basis(), hit_pos)
-		rest_query.collision_mask = mask
-		rest_query.exclude = [get_rid()]
-		var rest := space_state.get_rest_info(rest_query)
-		if not rest.is_empty():
-			var col_id = rest.get("collider_id", 0)
-			if col_id != 0:
-				collider_body = instance_from_id(col_id)
+		# Spolehlivé zjištění kolidujícího tělesa a normály
+		var ray_q := PhysicsRayQueryParameters3D.create(from_pos, from_pos + motion.normalized() * (safe_dist + 0.35), mask, [get_rid()])
+		var ray_res := space_state.intersect_ray(ray_q)
+		if not ray_res.is_empty():
+			collider_body = ray_res.get("collider")
+			hit_normal = ray_res.get("normal", Vector3.ZERO)
+		else:
+			var rest_query := PhysicsShapeQueryParameters3D.new()
+			rest_query.shape = _sphere_probe_shape
+			rest_query.transform = Transform3D(Basis(), hit_pos + motion.normalized() * 0.05)
+			rest_query.collision_mask = mask
+			rest_query.exclude = [get_rid()]
+			var rest := space_state.get_rest_info(rest_query)
+			if not rest.is_empty():
+				var col_id = rest.get("collider_id", 0)
+				if col_id != 0:
+					collider_body = instance_from_id(col_id)
+				hit_normal = rest.get("normal", Vector3.ZERO)
+
+		# Šikmé rampy a podlahy (normal.y > 0.4) jsou pochozí terén, nikoliv překážka v cestě
+		if hit_normal.y > 0.4 and not (collider_body is RigidBody3D):
+			hit = false
+			safe_fraction = 1.0
+			safe_dist = motion.length()
+			collider_body = null
 
 	return {
 		"hit": hit,
@@ -1782,23 +1846,21 @@ func _cast_sphere_probe(space_state: PhysicsDirectSpaceState3D, from_pos: Vector
 		"safe_distance": safe_dist,
 		"hit_pos": hit_pos,
 		"collider": collider_body,
+		"normal": hit_normal,
 		"from": from_pos,
 		"to": from_pos + motion,
 		"radius": radius
 	}
 
 
-## Dvoustupňový prostorový senzor:
-## 1. Malá dopředná kontrolní hlídka (scout radius 0.18m) – v rovných chodbách a volných prostorech netestuje boční zdi, neničí rychlost a nezpůsobuje cukání.
-## 2. Teprve při detekci překážky přímo vpředu (< 2.0m) se aktivují vyhodnocovací koule o velikosti těla (radius 0.38m) pro bezpečné vybočení okolo zátarasu.
+## Tří-koulvý prostorový senzor a dynamické založení objízdné trasy:
+## 1. Hlavní dopředná kontrolní koule (scout): v rovných chodbách a volném prostoru zůstává zelená,
+##    netestuje zbytečně boční zdi, neničí rychlost a nezpůsobuje cukání.
+## 2. Při detekci překážky přímo vpředu (< 3.2m a před cílovým waypointem) se aktivují dvě pomocné koule (vlevo a vpravo).
+## 3. Pokud detekuje středová a jedna boční (např. pravá u zdi), NPC se otočí do volného směru (vlevo).
+##    Po natočení míří hlavní středová koule do volného prostoru (nic nedetekuje, zezelená) a jde rovně.
+## 4. Aby příště nemuselo detekovat znovu, do Curve3D patrol trasy se trvale vloží nová objízdná trasa.
 func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
-	# Během objížďky (DETOUR) řídí trasu přímo NavMesh – senzory nesmí strhávat řízení do zdi
-	if _is_detouring:
-		_avoidance_side = 0.0
-		_current_avoidance_angle = 0.0
-		_debug_steer_dir = base_dir
-		return base_dir
-
 	var space_state := get_world_3d().direct_space_state
 	if not space_state:
 		return base_dir
@@ -1807,19 +1869,27 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 
 	var from_pos := global_position + Vector3(0.0, 0.55, 0.0) # Výška středu těla
 	var mask := (1 << 0) | (1 << 1) # Layer 1: World zdi + Layer 2: Heavy Obstacle
-	var forward_dist := 2.5
-	var scout_radius := 0.18 # Malá kontrolní koule dopředu
+	var forward_dist := 3.6
+	var scout_radius := 0.20 # Malá kontrolní koule dopředu
 
-	# 1. KROK: Malá dopředná kontrolní hlídka přímo ve směru pohybu
-	var scout_res := _cast_sphere_probe(space_state, from_pos, base_dir * forward_dist, mask, scout_radius)
-	var obstacle_detected: bool = scout_res["hit"] and scout_res["safe_distance"] < 2.0
+	# Vzdálenost k cílovému waypointu
+	var dist_to_wp: float = global_position.distance_to(_requested_navigation_target) if (uses_npc_path() and _navigation_target_is_route) else forward_dist
+	var max_scout_dist: float = minf(forward_dist, maxf(dist_to_wp + 0.5, 1.8))
+
+	# 1. KROK: Hlavní dopředná kontrolní hlídka přímo ve směru pohybu
+	var scout_res := _cast_sphere_probe(space_state, from_pos, base_dir * max_scout_dist, mask, scout_radius)
+
+	# Překážka je detekována pouze tehdy, pokud leží v dráze PŘED waypointem (ne za rohem)
+	var is_blocking_route: bool = scout_res["hit"] and (scout_res["safe_distance"] < maxf(dist_to_wp - 0.25, 0.5) or scout_res["safe_distance"] < 1.3)
+	var obstacle_detected: bool = is_blocking_route and scout_res["safe_distance"] < 3.2
 
 	# Pokud před námi NIC NENÍ (volná rovná chodba nebo otevřená místnost):
-	# Boční koule zůstávají zcela neaktivní -> žádné falešné zasekávání o boční zdi!
+	# Boční koule zůstávají zcela skryté a neaktivní -> žádné zasekávání o boční zdi!
 	if not obstacle_detected:
+		_aux_spheres_active = false
 		_record_debug_sphere(scout_res, "scout")
-		_last_sphere_probe_pos = from_pos + base_dir * minf(forward_dist * 0.7, 1.8)
-		_last_sphere_probe_color = Color(0.2, 0.95, 0.4, 0.35) # Zelená malá kontrolní koule
+		_last_sphere_probe_pos = from_pos + base_dir * minf(max_scout_dist * 0.55, 2.0)
+		_last_sphere_probe_color = Color(0.2, 0.95, 0.4, 0.35) # Zelená hlavní kontrolní koule
 		_avoidance_clear_time += delta
 		if _avoidance_clear_time >= 0.2:
 			_avoidance_side = 0.0
@@ -1831,40 +1901,56 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 		_debug_steer_dir = clear_dir
 		return clear_dir
 
-	# 2. KROK: PŘEKÁŽKA DETEKOVÁNA PŘED NÁMI!
-	# Teprve nyní aktivujeme vyhodnocovací koule o velikosti těla hráče pro ověření obejití
+	# 2. KROK: PŘEKÁŽKA / ZEĎ DETEKOVÁNA PŘED NÁMI!
+	# Aktivujeme dvě pomocné koule (jedna vlevo, druhá vpravo)
+	_aux_spheres_active = true
 	_avoidance_clear_time = 0.0
 	_record_debug_sphere(scout_res, "center")
 	_last_sphere_probe_pos = scout_res["hit_pos"]
-	_last_sphere_probe_color = Color(1.0, 0.2, 0.15, 0.55) # Červená kontrolní koule u překážky
+	_last_sphere_probe_color = Color(1.0, 0.2, 0.15, 0.65) # Červená hlavní koule na překážce
 
-	var body_radius := 0.38 # Reálná poloviční šířka těla kapsle
+	var body_radius := 0.34
 	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
+	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(38.0))
+	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-38.0))
 
-	# Testujeme kandidátské směry obejití vlevo a vpravo
-	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(28.0))
-	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-28.0))
-	var left_res := _cast_sphere_probe(space_state, from_pos, left_dir * 2.2, mask, body_radius)
-	var right_res := _cast_sphere_probe(space_state, from_pos, right_dir * 2.2, mask, body_radius)
+	# Testujeme obě strany těla
+	var left_res := _cast_sphere_probe(space_state, from_pos, left_dir * 2.5, mask, body_radius)
+	var right_res := _cast_sphere_probe(space_state, from_pos, right_dir * 2.5, mask, body_radius)
 	_record_debug_sphere(left_res, "left")
 	_record_debug_sphere(right_res, "right")
 
-	# Kontrola úzké štěrbiny přímo u překážky (např. mezi bednou a zdí na 1.2 m před NPC)
-	var lookahead_pt := from_pos + base_dir * 1.2
-	var gap_l := _cast_sphere_probe(space_state, lookahead_pt, -side_normal * 0.7, mask, body_radius)
-	var gap_r := _cast_sphere_probe(space_state, lookahead_pt, side_normal * 0.7, mask, body_radius)
-	_record_debug_sphere(gap_l, "gap_left")
-	_record_debug_sphere(gap_r, "gap_right")
+	var left_blocked: bool = left_res["hit"] and left_res["safe_distance"] < 1.6
+	var right_blocked: bool = right_res["hit"] and right_res["safe_distance"] < 1.6
 
-	var left_gap_blocked: bool = gap_l["hit"] and gap_l["safe_distance"] < 0.22
-	var right_gap_blocked: bool = gap_r["hit"] and gap_r["safe_distance"] < 0.22
+	# Vizuální pozice a barvy levé a pravé koule
+	if left_blocked:
+		_last_left_probe_pos = left_res["hit_pos"]
+		_last_left_probe_color = Color(1.0, 0.15, 0.15, 0.65) # Červená - zablokováno
+	else:
+		_last_left_probe_pos = from_pos + left_dir * 2.0
+		_last_left_probe_color = Color(0.2, 0.95, 0.4, 0.5) # Zelená - volno
 
-	# Vyhodnocení průchodnosti vlevo a vpravo
-	var left_viable: bool = not left_gap_blocked and (not left_res["hit"] or left_res["safe_distance"] >= 1.4)
-	var right_viable: bool = not right_gap_blocked and (not right_res["hit"] or right_res["safe_distance"] >= 1.4)
+	if right_blocked:
+		_last_right_probe_pos = right_res["hit_pos"]
+		_last_right_probe_color = Color(1.0, 0.15, 0.15, 0.65) # Červená - zablokováno
+	else:
+		_last_right_probe_pos = from_pos + right_dir * 2.0
+		_last_right_probe_color = Color(0.2, 0.95, 0.4, 0.5) # Zelená - volno
 
-	# Pokud ani jedna strana neposkytuje dostatek místa pro celé tělo (skutečný zátaras / zával):
-	if not left_viable and not right_viable:
+	# Vyhodnocení směru vybočení:
+	# Když detekuje středová a pravá -> otočí se doleva do volného prostoru
+	# Když detekuje středová a levá -> otočí se doprava do volného prostoru
+	if not left_blocked and right_blocked:
+		_avoidance_side = 1.0 # Uhni doleva do volného prostoru
+	elif not right_blocked and left_blocked:
+		_avoidance_side = -1.0 # Uhni doprava do volného prostoru
+	elif not left_blocked and not right_blocked:
+		# Obě strany volné -> vyber stranu s větším odstupem
+		if is_zero_approx(_avoidance_side):
+			_avoidance_side = 1.0 if left_res["safe_distance"] >= right_res["safe_distance"] else -1.0
+	else:
+		# Obě strany zablokované (úplný zával / úzká chodba)
 		_forward_blocked = true
 		_avoidance_side = 0.0
 		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
@@ -1873,27 +1959,94 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 
 	_forward_blocked = false
 
-	# Vyhýbání se POUZE do strany, která má dostatečný profil pro celé tělo
-	if left_viable and not right_viable:
-		_avoidance_side = 1.0 # Volno vlevo -> uhni doleva
-	elif right_viable and not left_viable:
-		_avoidance_side = -1.0 # Volno vpravo -> uhni doprava
-	elif left_viable and right_viable:
-		# Obě strany mají dostatek místa -> držíme směr nebo vybereme stranu s větší rezervou
-		if is_zero_approx(_avoidance_side):
-			_avoidance_side = 1.0 if left_res["safe_distance"] >= right_res["safe_distance"] else -1.0
+	# 4. KROK: Založení trvalé nové trasy (baking), aby příště nemusel detekovat znovu!
+	if uses_npc_path() and has_valid_npc_path():
+		var detour_target := _bake_detour_around_obstacle(scout_res.get("collider"), _avoidance_side, scout_res["hit_pos"], base_dir)
+		if detour_target.length_squared() > 0.01:
+			var to_detour := (detour_target - global_position)
+			to_detour.y = 0.0
+			if to_detour.length_squared() > 0.01:
+				var detour_steer := to_detour.normalized()
+				_debug_steer_dir = detour_steer
+				return detour_steer
 
-	var min_hit_dist: float = scout_res["safe_distance"]
-	if left_res["hit"]:
-		min_hit_dist = minf(min_hit_dist, left_res["safe_distance"])
-	if right_res["hit"]:
-		min_hit_dist = minf(min_hit_dist, right_res["safe_distance"])
-
-	var target_avoid_deg := clampf(lerpf(36.0, 18.0, min_hit_dist / forward_dist), 18.0, 36.0)
+	var target_avoid_deg: float = 48.0
 	var target_angle := _avoidance_side * deg_to_rad(target_avoid_deg)
-	_current_avoidance_angle = move_toward(_current_avoidance_angle, target_angle, delta * deg_to_rad(130.0))
+	_current_avoidance_angle = move_toward(_current_avoidance_angle, target_angle, delta * deg_to_rad(140.0))
 
 	var steer_dir := base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
 	_debug_steer_dir = steer_dir
-	_last_sphere_probe_color = Color(1.0, 0.65, 0.1, 0.45)
 	return steer_dir
+
+
+## Trvale vytvoří a vloží novou objízdnou trasu do patrol křivky Curve3D okolo překážky
+func _bake_detour_around_obstacle(collider: Object, avoidance_side: float, hit_pos: Vector3, base_dir: Vector3) -> Vector3:
+	if not uses_npc_path() or not has_valid_npc_path():
+		return Vector3.ZERO
+
+	# Identifikace překážky proti opakovanému vkládání bodů
+	var obs_id: int = collider.get_instance_id() if is_instance_valid(collider) else 0
+	var grid_key: String = "detour_%.1f_%.1f" % [roundf(hit_pos.x * 0.5), roundf(hit_pos.z * 0.5)]
+	if (obs_id != 0 and obs_id in _baked_detour_obstacles) or (grid_key in _baked_detour_obstacles):
+		return Vector3.ZERO
+	if obs_id != 0:
+		_baked_detour_obstacles.append(obs_id)
+	_baked_detour_obstacles.append(grid_key)
+
+	var obs_pos: Vector3 = hit_pos
+	if is_instance_valid(collider) and collider is Node3D:
+		obs_pos = (collider as Node3D).global_position
+	obs_pos.y = global_position.y
+
+	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
+	# avoidance_side > 0.0 = VLEVO, < 0.0 = VPRAVO
+	var clear_dir := (-side_normal if avoidance_side > 0.0 else side_normal).normalized()
+
+	var space_state := get_world_3d().direct_space_state
+	var mask := (1 << 0) | (1 << 1)
+	var desired_clearance: float = 3.2
+	if space_state:
+		var side_probe := _cast_sphere_probe(space_state, obs_pos, clear_dir * desired_clearance, mask, 0.35)
+		if side_probe["hit"]:
+			desired_clearance = clampf(side_probe["safe_distance"] * 0.85, 1.8, 3.5)
+
+	var nav_map := nav_agent.get_navigation_map()
+	var pt_a := obs_pos - base_dir * 1.4 + clear_dir * desired_clearance
+	var pt_b := obs_pos + base_dir * 1.4 + clear_dir * desired_clearance
+	if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+		pt_a = NavigationServer3D.map_get_closest_point(nav_map, pt_a)
+		pt_b = NavigationServer3D.map_get_closest_point(nav_map, pt_b)
+
+	var insert_idx := _npc_path_waypoint_index
+	if _npc_path_direction < 0:
+		insert_idx = _npc_path_waypoint_index + 1
+
+	var local_a := npc_path.to_local(pt_a)
+	var local_b := npc_path.to_local(pt_b)
+
+	npc_path.curve.add_point(local_a, Vector3.ZERO, Vector3.ZERO, insert_idx)
+	npc_path.curve.add_point(local_b, Vector3.ZERO, Vector3.ZERO, insert_idx + 1)
+
+	var meta_key := NPC_PATH_POINT_ACTIONS_META if npc_path.has_meta(NPC_PATH_POINT_ACTIONS_META) else LEGACY_NPC_PATH_POINT_ACTIONS_META
+	var raw_actions = npc_path.get_meta(meta_key, [])
+	var actions_arr: Array = raw_actions.duplicate() if raw_actions is Array else []
+	if insert_idx <= actions_arr.size():
+		actions_arr.insert(insert_idx, {"action": "move", "duration": 0.0, "target": ""})
+		actions_arr.insert(insert_idx + 1, {"action": "move", "duration": 0.0, "target": ""})
+		npc_path.set_meta(meta_key, actions_arr)
+
+	# Posun indexů čekajících stavů pokud byly za bodem vložení
+	if _blocked_waypoint_index >= insert_idx:
+		_blocked_waypoint_index += 2
+	if _saved_pre_coop_waypoint >= insert_idx:
+		_saved_pre_coop_waypoint += 2
+
+	# Aktualizujeme cíl navigace na první bod nově vzniklé objížďky
+	_npc_path_waypoint_index = insert_idx
+	_requested_navigation_target = pt_a
+	nav_agent.target_position = pt_a
+	_navigation_target_is_route = true
+	is_moving = true
+	print("[NPC Path] Do patrol trasy byly trvale vlozeny nove body objizdky: wp=%d a %d (prekazka=%s, odstup=%.2fm)" % [insert_idx + 1, insert_idx + 2, obs_pos, desired_clearance])
+	update_debug_state("Nova trasa objizdky zalozena")
+	return pt_a

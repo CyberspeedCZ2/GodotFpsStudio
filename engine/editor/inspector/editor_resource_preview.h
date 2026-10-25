@@ -82,6 +82,7 @@ class EditorResourcePreview : public Node {
 		Ref<Resource> resource;
 		String path;
 		Callable callback;
+		int thumbnail_size = 0;
 	};
 
 	List<QueueItem> queue;
@@ -98,12 +99,13 @@ class EditorResourcePreview : public Node {
 		Dictionary preview_metadata;
 		uint32_t last_hash = 0;
 		uint64_t modified_time = 0;
+		int preview_size = 0;
 	};
 
 	HashMap<String, Item> cache;
 
-	void _preview_ready(const String &p_path, int p_hash, const Ref<Texture2D> &p_texture, const Ref<Texture2D> &p_small_texture, const Callable &p_callback, const Dictionary &p_metadata);
-	void _generate_preview(Ref<ImageTexture> &r_texture, Ref<ImageTexture> &r_small_texture, const QueueItem &p_item, const String &cache_base, Dictionary &p_metadata);
+	void _preview_ready(const String &p_path, int p_hash, const Ref<Texture2D> &p_texture, const Ref<Texture2D> &p_small_texture, const Callable &p_callback, const Dictionary &p_metadata, int p_preview_size);
+	void _generate_preview(Ref<ImageTexture> &r_texture, Ref<ImageTexture> &r_small_texture, const QueueItem &p_item, const String &cache_base, Dictionary &p_metadata, int p_thumbnail_size);
 
 	int small_thumbnail_size = -1;
 
@@ -128,6 +130,8 @@ protected:
 	static void _bind_methods();
 
 public:
+	static constexpr int TOOLTIP_PREVIEW_SIZE = 384;
+
 	static EditorResourcePreview *get_singleton();
 
 	struct PreviewItem {
@@ -136,6 +140,7 @@ public:
 	};
 
 	void queue_resource_preview(const String &p_path, const Callable &p_callback);
+	void queue_resource_preview_for_tooltip(const String &p_path, const Callable &p_callback);
 	void queue_edited_resource_preview(const Ref<Resource> &p_res, const Callable &p_callback);
 	const Dictionary get_preview_metadata(const String &p_path) const;
 
