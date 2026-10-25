@@ -234,3 +234,23 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Statická architektura levelu (stěny, dveře, šikmé rampy UniBuilderu a pochozí povrchy na NavMeshi) je v `_cast_sphere_probe` detekována jako pochozí terén a nikdy nespouští falešné objízdné body na hranách ramp.
     - Sestaveno, otestováno 5500snímkovou headless simulací bez jediné chyby. Commitnuto a pushnuto na GitHub (`main`).
 
+16. **Adaptivní variabilní offset, odstranění zablokovaných waypointů a NavMesh String-Pulling (Zero-Loop Funnel Bypass) — [HOTOVO]**:
+    - **Analýza chování v herních enginech (UE5, Source Engine / Valve, Unity)**:
+      - **Unreal Engine 5 (Recast & Detour)**: Využívá Funnel algoritmus (string-pulling) přes koridory NavMesh polygonů. Polygony jsou automaticky odsazeny od zdí o poloměr agenta (`AgentRadius`) a dynamické překážky vyřezávají navmesh (`carve`). Při výpočtu obchvatu Funnel napne „provázek“ od vstupu k výstupu – pokud existuje přímá viditelnost, eliminuje všechny mezilehlé vrcholy a spojí trasu rovně („na přímo rovně“). Pokud překážky tvoří shluk (např. 2 bedny u sebe), Recast je sloučí do jediného souvislého ostrova, kolem kterého vede jediný hladký obchvat bez vnitřních kliček.
+      - **Valve Source Engine (Half-Life 2 / `CNavMesh`)**: AI při zablokování úseku patrol trasy (`path_track` / `path_corner`) physics bednami provede „Corridor Bypassing“: najde poslední čistý uzel před závalem a první čistý uzel za ním. Všechny zablokované uzly uvnitř závalu jsou z trasy odstraněny / přeskočeny.
+    - **Odstranění zablokovaných bodů z trasy („Smazat cestu“)**:
+      - **Příčina smyček a uzlů**: Starý kód pouze vložil 2 body před překážku, ale ponechal původní waypointy, které ležely mezi bednami nebo přímo v nich. Trasa se pak z objízdného bodu vracela zpět mezi bedny a u druhé bedny vytvořila další objížďku, což vytvořilo křížící se smyčky ve tvaru osmičky (viditelné na screenech uživatele). Při návratu v reverzní patrole NPC v tomto uzlu rotovalo na místě.
+      - **Řešení**: Implementována funkce `_collect_obstacle_cluster`, která detekuje celý shluk překážek do 4.5 m (obě bedny). Funkce `_find_clean_exit_waypoint` vyhledá první skutečně bezpečný a volný waypoint za celým shlukem. Všechny staré zablokované body mezi vstupem a výstupem jsou z `Curve3D` i metadat `_fps_npc_point_actions` kompletně smazány (`remove_point`).
+    - **Adaptivní variabilní offset (Ochrana proti vkládání bodů do zdi)**:
+      - **Příčina bodů ve zdi**: Fixní matematický offset (`obs_radius + 1.0 m`) v úzkých chodbách přesahoval dostupnou šířku a umístil waypoint do zdi.
+      - **Řešení**: `_calculate_variable_clearance_point` změří skutečný odstup k protější zdi prostorovým paprskem (`Layer 1 World`). Pokud je chodba užší než 2.2 m, bod je přesně vycentrován do středu volného prostoru (`clampf(total_corridor * 0.5, ...)`). Pozice je navíc zarovnána na legální NavMesh polygon pomocí `NavigationServer3D.map_get_closest_point`. Bod nikdy nemůže skončit ve zdi!
+    - **String-Pulling a spojení přímo rovně („Na přímo rovně“)**:
+      - Pomocí `NavigationServer3D.map_get_path(nav_map, entry_pos, exit_pos, true)` se spustí Funnel algoritmus.
+      - Pokud je průchod volný nebo existuje přímá linie, server vrátí pouze start a cíl (`size <= 2`). Trasa je spojena přímo rovně v jediné čisté přímce bez zbytečných bodů.
+      - Pokud je nutné bedny obejít, vloží se přesné lomové body NavMeshe (typicky 1–2).
+    - **Symetrické Bézier tečny (Zaručený reverzní návrat bez točení ve smyčce)**:
+      - Každý vložený bod má striktně symetrické $C^1$ tečny: `t_out = chord_dir * handle_len` a `t_in = -t_out`.
+      - Křivka je striktně planární a monotónní, bez jakýchkoliv kliček, ostrých záhybů či překřížení.
+      - Při otočení patroly (`_npc_path_direction = -1`) NPC prochází tou samou hladkou křivkou zpět bez jakéhokoliv zasekávání nebo točení na místě.
+    - Sestaveno, podepsáno do `Godot FPS Studio.app`, ověřeno 6500snímkovou headless simulací v `AI_Beehave_Test_Level.tscn` (průchod tam i zpět přes upravenou trasu proběhl naprosto hladce). Commitnuto a pushnuto na GitHub (`main`).
+

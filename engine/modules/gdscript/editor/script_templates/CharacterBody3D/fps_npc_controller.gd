@@ -2038,97 +2038,309 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 	return steer_dir
 
 
-## Trvale vytvoří a vloží novou plynulou Bézier objízdnou trasu do patrol křivky Curve3D okolo překážky
-func _bake_detour_around_obstacle(collider: Object, avoidance_side: float, hit_pos: Vector3, base_dir: Vector3) -> Vector3:
+## Shromáždí všechny překážky tvořící souvislý cluster (např. 2 nebo více beden u sebe)
+func _collect_obstacle_cluster(primary_obs: Object, hit_pos: Vector3, search_radius: float = 4.5) -> Array:
+	var cluster: Array = []
+	if is_instance_valid(primary_obs):
+		cluster.append(primary_obs)
+
+	var tree := get_tree()
+	if tree:
+		var heavy_nodes := tree.get_nodes_in_group("fps_heavy_obstacle")
+		for node in heavy_nodes:
+			if not is_instance_valid(node) or not (node is Node3D):
+				continue
+			if node in cluster:
+				continue
+			var node3d := node as Node3D
+			var dist := Vector2(node3d.global_position.x - hit_pos.x, node3d.global_position.z - hit_pos.z).length()
+			if dist <= search_radius:
+				cluster.append(node)
+	return cluster
+
+
+## Ověří, zda daná pozice koliduje nebo je příliš blízko k jakékoliv překážce v clusteru
+func _is_position_obstructed_by_cluster(pos: Vector3, cluster: Array, clearance_padding: float = 0.85) -> bool:
+	for obs in cluster:
+		if not is_instance_valid(obs) or not (obs is Node3D):
+			continue
+		var obs_node := obs as Node3D
+		var obs_pos := obs_node.global_position
+		var obs_rad := _get_obstacle_horizontal_radius(obs)
+
+		var checked_shape := false
+		for child in obs_node.get_children():
+			if child is CollisionShape3D:
+				var col_shape := child as CollisionShape3D
+				if col_shape.shape is BoxShape3D:
+					var box := col_shape.shape as BoxShape3D
+					var local_p := col_shape.to_local(pos)
+					var half := box.size * 0.5 + Vector3(clearance_padding, 0.5, clearance_padding)
+					if absf(local_p.x) <= half.x and absf(local_p.z) <= half.z:
+						return true
+					checked_shape = true
+					break
+
+		if not checked_shape:
+			var flat_dist := Vector2(pos.x - obs_pos.x, pos.z - obs_pos.z).length()
+			if flat_dist < (obs_rad + clearance_padding):
+				return true
+	return false
+
+
+## Najde první čistý, nezablokovaný výstupní waypoint za clusterem překážek
+func _find_clean_exit_waypoint(from_idx: int, direction: int, cluster: Array, nav_map: RID) -> int:
+	var curve: Curve3D = npc_path.curve
+	var point_count := curve.get_point_count()
+	var exit_idx := clampi(from_idx, 0, point_count - 1)
+	var check_idx := from_idx
+
+	for _i in range(point_count):
+		if check_idx < 0 or check_idx >= point_count:
+			break
+		var pt_pos := npc_path.to_global(curve.get_point_position(check_idx))
+		var is_obstructed := _is_position_obstructed_by_cluster(pt_pos, cluster, 0.85)
+		if not is_obstructed:
+			exit_idx = check_idx
+			if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+				var closest := NavigationServer3D.map_get_closest_point(nav_map, pt_pos)
+				if closest.distance_to(pt_pos) < 0.65:
+					return exit_idx
+		check_idx += direction
+
+	return exit_idx
+
+
+## Vypočítá adaptivní variabilní clearance od překážky a stěn (nikdy neumístí bod do zdi!)
+func _calculate_variable_clearance_point(raw_pos: Vector3, cluster: Array, nav_map: RID, space_state: PhysicsDirectSpaceState3D) -> Vector3:
+	var adjusted := raw_pos
+
+	var nearest_obs: Node3D = null
+	var min_dist_sq := INF
+	for obs in cluster:
+		if is_instance_valid(obs) and (obs is Node3D):
+			var d_sq := raw_pos.distance_squared_to((obs as Node3D).global_position)
+			if d_sq < min_dist_sq:
+				min_dist_sq = d_sq
+				nearest_obs = obs as Node3D
+
+	if nearest_obs:
+		var obs_pos := nearest_obs.global_position
+		var obs_rad := _get_obstacle_horizontal_radius(nearest_obs)
+		var out_dir := (raw_pos - obs_pos)
+		out_dir.y = 0.0
+		if out_dir.length_squared() > 0.001:
+			out_dir = out_dir.normalized()
+		else:
+			out_dir = Vector3.FORWARD
+
+		# Test vzdálenosti ke zdi (Layer 1 World)
+		var wall_dist := 4.0
+		if space_state:
+			var wall_probe := _cast_sphere_probe(space_state, raw_pos, out_dir * 3.0, 1, 0.25)
+			if wall_probe["hit"]:
+				wall_dist = wall_probe["safe_distance"]
+
+		# Celková dostupná šířka průchozího koridoru mezi bednou a stěnou
+		var current_dist := Vector2(raw_pos.x - obs_pos.x, raw_pos.z - obs_pos.z).length()
+		var total_corridor := current_dist + wall_dist
+
+		# Variabilní offset:
+		# - V široké místnosti: optimální odstup obs_rad + 0.85 m
+		# - V úzké chodbě: přesně na střed volného prostoru, nikdy do stěny!
+		var target_offset := obs_rad + 0.85
+		if total_corridor < (obs_rad + 2.0):
+			target_offset = clampf(total_corridor * 0.5, obs_rad + 0.45, maxf(total_corridor - 0.45, obs_rad + 0.35))
+
+		adjusted = obs_pos + out_dir * target_offset
+		adjusted.y = raw_pos.y
+
+	if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+		adjusted = NavigationServer3D.map_get_closest_point(nav_map, adjusted)
+
+	return adjusted
+
+
+## Trvale vytvoří a vloží novou plynulou Bézier objízdnou trasu do patrol křivky Curve3D okolo překážky.
+## - Odstraní zablokované waypointy ("smazat cestu")
+## - Spojí trasu přímo rovně ("na přímo rovně") nebo minimem čistých NavMesh Funnel bodů
+## - Využívá variabilní offset (nikdy do stěny) a symetrické C1 tečny (nulové smyčky, spolehlivý návrat)
+func _bake_detour_around_obstacle(collider: Object, _avoidance_side: float, hit_pos: Vector3, _base_dir: Vector3) -> Vector3:
 	if not uses_npc_path() or not has_valid_npc_path():
 		return Vector3.ZERO
 	if not _is_valid_detour_obstacle(collider):
 		return Vector3.ZERO
 
-	# Identifikace překážky proti opakovanému vkládání bodů
-	var obs_id: int = collider.get_instance_id() if is_instance_valid(collider) else 0
-	var grid_key: String = "detour_%.1f_%.1f" % [roundf(hit_pos.x * 0.5), roundf(hit_pos.z * 0.5)]
-	if (obs_id != 0 and obs_id in _baked_detour_obstacles) or (grid_key in _baked_detour_obstacles):
+	var space_state := get_world_3d().direct_space_state
+	var nav_map := nav_agent.get_navigation_map()
+
+	# 1. KROK: Shromáždit celý cluster překážek (pokud jsou 2 nebo více beden u sebe)
+	var cluster := _collect_obstacle_cluster(collider, hit_pos, 4.5)
+
+	# Zkontrolovat, zda již tento cluster nebyl dříve zpracován
+	var already_baked := false
+	for obs in cluster:
+		var o_id: int = obs.get_instance_id() if is_instance_valid(obs) else 0
+		if o_id != 0 and o_id in _baked_detour_obstacles:
+			already_baked = true
+			break
+	var grid_key := "detour_%.1f_%.1f" % [roundf(hit_pos.x * 0.4), roundf(hit_pos.z * 0.4)]
+	if grid_key in _baked_detour_obstacles or already_baked:
 		return Vector3.ZERO
-	if obs_id != 0:
-		_baked_detour_obstacles.append(obs_id)
+
+	# Označit všechny překážky v clusteru jako zpracované
+	for obs in cluster:
+		var o_id: int = obs.get_instance_id() if is_instance_valid(obs) else 0
+		if o_id != 0:
+			_baked_detour_obstacles.append(o_id)
 	_baked_detour_obstacles.append(grid_key)
 
-	var obs_pos: Vector3 = hit_pos
-	if is_instance_valid(collider) and collider is Node3D:
-		obs_pos = (collider as Node3D).global_position
-	obs_pos.y = global_position.y
+	var curve: Curve3D = npc_path.curve
+	var point_count := curve.get_point_count()
+	if point_count < 2:
+		return Vector3.ZERO
 
-	# Zjistíme rozměr modelu a nastavíme offset přesně ~1.0 m od okraje modelu
-	var obs_radius := _get_obstacle_horizontal_radius(collider)
-	var desired_clearance: float = obs_radius + 1.0 # Přesně 1 metr od modelu překážky
+	# 2. KROK: Určit vstupní bod (entry) a najít čistý výstupní bod (exit) za clusterem
+	var dir := 1 if _npc_path_direction >= 0 else -1
+	var entry_idx := -1
+	var exit_idx := -1
+	var entry_pos := global_position
 
-	var side_normal := Vector3(-base_dir.z, 0.0, base_dir.x).normalized()
-	# avoidance_side > 0.0 = VLEVO, < 0.0 = VPRAVO
-	var clear_dir := (-side_normal if avoidance_side > 0.0 else side_normal).normalized()
+	if dir > 0:
+		entry_idx = maxi(_npc_path_waypoint_index - 1, 0)
+		var entry_pt_pos := npc_path.to_global(curve.get_point_position(entry_idx))
+		if not _is_position_obstructed_by_cluster(entry_pt_pos, cluster, 0.85):
+			entry_pos = entry_pt_pos
+		else:
+			entry_pos = global_position
 
-	var space_state := get_world_3d().direct_space_state
-	var mask := (1 << 0) | (1 << 1)
-	if space_state:
-		# Zkontrolujeme zda máme na zvolené straně dost místa
-		var side_probe := _cast_sphere_probe(space_state, obs_pos, clear_dir * (desired_clearance + 0.3), mask, 0.3)
-		if side_probe["hit"] and side_probe["safe_distance"] < (obs_radius + 0.75):
-			# Na této straně je stěna příliš blízko! Vyzkoušíme opačnou stranu do volného prostoru
-			var alt_dir := -clear_dir
-			var alt_probe := _cast_sphere_probe(space_state, obs_pos, alt_dir * (desired_clearance + 0.3), mask, 0.3)
-			if not alt_probe["hit"] or alt_probe["safe_distance"] >= side_probe["safe_distance"]:
-				clear_dir = alt_dir
-				avoidance_side = -avoidance_side
-				if alt_probe["hit"]:
-					desired_clearance = clampf(alt_probe["safe_distance"] - 0.2, obs_radius + 0.6, desired_clearance)
-		elif side_probe["hit"]:
-			desired_clearance = clampf(side_probe["safe_distance"] - 0.2, obs_radius + 0.6, desired_clearance)
+		exit_idx = _find_clean_exit_waypoint(_npc_path_waypoint_index, dir, cluster, nav_map)
+		if exit_idx <= entry_idx:
+			exit_idx = mini(entry_idx + 1, point_count - 1)
+	else:
+		entry_idx = mini(_npc_path_waypoint_index + 1, point_count - 1)
+		var entry_pt_pos := npc_path.to_global(curve.get_point_position(entry_idx))
+		if not _is_position_obstructed_by_cluster(entry_pt_pos, cluster, 0.85):
+			entry_pos = entry_pt_pos
+		else:
+			entry_pos = global_position
 
-	var nav_map := nav_agent.get_navigation_map()
-	var lead_dist := obs_radius + 0.8
-	var pt_a := obs_pos - base_dir * lead_dist + clear_dir * desired_clearance
-	var pt_b := obs_pos + base_dir * lead_dist + clear_dir * desired_clearance
+		exit_idx = _find_clean_exit_waypoint(_npc_path_waypoint_index, dir, cluster, nav_map)
+		if exit_idx >= entry_idx:
+			exit_idx = maxi(entry_idx - 1, 0)
+
+	var exit_pos := npc_path.to_global(curve.get_point_position(exit_idx))
 	if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
-		pt_a = NavigationServer3D.map_get_closest_point(nav_map, pt_a)
-		pt_b = NavigationServer3D.map_get_closest_point(nav_map, pt_b)
+		entry_pos = NavigationServer3D.map_get_closest_point(nav_map, entry_pos)
+		exit_pos = NavigationServer3D.map_get_closest_point(nav_map, exit_pos)
 
-	var insert_idx := _npc_path_waypoint_index
-	if _npc_path_direction < 0:
-		insert_idx = _npc_path_waypoint_index + 1
-
-	var local_a := npc_path.to_local(pt_a)
-	var local_b := npc_path.to_local(pt_b)
-
-	# Vypočet hladkých kubických Bézier tečen pro zaoblení do plynulého oblouku (žádné kostrbaté hrany!)
-	var handle_len := lead_dist * 0.45
-	var tangent_a_dir := (base_dir + clear_dir * 0.4).normalized()
-	var tangent_b_dir := (base_dir - clear_dir * 0.4).normalized()
-	var tangent_a_local := npc_path.to_local(pt_a + tangent_a_dir * handle_len) - local_a
-	var tangent_b_local := npc_path.to_local(pt_b + tangent_b_dir * handle_len) - local_b
-
-	npc_path.curve.add_point(local_a, -tangent_a_local, tangent_a_local, insert_idx)
-	npc_path.curve.add_point(local_b, -tangent_b_local, tangent_b_local, insert_idx + 1)
-
+	# 3. KROK: SMAZAT CESTU (odstranit zablokované waypointy mezi entry a exit)
 	var meta_key := NPC_PATH_POINT_ACTIONS_META if npc_path.has_meta(NPC_PATH_POINT_ACTIONS_META) else LEGACY_NPC_PATH_POINT_ACTIONS_META
 	var raw_actions = npc_path.get_meta(meta_key, [])
 	var actions_arr: Array = raw_actions.duplicate() if raw_actions is Array else []
-	if insert_idx <= actions_arr.size():
-		actions_arr.insert(insert_idx, {"action": "move", "duration": 0.0, "target": ""})
-		actions_arr.insert(insert_idx + 1, {"action": "move", "duration": 0.0, "target": ""})
-		npc_path.set_meta(meta_key, actions_arr)
 
-	# Posun indexů čekajících stavů pokud byly za bodem vložení
-	if _blocked_waypoint_index >= insert_idx:
-		_blocked_waypoint_index += 2
-	if _saved_pre_coop_waypoint >= insert_idx:
-		_saved_pre_coop_waypoint += 2
+	var min_del_idx := mini(entry_idx, exit_idx) + 1
+	var max_del_idx := maxi(entry_idx, exit_idx) - 1
+	var deleted_count := 0
 
-	# Aktualizujeme cíl navigace na první bod nově vzniklé objížďky
-	_npc_path_waypoint_index = insert_idx
-	_requested_navigation_target = pt_a
-	nav_agent.target_position = pt_a
+	if max_del_idx >= min_del_idx and min_del_idx < curve.get_point_count():
+		for d_idx in range(max_del_idx, min_del_idx - 1, -1):
+			if d_idx >= 0 and d_idx < curve.get_point_count():
+				curve.remove_point(d_idx)
+				if d_idx < actions_arr.size():
+					actions_arr.remove_at(d_idx)
+				deleted_count += 1
+
+		if dir > 0:
+			exit_idx -= deleted_count
+		else:
+			entry_idx -= deleted_count
+
+	# 4. KROK: NavMesh String-Pulling (Funnel algoritmus)
+	var string_pulled_corners: Array[Vector3] = []
+	if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+		var nav_path := NavigationServer3D.map_get_path(nav_map, entry_pos, exit_pos, true)
+		if nav_path.size() > 2:
+			for p_idx in range(1, nav_path.size() - 1):
+				var corner := nav_path[p_idx]
+				corner = _calculate_variable_clearance_point(corner, cluster, nav_map, space_state)
+				var is_duplicate := false
+				for existing in string_pulled_corners:
+					if corner.distance_squared_to(existing) < 0.16:
+						is_duplicate = true
+						break
+				if not is_duplicate:
+					string_pulled_corners.append(corner)
+
+	# 5. KROK: VLOŽENÍ ČISTÝCH BODŮ S ROVNÝMI / SYMETRICKÝMI BEZIER TEČNAMI
+	var insert_idx := mini(entry_idx, exit_idx) + 1
+	if dir < 0:
+		string_pulled_corners.reverse()
+
+	if string_pulled_corners.is_empty():
+		# Přímé rovné spojení bez zbytečných smyček ("na přímo rovně")
+		var straight_chord := (exit_pos - entry_pos)
+		var straight_len := minf(straight_chord.length() * 0.25, 0.45)
+		var straight_tangent := straight_chord.normalized() * straight_len
+		var local_t_out := npc_path.to_local(entry_pos + straight_tangent) - npc_path.to_local(entry_pos)
+		var local_t_in := npc_path.to_local(exit_pos - straight_tangent) - npc_path.to_local(exit_pos)
+		if entry_idx >= 0 and entry_idx < curve.get_point_count():
+			curve.set_point_out(entry_idx, local_t_out)
+		if exit_idx >= 0 and exit_idx < curve.get_point_count():
+			curve.set_point_in(exit_idx, local_t_in)
+		print("[NPC Path] Zablokovane body smazany (%d bodu), cesta spojena NA PRIMO ROVNE: wp=%d -> wp=%d" % [deleted_count, entry_idx + 1, exit_idx + 1])
+	else:
+		var all_pts: Array[Vector3] = []
+		all_pts.append(entry_pos)
+		for c in string_pulled_corners:
+			all_pts.append(c)
+		all_pts.append(exit_pos)
+
+		for i in range(string_pulled_corners.size()):
+			var c_pos := string_pulled_corners[i]
+			var prev_p := all_pts[i]
+			var next_p := all_pts[i + 2]
+
+			var chord := (next_p - prev_p)
+			chord.y = 0.0
+			var chord_dir := chord.normalized() if chord.length_squared() > 0.001 else Vector3.FORWARD
+			var seg_len := minf(c_pos.distance_to(prev_p), c_pos.distance_to(next_p))
+			var handle_len := clampf(seg_len * 0.32, 0.15, 0.55)
+
+			var t_out := chord_dir * handle_len
+			var t_in := -t_out # Přesně symetrické tečny (C1 kontinuita) = ŽÁDNÉ SMYČKY ANI UZLY!
+
+			var local_pt := npc_path.to_local(c_pos)
+			var local_t_in := npc_path.to_local(c_pos + t_in) - local_pt
+			var local_t_out := npc_path.to_local(c_pos + t_out) - local_pt
+
+			var target_idx := insert_idx + i
+			curve.add_point(local_pt, local_t_in, local_t_out, target_idx)
+			actions_arr.insert(target_idx, {"action": "move", "duration": 0.0, "target": ""})
+
+		print("[NPC Path] Zalozena nova variabilni objizdka (%d bodu, smazano %d puvodnich) bez kolize se stenou" % [string_pulled_corners.size(), deleted_count])
+
+	npc_path.set_meta(meta_key, actions_arr)
+
+	# Posun indexů čekajících stavů
+	var delta_pts := string_pulled_corners.size() - deleted_count
+	if _blocked_waypoint_index >= min_del_idx:
+		_blocked_waypoint_index = maxi(_blocked_waypoint_index + delta_pts, 0)
+	if _saved_pre_coop_waypoint >= min_del_idx:
+		_saved_pre_coop_waypoint = maxi(_saved_pre_coop_waypoint + delta_pts, 0)
+
+	# 6. KROK: AKTUALIZACE CÍLE NAVIGACE
+	var target_wp_idx := insert_idx if not string_pulled_corners.is_empty() else exit_idx
+	if target_wp_idx >= curve.get_point_count():
+		target_wp_idx = curve.get_point_count() - 1
+	_npc_path_waypoint_index = target_wp_idx
+
+	var next_target := npc_path.to_global(curve.get_point_position(_npc_path_waypoint_index))
+	_requested_navigation_target = next_target
+	nav_agent.target_position = next_target
 	_navigation_target_is_route = true
 	is_moving = true
-	print("[NPC Path] Do patrol trasy byly trvale vlozeny hladke Bezier body objizdky: wp=%d a %d (model_rad=%.2fm, odstup=%.2fm)" % [insert_idx + 1, insert_idx + 2, obs_radius, desired_clearance])
-	update_debug_state("Nova hladka trasa objizdky zalozena")
-	return pt_a
+
+	update_debug_state("Variabilni objizdka zalozena")
+	return next_target
+
