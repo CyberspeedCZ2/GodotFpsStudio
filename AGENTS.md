@@ -254,3 +254,25 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Při otočení patroly (`_npc_path_direction = -1`) NPC prochází tou samou hladkou křivkou zpět bez jakéhokoliv zasekávání nebo točení na místě.
     - Sestaveno, podepsáno do `Godot FPS Studio.app`, ověřeno 6500snímkovou headless simulací v `AI_Beehave_Test_Level.tscn` (průchod tam i zpět přes upravenou trasu proběhl naprosto hladce). Commitnuto a pushnuto na GitHub (`main`).
 
+17. **Zrakový kužel NPC (Vision Frustum), pohled z očí [F4] a spolehlivý obousměrný obchvat překážek (Return Patrol Detour & Vision) — [HOTOVO]**:
+    - **Diagnostika zasekávání při návratu (Return Patrol Freeze)**:
+      - **Příčina 1 (Předčasný surrender v úzkých chodbách)**: V `_probe_obstacle_avoidance` při čelní detekci překážky (`HeavyObstacle`) v chodbě o šířce ~2.5 m levá i pravá vyhodnocovací koule ($\pm 38^\circ$) narážely do bočních zdí chodby (`safe_distance < 1.6 m`). Kód vyhodnotil situaci jako úplný slepý zával (`else: _forward_blocked = true; return base_dir`) a okamžitě vyskočil před voláním `_bake_detour_around_obstacle`. NPC se tak zaseklo čelem do bedny v nekonečné oscilaci vycouvání a nárazu.
+      - **Příčina 2 (RigidBody3D v rovné NavMesh chodbě)**: Statický NavMesh v rovné chodbě obsahuje pouze rohy dveřních zárubní, ale neví o fyzikálních `RigidBody3D` bednách. Přímé spojení mezi waypointy proto protínalo model bedny.
+    - **AI Vision Probing Fan a porovnávání hloubky koridoru**:
+      - Dvě fixní boční koule nahrazeny zrakovým vějířem úhlů (vnitřní $\pm 18^\circ$ a vnější $\pm 36^\circ$).
+      - Algoritmus měří skutečnou průchozí hloubku (`left_clearance` vs `right_clearance`). I v úzké chodbě automaticky vybere stranu s větším volným prostorem a nikdy se nevzdává se `_forward_blocked = true`, pokud je na jedné straně koridoru volno.
+      - Adaptivní úhel vybočení je dynamicky omezen na $18^\circ$–$38^\circ$ podle vzdálenosti, takže NPC nebourá do bočních zdí.
+    - **Segment-by-Segment Obstacle Verification (Garantovaný obchvat)**:
+      - Zavedena geometrická kontrola úseček `_does_segment_intersect_cluster(p_from, p_to, cluster, clearance)` počítající přesnou vzdálenost od středu překážky k trajektorii.
+      - Pokud jakýkoliv úsek trasy (i v rovném NavMesh koridoru) protíná těleso bedny, algoritmus automaticky vygeneruje a vloží 3 hladké bypass body (`pre_pos`, `cleared_side` s variabilním odstupem od zdi a `post_pos`).
+      - Body jsou řazeny striktně ve vzestupném indexovém pořadí, takže trasa je matematicky konzistentní a hladká v obou směrech (tam i zpět).
+    - **Zrakový kužel NPC (3D Vision Frustum Wireframe)**:
+      - Export proměnné na NPC: `show_vision_frustum = true`, `vision_fov_horizontal = 75.0°`, `vision_fov_vertical = 40.0°`, `vision_range = 4.8 m`.
+      - V `_draw_debug_vision_frustum` se v reálném čase před očima NPC vykresluje 3D perspektivní jehlan: 4 zorné hrany od očí k rohům, obdélníkový rámeček vzdálené roviny, středový osový paprsek, záměrný kříž (reticle) a vějíř 4 vnitřních zrakových paprsků.
+      - Barevná indikace zraku: Azurová = volný výhled, Zlatožlutá / oranžová = aktivní vybočení / objížďka, Červená = zablokovaný výhled.
+    - **Pohled z očí NPC AI ([F4] NPC Zrak)**:
+      - Na NPC vytvořena `VisionCamera` (`Camera3D`) umístěná přímo v očích NPC (`origin = (0, 1.45, -0.38)`).
+      - V `PlayerDevTools` implementována metoda `toggle_npc_camera()` a v `FPS_character_script.gd` namapována klávesa `[F4]`.
+      - Stisknutím `[F4]` se kamera hráče okamžitě přepne do očí NPC AI s notifikací v HUD overlayi (`[F4] NPC Zrak`). Dalším stiskem se kamera plynule vrátí k hráči.
+    - Sestaveno a podepsáno do `Godot FPS Studio.app`. Ověřeno 14000snímkovou headless simulací v `AI_Beehave_Test_Level.tscn` (NPC provedlo kompletní okruh tam, bez jediného zaváhání obešlo bednu na zpáteční cestě a pokračovalo do dalšího kola). Commitnuto a pushnuto na GitHub (`main`).
+

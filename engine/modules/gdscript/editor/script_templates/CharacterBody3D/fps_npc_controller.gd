@@ -24,6 +24,10 @@ const LEGACY_NPC_PATH_POINT_ACTIONS_META := "fps_npc_point_actions"
 @export var show_steer_vector: bool = true
 @export var show_route_curve: bool = true
 @export var show_nav_path: bool = true
+@export var show_vision_frustum: bool = true
+@export var vision_fov_horizontal: float = 75.0
+@export var vision_fov_vertical: float = 40.0
+@export var vision_range: float = 4.8
 
 @export_group("Movement")
 @export_enum("Random Wander", "Assigned NPC Path") var movement_mode: int = MOVEMENT_MODE_RANDOM_WANDER
@@ -153,6 +157,7 @@ var _last_left_probe_color := Color(0.2, 0.95, 0.4, 0.35)
 var _last_right_probe_pos := Vector3.ZERO
 var _last_right_probe_color := Color(1.0, 0.15, 0.15, 0.5)
 var _baked_detour_obstacles: Array = []
+var _vision_camera: Camera3D = null
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 
 var _active_route_locomotion: int = LOCOMOTION_WALK
@@ -179,6 +184,7 @@ func _ready() -> void:
 		bump_sensor.body_exited.connect(_on_bump_sensor_body_exited)
 	_update_overhead_status()
 	_setup_debug_visuals()
+	_setup_vision_camera()
 
 	if nav_agent != null:
 		nav_agent.avoidance_enabled = avoidance_enabled
@@ -330,6 +336,101 @@ func _create_debug_sphere_helper(node_name: String, col: Color) -> MeshInstance3
 	mi.material_override = mat
 	add_child(mi)
 	return mi
+
+
+## Inicializuje zrakovou kameru v očích NPC
+func _setup_vision_camera() -> void:
+	_vision_camera = get_node_or_null("VisionCamera") as Camera3D
+	if not _vision_camera:
+		_vision_camera = Camera3D.new()
+		_vision_camera.name = "VisionCamera"
+		_vision_camera.transform.origin = Vector3(0.0, 1.45, -0.38)
+		_vision_camera.fov = vision_fov_horizontal
+		_vision_camera.current = false
+		add_child(_vision_camera)
+
+
+## Vrátí referenci na zrakovou kameru NPC (pro přepnutí pohledu přes F4)
+func get_vision_camera() -> Camera3D:
+	if not _vision_camera or not is_instance_valid(_vision_camera):
+		_setup_vision_camera()
+	return _vision_camera
+
+
+## Vykreslí 3D perspektivní zorný kužel (Vision Frustum) přímo ve 3D světě před očima NPC
+func _draw_debug_vision_frustum(
+	vertices: Array[Vector3],
+	colors: Array[Color],
+	eye_pt: Vector3,
+	forward_dir: Vector3,
+	dist: float,
+	h_fov: float,
+	v_fov: float,
+	col: Color
+) -> void:
+	var fwd := forward_dir.normalized()
+	var right := fwd.cross(Vector3.UP).normalized()
+	if right.length_squared() < 0.001:
+		right = Vector3.RIGHT
+	var up := right.cross(fwd).normalized()
+
+	var half_w := dist * tan(deg_to_rad(h_fov * 0.5))
+	var half_h := dist * tan(deg_to_rad(v_fov * 0.5))
+	var center_far := eye_pt + fwd * dist
+
+	# 4 rohy vzdálené roviny (Far Plane)
+	var ftl := center_far - right * half_w + up * half_h
+	var ftr := center_far + right * half_w + up * half_h
+	var fbr := center_far + right * half_w - up * half_h
+	var fbl := center_far - right * half_w - up * half_h
+
+	var apex_col := Color(col.r, col.g, col.b, 0.30)
+	var far_col := col
+
+	# 4 hlavní hrany zorného jehlanu (od očí k rohům zorného pole)
+	vertices.append(eye_pt); colors.append(apex_col)
+	vertices.append(ftl); colors.append(far_col)
+
+	vertices.append(eye_pt); colors.append(apex_col)
+	vertices.append(ftr); colors.append(far_col)
+
+	vertices.append(eye_pt); colors.append(apex_col)
+	vertices.append(fbr); colors.append(far_col)
+
+	vertices.append(eye_pt); colors.append(apex_col)
+	vertices.append(fbl); colors.append(far_col)
+
+	# 4 hrany obdélníkového rámečku na konci zorného pole
+	vertices.append(ftl); colors.append(far_col)
+	vertices.append(ftr); colors.append(far_col)
+
+	vertices.append(ftr); colors.append(far_col)
+	vertices.append(fbr); colors.append(far_col)
+
+	vertices.append(fbr); colors.append(far_col)
+	vertices.append(fbl); colors.append(far_col)
+
+	vertices.append(fbl); colors.append(far_col)
+	vertices.append(ftl); colors.append(far_col)
+
+	# Středový záměrný kříž (reticle / line of sight)
+	var cross_len := minf(half_w, half_h) * 0.25
+	vertices.append(center_far - right * cross_len); colors.append(far_col)
+	vertices.append(center_far + right * cross_len); colors.append(far_col)
+	vertices.append(center_far - up * cross_len); colors.append(far_col)
+	vertices.append(center_far + up * cross_len); colors.append(far_col)
+
+	# Centrální osový paprsek pohledu
+	vertices.append(eye_pt); colors.append(Color(col.r, col.g, col.b, 0.45))
+	vertices.append(center_far); colors.append(far_col)
+
+	# Vějíř zrakových paprsků v zorném poli (-35°, -17.5°, +17.5°, +35°)
+	var ray_angles := [-35.0, -17.5, 17.5, 35.0]
+	for a in ray_angles:
+		var ray_dir := fwd.rotated(Vector3.UP, deg_to_rad(a)).normalized()
+		var ray_end := eye_pt + ray_dir * (dist * 0.95)
+		vertices.append(eye_pt); colors.append(Color(col.r, col.g, col.b, 0.20))
+		vertices.append(ray_end); colors.append(Color(col.r, col.g, col.b, 0.60))
 
 
 func _draw_debug_ring(debug_vertices: Array[Vector3], debug_colors: Array[Color], center: Vector3, normal: Vector3, radius: float, ring_color: Color, segments: int = 12) -> void:
@@ -669,6 +770,27 @@ func _update_debug_visuals(delta: float) -> void:
 
 				prev_pt = next_pt
 
+	# F) 3D Vizuální Zorný Kužel (Vision Frustum) přímo před očima NPC
+	if show_vision_frustum:
+		var eye_origin := global_position + Vector3(0.0, 1.45, 0.0)
+		var gaze_forward := -global_transform.basis.z.normalized()
+		var state_col := Color(0.15, 0.85, 1.0, 0.75) # Výchozí azurová = volný výhled
+		if _forward_blocked:
+			state_col = Color(1.0, 0.15, 0.15, 0.95) # Červená = zablokováno překážkou
+		elif _is_detouring or not is_zero_approx(_current_avoidance_angle):
+			state_col = Color(1.0, 0.75, 0.1, 0.85) # Zlatožlutá / oranžová = aktivní vybočení
+
+		_draw_debug_vision_frustum(
+			debug_vertices,
+			debug_colors,
+			eye_origin,
+			gaze_forward,
+			vision_range,
+			vision_fov_horizontal,
+			vision_fov_vertical,
+			state_col
+		)
+
 	if debug_vertices.is_empty():
 		return
 
@@ -741,15 +863,15 @@ func _process_navigation(delta: float) -> void:
 			_is_detouring = true
 		return
 
-	# Detour se ukonci POUZE tehdy, kdyz jsme prekazku skutecne obesli a dostali se dale po trase
+	# Detour se ukonci, kdyz jsme prekazku obesli a dostali se zpet k trase nebo do blizkosti cile
 	if _is_detouring and uses_npc_path() and has_valid_npc_path():
 		var route_curve: Curve3D = npc_path.curve
 		var cur_off := route_curve.get_closest_offset(npc_path.to_local(global_position))
 		var tgt_off := route_curve.get_closest_offset(npc_path.to_local(_requested_navigation_target))
 		var progress_past := (cur_off - tgt_off) * _npc_path_direction
-		if progress_past > 1.2 and not _forward_blocked:
+		if (progress_past > 0.4 and not _forward_blocked) or global_position.distance_to(_requested_navigation_target) < 1.1:
 			var curve_pt := npc_path.to_global(route_curve.sample_baked(cur_off))
-			if global_position.distance_to(curve_pt) < 1.0:
+			if global_position.distance_to(curve_pt) < 1.3:
 				_is_detouring = false
 
 	var current_flat := Vector2(global_position.x, global_position.z)
@@ -1959,78 +2081,88 @@ func _probe_obstacle_avoidance(base_dir: Vector3, delta: float) -> Vector3:
 		return clear_dir
 
 	# 2. KROK: PŘEKÁŽKA / ZEĎ DETEKOVÁNA PŘED NÁMI!
-	# Aktivujeme dvě pomocné koule (jedna vlevo, druhá vpravo)
+	# Aktivujeme zrakový vějíř prostorových senzorů (AI Vision Probing Fan)
 	_aux_spheres_active = true
 	_avoidance_clear_time = 0.0
 	_record_debug_sphere(scout_res, "center")
 	_last_sphere_probe_pos = scout_res["hit_pos"]
 	_last_sphere_probe_color = Color(1.0, 0.2, 0.15, 0.65) # Červená hlavní koule na překážce
 
-	var body_radius := 0.34
-	var left_dir := base_dir.rotated(Vector3.UP, deg_to_rad(38.0))
-	var right_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-38.0))
+	var body_radius := 0.32
+	var left_inner_dir := base_dir.rotated(Vector3.UP, deg_to_rad(18.0))
+	var left_outer_dir := base_dir.rotated(Vector3.UP, deg_to_rad(36.0))
+	var right_inner_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-18.0))
+	var right_outer_dir := base_dir.rotated(Vector3.UP, deg_to_rad(-36.0))
 
-	# Testujeme obě strany těla
-	var left_res := _cast_sphere_probe(space_state, from_pos, left_dir * 2.5, mask, body_radius)
-	var right_res := _cast_sphere_probe(space_state, from_pos, right_dir * 2.5, mask, body_radius)
-	_record_debug_sphere(left_res, "left")
-	_record_debug_sphere(right_res, "right")
+	# Testujeme obě strany těla vnitřními i vnějšími úhly
+	var left_in_res := _cast_sphere_probe(space_state, from_pos, left_inner_dir * 2.5, mask, body_radius)
+	var left_out_res := _cast_sphere_probe(space_state, from_pos, left_outer_dir * 2.5, mask, body_radius)
+	var right_in_res := _cast_sphere_probe(space_state, from_pos, right_inner_dir * 2.5, mask, body_radius)
+	var right_out_res := _cast_sphere_probe(space_state, from_pos, right_outer_dir * 2.5, mask, body_radius)
 
-	var left_blocked: bool = left_res["hit"] and left_res["safe_distance"] < 1.6
-	var right_blocked: bool = right_res["hit"] and right_res["safe_distance"] < 1.6
+	_record_debug_sphere(left_out_res, "left")
+	_record_debug_sphere(right_out_res, "right")
+
+	var left_clearance: float = minf(left_in_res["safe_distance"], left_out_res["safe_distance"])
+	var right_clearance: float = minf(right_in_res["safe_distance"], right_out_res["safe_distance"])
+
+	var left_blocked: bool = left_clearance < 1.3
+	var right_blocked: bool = right_clearance < 1.3
 
 	# Vizuální pozice a barvy levé a pravé koule
 	if left_blocked:
-		_last_left_probe_pos = left_res["hit_pos"]
+		_last_left_probe_pos = left_out_res["hit_pos"]
 		_last_left_probe_color = Color(1.0, 0.15, 0.15, 0.65) # Červená - zablokováno
 	else:
-		_last_left_probe_pos = from_pos + left_dir * 2.0
+		_last_left_probe_pos = from_pos + left_outer_dir * 2.0
 		_last_left_probe_color = Color(0.2, 0.95, 0.4, 0.5) # Zelená - volno
 
 	if right_blocked:
-		_last_right_probe_pos = right_res["hit_pos"]
+		_last_right_probe_pos = right_out_res["hit_pos"]
 		_last_right_probe_color = Color(1.0, 0.15, 0.15, 0.65) # Červená - zablokováno
 	else:
-		_last_right_probe_pos = from_pos + right_dir * 2.0
+		_last_right_probe_pos = from_pos + right_outer_dir * 2.0
 		_last_right_probe_color = Color(0.2, 0.95, 0.4, 0.5) # Zelená - volno
 
-	# Vyhodnocení směru vybočení:
-	# Když detekuje středová a pravá -> otočí se doleva do volného prostoru
-	# Když detekuje středová a levá -> otočí se doprava do volného prostoru
+	# 3. KROK: Inteligentní volba strany vybočení
+	# Pokud jsou v chodbě obě boční zdi detekovány, vybereme stranu s VĚTŠÍM průchodem okolo bedny
 	if not left_blocked and right_blocked:
 		_avoidance_side = 1.0 # Uhni doleva do volného prostoru
 	elif not right_blocked and left_blocked:
 		_avoidance_side = -1.0 # Uhni doprava do volného prostoru
-	elif not left_blocked and not right_blocked:
-		# Obě strany volné -> vyber stranu s větším odstupem
-		if is_zero_approx(_avoidance_side):
-			_avoidance_side = 1.0 if left_res["safe_distance"] >= right_res["safe_distance"] else -1.0
+	elif left_clearance >= 0.65 or right_clearance >= 0.65:
+		# Jedna nebo obě strany mají prostor pro průchod -> volíme stranu s větší hloubkou
+		if is_zero_approx(_avoidance_side) or absf(left_clearance - right_clearance) > 0.2:
+			_avoidance_side = 1.0 if left_clearance >= right_clearance else -1.0
 	else:
-		# Obě strany zablokované (úplný zával / úzká chodba)
+		# Úplný slepý zával / zablokování (všechny směry < 0.65m přímo u zdi)
 		_forward_blocked = true
 		_avoidance_side = 0.0
 		_current_avoidance_angle = move_toward(_current_avoidance_angle, 0.0, delta * deg_to_rad(140.0))
 		_debug_steer_dir = base_dir
-		return base_dir
-
-	_forward_blocked = false
 
 	# 4. KROK: Založení trvalé nové trasy (baking), aby příště nemusel detekovat znovu!
-	# Založení nové trasy provádíme VÝHRADNĚ pro skutečné překážky (bedny, závaly), nikoliv zdi
+	# Založení nové trasy provádíme VŽDY pro skutečné překážky (bedny, závaly), nikoliv zdi
 	if uses_npc_path() and has_valid_npc_path():
 		var col: Object = scout_res.get("collider")
 		if _is_valid_detour_obstacle(col):
-			var detour_target := _bake_detour_around_obstacle(col, _avoidance_side, scout_res["hit_pos"], base_dir)
+			var bake_side := _avoidance_side if not is_zero_approx(_avoidance_side) else (1.0 if left_clearance >= right_clearance else -1.0)
+			var detour_target := _bake_detour_around_obstacle(col, bake_side, scout_res["hit_pos"], base_dir)
 			if detour_target.length_squared() > 0.01:
 				var to_detour := (detour_target - global_position)
 				to_detour.y = 0.0
 				if to_detour.length_squared() > 0.01:
+					_forward_blocked = false
 					var detour_steer := to_detour.normalized()
 					_debug_steer_dir = detour_steer
 					return detour_steer
 
-	var target_avoid_deg: float = 48.0
-	var target_angle := _avoidance_side * deg_to_rad(target_avoid_deg)
+	if _forward_blocked:
+		return base_dir
+
+	# Adaptivní úhel vybočení podle vzdálenosti (čím blíž k překážce, tím ostřejší vybočení, max 38°)
+	var dynamic_avoid_deg := clampf(rad_to_deg(atan2(0.85, maxf(scout_res["safe_distance"], 0.5))), 18.0, 38.0)
+	var target_angle := _avoidance_side * deg_to_rad(dynamic_avoid_deg)
 	_current_avoidance_angle = move_toward(_current_avoidance_angle, target_angle, delta * deg_to_rad(140.0))
 
 	var steer_dir := base_dir.rotated(Vector3.UP, _current_avoidance_angle).normalized()
@@ -2161,6 +2293,30 @@ func _calculate_variable_clearance_point(raw_pos: Vector3, cluster: Array, nav_m
 	return adjusted
 
 
+## Zkontroluje, zda horizontální úsečka mezi p_from a p_to protíná jakoukoliv překážku v clusteru
+func _does_segment_intersect_cluster(p_from: Vector3, p_to: Vector3, cluster: Array, clearance: float = 0.5) -> bool:
+	for obs in cluster:
+		if not is_instance_valid(obs) or not (obs is Node3D):
+			continue
+		var obs_pos := (obs as Node3D).global_position
+		var obs_rad := _get_obstacle_horizontal_radius(obs)
+
+		var seg_v := p_to - p_from
+		seg_v.y = 0.0
+		var seg_len_sq := seg_v.length_squared()
+		if seg_len_sq < 0.001:
+			if Vector2(obs_pos.x - p_from.x, obs_pos.z - p_from.z).length() < (obs_rad + clearance):
+				return true
+			continue
+
+		var t := clampf(Vector2(obs_pos.x - p_from.x, obs_pos.z - p_from.z).dot(Vector2(seg_v.x, seg_v.z)) / seg_len_sq, 0.0, 1.0)
+		var proj := p_from + seg_v * t
+		var d := Vector2(obs_pos.x - proj.x, obs_pos.z - proj.z).length()
+		if d < (obs_rad + clearance):
+			return true
+	return false
+
+
 ## Trvale vytvoří a vloží novou plynulou Bézier objízdnou trasu do patrol křivky Curve3D okolo překážky.
 ## - Odstraní zablokované waypointy ("smazat cestu")
 ## - Spojí trasu přímo rovně ("na přímo rovně") nebo minimem čistých NavMesh Funnel bodů
@@ -2176,23 +2332,25 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 
 	# 1. KROK: Shromáždit celý cluster překážek (pokud jsou 2 nebo více beden u sebe)
 	var cluster := _collect_obstacle_cluster(collider, hit_pos, 4.5)
+	var dir := 1 if _npc_path_direction >= 0 else -1
 
-	# Zkontrolovat, zda již tento cluster nebyl dříve zpracován
+	# Zkontrolovat, zda již tento cluster nebyl dříve zpracován pro daný směr
 	var already_baked := false
 	for obs in cluster:
 		var o_id: int = obs.get_instance_id() if is_instance_valid(obs) else 0
-		if o_id != 0 and o_id in _baked_detour_obstacles:
+		var obs_key := "%d_dir_%d" % [o_id, dir]
+		if o_id != 0 and obs_key in _baked_detour_obstacles:
 			already_baked = true
 			break
-	var grid_key := "detour_%.1f_%.1f" % [roundf(hit_pos.x * 0.4), roundf(hit_pos.z * 0.4)]
+	var grid_key := "detour_%.1f_%.1f_dir_%d" % [roundf(hit_pos.x * 0.4), roundf(hit_pos.z * 0.4), dir]
 	if grid_key in _baked_detour_obstacles or already_baked:
 		return Vector3.ZERO
 
-	# Označit všechny překážky v clusteru jako zpracované
+	# Označit všechny překážky v clusteru jako zpracované pro tento směr
 	for obs in cluster:
 		var o_id: int = obs.get_instance_id() if is_instance_valid(obs) else 0
 		if o_id != 0:
-			_baked_detour_obstacles.append(o_id)
+			_baked_detour_obstacles.append("%d_dir_%d" % [o_id, dir])
 	_baked_detour_obstacles.append(grid_key)
 
 	var curve: Curve3D = npc_path.curve
@@ -2201,7 +2359,6 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 		return Vector3.ZERO
 
 	# 2. KROK: Určit vstupní bod (entry) a najít čistý výstupní bod (exit) za clusterem
-	var dir := 1 if _npc_path_direction >= 0 else -1
 	var entry_idx := -1
 	var exit_idx := -1
 	var entry_pos := global_position
@@ -2257,9 +2414,16 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 			entry_idx -= deleted_count
 
 	# 4. KROK: NavMesh String-Pulling (Funnel algoritmus)
+	# Vždy počítáme trasu ve vzestupném indexovém pořadí (lower -> higher),
+	# čímž je zaručena geometrická a matematická konzistence křivky v obou směrech!
+	var lower_idx := mini(entry_idx, exit_idx)
+	var higher_idx := maxi(entry_idx, exit_idx)
+	var lower_pos := entry_pos if dir > 0 else exit_pos
+	var higher_pos := exit_pos if dir > 0 else entry_pos
+
 	var string_pulled_corners: Array[Vector3] = []
 	if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
-		var nav_path := NavigationServer3D.map_get_path(nav_map, entry_pos, exit_pos, true)
+		var nav_path := NavigationServer3D.map_get_path(nav_map, lower_pos, higher_pos, true)
 		if nav_path.size() > 2:
 			for p_idx in range(1, nav_path.size() - 1):
 				var corner := nav_path[p_idx]
@@ -2272,29 +2436,74 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 				if not is_duplicate:
 					string_pulled_corners.append(corner)
 
-	# 5. KROK: VLOŽENÍ ČISTÝCH BODŮ S ROVNÝMI / SYMETRICKÝMI BEZIER TEČNAMI
-	var insert_idx := mini(entry_idx, exit_idx) + 1
-	if dir < 0:
-		string_pulled_corners.reverse()
+	# 5. KROK: Ověření, že ŽÁDNÝ úsek trasy neprotíná překážku z clusteru.
+	# Pokud nějaký úsek protíná překážku (protože NavMesh o RigidBody3D překážce neví),
+	# vložíme do tohoto úseku čisté geometrické bypass body podél volné strany koridoru.
+	var raw_sequence: Array[Vector3] = []
+	raw_sequence.append(lower_pos)
+	for c in string_pulled_corners:
+		raw_sequence.append(c)
+	raw_sequence.append(higher_pos)
+
+	var verified_corners: Array[Vector3] = []
+	for s_idx in range(raw_sequence.size() - 1):
+		var p_start := raw_sequence[s_idx]
+		var p_end := raw_sequence[s_idx + 1]
+
+		if s_idx > 0:
+			verified_corners.append(p_start)
+
+		if _does_segment_intersect_cluster(p_start, p_end, cluster, 0.45):
+			for obs in cluster:
+				if not is_instance_valid(obs) or not (obs is Node3D):
+					continue
+				var obs_3d := obs as Node3D
+				var obs_pos := obs_3d.global_position
+				var obs_rad := _get_obstacle_horizontal_radius(obs_3d)
+
+				var path_chord := (p_end - p_start)
+				path_chord.y = 0.0
+				var chord_dir := path_chord.normalized() if path_chord.length_squared() > 0.001 else _base_dir.normalized()
+				var right_perp := chord_dir.cross(Vector3.UP).normalized()
+				var side_dir := -right_perp if _side_hint > 0.0 else right_perp
+
+				var side_pos := obs_pos + side_dir * (obs_rad + 0.6)
+				var cleared_side := _calculate_variable_clearance_point(side_pos, cluster, nav_map, space_state)
+
+				var pre_pos := obs_pos - chord_dir * (obs_rad + 0.65) + side_dir * (obs_rad * 0.4)
+				var post_pos := obs_pos + chord_dir * (obs_rad + 0.65) + side_dir * (obs_rad * 0.4)
+
+				if NavigationServer3D.map_get_iteration_id(nav_map) > 0:
+					pre_pos = NavigationServer3D.map_get_closest_point(nav_map, pre_pos)
+					post_pos = NavigationServer3D.map_get_closest_point(nav_map, post_pos)
+
+				verified_corners.append(pre_pos)
+				verified_corners.append(cleared_side)
+				verified_corners.append(post_pos)
+				break
+
+	string_pulled_corners = verified_corners
+
+	var insert_idx := lower_idx + 1
 
 	if string_pulled_corners.is_empty():
 		# Přímé rovné spojení bez zbytečných smyček ("na přímo rovně")
-		var straight_chord := (exit_pos - entry_pos)
+		var straight_chord := (higher_pos - lower_pos)
 		var straight_len := minf(straight_chord.length() * 0.25, 0.45)
 		var straight_tangent := straight_chord.normalized() * straight_len
-		var local_t_out := npc_path.to_local(entry_pos + straight_tangent) - npc_path.to_local(entry_pos)
-		var local_t_in := npc_path.to_local(exit_pos - straight_tangent) - npc_path.to_local(exit_pos)
-		if entry_idx >= 0 and entry_idx < curve.get_point_count():
-			curve.set_point_out(entry_idx, local_t_out)
-		if exit_idx >= 0 and exit_idx < curve.get_point_count():
-			curve.set_point_in(exit_idx, local_t_in)
-		print("[NPC Path] Zablokovane body smazany (%d bodu), cesta spojena NA PRIMO ROVNE: wp=%d -> wp=%d" % [deleted_count, entry_idx + 1, exit_idx + 1])
+		var local_t_out := npc_path.to_local(lower_pos + straight_tangent) - npc_path.to_local(lower_pos)
+		var local_t_in := npc_path.to_local(higher_pos - straight_tangent) - npc_path.to_local(higher_pos)
+		if lower_idx >= 0 and lower_idx < curve.get_point_count():
+			curve.set_point_out(lower_idx, local_t_out)
+		if higher_idx >= 0 and higher_idx < curve.get_point_count():
+			curve.set_point_in(higher_idx, local_t_in)
+		print("[NPC Path] Zablokovane body smazany (%d bodu), cesta spojena NA PRIMO ROVNE: wp=%d -> wp=%d" % [deleted_count, lower_idx + 1, higher_idx + 1])
 	else:
 		var all_pts: Array[Vector3] = []
-		all_pts.append(entry_pos)
+		all_pts.append(lower_pos)
 		for c in string_pulled_corners:
 			all_pts.append(c)
-		all_pts.append(exit_pos)
+		all_pts.append(higher_pos)
 
 		for i in range(string_pulled_corners.size()):
 			var c_pos := string_pulled_corners[i]
@@ -2331,6 +2540,8 @@ func _bake_detour_around_obstacle(collider: Object, _side_hint: float, hit_pos: 
 
 	# 6. KROK: AKTUALIZACE CÍLE NAVIGACE
 	var target_wp_idx := insert_idx if not string_pulled_corners.is_empty() else exit_idx
+	if dir < 0 and not string_pulled_corners.is_empty():
+		target_wp_idx = insert_idx + string_pulled_corners.size() - 1
 	if target_wp_idx >= curve.get_point_count():
 		target_wp_idx = curve.get_point_count() - 1
 	_npc_path_waypoint_index = target_wp_idx
