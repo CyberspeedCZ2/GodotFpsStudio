@@ -362,11 +362,20 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Všech 10 testů v `Tests/NPC/dynamic_navigation_headless.gd` prošlo bez jediné chyby (`failures: []`, exit kód 0, čas 38.3 s, `return_replans: 0`).
       - Soubory `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd` a `Scripts/NPC/npc_controller.gd` jsou 100% synchronizované.
 
-## Aktuální stav navigace NPC — 25. 10. 2026 (Čistý stůl)
+## Aktuální stav NPC — 26. 10. 2026 (Univerzální baseline)
 
-Experimentální třída `DynamicNavigationAgent3D`, skenování kamerou, pečení objížděk i staré Beehave stromy byly kompletně odstraněny.
-Engine i herní projekt mají čistý základ:
-- **Editor tras (Path3D)**: Plně funkční a uzavřený (waypoint akce, billboard ikony, 2-bodové Bézier zaoblení rohů, kontrola NavMeshe).
-- **NPC Controller**: Čistá kostra `CharacterBody3D` s výchozím `NavigationAgent3D`.
-- Připraveno pro čistou implementaci patrolního řízení od Kroku 1.
+Experimentální třída `DynamicNavigationAgent3D`, skenování kamerou, pečení objížděk a staré Beehave stromy zůstávají odstraněné. Náhradou je jednoduchý a testovaný základ:
+
+- **Architektura**: Beehave v `basic_npc.tscn` vybírá prioritu hrozba → pozorování → trasa → bloudění. `NPCController` vykonává pohyb a reakce.
+- **Civilian**: pozoruje neozbrojeného hráče, vytasená zbraň zvyšuje strach 30 bodů/s, při prahu 70 prchá a po zranění prchá okamžitě.
+- **Hostile**: útočí a prohledává poslední známou pozici 5 s. Pod 30 % zdraví končí melee a hledá kryt nebo ustupuje.
+- **Friendly**: náhrada Passive se zachovaným indexem 2; neútočí první, po zranění se brání a při nízkém zdraví ustupuje.
+- **Poškození**: hitscan pistole má výchozí masku `1 | 2 | 4 | 16`, takže zasahuje NPC. Všichni ztrácejí zdraví podle své role.
+- **Viditelná zbraň**: `PlayerWeaponInventory.has_visible_weapon()` a `FPSCharacter.has_visible_weapon()` odlišují vytasenou pistoli od holých rukou.
+- **Editor trasy**: waypoint akce včetně Sit, billboard ikony, Bézier zaoblení a kontrola NavMeshe zůstávají zachované.
+- **Synchronizace**: `engine/modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd` je shodná s `Scripts/NPC/npc_controller.gd` v herním projektu.
+- **Ověření**: 42 headless kontrol prošlo; testovací scéna proběhla bez skriptových chyb. Uživatel v GUI potvrdil obnovu chůze po pozorování a útěk civilisty po zásahu.
+- **Předávací dokumentace**: `../project-hl-2-inspiration/Docs/npc_ai_handoff.md` obsahuje kompletní stav, reprodukční příkazy a další GUI testy.
+
+Nejnovější šablona zatím nebyla zabudována do instalované aplikace; herní projekt používá controller přímo a testování nevyžaduje rebuild editoru.
 

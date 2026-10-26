@@ -10,7 +10,8 @@ signal animation_requested(animation_name: StringName)
 
 const ARCHETYPE_CIVILIAN: int = 0
 const ARCHETYPE_HOSTILE: int = 1
-const ARCHETYPE_PASSIVE: int = 2
+const ARCHETYPE_FRIENDLY: int = 2
+const ARCHETYPE_PASSIVE: int = ARCHETYPE_FRIENDLY # Backward-compatible alias for existing scripts.
 const MOVEMENT_MODE_RANDOM_WANDER: int = 0
 const MOVEMENT_MODE_ASSIGNED_PATH: int = 1
 const LOCOMOTION_WALK: int = 0
@@ -18,7 +19,8 @@ const LOCOMOTION_RUN: int = 1
 const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 
 @export_group("Role")
-@export_enum("Civilian", "Hostile", "Passive") var archetype: int = ARCHETYPE_CIVILIAN
+## Civilian fears weapons and flees; Hostile attacks on sight; Friendly fights only after being provoked.
+@export_enum("Civilian", "Hostile", "Friendly") var archetype: int = ARCHETYPE_CIVILIAN
 
 @export_group("Movement")
 @export_enum("Random Wander", "Assigned NPC Path") var movement_mode: int = MOVEMENT_MODE_RANDOM_WANDER
@@ -41,7 +43,10 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_range(1.0, 100.0, 1.0) var alert_radius: float = 10.0
 @export_range(0.1, 2.0, 0.1) var sensor_interval: float = 0.2
 @export_range(0.0, 60.0, 0.5) var target_memory_seconds: float = 3.0
-@export_range(0.0, 100.0, 1.0) var fear_gain_per_second: float = 10.0
+## How long Hostile or Friendly searches the last known player position after losing sight.
+@export_range(0.0, 15.0, 0.1) var hostile_lost_sight_memory_seconds: float = 5.0
+## Civilian fear gained per second while a visible player has a weapon drawn.
+@export_range(0.0, 100.0, 1.0) var fear_gain_per_second: float = 30.0
 @export_range(0.0, 100.0, 1.0) var fear_decay_per_second: float = 8.0
 @export var player_group: StringName = &"player"
 @export_flags_3d_physics var alert_collision_mask: int = 0xFFFFFFFF
@@ -72,6 +77,8 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 
 @export_group("Health")
 @export_range(1.0, 1000.0, 1.0) var max_health: float = 100.0
+## Below this percentage, Hostile and provoked Friendly stop melee attacks and seek cover or retreat.
+@export_range(0.0, 100.0, 1.0) var retreat_health_threshold_percent: float = 30.0
 @export var debug_navigation: bool = false
 
 var current_speed: float = 2.8
@@ -99,6 +106,9 @@ var _flee_retarget_after_msec: int = 0
 var _active_cover_point: Node3D
 var _is_in_cover: bool = false
 var _perceived_target: Node3D
+var _friendly_provoked: bool = false
+var _last_known_target_position: Vector3 = Vector3.ZERO
+var _has_last_known_target_position: bool = false
 var _threat_memory_until_msec: int = 0
 var _forced_alert_until_msec: int = 0
 var _next_sensor_check_msec: int = 0
@@ -135,8 +145,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_physics_delta = delta
-	if archetype != ARCHETYPE_PASSIVE:
-		_refresh_threat_sensor()
+	_refresh_threat_sensor()
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 	else:
@@ -499,6 +508,8 @@ func interrupt_route_following() -> void:
 func tick_free_wander() -> bool:
 	if movement_mode != MOVEMENT_MODE_RANDOM_WANDER:
 		return false
+	if _wander_goal_active and not is_moving:
+		_wander_goal_active = false
 	var now: int = Time.get_ticks_msec()
 	if is_moving and not is_at_destination():
 		_set_ai_state("Wandering")
@@ -595,7 +606,7 @@ func tick_threat_response() -> void:
 		return
 	if archetype == ARCHETYPE_CIVILIAN:
 		_tick_civilian_flee(target)
-	elif archetype == ARCHETYPE_HOSTILE:
+	elif archetype == ARCHETYPE_HOSTILE or archetype == ARCHETYPE_FRIENDLY:
 		_tick_hostile_response(target)
 
 
@@ -616,8 +627,25 @@ func _tick_civilian_flee(target: Node3D) -> void:
 
 
 func _tick_hostile_response(target: Node3D) -> void:
-	var distance: float = global_position.distance_to(target.global_position)
-	if distance <= attack_range:
+	var target_in_range: bool = global_position.distance_to(target.global_position) <= alert_radius
+	var target_visible: bool = target_in_range and _has_line_of_sight_to(target)
+	if target_visible:
+		_last_known_target_position = target.global_position
+		_has_last_known_target_position = true
+	if not _has_last_known_target_position:
+		stop()
+		_set_ai_state("Alerted; no target position")
+		return
+
+	var engagement_position: Vector3 = target.global_position if target_visible else _last_known_target_position
+	var distance: float = global_position.distance_to(engagement_position)
+	if target_visible and _is_low_health():
+		if _tick_hostile_cover(target):
+			return
+		_tick_low_health_retreat(target)
+		return
+
+	if target_visible and distance <= attack_range:
 		_clear_cover()
 		stop()
 		_face_toward_point(target.global_position, _physics_delta)
@@ -627,31 +655,71 @@ func _tick_hostile_response(target: Node3D) -> void:
 			_route_next_attack_msec = Time.get_ticks_msec() + int(attack_cooldown * 1000.0)
 		return
 
-	if use_cover_when_threatened and nav_agent != null and _navigation_map_is_synchronized(nav_agent.get_navigation_map()):
-		if not is_instance_valid(_active_cover_point):
-			_active_cover_point = _find_cover_point(target)
-		if is_instance_valid(_active_cover_point):
-			var cover_position: Vector3 = NavigationServer3D.map_get_closest_point(nav_agent.get_navigation_map(), _active_cover_point.global_position)
-			var cover_tolerance: float = maxf(nav_agent.target_desired_distance, 0.35)
-			if global_position.distance_to(cover_position) > cover_tolerance:
-				if not is_moving or _target_destination.distance_to(cover_position) > target_repath_distance:
-					move_to_position(cover_position, run_speed)
-				_set_ai_state("Moving to cover")
-				return
+	if not target_visible:
+		_clear_cover()
+		var search_tolerance: float = maxf(nav_agent.target_desired_distance, 0.35) if nav_agent != null else 0.35
+		if distance > search_tolerance:
+			if not is_moving or _target_destination.distance_to(engagement_position) > target_repath_distance:
+				move_to_position(engagement_position, run_speed)
+			_set_ai_state("Searching last known position")
+		else:
 			stop()
-			if not _is_in_cover:
-				_is_in_cover = true
-				if not cover_animation_name.is_empty():
-					_play_npc_animation(cover_animation_name)
-				cover_entered.emit(_active_cover_point)
-			var cover_facing: Vector3 = -_active_cover_point.global_transform.basis.z
-			_face_direction(cover_facing, _physics_delta)
-			_set_ai_state("Holding cover")
-			return
+			_set_ai_state("Searching area")
+		return
 
-	if not is_moving or _target_destination.distance_to(target.global_position) > target_repath_distance:
-		move_to_position(target.global_position, run_speed)
+	if _tick_hostile_cover(target):
+		return
+	if not is_moving or _target_destination.distance_to(engagement_position) > target_repath_distance:
+		move_to_position(engagement_position, run_speed)
 	_set_ai_state("Pursuing target")
+
+
+func _is_low_health() -> bool:
+	return health > 0.0 and health <= max_health * (retreat_health_threshold_percent / 100.0)
+
+
+func _tick_low_health_retreat(target: Node3D) -> void:
+	var now: int = Time.get_ticks_msec()
+	if not _flee_goal_active or (is_at_destination() and now >= _flee_retarget_after_msec):
+		if _try_find_flee_destination(target):
+			move_to_position(_candidate_navigation_point, run_speed)
+			_flee_goal_active = true
+			_flee_retarget_after_msec = now + 800
+		else:
+			_flee_goal_active = false
+			stop()
+			_set_ai_state("Cornered at low health")
+			return
+	elif not is_moving:
+		move_to_position(_target_destination, run_speed)
+	_set_ai_state("Retreating at low health")
+
+
+func _tick_hostile_cover(target: Node3D) -> bool:
+	if not use_cover_when_threatened or nav_agent == null or not _navigation_map_is_synchronized(nav_agent.get_navigation_map()):
+		return false
+	if not is_instance_valid(_active_cover_point):
+		_active_cover_point = _find_cover_point(target)
+	if not is_instance_valid(_active_cover_point):
+		return false
+
+	var cover_position: Vector3 = NavigationServer3D.map_get_closest_point(nav_agent.get_navigation_map(), _active_cover_point.global_position)
+	var cover_tolerance: float = maxf(nav_agent.target_desired_distance, 0.35)
+	if global_position.distance_to(cover_position) > cover_tolerance:
+		if not is_moving or _target_destination.distance_to(cover_position) > target_repath_distance:
+			move_to_position(cover_position, run_speed)
+		_set_ai_state("Moving to cover")
+		return true
+	stop()
+	if not _is_in_cover:
+		_is_in_cover = true
+		if not cover_animation_name.is_empty():
+			_play_npc_animation(cover_animation_name)
+		cover_entered.emit(_active_cover_point)
+	var cover_facing: Vector3 = -_active_cover_point.global_transform.basis.z
+	_face_direction(cover_facing, _physics_delta)
+	_set_ai_state("Holding cover")
+	return true
 
 
 func _find_cover_point(target: Node3D) -> Node3D:
@@ -704,15 +772,29 @@ func _clear_cover() -> void:
 
 
 func interrupt_threat_response() -> void:
-	stop()
+	var routine_states: Array[StringName] = [
+		&"Patrol", &"Wandering", &"Pausing", &"Waiting for NavigationMesh",
+		&"Observing player", &"Waiting", &"Sitting", &"Looking",
+		&"Playing animation", &"Interacting"
+	]
+	var routine_already_active: bool = _current_state in routine_states
 	_flee_goal_active = false
+	_friendly_provoked = false
+	_has_last_known_target_position = false
 	_clear_cover()
+	if routine_already_active:
+		return
+	stop()
+	_wander_goal_active = false
+	_route_target_active = false
+	_route_action_started = false
+	_route_action_target = null
+	_route_action_duration_seconds = 0.0
+	is_sitting = false
 	_set_ai_state("Returning to routine")
 
 
 func has_active_threat() -> bool:
-	if archetype == ARCHETYPE_PASSIVE:
-		return false
 	var target: Node3D = get_active_threat_target()
 	if target == null:
 		return false
@@ -747,7 +829,7 @@ func tick_player_observation() -> bool:
 
 
 func get_active_threat_target() -> Node3D:
-	if archetype == ARCHETYPE_PASSIVE:
+	if archetype == ARCHETYPE_FRIENDLY and not _friendly_provoked:
 		return null
 	_refresh_threat_sensor()
 	var now: int = Time.get_ticks_msec()
@@ -762,10 +844,15 @@ func raise_alert(source: Node3D, intensity: float = 1.0, duration: float = 4.0) 
 		return
 	var was_active: bool = get_active_threat_target() != null
 	_perceived_target = source
+	_last_known_target_position = source.global_position
+	_has_last_known_target_position = true
+	if archetype == ARCHETYPE_FRIENDLY:
+		_friendly_provoked = true
 	var now: int = Time.get_ticks_msec()
 	_forced_alert_until_msec = now + int(maxf(duration, 0.0) * 1000.0)
 	_threat_memory_until_msec = maxi(_threat_memory_until_msec, _forced_alert_until_msec)
-	fear = clampf(fear + clampf(intensity, 0.0, 1.0) * 100.0, 0.0, 100.0)
+	if archetype == ARCHETYPE_CIVILIAN:
+		fear = clampf(fear + clampf(intensity, 0.0, 1.0) * 100.0, 0.0, 100.0)
 	_update_labels()
 	if not was_active:
 		threat_detected.emit(source)
@@ -782,16 +869,31 @@ func _refresh_threat_sensor() -> void:
 	var visible_target: Node3D = _find_visible_player()
 	if visible_target != null:
 		_perceived_target = visible_target
-		_threat_memory_until_msec = now + int(target_memory_seconds * 1000.0)
-		if archetype == ARCHETYPE_HOSTILE:
-			fear = clampf(fear + fear_gain_per_second * elapsed, 0.0, 100.0)
+		_last_known_target_position = visible_target.global_position
+		_has_last_known_target_position = true
+		var memory_seconds: float = target_memory_seconds
+		if archetype == ARCHETYPE_HOSTILE or archetype == ARCHETYPE_FRIENDLY:
+			memory_seconds = hostile_lost_sight_memory_seconds
+		_threat_memory_until_msec = now + int(memory_seconds * 1000.0)
 		if previous_target != visible_target:
 			threat_detected.emit(visible_target)
+	elif now > _threat_memory_until_msec and now > _forced_alert_until_msec:
+		_perceived_target = null
+		_friendly_provoked = false
+		_has_last_known_target_position = false
+
+	if archetype == ARCHETYPE_CIVILIAN and fear_enabled and visible_target != null and _player_has_visible_weapon(visible_target):
+		fear = clampf(fear + fear_gain_per_second * elapsed, 0.0, 100.0)
 	else:
 		fear = maxf(fear - fear_decay_per_second * elapsed, 0.0)
-		if now > _threat_memory_until_msec and now > _forced_alert_until_msec:
-			_perceived_target = null
 	_update_labels()
+
+
+func _player_has_visible_weapon(player: Node) -> bool:
+	if player.has_method("has_visible_weapon"):
+		return bool(player.call("has_visible_weapon"))
+	var weapon_slot: Variant = player.get("current_weapon_slot")
+	return weapon_slot != null and int(weapon_slot) > 0
 
 
 func _find_visible_player() -> Node3D:
@@ -843,7 +945,7 @@ func take_damage(
 	_hit_direction: Vector3 = Vector3.ZERO
 ) -> void:
 	health = clampf(health - amount, 0.0, max_health)
-	if amount > 0.0 and health > 0.0 and archetype == ARCHETYPE_CIVILIAN:
+	if amount > 0.0 and health > 0.0:
 		var attacker: Node3D = _find_visible_player()
 		if attacker == null:
 			attacker = get_tree().get_first_node_in_group(player_group) as Node3D
@@ -868,9 +970,26 @@ func _set_ai_state(state: StringName) -> void:
 	update_debug_state(String(state))
 
 
+func get_archetype_display_name() -> String:
+	match archetype:
+		ARCHETYPE_HOSTILE:
+			return "Hostile"
+		ARCHETYPE_FRIENDLY:
+			return "Friendly"
+		_:
+			return "Civilian"
+
+
 func update_debug_state(text: String) -> void:
 	if debug_label != null:
-		debug_label.text = "[NPC AI]\n%s" % text
+		debug_label.text = "[NPC: %s]\n%s" % [get_archetype_display_name(), text]
+		match archetype:
+			ARCHETYPE_HOSTILE:
+				debug_label.modulate = Color(1.0, 0.35, 0.25)
+			ARCHETYPE_FRIENDLY:
+				debug_label.modulate = Color(0.35, 1.0, 0.55)
+			_:
+				debug_label.modulate = Color(1.0, 0.88, 0.25)
 
 
 func set_navigation_path_debug_enabled(enabled: bool) -> void:
@@ -888,7 +1007,9 @@ func _update_labels() -> void:
 	if health_label != null:
 		health_label.text = "HP: %d / %d" % [int(health), int(max_health)]
 	if fear_label != null:
+		fear_label.visible = archetype == ARCHETYPE_CIVILIAN
 		fear_label.text = "STRACH: %d%%" % int(fear)
+	update_debug_state(String(_current_state))
 
 
 func _face_direction(direction: Vector3, delta: float) -> void:
