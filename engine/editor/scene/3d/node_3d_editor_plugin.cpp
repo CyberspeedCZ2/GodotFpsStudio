@@ -3477,6 +3477,9 @@ void Node3DEditorViewport::_fps_context_menu_item_pressed(int p_id) {
 		case FPS_CONTEXT_ADD_SMALL_DEBRIS:
 			scene_tree_dock->create_fps_gameplay_element_at(SceneTreeDock::FPS_GAMEPLAY_SMALL_DEBRIS, fps_context_world_position);
 			break;
+		case FPS_CONTEXT_ADD_SMALL_REACTIVE_PROP:
+			scene_tree_dock->create_fps_gameplay_element_at(SceneTreeDock::FPS_GAMEPLAY_SMALL_REACTIVE_PROP, fps_context_world_position);
+			break;
 		case FPS_CONTEXT_ADD_NPC_CHARACTER:
 			scene_tree_dock->create_fps_gameplay_element_at(SceneTreeDock::FPS_GAMEPLAY_NPC_CHARACTER, fps_context_world_position);
 			break;
@@ -7542,7 +7545,8 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_npc_submenu->add_item(TTRC("NPC Cover Point"), FPS_CONTEXT_ADD_NPC_COVER_POINT);
 
 	fps_props_submenu->add_item(TTRC("Heavy Obstacle (Avoidance Crate)"), FPS_CONTEXT_ADD_HEAVY_OBSTACLE);
-	fps_props_submenu->add_item(TTRC("Small Debris (Cup/Can)"), FPS_CONTEXT_ADD_SMALL_DEBRIS);
+	fps_props_submenu->add_item(TTRC("Small Debris (NPCs Ignore)"), FPS_CONTEXT_ADD_SMALL_DEBRIS);
+	fps_props_submenu->add_item(TTRC("Small Reactive Prop (NPCs Push)"), FPS_CONTEXT_ADD_SMALL_REACTIVE_PROP);
 
 	fps_volume_submenu->add_item(TTRC("Trigger Volume"), FPS_CONTEXT_ADD_TRIGGER);
 	fps_volume_submenu->add_item(TTRC("Interaction Area"), FPS_CONTEXT_ADD_INTERACTION_AREA);
@@ -7602,14 +7606,15 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	set_fps_tooltip(fps_player_submenu, FPS_CONTEXT_ADD_CHECKPOINT, TTR("Adds a checkpoint marker in the fps_checkpoint group for your respawn logic."));
 	set_fps_tooltip(fps_player_submenu, FPS_CONTEXT_ADD_OBJECTIVE_MARKER, TTR("Adds a visible objective location marker in the fps_objective_marker group."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_SCENE, TTR("Choose an NPC scene to place here. The scene must contain its own behavior and navigation logic."));
-	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_CHARACTER, TTR("Creates an FPS NPC CharacterBody3D with NavigationAgent3D avoidance enabled and collision mask ignoring debris."));
+	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_CHARACTER, TTR("Creates a universal NPC CharacterBody3D with NavigationAgent3D avoidance and the built-in NPC controller; configure its role and movement in the Inspector."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_SPAWN, TTR("Marks an NPC spawn location in the fps_npc_spawn group; connect it to your spawn system."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_PATH, TTR("Creates an editable Path3D route with a PathFollow3D child for an NPC patrol."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_WAYPOINT, TTR("Adds a visible waypoint for NPC route or behavior scripts."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_ACTION_POINT, TTR("Adds an action marker with a default wait action. An NPC behavior script must execute it."));
 	set_fps_tooltip(fps_npc_submenu, FPS_CONTEXT_ADD_NPC_COVER_POINT, TTR("Adds a cover marker. Its rotation indicates the direction the NPC should face."));
 	set_fps_tooltip(fps_props_submenu, FPS_CONTEXT_ADD_HEAVY_OBSTACLE, TTR("Creates a heavy RigidBody3D on Layer 2 with a NavigationObstacle3D child so NPCs dynamically steer around it."));
-	set_fps_tooltip(fps_props_submenu, FPS_CONTEXT_ADD_SMALL_DEBRIS, TTR("Creates a lightweight debris RigidBody3D on Layer 3 that NPCs ignore and push aside without blocking."));
+	set_fps_tooltip(fps_props_submenu, FPS_CONTEXT_ADD_SMALL_DEBRIS, TTR("Creates lightweight debris on Layer 3. NPCs neither collide with nor push this item."));
+	set_fps_tooltip(fps_props_submenu, FPS_CONTEXT_ADD_SMALL_REACTIVE_PROP, TTR("Creates a small RigidBody3D on the dedicated NPC Reactive Props layer. NPCs collide with and can push it; debris on Layer 3 remains ignored."));
 	set_fps_tooltip(fps_volume_submenu, FPS_CONTEXT_ADD_TRIGGER, TTR("Creates an Area3D trigger with a box collision shape. Connect its signals to gameplay actions."));
 	set_fps_tooltip(fps_volume_submenu, FPS_CONTEXT_ADD_INTERACTION_AREA, TTR("Creates a 2 m interaction Area3D that detects bodies on collision layer 1."));
 	set_fps_tooltip(fps_navigation_submenu, FPS_CONTEXT_ADD_NAVIGATION_REGION, TTR("Creates a NavigationRegion3D with starter settings. Add geometry as a child, then bake its navigation mesh."));

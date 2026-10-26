@@ -1923,7 +1923,7 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			action_name = "Create Heavy Obstacle";
 			group_name = "fps_heavy_obstacle";
 			body->set_collision_layer(1 << 1); // Layer 2: Heavy Obstacle
-			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 3) | (1 << 4)); // Layers 1 (World), 2 (Heavy Obstacle), 4 (Player), 5 (NPC)
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 3) | (1 << 4) | (1 << 7)); // Layers 1 (World), 2 (Heavy Obstacle), 4 (Player), 5 (NPC), 8 (Reactive Props)
 			body->set_mass(45.0);
 
 			CollisionShape3D *shape = memnew(CollisionShape3D);
@@ -1969,7 +1969,7 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			action_name = "Create Small Debris";
 			group_name = "fps_debris";
 			body->set_collision_layer(1 << 2); // Layer 3: Debris
-			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 2)); // Layers 1 (World), 2 (Heavy Obstacle), 3 (Debris) - Excludes NPC Layer 5!
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 2) | (1 << 7)); // World, heavy obstacles, debris, and reactive props; NPCs remain excluded.
 			body->set_mass(0.2); // Lightweight (0.2 kg)
 
 			CollisionShape3D *shape = memnew(CollisionShape3D);
@@ -1994,6 +1994,37 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			body->add_child(mesh_instance, true);
 			// No NavigationObstacle3D, so NavigationAgent routes freely through/past it
 		} break;
+		case FPS_GAMEPLAY_SMALL_REACTIVE_PROP: {
+			RigidBody3D *body = memnew(RigidBody3D);
+			created_node = body;
+			node_name = "ReactiveSmallProp";
+			action_name = "Create Small Reactive Prop";
+			group_name = "fps_reactive_small_prop";
+			body->set_collision_layer(1 << 7); // Layer 8: NPC Reactive Props
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 7)); // World, obstacles, debris, player, NPCs, and reactive props
+			body->set_mass(0.8);
+
+			CollisionShape3D *shape = memnew(CollisionShape3D);
+			shape->set_name("CollisionShape3D");
+			Ref<CylinderShape3D> cylinder_shape;
+			cylinder_shape.instantiate();
+			cylinder_shape->set_radius(0.16);
+			cylinder_shape->set_height(0.3);
+			shape->set_shape(cylinder_shape);
+			shape->set_position(Vector3(0.0, 0.15, 0.0));
+			body->add_child(shape, true);
+
+			MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+			mesh_instance->set_name("MeshInstance3D");
+			Ref<CylinderMesh> cylinder_mesh;
+			cylinder_mesh.instantiate();
+			cylinder_mesh->set_top_radius(0.16);
+			cylinder_mesh->set_bottom_radius(0.16);
+			cylinder_mesh->set_height(0.3);
+			mesh_instance->set_mesh(cylinder_mesh);
+			mesh_instance->set_position(Vector3(0.0, 0.15, 0.0));
+			body->add_child(mesh_instance, true);
+		} break;
 		case FPS_GAMEPLAY_NPC_CHARACTER: {
 			CharacterBody3D *body = memnew(CharacterBody3D);
 			created_node = body;
@@ -2001,7 +2032,7 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			action_name = "Create NPC Character";
 			group_name = "fps_npc";
 			body->set_collision_layer(1 << 4); // Layer 5: NPC
-			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 3) | (1 << 4)); // Layers 1 (World), 2 (Heavy Obstacle), 4 (Player), 5 (NPC) - EXCLUDES Layer 3 (Debris)!
+			body->set_collision_mask((1 << 0) | (1 << 1) | (1 << 3) | (1 << 4) | (1 << 7)); // World, heavy obstacles, player, NPCs, and reactive props; excludes debris.
 
 			CollisionShape3D *shape = memnew(CollisionShape3D);
 			shape->set_name("CollisionShape3D");
@@ -2031,9 +2062,18 @@ bool SceneTreeDock::create_fps_gameplay_element_at(FPSGameplayElement p_element,
 			agent->set_avoidance_priority(0.5);
 			agent->set_time_horizon_agents(1.5);
 			agent->set_time_horizon_obstacles(1.5);
-			agent->set_avoidance_layers(1 << 1); // Layer 2: NPC Avoidance
-			agent->set_avoidance_mask((1 << 0) | (1 << 1)); // Avoids Layer 1 (Obstacles) and Layer 2 (Other NPCs)
+			agent->set_avoidance_layers(1 << 1); // Layer 2: NPCs
+			agent->set_avoidance_mask((1 << 0) | (1 << 1) | (1 << 2)); // Obstacles, NPCs, and Player
 			body->add_child(agent, true);
+
+			String controller_script_path = "res://modules/gdscript/editor/script_templates/CharacterBody3D/fps_npc_controller.gd";
+			if (ScriptServer::is_global_class("NPCController")) {
+				controller_script_path = ScriptServer::get_global_class_path("NPCController");
+			}
+			Ref<Script> controller_script = ResourceLoader::load(controller_script_path, "Script");
+			if (controller_script.is_valid()) {
+				body->set_script(controller_script);
+			}
 		} break;
 	}
 

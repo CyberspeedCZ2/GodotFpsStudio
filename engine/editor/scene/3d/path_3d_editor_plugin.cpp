@@ -85,6 +85,8 @@ static String _get_npc_route_action_name(int p_action) {
 			return "run";
 		case Path3DEditorPlugin::NPC_POINT_ACTION_WAIT:
 			return "wait";
+		case Path3DEditorPlugin::NPC_POINT_ACTION_SIT:
+			return "sit";
 		case Path3DEditorPlugin::NPC_POINT_ACTION_LOOK_AT:
 			return "look_at";
 		case Path3DEditorPlugin::NPC_POINT_ACTION_PLAY_ANIMATION:
@@ -679,6 +681,8 @@ void Path3DGizmo::redraw() {
 					action = Path3DEditorPlugin::NPC_POINT_ACTION_RUN;
 				} else if (action_name == "wait") {
 					action = Path3DEditorPlugin::NPC_POINT_ACTION_WAIT;
+				} else if (action_name == "sit") {
+					action = Path3DEditorPlugin::NPC_POINT_ACTION_SIT;
 				} else if (action_name == "look_at") {
 					action = Path3DEditorPlugin::NPC_POINT_ACTION_LOOK_AT;
 				} else if (action_name == "play_animation") {
@@ -710,6 +714,7 @@ void Path3DGizmo::redraw() {
 			"fps_route_move",
 			"fps_route_run",
 			"fps_route_wait",
+			"fps_route_sit",
 			"fps_route_look_at",
 			"fps_route_animation",
 			"fps_route_interact",
@@ -720,6 +725,7 @@ void Path3DGizmo::redraw() {
 			nullptr,
 			"fps_route_action_run",
 			"fps_route_action_wait",
+			"fps_route_action_sit",
 			"fps_route_action_look_at",
 			"fps_route_action_animation",
 			"fps_route_action_interact",
@@ -1704,8 +1710,8 @@ void Path3DEditorPlugin::_update_route_controls() {
 
 void Path3DEditorPlugin::_update_route_action_fields(int p_action_id) {
 	const int action_id = p_action_id;
-	npc_point_duration->set_editable(action_id == NPC_POINT_ACTION_WAIT || action_id == NPC_POINT_ACTION_LOOK_AT);
-	npc_point_target->set_editable(action_id == NPC_POINT_ACTION_LOOK_AT || action_id == NPC_POINT_ACTION_PLAY_ANIMATION || action_id == NPC_POINT_ACTION_INTERACT || action_id == NPC_POINT_ACTION_ATTACK || action_id == NPC_POINT_ACTION_TAKE_COVER);
+	npc_point_duration->set_editable(action_id == NPC_POINT_ACTION_WAIT || action_id == NPC_POINT_ACTION_SIT || action_id == NPC_POINT_ACTION_LOOK_AT);
+	npc_point_target->set_editable(action_id == NPC_POINT_ACTION_SIT || action_id == NPC_POINT_ACTION_LOOK_AT || action_id == NPC_POINT_ACTION_PLAY_ANIMATION || action_id == NPC_POINT_ACTION_INTERACT || action_id == NPC_POINT_ACTION_ATTACK || action_id == NPC_POINT_ACTION_TAKE_COVER);
 }
 
 void Path3DEditorPlugin::_refresh_route_action_display() {
@@ -2414,6 +2420,7 @@ Path3DEditorPlugin::Path3DEditorPlugin() {
 	npc_point_action->add_item(TTR("Move"), NPC_POINT_ACTION_MOVE);
 	npc_point_action->add_item(TTR("Run"), NPC_POINT_ACTION_RUN);
 	npc_point_action->add_item(TTR("Wait"), NPC_POINT_ACTION_WAIT);
+	npc_point_action->add_item(TTR("Sit"), NPC_POINT_ACTION_SIT);
 	npc_point_action->add_item(TTR("Look at Target"), NPC_POINT_ACTION_LOOK_AT);
 	npc_point_action->add_item(TTR("Play Animation"), NPC_POINT_ACTION_PLAY_ANIMATION);
 	npc_point_action->add_item(TTR("Interact"), NPC_POINT_ACTION_INTERACT);
@@ -2435,7 +2442,7 @@ Path3DEditorPlugin::Path3DEditorPlugin() {
 	npc_point_target = memnew(LineEdit);
 	npc_point_target->set_custom_minimum_size(Size2(108, 0) * EDSCALE);
 	npc_point_target->set_placeholder(TTR("Target"));
-	npc_point_target->set_tooltip_text(TTR("For Look at Target, enter a NodePath resolved relative to the NPC, then the active scene root. For Play Animation, enter an animation name."));
+	npc_point_target->set_tooltip_text(TTR("For Sit or Play Animation, enter an optional animation name. For Look at Target, Interact, Attack, or Take Cover, enter a NodePath resolved relative to the NPC, then the active scene root."));
 	add_route_control(npc_point_target);
 
 	npc_apply_point_action = memnew(Button);
@@ -2769,6 +2776,7 @@ Path3DGizmoPlugin::Path3DGizmoPlugin() {
 		Pair<String, Color>("fps_route_centerline", Color(0.88, 0.98, 1.0, 0.96)),
 		Pair<String, Color>("fps_route_direction", Color(1.0, 0.94, 0.24, 0.98)),
 		Pair<String, Color>("fps_route_wait", Color(1.0, 0.72, 0.12)),
+		Pair<String, Color>("fps_route_sit", Color(0.42, 0.78, 1.0)),
 		Pair<String, Color>("fps_route_look_at", Color(0.78, 0.42, 1.0)),
 		Pair<String, Color>("fps_route_animation", Color(1.0, 0.55, 0.16)),
 		Pair<String, Color>("fps_route_interact", Color(0.20, 1.0, 0.72)),
@@ -2783,6 +2791,7 @@ Path3DGizmoPlugin::Path3DGizmoPlugin() {
 				route_material.first == "fps_route_move" ||
 				route_material.first == "fps_route_run" ||
 				route_material.first == "fps_route_wait" ||
+				route_material.first == "fps_route_sit" ||
 				route_material.first == "fps_route_look_at" ||
 				route_material.first == "fps_route_animation" ||
 				route_material.first == "fps_route_interact" ||
@@ -2805,6 +2814,7 @@ Path3DGizmoPlugin::Path3DGizmoPlugin() {
 	const Pair<String, StringName> action_icons[] = {
 		Pair<String, StringName>("fps_route_action_run", SNAME("FPSRouteActionRun")),
 		Pair<String, StringName>("fps_route_action_wait", SNAME("FPSRouteActionWait")),
+		Pair<String, StringName>("fps_route_action_sit", SNAME("FPSRouteActionSit")),
 		Pair<String, StringName>("fps_route_action_look_at", SNAME("FPSRouteActionLookAt")),
 		Pair<String, StringName>("fps_route_action_animation", SNAME("FPSRouteActionAnimation")),
 		Pair<String, StringName>("fps_route_action_interact", SNAME("FPSRouteActionInteract")),

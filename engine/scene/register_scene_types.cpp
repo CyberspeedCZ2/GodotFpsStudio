@@ -1299,6 +1299,7 @@ void register_scene_types() {
 		"NPC",
 		"Hitbox",
 		"Interactable",
+		"NPC Reactive Props",
 	};
 	static const char *default_avoidance_layer_names[] = {
 		"Obstacles",
