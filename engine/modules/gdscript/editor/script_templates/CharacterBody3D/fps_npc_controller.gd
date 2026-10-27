@@ -106,6 +106,35 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export var sit_animation_name: StringName = &"sit"
 @export_range(0.1, 5.0, 0.1) var look_at_default_duration: float = 1.2
 
+@export_group("Locomotion Animation")
+## Automatic idle/walk/run animation playback from movement speed. Requires an AnimationPlayer.
+@export var locomotion_animation_enabled: bool = true
+@export var idle_animation_name: StringName = &"Idle"
+@export var walk_animation_name: StringName = &"Walking_A"
+@export var run_animation_name: StringName = &"Running_A"
+## Horizontal speed at or above which the walk animation plays.
+@export_range(0.1, 10.0, 0.1) var walk_animation_speed: float = 0.5
+## Horizontal speed at or above which the run animation plays.
+@export_range(0.5, 20.0, 0.1) var run_animation_speed: float = 3.5
+## Playback speed of the locomotion animations scales with actual movement speed.
+@export var locomotion_animation_scale_with_speed: bool = true
+## Reference speed for animation playback scaling.
+@export_range(0.5, 20.0, 0.1) var locomotion_reference_speed: float = 2.8
+## Death animation played by die().
+@export var death_animation_name: StringName = &"Death_A"
+## Hit reaction animation played when take_damage reduces health.
+@export var hit_animation_name: StringName = &"Hit_A"
+## Attack animation played by melee attacks.
+@export var attack_animation_name: StringName = &"Unarmed_Melee_Attack_Punch_A"
+## Sit animation from the model library (KayKit uses Sit_Chair_Idle).
+@export var model_sit_animation_name: StringName = &"Sit_Chair_Idle"
+## Cover animation from the model library.
+@export var model_cover_animation_name: StringName = &"Blocking"
+## Shield-eyes substitute from the model library.
+@export var model_shield_eyes_animation_name: StringName = &"Hit_A"
+## Interact animation from the model library.
+@export var model_interact_animation_name: StringName = &"Interact"
+
 @export_group("Small Props")
 @export_flags_3d_physics var reactive_prop_collision_mask: int = 1 << 7
 @export_range(0.0, 30.0, 0.1) var reactive_prop_push_force: float = 4.0
@@ -172,13 +201,22 @@ var _observation_started_msec: int = 0
 var _observation_turning_away_until_msec: int = 0
 var _observation_cooldown_until_msec: int = 0
 var _observation_turn_from_position: Vector3 = Vector3.ZERO
+var _hit_reaction_until_msec: int = 0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var nav_agent: NavigationAgent3D = get_node_or_null("NavigationAgent3D") as NavigationAgent3D
 @onready var debug_label: Label3D = get_node_or_null("DebugLabel") as Label3D
 @onready var health_label: Label3D = get_node_or_null("HealthLabel") as Label3D
 @onready var fear_label: Label3D = get_node_or_null("FearLabel") as Label3D
-@onready var animation_player: AnimationPlayer = get_node_or_null(animation_player_path) as AnimationPlayer
+@onready var animation_player: AnimationPlayer = _resolve_animation_player()
+
+
+func _resolve_animation_player() -> AnimationPlayer:
+	# Direct path first, then any AnimationPlayer in the subtree (e.g. imported models).
+	var direct: AnimationPlayer = get_node_or_null(animation_player_path) as AnimationPlayer
+	if direct != null:
+		return direct
+	return find_child("AnimationPlayer", true, false) as AnimationPlayer
 
 
 func _ready() -> void:
@@ -215,8 +253,47 @@ func _physics_process(delta: float) -> void:
 		move_and_slide()
 		_apply_reactive_prop_impulses()
 
+	_update_locomotion_animation()
+
 	if _fallback_brain_enabled:
 		_tick_fallback_brain()
+
+
+func _update_locomotion_animation() -> void:
+	if not locomotion_animation_enabled or animation_player == null or _action_animation_active():
+		return
+	var horizontal_speed: float = Vector3(velocity.x, 0.0, velocity.z).length()
+	var animation_name: StringName = idle_animation_name
+	if horizontal_speed >= run_animation_speed:
+		animation_name = run_animation_name
+	elif horizontal_speed >= walk_animation_speed:
+		animation_name = walk_animation_name
+	if not animation_player.has_animation(animation_name):
+		return
+	var playback_speed_scale: float = 1.0
+	if locomotion_animation_scale_with_speed and horizontal_speed >= walk_animation_speed:
+		playback_speed_scale = clampf(
+			horizontal_speed / maxf(locomotion_reference_speed, 0.1),
+			0.5,
+			3.0
+		)
+	if animation_player.current_animation != animation_name:
+		animation_player.play(animation_name)
+	animation_player.speed_scale = playback_speed_scale
+
+
+func _action_animation_active() -> bool:
+	if animation_player == null:
+		return false
+	if _route_action_name == &"sit" and is_sitting:
+		return true
+	if _route_action_name == &"take_cover" and _is_in_cover:
+		return true
+	if _route_action_name == &"play_animation":
+		return true
+	if _flashlight_reaction_until_msec > Time.get_ticks_msec():
+		return true
+	return false
 
 
 func _navigate_towards_target(delta: float) -> void:
@@ -537,15 +614,41 @@ func _dispatch_interaction(target: Node) -> void:
 
 func _play_npc_animation(animation_name: StringName) -> float:
 	animation_requested.emit(animation_name)
-	if animation_player == null or animation_name.is_empty() or not animation_player.has_animation(animation_name):
+	if animation_player == null or animation_name.is_empty():
 		return 0.0
-	animation_player.play(animation_name)
-	var animation: Animation = animation_player.get_animation(animation_name)
+	var resolved_name: StringName = _resolve_animation_name(animation_name)
+	if not animation_player.has_animation(resolved_name):
+		return 0.0
+	animation_player.play(resolved_name)
+	var animation: Animation = animation_player.get_animation(resolved_name)
 	return animation.length if animation != null else 0.0
+
+
+func _resolve_animation_name(animation_name: StringName) -> StringName:
+	# Logical names map to model library clips; unmapped names pass through unchanged.
+	match animation_name:
+		&"sit":
+			return model_sit_animation_name
+		&"take_cover":
+			return model_cover_animation_name
+		&"shield_eyes":
+			return model_shield_eyes_animation_name
+		&"interact":
+			return model_interact_animation_name
+		&"death":
+			return death_animation_name
+		&"hit":
+			return hit_animation_name
+		&"attack":
+			return attack_animation_name
+	if animation_player != null and animation_player.has_animation(animation_name):
+		return animation_name
+	return animation_name
 
 
 func _perform_attack(target: Node) -> void:
 	attack_requested.emit(target, attack_damage)
+	_play_npc_animation(attack_animation_name)
 	if target.has_method("take_damage"):
 		target.call("take_damage", attack_damage)
 
@@ -1344,14 +1447,25 @@ func take_damage(
 			attacker = get_tree().get_first_node_in_group(player_group) as Node3D
 		if attacker != null:
 			raise_alert(attacker, 1.0, maxf(target_memory_seconds, 4.0))
+		_play_hit_reaction()
 	_update_labels()
 	if health <= 0.0:
 		die()
 
 
+func _play_hit_reaction() -> void:
+	if animation_player == null or not animation_player.has_animation(_resolve_animation_name(hit_animation_name)):
+		return
+	if _hit_reaction_until_msec > Time.get_ticks_msec():
+		return
+	animation_player.play(_resolve_animation_name(hit_animation_name))
+	_hit_reaction_until_msec = Time.get_ticks_msec() + 600
+
+
 func die() -> void:
 	stop()
 	_set_ai_state("Dead")
+	_play_npc_animation(death_animation_name)
 	queue_free()
 
 
