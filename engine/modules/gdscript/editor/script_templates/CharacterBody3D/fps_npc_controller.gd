@@ -14,6 +14,9 @@ const ARCHETYPE_FRIENDLY: int = 2
 const ARCHETYPE_PASSIVE: int = ARCHETYPE_FRIENDLY # Backward-compatible alias for existing scripts.
 const MOVEMENT_MODE_RANDOM_WANDER: int = 0
 const MOVEMENT_MODE_ASSIGNED_PATH: int = 1
+const CIVILIAN_PERSONALITY_STEADY: int = 0
+const CIVILIAN_PERSONALITY_CAUTIOUS: int = 1
+const CIVILIAN_PERSONALITY_NERVOUS: int = 2
 const LOCOMOTION_WALK: int = 0
 const LOCOMOTION_RUN: int = 1
 const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
@@ -39,17 +42,37 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_group("Awareness")
 @export var fear_enabled: bool = true
 @export var look_at_player_when_seen: bool = true
-@export_range(1.0, 100.0, 1.0) var fear_threshold: float = 70.0
+@export_enum("Steady", "Cautious", "Nervous") var civilian_personality: int = CIVILIAN_PERSONALITY_CAUTIOUS
+## Base flight threshold for Cautious. Steady adds 15 and Nervous subtracts 15.
+@export_range(20.0, 95.0, 1.0) var fear_threshold: float = 70.0
+## Civilian stops fleeing below this stress level, after the minimum flight commitment.
+@export_range(5.0, 80.0, 1.0) var civilian_flee_exit_stress: float = 30.0
+@export_range(0.0, 10.0, 0.1) var civilian_minimum_flee_seconds: float = 1.5
 @export_range(1.0, 100.0, 1.0) var alert_radius: float = 10.0
 @export_range(0.1, 2.0, 0.1) var sensor_interval: float = 0.2
 @export_range(0.0, 60.0, 0.5) var target_memory_seconds: float = 3.0
 ## How long Hostile or Friendly searches the last known player position after losing sight.
 @export_range(0.0, 15.0, 0.1) var hostile_lost_sight_memory_seconds: float = 5.0
-## Civilian fear gained per second while a visible player has a weapon drawn.
-@export_range(0.0, 100.0, 1.0) var fear_gain_per_second: float = 30.0
+## Stress gained per second from a passively held weapon. This stimulus is always capped below flight.
+@export_range(0.0, 30.0, 0.5) var fear_gain_per_second: float = 4.0
+@export_range(0.0, 60.0, 1.0) var held_weapon_stress_cap: float = 25.0
+@export_range(0.0, 100.0, 1.0) var aimed_weapon_stress_gain_per_second: float = 32.0
+@export_range(1.0, 30.0, 0.5) var aimed_weapon_cone_degrees: float = 7.0
 @export_range(0.0, 100.0, 1.0) var fear_decay_per_second: float = 8.0
 @export var player_group: StringName = &"player"
 @export_flags_3d_physics var alert_collision_mask: int = 0xFFFFFFFF
+
+@export_group("Civilian Stimuli")
+@export_range(1.0, 100.0, 1.0) var gunshot_hearing_radius: float = 28.0
+@export_range(1.0, 40.0, 0.5) var gunshot_close_radius: float = 12.0
+@export_range(0.5, 15.0, 0.5) var gunshot_impact_panic_radius: float = 4.0
+@export_range(0.1, 1.0, 0.05) var gunshot_occlusion_stress_multiplier: float = 0.45
+@export var flashlight_reaction_enabled: bool = true
+@export var flashlight_group: StringName = &"player_flashlight"
+@export_range(0.1, 3.0, 0.05) var flashlight_reaction_seconds: float = 0.65
+@export_range(0.0, 4.0, 0.1) var flashlight_sidestep_distance: float = 1.4
+@export_range(0.0, 10.0, 0.1) var flashlight_reaction_cooldown_seconds: float = 2.5
+@export var flashlight_shield_animation: StringName = &"shield_eyes"
 
 @export_group("Threat Response")
 @export_range(2.0, 30.0, 0.5) var flee_distance: float = 10.0
@@ -84,7 +107,13 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 var current_speed: float = 2.8
 var is_moving: bool = false
 var health: float = 100.0
-var fear: float = 0.0
+var stress: float = 0.0
+## Backward-compatible access for existing scenes and scripts. Civilian behavior now uses stress.
+var fear: float:
+	get:
+		return stress
+	set(value):
+		stress = clampf(value, 0.0, 100.0)
 var is_sitting: bool = false
 
 var _target_destination: Vector3 = Vector3.ZERO
@@ -117,6 +146,13 @@ var _physics_delta: float = 1.0 / 60.0
 var _fallback_brain_enabled: bool = false
 var _candidate_navigation_point: Vector3 = Vector3.ZERO
 var _current_state: StringName = &"Idle"
+var _civilian_panic_active: bool = false
+var _civilian_flee_until_msec: int = 0
+var _flashlight_target: Node3D
+var _flashlight_visible: bool = false
+var _flashlight_reaction_until_msec: int = 0
+var _flashlight_cooldown_until_msec: int = 0
+var _flashlight_sidestep_active: bool = false
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var nav_agent: NavigationAgent3D = get_node_or_null("NavigationAgent3D") as NavigationAgent3D
@@ -612,12 +648,13 @@ func tick_threat_response() -> void:
 
 func _tick_civilian_flee(target: Node3D) -> void:
 	var now: int = Time.get_ticks_msec()
+	_civilian_panic_active = true
 	if not _flee_goal_active or (is_at_destination() and now >= _flee_retarget_after_msec):
 		if _try_find_flee_destination(target):
 			move_to_position(_candidate_navigation_point, run_speed)
 			_flee_goal_active = true
 			_flee_retarget_after_msec = now + 800
-			_set_ai_state("Fleeing")
+			_set_ai_state("Fleeing from threat")
 		else:
 			_flee_goal_active = false
 			stop()
@@ -779,6 +816,10 @@ func interrupt_threat_response() -> void:
 	]
 	var routine_already_active: bool = _current_state in routine_states
 	_flee_goal_active = false
+	_civilian_panic_active = false
+	_civilian_flee_until_msec = 0
+	_flashlight_reaction_until_msec = 0
+	_flashlight_sidestep_active = false
 	_friendly_provoked = false
 	_has_last_known_target_position = false
 	_clear_cover()
@@ -798,9 +839,18 @@ func has_active_threat() -> bool:
 	var target: Node3D = get_active_threat_target()
 	if target == null:
 		return false
-	if archetype == ARCHETYPE_CIVILIAN and fear_enabled and fear < fear_threshold:
-		return false
-	return true
+	if archetype != ARCHETYPE_CIVILIAN or not fear_enabled:
+		return true
+	var now: int = Time.get_ticks_msec()
+	if _civilian_panic_active:
+		if now < _civilian_flee_until_msec or stress > _civilian_effective_flee_exit_stress():
+			return true
+		_civilian_panic_active = false
+	if stress >= _civilian_effective_flee_threshold():
+		_civilian_panic_active = true
+		_civilian_flee_until_msec = now + int(civilian_minimum_flee_seconds * 1000.0)
+		return true
+	return false
 
 
 func has_player_to_observe() -> bool:
@@ -812,9 +862,14 @@ func get_player_observation_target() -> Node3D:
 		return null
 	_refresh_threat_sensor()
 	var now: int = Time.get_ticks_msec()
+	if _flashlight_reaction_until_msec > 0 or _flashlight_sidestep_active:
+		if is_instance_valid(_flashlight_target):
+			return _flashlight_target
 	if now <= _threat_memory_until_msec or now <= _forced_alert_until_msec:
 		if is_instance_valid(_perceived_target):
 			return _perceived_target
+	if _flashlight_visible and is_instance_valid(_flashlight_target):
+		return _flashlight_target
 	return null
 
 
@@ -822,10 +877,82 @@ func tick_player_observation() -> bool:
 	var target: Node3D = get_player_observation_target()
 	if target == null:
 		return false
+	var now: int = Time.get_ticks_msec()
+	var reacting_to_flashlight: bool = flashlight_reaction_enabled and (
+		_flashlight_sidestep_active
+		or _flashlight_reaction_until_msec > 0
+		or (_flashlight_visible and now >= _flashlight_cooldown_until_msec)
+	)
+	if reacting_to_flashlight:
+		return _tick_flashlight_observation(target, now)
 	stop()
 	_face_toward_point(target.global_position, _physics_delta)
-	_set_ai_state("Observing player")
+	if _player_has_visible_weapon(target):
+		_set_ai_state("Wary of visible weapon")
+	else:
+		_set_ai_state("Observing player")
 	return true
+
+
+func _tick_flashlight_observation(target: Node3D, now: int) -> bool:
+	if _flashlight_sidestep_active:
+		if is_moving and not is_at_destination():
+			_set_ai_state("Stepping out of flashlight")
+			return true
+		stop()
+		_flashlight_sidestep_active = false
+		_set_ai_state("Avoiding flashlight")
+		return true
+
+	if _flashlight_visible and _flashlight_reaction_until_msec == 0 and now >= _flashlight_cooldown_until_msec:
+		_flashlight_reaction_until_msec = now + int(flashlight_reaction_seconds * 1000.0)
+		if not flashlight_shield_animation.is_empty():
+			_play_npc_animation(flashlight_shield_animation)
+
+	if _flashlight_reaction_until_msec > now:
+		stop()
+		_face_toward_point(target.global_position, _physics_delta)
+		_set_ai_state("Shielding eyes from flashlight")
+		return true
+
+	if _flashlight_reaction_until_msec > 0:
+		_flashlight_reaction_until_msec = 0
+		_flashlight_cooldown_until_msec = now + int(flashlight_reaction_cooldown_seconds * 1000.0)
+		if _try_choose_flashlight_sidestep(target):
+			move_to_position(_candidate_navigation_point, walk_speed)
+			_flashlight_sidestep_active = true
+			_set_ai_state("Stepping out of flashlight")
+			return true
+
+	stop()
+	_face_toward_point(target.global_position, _physics_delta)
+	_set_ai_state("Observing flashlight")
+	return true
+
+
+func _try_choose_flashlight_sidestep(target: Node3D) -> bool:
+	if nav_agent == null or flashlight_sidestep_distance <= 0.0:
+		return false
+	var map: RID = nav_agent.get_navigation_map()
+	if not _navigation_map_is_synchronized(map):
+		return false
+	var away: Vector3 = global_position - target.global_position
+	away.y = 0.0
+	if away.length_squared() <= 0.01:
+		away = -global_transform.basis.z
+	away.y = 0.0
+	away = away.normalized()
+	var side: Vector3 = away.cross(Vector3.UP).normalized()
+	for side_sign: float in [1.0, -1.0]:
+		var desired: Vector3 = global_position + side * side_sign * flashlight_sidestep_distance + away * 0.3
+		if not NavigationServer3D.map_get_closest_point_owner(map, desired).is_valid():
+			continue
+		var point: Vector3 = NavigationServer3D.map_get_closest_point(map, desired)
+		if global_position.distance_to(point) < 0.35 or not _is_navigation_position_reachable(map, point):
+			continue
+		_candidate_navigation_point = point
+		return true
+	return false
 
 
 func get_active_threat_target() -> Node3D:
@@ -852,7 +979,10 @@ func raise_alert(source: Node3D, intensity: float = 1.0, duration: float = 4.0) 
 	_forced_alert_until_msec = now + int(maxf(duration, 0.0) * 1000.0)
 	_threat_memory_until_msec = maxi(_threat_memory_until_msec, _forced_alert_until_msec)
 	if archetype == ARCHETYPE_CIVILIAN:
-		fear = clampf(fear + clampf(intensity, 0.0, 1.0) * 100.0, 0.0, 100.0)
+		stress = clampf(stress + clampf(intensity, 0.0, 1.0) * 100.0, 0.0, 100.0)
+		if stress >= _civilian_effective_flee_threshold():
+			_civilian_panic_active = true
+			_civilian_flee_until_msec = now + int(civilian_minimum_flee_seconds * 1000.0)
 	_update_labels()
 	if not was_active:
 		threat_detected.emit(source)
@@ -882,11 +1012,77 @@ func _refresh_threat_sensor() -> void:
 		_friendly_provoked = false
 		_has_last_known_target_position = false
 
-	if archetype == ARCHETYPE_CIVILIAN and fear_enabled and visible_target != null and _player_has_visible_weapon(visible_target):
-		fear = clampf(fear + fear_gain_per_second * elapsed, 0.0, 100.0)
+	_flashlight_visible = false
+	_flashlight_target = null
+	if archetype == ARCHETYPE_CIVILIAN and fear_enabled:
+		var passive_weapon: bool = visible_target != null and _player_has_visible_weapon(visible_target)
+		var aimed_weapon: bool = passive_weapon and _player_is_aiming_at_npc(visible_target)
+		if flashlight_reaction_enabled:
+			_flashlight_target = _find_player_flashlight()
+			_flashlight_visible = _flashlight_target != null
+		_update_civilian_stress(elapsed, passive_weapon, aimed_weapon, _flashlight_visible)
 	else:
-		fear = maxf(fear - fear_decay_per_second * elapsed, 0.0)
+		stress = maxf(stress - fear_decay_per_second * elapsed, 0.0)
 	_update_labels()
+
+
+func _update_civilian_stress(elapsed: float, passive_weapon: bool, aimed_weapon: bool, illuminated: bool) -> void:
+	var decay_multiplier: float = _civilian_personality_decay_multiplier()
+	var decay: float = fear_decay_per_second * decay_multiplier * elapsed
+	if aimed_weapon:
+		stress += aimed_weapon_stress_gain_per_second * _civilian_personality_gain_multiplier() * elapsed
+	elif passive_weapon:
+		var cap: float = _civilian_held_weapon_stress_cap()
+		if stress < cap:
+			stress = minf(cap, stress + fear_gain_per_second * _civilian_personality_gain_multiplier() * elapsed)
+		else:
+			stress = maxf(cap, stress - decay)
+	elif illuminated:
+		var light_cap: float = 10.0 + float(civilian_personality) * 5.0
+		if stress < light_cap:
+			stress = minf(light_cap, stress + 3.0 * _civilian_personality_gain_multiplier() * elapsed)
+		else:
+			stress = maxf(light_cap, stress - decay)
+	else:
+		stress -= decay
+	stress = clampf(stress, 0.0, 100.0)
+	if stress >= _civilian_effective_flee_threshold() and not _civilian_panic_active:
+		_civilian_panic_active = true
+		_civilian_flee_until_msec = Time.get_ticks_msec() + int(civilian_minimum_flee_seconds * 1000.0)
+
+
+func _civilian_effective_flee_threshold() -> float:
+	var personality_offset: float = 15.0 - float(civilian_personality) * 15.0
+	return clampf(fear_threshold + personality_offset, 5.0, 100.0)
+
+
+func _civilian_effective_flee_exit_stress() -> float:
+	return minf(civilian_flee_exit_stress, _civilian_effective_flee_threshold() - 5.0)
+
+
+func _civilian_held_weapon_stress_cap() -> float:
+	var personality_offset: float = float(civilian_personality - CIVILIAN_PERSONALITY_CAUTIOUS) * 10.0
+	return clampf(held_weapon_stress_cap + personality_offset, 0.0, _civilian_effective_flee_threshold() - 5.0)
+
+
+func _civilian_personality_gain_multiplier() -> float:
+	match civilian_personality:
+		CIVILIAN_PERSONALITY_STEADY:
+			return 0.75
+		CIVILIAN_PERSONALITY_NERVOUS:
+			return 1.4
+		_:
+			return 1.0
+
+
+func _civilian_personality_decay_multiplier() -> float:
+	match civilian_personality:
+		CIVILIAN_PERSONALITY_STEADY:
+			return 1.3
+		CIVILIAN_PERSONALITY_NERVOUS:
+			return 0.6
+		_:
+			return 1.0
 
 
 func _player_has_visible_weapon(player: Node) -> bool:
@@ -894,6 +1090,98 @@ func _player_has_visible_weapon(player: Node) -> bool:
 		return bool(player.call("has_visible_weapon"))
 	var weapon_slot: Variant = player.get("current_weapon_slot")
 	return weapon_slot != null and int(weapon_slot) > 0
+
+
+func _player_is_aiming_at_npc(player: Node3D) -> bool:
+	var camera: Camera3D = player.find_child("Camera3D", true, false) as Camera3D
+	if camera == null:
+		return false
+	var target_position: Vector3 = global_position + Vector3.UP * 1.2
+	var to_npc: Vector3 = target_position - camera.global_position
+	var distance: float = to_npc.length()
+	if distance <= 0.01 or distance > alert_radius:
+		return false
+	var look_direction: Vector3 = -camera.global_transform.basis.z.normalized()
+	var minimum_dot: float = cos(deg_to_rad(aimed_weapon_cone_degrees))
+	if look_direction.dot(to_npc / distance) < minimum_dot:
+		return false
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(camera.global_position, target_position)
+	query.collision_mask = alert_collision_mask
+	var excluded_rids: Array[RID] = [get_rid()]
+	var player_body: CollisionObject3D = player as CollisionObject3D
+	if player_body != null:
+		excluded_rids.append(player_body.get_rid())
+	query.exclude = excluded_rids
+	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if result.is_empty():
+		return true
+	var collider: Node = result.get("collider") as Node
+	return collider == self or (collider != null and is_ancestor_of(collider))
+
+
+func _find_player_flashlight() -> Node3D:
+	for candidate: Node in get_tree().get_nodes_in_group(flashlight_group):
+		var light: SpotLight3D = candidate as SpotLight3D
+		if light == null or not light.has_method("illuminates_target"):
+			continue
+		if not bool(light.call("illuminates_target", self)):
+			continue
+		var source: Variant = light.get("fps_character")
+		if source is Node3D and is_instance_valid(source):
+			return source as Node3D
+	return null
+
+
+func react_to_gunshot(
+	shooter: Node3D,
+	shot_origin: Vector3,
+	_shot_direction: Vector3,
+	impact_position: Vector3,
+	impact_collider: Node = null
+) -> void:
+	if archetype != ARCHETYPE_CIVILIAN or not fear_enabled or shooter == null:
+		return
+	var shot_distance: float = global_position.distance_to(shot_origin)
+	var impact_distance: float = global_position.distance_to(impact_position)
+	if shot_distance > gunshot_hearing_radius and impact_distance > gunshot_impact_panic_radius:
+		return
+	var was_perceived: bool = is_instance_valid(_perceived_target)
+	var audibility: float = clampf(1.0 - shot_distance / maxf(gunshot_hearing_radius, 0.1), 0.0, 1.0)
+	var occlusion_multiplier: float = 1.0
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(shot_origin, global_position + Vector3.UP * 1.2)
+	query.collision_mask = alert_collision_mask
+	var excluded_rids: Array[RID] = [get_rid()]
+	var shooter_body: CollisionObject3D = shooter as CollisionObject3D
+	if shooter_body != null:
+		excluded_rids.append(shooter_body.get_rid())
+	query.exclude = excluded_rids
+	var result: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if not result.is_empty():
+		var collider: Node = result.get("collider") as Node
+		if collider != self and (collider == null or not is_ancestor_of(collider)):
+			occlusion_multiplier = gunshot_occlusion_stress_multiplier
+	var close_panic: bool = shot_distance <= gunshot_close_radius or impact_distance <= gunshot_impact_panic_radius or impact_collider == self
+	var gained_stress: float = lerpf(25.0, 75.0, audibility) * occlusion_multiplier
+	stress = clampf(maxf(stress + gained_stress, gained_stress), 0.0, 100.0)
+	if close_panic:
+		stress = maxf(stress, _civilian_effective_flee_threshold() + 10.0)
+	_perceived_target = shooter
+	_last_known_target_position = shooter.global_position
+	_has_last_known_target_position = true
+	var now: int = Time.get_ticks_msec()
+	var memory_seconds: float = maxf(target_memory_seconds, 4.0)
+	_forced_alert_until_msec = now + int(memory_seconds * 1000.0)
+	_threat_memory_until_msec = maxi(_threat_memory_until_msec, _forced_alert_until_msec)
+	if stress >= _civilian_effective_flee_threshold():
+		_civilian_panic_active = true
+		_civilian_flee_until_msec = now + int(civilian_minimum_flee_seconds * 1000.0)
+		_flee_goal_active = false
+		_set_ai_state("Startled by gunshot")
+	else:
+		_set_ai_state("Alerted by distant gunshot")
+	_update_labels()
+	if not was_perceived:
+		threat_detected.emit(shooter)
 
 
 func _find_visible_player() -> Node3D:
@@ -1008,7 +1296,7 @@ func _update_labels() -> void:
 		health_label.text = "HP: %d / %d" % [int(health), int(max_health)]
 	if fear_label != null:
 		fear_label.visible = archetype == ARCHETYPE_CIVILIAN
-		fear_label.text = "STRACH: %d%%" % int(fear)
+		fear_label.text = "STRES: %d%%" % int(stress)
 	update_debug_state(String(_current_state))
 
 
