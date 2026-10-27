@@ -22,7 +22,7 @@ const LOCOMOTION_RUN: int = 1
 const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 
 @export_group("Role")
-## Civilian fears weapons and flees; Hostile attacks on sight; Friendly fights only after being provoked.
+## Civilian fears weapons and flees; Hostile attacks on sight; Friendly flees from stress like a civilian and fights only after real provocation.
 @export_enum("Civilian", "Hostile", "Friendly") var archetype: int = ARCHETYPE_CIVILIAN
 
 @export_group("Movement")
@@ -42,10 +42,11 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_group("Awareness")
 @export var fear_enabled: bool = true
 @export var look_at_player_when_seen: bool = true
+## Stress personality used by Civilian and Friendly. Steady is calmest, Nervous panics soonest.
 @export_enum("Steady", "Cautious", "Nervous") var civilian_personality: int = CIVILIAN_PERSONALITY_CAUTIOUS
 ## Base flight threshold for Cautious. Steady adds 15 and Nervous subtracts 15.
 @export_range(20.0, 95.0, 1.0) var fear_threshold: float = 70.0
-## Civilian stops fleeing below this stress level, after the minimum flight commitment.
+## Civilian and unprovoked Friendly stop fleeing below this stress level, after the minimum flight commitment.
 @export_range(5.0, 80.0, 1.0) var civilian_flee_exit_stress: float = 30.0
 @export_range(0.0, 10.0, 0.1) var civilian_minimum_flee_seconds: float = 1.5
 @export_range(1.0, 100.0, 1.0) var alert_radius: float = 10.0
@@ -55,7 +56,7 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_range(0.0, 15.0, 0.1) var hostile_lost_sight_memory_seconds: float = 5.0
 ## Stress gained per second from a passively held weapon. This stimulus is always capped below flight.
 @export_range(0.0, 30.0, 0.5) var fear_gain_per_second: float = 4.0
-## Maximum stress from seeing a held weapon. The civilian never flees from this stimulus alone.
+## Maximum stress from seeing a held weapon. Civilian and Friendly never flee from this stimulus alone.
 @export_range(0.0, 60.0, 1.0) var held_weapon_stress_cap: float = 30.0
 ## Stress gained per second while the player aims directly at this NPC. Capped at the weapon cap; aiming alone never causes flight.
 @export_range(0.0, 100.0, 1.0) var aimed_weapon_stress_gain_per_second: float = 32.0
@@ -71,13 +72,13 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_range(0.1, 1.0, 0.05) var gunshot_occlusion_stress_multiplier: float = 0.45
 @export var flashlight_reaction_enabled: bool = true
 @export var flashlight_group: StringName = &"player_flashlight"
-## How long the civilian looks at the light source before walking away.
+## How long the civilian or friendly looks at the light source before walking away.
 @export_range(0.1, 3.0, 0.05) var flashlight_reaction_seconds: float = 1.2
 ## How far the civilian walks away after being lit up.
 @export_range(0.0, 8.0, 0.1) var flashlight_sidestep_distance: float = 2.5
 @export_range(0.0, 10.0, 0.1) var flashlight_reaction_cooldown_seconds: float = 2.5
 @export var flashlight_shield_animation: StringName = &"shield_eyes"
-## Maximum stress from a direct flashlight beam. The civilian never flees from the light alone.
+## Maximum stress from a direct flashlight beam. Civilian and Friendly never flee from the light alone.
 @export_range(0.0, 60.0, 1.0) var flashlight_stress_cap: float = 15.0
 
 @export_group("Threat Response")
@@ -645,13 +646,23 @@ func _tick_fallback_brain() -> void:
 
 
 func tick_threat_response() -> void:
-	var target: Node3D = get_active_threat_target()
+	if archetype == ARCHETYPE_FRIENDLY:
+		if _friendly_provoked:
+			# Provoked self-defense has priority over flight.
+			var combat_target: Node3D = get_active_threat_target()
+			if combat_target != null:
+				_tick_hostile_response(combat_target)
+			return
+		if not _uses_stress():
+			# Without the stress model an unprovoked Friendly ignores the player.
+			return
+	var target: Node3D = _get_perceived_threat_source()
 	if target == null:
 		return
-	if archetype == ARCHETYPE_CIVILIAN:
-		_tick_civilian_flee(target)
-	elif archetype == ARCHETYPE_HOSTILE or archetype == ARCHETYPE_FRIENDLY:
+	if archetype == ARCHETYPE_HOSTILE:
 		_tick_hostile_response(target)
+	else:
+		_tick_civilian_flee(target)
 
 
 func _tick_civilian_flee(target: Node3D) -> void:
@@ -843,12 +854,28 @@ func interrupt_threat_response() -> void:
 	_set_ai_state("Returning to routine")
 
 
+func _uses_stress() -> bool:
+	return fear_enabled and (archetype == ARCHETYPE_CIVILIAN or archetype == ARCHETYPE_FRIENDLY)
+
+
 func has_active_threat() -> bool:
-	var target: Node3D = get_active_threat_target()
+	if archetype == ARCHETYPE_FRIENDLY:
+		if _friendly_provoked:
+			# Provoked self-defense has priority over any flight hesitation.
+			return get_active_threat_target() != null
+		if not _uses_stress():
+			# Without the stress model an unprovoked Friendly ignores the player.
+			return false
+		return _get_perceived_threat_source() != null and _has_flight_commitment()
+	var target: Node3D = _get_perceived_threat_source()
 	if target == null:
 		return false
-	if archetype != ARCHETYPE_CIVILIAN or not fear_enabled:
+	if not _uses_stress():
 		return true
+	return _has_flight_commitment()
+
+
+func _has_flight_commitment() -> bool:
 	var now: int = Time.get_ticks_msec()
 	if _civilian_panic_active:
 		if now < _civilian_flee_until_msec or stress > _civilian_effective_flee_exit_stress():
@@ -866,7 +893,7 @@ func has_player_to_observe() -> bool:
 
 
 func get_player_observation_target() -> Node3D:
-	if archetype != ARCHETYPE_CIVILIAN or not look_at_player_when_seen:
+	if not _uses_stress() or not look_at_player_when_seen:
 		return null
 	_refresh_threat_sensor()
 	var now: int = Time.get_ticks_msec()
@@ -964,8 +991,13 @@ func _try_choose_flashlight_sidestep(target: Node3D) -> bool:
 
 
 func get_active_threat_target() -> Node3D:
+	# Combat target: Friendly fights back only after real provocation.
 	if archetype == ARCHETYPE_FRIENDLY and not _friendly_provoked:
 		return null
+	return _get_perceived_threat_source()
+
+
+func _get_perceived_threat_source() -> Node3D:
 	_refresh_threat_sensor()
 	var now: int = Time.get_ticks_msec()
 	if now <= _threat_memory_until_msec or now <= _forced_alert_until_msec:
@@ -986,7 +1018,7 @@ func raise_alert(source: Node3D, intensity: float = 1.0, duration: float = 4.0) 
 	var now: int = Time.get_ticks_msec()
 	_forced_alert_until_msec = now + int(maxf(duration, 0.0) * 1000.0)
 	_threat_memory_until_msec = maxi(_threat_memory_until_msec, _forced_alert_until_msec)
-	if archetype == ARCHETYPE_CIVILIAN:
+	if _uses_stress():
 		stress = clampf(stress + clampf(intensity, 0.0, 1.0) * 100.0, 0.0, 100.0)
 		if stress >= _civilian_effective_flee_threshold():
 			_civilian_panic_active = true
@@ -1022,7 +1054,7 @@ func _refresh_threat_sensor() -> void:
 
 	_flashlight_visible = false
 	_flashlight_target = null
-	if archetype == ARCHETYPE_CIVILIAN and fear_enabled:
+	if _uses_stress():
 		var passive_weapon: bool = visible_target != null and _player_has_visible_weapon(visible_target)
 		var aimed_weapon: bool = passive_weapon and _player_is_aiming_at_npc(visible_target)
 		if flashlight_reaction_enabled:
@@ -1152,7 +1184,7 @@ func react_to_gunshot(
 	impact_position: Vector3,
 	impact_collider: Node = null
 ) -> void:
-	if archetype != ARCHETYPE_CIVILIAN or not fear_enabled or shooter == null:
+	if not _uses_stress() or shooter == null:
 		return
 	var shot_distance: float = global_position.distance_to(shot_origin)
 	var impact_distance: float = global_position.distance_to(impact_position)
@@ -1318,7 +1350,7 @@ func _update_labels() -> void:
 	if health_label != null:
 		health_label.text = "HP: %d / %d" % [int(health), int(max_health)]
 	if fear_label != null:
-		fear_label.visible = archetype == ARCHETYPE_CIVILIAN
+		fear_label.visible = _uses_stress()
 		fear_label.text = "STRES: %d%%" % int(stress)
 	update_debug_state(String(_current_state))
 
