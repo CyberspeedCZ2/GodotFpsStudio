@@ -42,6 +42,12 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_group("Awareness")
 @export var fear_enabled: bool = true
 @export var look_at_player_when_seen: bool = true
+## Maximum seconds of watching a visible player before the NPC loses interest. 0 watches forever.
+@export_range(0.0, 60.0, 0.1) var observation_max_seconds: float = 0.0
+## How long the NPC smoothly turns away after reaching the observation limit.
+@export_range(0.1, 5.0, 0.05) var observation_turn_away_seconds: float = 0.8
+## Cooldown before the NPC starts watching the player again after losing interest.
+@export_range(0.0, 60.0, 0.1) var observation_cooldown_seconds: float = 4.0
 ## Stress personality used by Civilian and Friendly. Steady is calmest, Nervous panics soonest.
 @export_enum("Steady", "Cautious", "Nervous") var civilian_personality: int = CIVILIAN_PERSONALITY_CAUTIOUS
 ## Base flight threshold for Cautious. Steady adds 15 and Nervous subtracts 15.
@@ -162,6 +168,10 @@ var _flashlight_visible: bool = false
 var _flashlight_reaction_until_msec: int = 0
 var _flashlight_cooldown_until_msec: int = 0
 var _flashlight_sidestep_active: bool = false
+var _observation_started_msec: int = 0
+var _observation_turning_away_until_msec: int = 0
+var _observation_cooldown_until_msec: int = 0
+var _observation_turn_from_position: Vector3 = Vector3.ZERO
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 @onready var nav_agent: NavigationAgent3D = get_node_or_null("NavigationAgent3D") as NavigationAgent3D
@@ -830,7 +840,7 @@ func _clear_cover() -> void:
 func interrupt_threat_response() -> void:
 	var routine_states: Array[StringName] = [
 		&"Patrol", &"Wandering", &"Pausing", &"Waiting for NavigationMesh",
-		&"Observing player", &"Waiting", &"Sitting", &"Looking",
+		&"Observing player", &"Losing interest in player", &"Waiting", &"Sitting", &"Looking",
 		&"Playing animation", &"Interacting"
 	]
 	var routine_already_active: bool = _current_state in routine_states
@@ -839,6 +849,8 @@ func interrupt_threat_response() -> void:
 	_civilian_flee_until_msec = 0
 	_flashlight_reaction_until_msec = 0
 	_flashlight_sidestep_active = false
+	_observation_started_msec = 0
+	_observation_turning_away_until_msec = 0
 	_friendly_provoked = false
 	_has_last_known_target_position = false
 	_clear_cover()
@@ -902,6 +914,9 @@ func get_player_observation_target() -> Node3D:
 			return _flashlight_target
 	if now <= _threat_memory_until_msec or now <= _forced_alert_until_msec:
 		if is_instance_valid(_perceived_target):
+			if now < _observation_cooldown_until_msec:
+				# Attention-span cooldown: ignore the still visible player.
+				return null
 			return _perceived_target
 	if _flashlight_visible and is_instance_valid(_flashlight_target):
 		return _flashlight_target
@@ -909,17 +924,34 @@ func get_player_observation_target() -> Node3D:
 
 
 func tick_player_observation() -> bool:
+	var now: int = Time.get_ticks_msec()
+	if _observation_turning_away_until_msec > 0:
+		if now < _observation_turning_away_until_msec:
+			_tick_observation_turn_away()
+			return true
+		_observation_turning_away_until_msec = 0
+		_observation_started_msec = 0
+		_observation_cooldown_until_msec = now + int(maxf(observation_cooldown_seconds, 0.0) * 1000.0)
+		return false
 	var target: Node3D = get_player_observation_target()
 	if target == null:
+		_observation_started_msec = 0
 		return false
-	var now: int = Time.get_ticks_msec()
 	var reacting_to_flashlight: bool = flashlight_reaction_enabled and (
 		_flashlight_sidestep_active
 		or _flashlight_reaction_until_msec > 0
 		or (_flashlight_visible and now >= _flashlight_cooldown_until_msec)
 	)
 	if reacting_to_flashlight:
+		_observation_started_msec = 0
 		return _tick_flashlight_observation(target, now)
+	if _observation_started_msec == 0:
+		_observation_started_msec = now
+	elif observation_max_seconds > 0.0 and now - _observation_started_msec >= int(observation_max_seconds * 1000.0):
+		_observation_turn_from_position = target.global_position
+		_observation_turning_away_until_msec = now + int(maxf(observation_turn_away_seconds, 0.1) * 1000.0)
+		_tick_observation_turn_away()
+		return true
 	stop()
 	_face_toward_point(target.global_position, _physics_delta)
 	if _player_has_visible_weapon(target):
@@ -927,6 +959,19 @@ func tick_player_observation() -> bool:
 	else:
 		_set_ai_state("Observing player")
 	return true
+
+
+func _tick_observation_turn_away() -> void:
+	var away: Vector3 = global_position - _observation_turn_from_position
+	away.y = 0.0
+	if away.length_squared() <= 0.01:
+		away = -global_transform.basis.z
+		away.y = 0.0
+	if away.length_squared() <= 0.01:
+		away = Vector3.FORWARD
+	stop()
+	_face_direction(away.normalized(), _physics_delta)
+	_set_ai_state("Losing interest in player")
 
 
 func _tick_flashlight_observation(target: Node3D, now: int) -> bool:
@@ -1013,6 +1058,8 @@ func raise_alert(source: Node3D, intensity: float = 1.0, duration: float = 4.0) 
 	_perceived_target = source
 	_last_known_target_position = source.global_position
 	_has_last_known_target_position = true
+	_observation_started_msec = 0
+	_observation_turning_away_until_msec = 0
 	if archetype == ARCHETYPE_FRIENDLY:
 		_friendly_provoked = true
 	var now: int = Time.get_ticks_msec()
@@ -1051,6 +1098,7 @@ func _refresh_threat_sensor() -> void:
 		_perceived_target = null
 		_friendly_provoked = false
 		_has_last_known_target_position = false
+		_observation_started_msec = 0
 
 	_flashlight_visible = false
 	_flashlight_target = null
@@ -1213,6 +1261,8 @@ func react_to_gunshot(
 	_perceived_target = shooter
 	_last_known_target_position = shooter.global_position
 	_has_last_known_target_position = true
+	_observation_started_msec = 0
+	_observation_turning_away_until_msec = 0
 	var now: int = Time.get_ticks_msec()
 	var memory_seconds: float = maxf(target_memory_seconds, 4.0)
 	_forced_alert_until_msec = now + int(memory_seconds * 1000.0)
