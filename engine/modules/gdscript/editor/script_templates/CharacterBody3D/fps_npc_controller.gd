@@ -55,7 +55,9 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_range(0.0, 15.0, 0.1) var hostile_lost_sight_memory_seconds: float = 5.0
 ## Stress gained per second from a passively held weapon. This stimulus is always capped below flight.
 @export_range(0.0, 30.0, 0.5) var fear_gain_per_second: float = 4.0
-@export_range(0.0, 60.0, 1.0) var held_weapon_stress_cap: float = 25.0
+## Maximum stress from seeing a held weapon. The civilian never flees from this stimulus alone.
+@export_range(0.0, 60.0, 1.0) var held_weapon_stress_cap: float = 30.0
+## Stress gained per second while the player aims directly at this NPC. Capped at the weapon cap; aiming alone never causes flight.
 @export_range(0.0, 100.0, 1.0) var aimed_weapon_stress_gain_per_second: float = 32.0
 @export_range(1.0, 30.0, 0.5) var aimed_weapon_cone_degrees: float = 7.0
 @export_range(0.0, 100.0, 1.0) var fear_decay_per_second: float = 8.0
@@ -69,10 +71,14 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_range(0.1, 1.0, 0.05) var gunshot_occlusion_stress_multiplier: float = 0.45
 @export var flashlight_reaction_enabled: bool = true
 @export var flashlight_group: StringName = &"player_flashlight"
-@export_range(0.1, 3.0, 0.05) var flashlight_reaction_seconds: float = 0.65
-@export_range(0.0, 4.0, 0.1) var flashlight_sidestep_distance: float = 1.4
+## How long the civilian looks at the light source before walking away.
+@export_range(0.1, 3.0, 0.05) var flashlight_reaction_seconds: float = 1.2
+## How far the civilian walks away after being lit up.
+@export_range(0.0, 8.0, 0.1) var flashlight_sidestep_distance: float = 2.5
 @export_range(0.0, 10.0, 0.1) var flashlight_reaction_cooldown_seconds: float = 2.5
 @export var flashlight_shield_animation: StringName = &"shield_eyes"
+## Maximum stress from a direct flashlight beam. The civilian never flees from the light alone.
+@export_range(0.0, 60.0, 1.0) var flashlight_stress_cap: float = 15.0
 
 @export_group("Threat Response")
 @export_range(2.0, 30.0, 0.5) var flee_distance: float = 10.0
@@ -102,6 +108,8 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 @export_range(1.0, 1000.0, 1.0) var max_health: float = 100.0
 ## Below this percentage, Hostile and provoked Friendly stop melee attacks and seek cover or retreat.
 @export_range(0.0, 100.0, 1.0) var retreat_health_threshold_percent: float = 30.0
+## Civilian is completely invulnerable: hits never reduce health, they only trigger flight.
+@export var civilian_invulnerable: bool = true
 @export var debug_navigation: bool = false
 
 var current_speed: float = 2.8
@@ -1029,16 +1037,18 @@ func _refresh_threat_sensor() -> void:
 func _update_civilian_stress(elapsed: float, passive_weapon: bool, aimed_weapon: bool, illuminated: bool) -> void:
 	var decay_multiplier: float = _civilian_personality_decay_multiplier()
 	var decay: float = fear_decay_per_second * decay_multiplier * elapsed
-	if aimed_weapon:
-		stress += aimed_weapon_stress_gain_per_second * _civilian_personality_gain_multiplier() * elapsed
-	elif passive_weapon:
+	if passive_weapon:
+		# A visible weapon alone never causes flight; stress stays capped at the weapon cap.
 		var cap: float = _civilian_held_weapon_stress_cap()
+		var gain_per_second: float = fear_gain_per_second
+		if aimed_weapon:
+			gain_per_second = aimed_weapon_stress_gain_per_second
 		if stress < cap:
-			stress = minf(cap, stress + fear_gain_per_second * _civilian_personality_gain_multiplier() * elapsed)
+			stress = minf(cap, stress + gain_per_second * _civilian_personality_gain_multiplier() * elapsed)
 		else:
 			stress = maxf(cap, stress - decay)
 	elif illuminated:
-		var light_cap: float = 10.0 + float(civilian_personality) * 5.0
+		var light_cap: float = _civilian_flashlight_stress_cap()
 		if stress < light_cap:
 			stress = minf(light_cap, stress + 3.0 * _civilian_personality_gain_multiplier() * elapsed)
 		else:
@@ -1061,8 +1071,11 @@ func _civilian_effective_flee_exit_stress() -> float:
 
 
 func _civilian_held_weapon_stress_cap() -> float:
-	var personality_offset: float = float(civilian_personality - CIVILIAN_PERSONALITY_CAUTIOUS) * 10.0
-	return clampf(held_weapon_stress_cap + personality_offset, 0.0, _civilian_effective_flee_threshold() - 5.0)
+	return clampf(held_weapon_stress_cap, 0.0, _civilian_effective_flee_threshold() - 5.0)
+
+
+func _civilian_flashlight_stress_cap() -> float:
+	return clampf(flashlight_stress_cap, 0.0, _civilian_effective_flee_threshold() - 5.0)
 
 
 func _civilian_personality_gain_multiplier() -> float:
@@ -1232,6 +1245,16 @@ func take_damage(
 	_hit_position: Vector3 = Vector3.ZERO,
 	_hit_direction: Vector3 = Vector3.ZERO
 ) -> void:
+	if archetype == ARCHETYPE_CIVILIAN and civilian_invulnerable:
+		# Civilian is unkillable: hits never reduce health, they only trigger flight.
+		if amount > 0.0:
+			var civilian_attacker: Node3D = _find_visible_player()
+			if civilian_attacker == null:
+				civilian_attacker = get_tree().get_first_node_in_group(player_group) as Node3D
+			if civilian_attacker != null:
+				raise_alert(civilian_attacker, 1.0, maxf(target_memory_seconds, 4.0))
+		_update_labels()
+		return
 	health = clampf(health - amount, 0.0, max_health)
 	if amount > 0.0 and health > 0.0:
 		var attacker: Node3D = _find_visible_player()
