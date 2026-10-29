@@ -301,6 +301,9 @@ bool ResourceImporterScene::get_option_visibility(const String &p_path, const St
 				return false;
 			}
 		}
+		if ((p_option == "meshes/lod_count" || p_option == "meshes/lod_reduction") && p_options.has("meshes/generate_lods") && !bool(p_options["meshes/generate_lods"])) {
+			return false; // LOD generation is disabled; hide the LOD chain configuration.
+		}
 	} else if (_scene_import_type == "AnimationLibrary") {
 		if (p_option == "animation/import") { // Option ignored, animation always imported.
 			return false;
@@ -2297,6 +2300,8 @@ void ResourceImporterScene::get_internal_import_options(InternalImportCategory p
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "generate/lightmap_uv", PROPERTY_HINT_ENUM, "Default,Enable,Disable"), 0));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "generate/lods", PROPERTY_HINT_ENUM, "Default,Enable,Disable"), 0));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/normal_merge_angle", PROPERTY_HINT_RANGE, "0,180,1,degrees"), 20.0f));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "lods/count", PROPERTY_HINT_RANGE, "0,10,1"), 0));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/reduction", PROPERTY_HINT_RANGE, "0,0.95,0.05"), 0.0f));
 		} break;
 		case INTERNAL_IMPORT_CATEGORY_MATERIAL: {
 			r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "use_external/enabled", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), false));
@@ -2452,6 +2457,9 @@ bool ResourceImporterScene::get_internal_option_visibility(InternalImportCategor
 		case INTERNAL_IMPORT_CATEGORY_MESH: {
 			if (p_option == "save_to_file/path") {
 				return p_options["save_to_file/enabled"];
+			}
+			if (p_option.begins_with("lods/") && p_options.has("generate/lods") && int(p_options["generate/lods"]) == MESH_OVERRIDE_DISABLE) {
+				return false; // LOD generation is disabled for this mesh; hide the LOD options.
 			}
 		} break;
 		case INTERNAL_IMPORT_CATEGORY_MATERIAL: {
@@ -2645,6 +2653,8 @@ void ResourceImporterScene::get_import_options(const String &p_path, List<Import
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "nodes/use_node_type_suffixes"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "meshes/ensure_tangents"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "meshes/generate_lods"), true));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "meshes/lod_count", PROPERTY_HINT_RANGE, "0,10,1"), 0));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "meshes/lod_reduction", PROPERTY_HINT_RANGE, "0.05,0.95,0.05"), 0.5f));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "meshes/create_shadow_meshes"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "meshes/light_baking", PROPERTY_HINT_ENUM, "Disabled,Static,Static Lightmaps,Dynamic", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), 1));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "meshes/lightmap_texel_size", PROPERTY_HINT_RANGE, "0.001,100,0.001"), 0.2));
@@ -2721,7 +2731,7 @@ Array ResourceImporterScene::_get_skinned_pose_transforms(ImporterMeshInstance3D
 	return skin_pose_transform_array;
 }
 
-Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches) {
+Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_mesh_data, bool p_generate_lods, int p_lod_count, float p_lod_reduction, bool p_create_shadow_meshes, LightBakeMode p_light_bake_mode, float p_lightmap_texel_size, const Vector<uint8_t> &p_src_lightmap_cache, Vector<Vector<uint8_t>> &r_lightmap_caches) {
 	ImporterMeshInstance3D *src_mesh_node = Object::cast_to<ImporterMeshInstance3D>(p_node);
 	if (src_mesh_node) {
 		//is mesh
@@ -2743,11 +2753,18 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 				bool create_shadow_meshes = p_create_shadow_meshes;
 				bool bake_lightmaps = p_light_bake_mode == LIGHT_BAKE_STATIC_LIGHTMAPS;
 				String save_to_file;
+				int lod_count_override = 0;
+				float lod_reduction_override = 0.0f;
 
 				String mesh_id = importer_mesh->get_meta("import_id", importer_mesh->get_name());
 
 				if (!mesh_id.is_empty() && p_mesh_data.has(mesh_id)) {
 					Dictionary mesh_settings = p_mesh_data[mesh_id];
+					// Capture per-mesh LOD overrides before the defaults fill
+					// below, so "0 = inherit the file-level setting" stays
+					// detectable.
+					lod_count_override = mesh_settings.get("lods/count", 0);
+					lod_reduction_override = mesh_settings.get("lods/reduction", 0.0f);
 					{
 						//fill node settings for this node with default values
 						List<ImportOption> iopts;
@@ -2836,7 +2853,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 
 				if (generate_lods) {
 					Array skin_pose_transform_array = _get_skinned_pose_transforms(src_mesh_node);
-					importer_mesh->generate_lods(merge_angle, skin_pose_transform_array);
+					importer_mesh->generate_lods(merge_angle, skin_pose_transform_array,
+							lod_count_override > 0 ? lod_count_override : p_lod_count,
+							lod_reduction_override > 0.0f ? lod_reduction_override : p_lod_reduction);
 				}
 
 				if (create_shadow_meshes) {
@@ -2913,7 +2932,7 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 	}
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
-		_generate_meshes(p_node->get_child(i), p_mesh_data, p_generate_lods, p_create_shadow_meshes, p_light_bake_mode, p_lightmap_texel_size, p_src_lightmap_cache, r_lightmap_caches);
+		_generate_meshes(p_node->get_child(i), p_mesh_data, p_generate_lods, p_lod_count, p_lod_reduction, p_create_shadow_meshes, p_light_bake_mode, p_lightmap_texel_size, p_src_lightmap_cache, r_lightmap_caches);
 	}
 
 	return p_node;
@@ -3362,6 +3381,8 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 	}
 
 	bool gen_lods = bool(p_options["meshes/generate_lods"]);
+	int lod_count = p_options.has("meshes/lod_count") ? (int)p_options["meshes/lod_count"] : 0;
+	float lod_reduction = p_options.has("meshes/lod_reduction") ? (float)p_options["meshes/lod_reduction"] : 0.5f;
 	bool create_shadow_meshes = bool(p_options["meshes/create_shadow_meshes"]);
 	int light_bake_mode = p_options["meshes/light_baking"];
 	float texel_size = p_options["meshes/lightmap_texel_size"];
@@ -3377,7 +3398,7 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 		}
 	}
 
-	scene = _generate_meshes(scene, mesh_data, gen_lods, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches);
+	scene = _generate_meshes(scene, mesh_data, gen_lods, lod_count, lod_reduction, create_shadow_meshes, LightBakeMode(light_bake_mode), lightmap_texel_size, src_lightmap_cache, mesh_lightmap_caches);
 
 	if (mesh_lightmap_caches.size()) {
 		Ref<FileAccess> f = FileAccess::open(p_source_file + ".unwrap_cache", FileAccess::WRITE);
@@ -3504,7 +3525,7 @@ bool ResourceImporterScene::has_advanced_options() const {
 }
 
 void ResourceImporterScene::show_advanced_options(const String &p_path) {
-	SceneImportSettingsDialog::get_singleton()->open_settings(p_path, _scene_import_type);
+	SceneImportSettingsScreen::get_singleton()->open_settings(p_path, _scene_import_type);
 }
 
 ResourceImporterScene::ResourceImporterScene(const String &p_scene_import_type) {

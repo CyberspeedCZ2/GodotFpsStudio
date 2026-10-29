@@ -218,7 +218,7 @@ static Error _parse_material_library(const String &p_path, HashMap<String, Ref<S
 	return OK;
 }
 
-static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes, bool p_single_mesh, bool p_generate_tangents, bool p_generate_lods, bool p_generate_shadow_mesh, bool p_generate_lightmap_uv2, float p_generate_lightmap_uv2_texel_size, const PackedByteArray &p_src_lightmap_cache, Vector3 p_scale_mesh, Vector3 p_offset_mesh, bool p_disable_compression, Vector<Vector<uint8_t>> &r_lightmap_caches, List<String> *r_missing_deps) {
+static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes, bool p_single_mesh, bool p_generate_tangents, bool p_generate_lods, bool p_generate_shadow_mesh, bool p_generate_lightmap_uv2, float p_generate_lightmap_uv2_texel_size, const PackedByteArray &p_src_lightmap_cache, Vector3 p_scale_mesh, Vector3 p_offset_mesh, bool p_disable_compression, Vector<Vector<uint8_t>> &r_lightmap_caches, List<String> *r_missing_deps, float p_normal_merge_angle = 60.0f, int p_lod_count = 0, float p_lod_reduction = 0.0f) {
 	Ref<FileAccess> f = FileAccess::open(p_path, FileAccess::READ);
 	ERR_FAIL_COND_V_MSG(f.is_null(), ERR_CANT_OPEN, vformat("Couldn't open OBJ file '%s', it may not exist or not be readable.", p_path));
 
@@ -258,6 +258,11 @@ static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes,
 	String current_material_library;
 	String current_material;
 	String current_group;
+	// Number of source polygons (quad/n-gon faces) counted for the current
+	// mesh so far. Each "f" line in the file is one source polygon before
+	// fan triangulation; stored as "source_face_count" mesh metadata for
+	// the Model workspace statistics overlay.
+	int64_t source_face_count = 0;
 	uint32_t smooth_group = 0;
 	bool smoothing = true;
 	const uint32_t no_smoothing_smooth_group = (uint32_t)-1;
@@ -315,6 +320,10 @@ static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes,
 			normals.push_back(nrm);
 		} else if (l.begins_with("f ")) {
 			//vertex
+
+			// One source polygon per "f" line (may be a quad or an n-gon),
+			// counted before the fan triangulation below.
+			source_face_count++;
 
 			Vector<String> v = l.split(" ", false);
 			ERR_FAIL_COND_V(v.size() < 4, ERR_FILE_CORRUPT);
@@ -483,8 +492,10 @@ static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes,
 				if (!p_single_mesh) {
 					if (mesh->get_surface_count() > 0) {
 						mesh->set_name(name);
+						mesh->set_meta("source_face_count", source_face_count);
 						r_meshes.push_back(mesh);
 						mesh.instantiate();
+						source_face_count = 0;
 					}
 					name = default_name;
 					current_group = "";
@@ -552,8 +563,8 @@ static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes,
 	}
 
 	if (p_generate_lods) {
-		// Use normal merge/split angles that match the defaults used for 3D scene importing.
-		mesh->generate_lods(60.0f, {});
+		float lod_reduction = p_lod_reduction > 0.0f ? p_lod_reduction : 0.5f;
+		mesh->generate_lods(p_normal_merge_angle, {}, p_lod_count, lod_reduction);
 	}
 
 	if (p_generate_shadow_mesh) {
@@ -563,6 +574,7 @@ static Error _parse_obj(const String &p_path, List<Ref<ImporterMesh>> &r_meshes,
 	mesh->optimize_indices();
 
 	if (p_single_mesh && mesh->get_surface_count() > 0) {
+		mesh->set_meta("source_face_count", source_face_count);
 		r_meshes.push_back(mesh);
 	}
 
@@ -642,6 +654,9 @@ String ResourceImporterOBJ::get_preset_name(int p_idx) const {
 void ResourceImporterOBJ::get_import_options(const String &p_path, List<ImportOption> *r_options, int p_preset) const {
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "generate_tangents"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "generate_lods"), true));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/normal_merge_angle", PROPERTY_HINT_RANGE, "0,180,1,degrees"), 60.0f));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "lods/count", PROPERTY_HINT_RANGE, "0,10,1"), 0));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/reduction", PROPERTY_HINT_RANGE, "0,0.95,0.05"), 0.0f));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "generate_shadow_mesh"), true));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "generate_lightmap_uv2", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), false));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "generate_lightmap_uv2_texel_size", PROPERTY_HINT_RANGE, "0.001,100,0.001"), 0.2));
@@ -653,6 +668,10 @@ void ResourceImporterOBJ::get_import_options(const String &p_path, List<ImportOp
 bool ResourceImporterOBJ::get_option_visibility(const String &p_path, const String &p_option, const HashMap<StringName, Variant> &p_options) const {
 	if (p_option == "generate_lightmap_uv2_texel_size" && !p_options["generate_lightmap_uv2"]) {
 		// Only display the lightmap texel size import option when lightmap UV2 generation is enabled.
+		return false;
+	}
+	if (p_option.begins_with("lods/") && p_options.has("generate_lods") && !bool(p_options["generate_lods"])) {
+		// Only display the LOD chain import options when LOD generation is enabled.
 		return false;
 	}
 
@@ -673,7 +692,20 @@ Error ResourceImporterOBJ::import(ResourceUID::ID p_source_id, const String &p_s
 		}
 	}
 
-	err = _parse_obj(p_source_file, meshes, true, p_options["generate_tangents"], p_options["generate_lods"], p_options["generate_shadow_mesh"], p_options["generate_lightmap_uv2"], p_options["generate_lightmap_uv2_texel_size"], src_lightmap_cache, p_options["scale_mesh"], p_options["offset_mesh"], p_options["force_disable_mesh_compression"], mesh_lightmap_caches, nullptr);
+	float obj_merge_angle = 60.0f;
+	int obj_lod_count = 0;
+	float obj_lod_reduction = 0.0f;
+	if (p_options.has("lods/normal_merge_angle")) {
+		obj_merge_angle = p_options["lods/normal_merge_angle"];
+	}
+	if (p_options.has("lods/count")) {
+		obj_lod_count = p_options["lods/count"];
+	}
+	if (p_options.has("lods/reduction")) {
+		obj_lod_reduction = p_options["lods/reduction"];
+	}
+
+	err = _parse_obj(p_source_file, meshes, true, p_options["generate_tangents"], p_options["generate_lods"], p_options["generate_shadow_mesh"], p_options["generate_lightmap_uv2"], p_options["generate_lightmap_uv2_texel_size"], src_lightmap_cache, p_options["scale_mesh"], p_options["offset_mesh"], p_options["force_disable_mesh_compression"], mesh_lightmap_caches, nullptr, obj_merge_angle, obj_lod_count, obj_lod_reduction);
 
 	if (mesh_lightmap_caches.size()) {
 		Ref<FileAccess> f = FileAccess::open(p_source_file + ".unwrap_cache", FileAccess::WRITE);

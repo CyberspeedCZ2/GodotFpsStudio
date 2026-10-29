@@ -2025,7 +2025,6 @@ void ThemeModern::populate_editor_styles(const Ref<EditorTheme> &p_theme, Editor
 		p_theme->set_stylebox(SceneStringName(panel), "EditorSettingsDialog", p_config.window_complex_style);
 		p_theme->set_stylebox(SceneStringName(panel), "ProjectSettingsEditor", p_config.window_complex_style);
 		p_theme->set_stylebox(SceneStringName(panel), "ProjectExportDialog", p_config.window_complex_style);
-		p_theme->set_stylebox(SceneStringName(panel), "SceneImportSettingsDialog", p_config.window_complex_style);
 		p_theme->set_stylebox(SceneStringName(panel), "EditorAbout", p_config.window_complex_style);
 		p_theme->set_stylebox(SceneStringName(panel), "ThemeItemEditorDialog", p_config.window_complex_style);
 

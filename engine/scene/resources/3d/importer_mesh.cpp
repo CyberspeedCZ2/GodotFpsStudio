@@ -567,7 +567,7 @@ void ImporterMesh::optimize_indices() {
 	} \
 	write_array[vert_idx] = transformed_vert;
 
-void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transform_array) {
+void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transform_array, int p_lod_count, float p_lod_reduction) {
 	if (!SurfaceTool::simplify_scale_func) {
 		return;
 	}
@@ -759,13 +759,32 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 		const float max_mesh_error = 1.0f; // We only need LODs that can be selected by error threshold.
 		const unsigned min_target_indices = 12;
 
+		// Fixed-level configuration. lod_count <= 0 keeps the legacy
+		// unbounded halving behavior; a positive count generates exactly
+		// that many levels, each retaining lod_reduction of the previous
+		// level's triangles.
+		const int lod_count = MAX(p_lod_count, 0);
+		const float lod_reduction = CLAMP(p_lod_reduction, 0.05f, 0.95f);
+		int lod_level = 0;
+
 		LocalVector<int> current_indices(merged_indices);
 		float current_error = 0.0f;
 		bool allow_prune = true;
 
 		while (current_indices.size() > min_target_indices * 2) {
 			unsigned int current_index_count = current_indices.size();
-			unsigned int target_index_count = MAX(((current_index_count / 3) / 2) * 3, min_target_indices);
+			unsigned int target_index_count;
+			if (lod_count > 0) {
+				if (lod_level >= lod_count) {
+					print_verbose("  LOD stop: requested " + itos(lod_count) + " levels generated");
+					break;
+				}
+				// Fixed per-level reduction (fraction of triangles kept).
+				target_index_count = MAX((unsigned int)Math::round(((double)(current_index_count / 3)) * lod_reduction) * 3, min_target_indices);
+			} else {
+				// Legacy automatic halving (unbounded).
+				target_index_count = MAX(((current_index_count / 3) / 2) * 3, min_target_indices);
+			}
 
 			PackedInt32Array new_indices;
 			new_indices.resize(current_index_count);
@@ -839,6 +858,7 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 			lod.distance = MAX(current_error * scale, CMP_EPSILON2);
 			lod.indices = new_indices;
 			surfaces.write[i].lods.push_back(lod);
+			lod_level++;
 
 			print_verbose("  LOD " + itos(surfaces.write[i].lods.size()) + ": " + itos(new_index_count / 3) + " triangles, error " + rtos(current_error) + " (step error " + rtos(step_error) + ")");
 		}
@@ -847,9 +867,9 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 	}
 }
 
-void ImporterMesh::_generate_lods_bind(float p_normal_merge_angle, float p_normal_split_angle, Array p_skin_pose_transform_array) {
+void ImporterMesh::_generate_lods_bind(float p_normal_merge_angle, float p_normal_split_angle, Array p_skin_pose_transform_array, int p_lod_count, float p_lod_reduction) {
 	// p_normal_split_angle is unused, but kept for compatibility
-	generate_lods(p_normal_merge_angle, p_skin_pose_transform_array);
+	generate_lods(p_normal_merge_angle, p_skin_pose_transform_array, p_lod_count, p_lod_reduction);
 }
 
 bool ImporterMesh::has_mesh() const {
@@ -869,6 +889,12 @@ Ref<ArrayMesh> ImporterMesh::get_mesh(const Ref<ArrayMesh> &p_base) {
 		mesh->set_name(get_name());
 		if (has_meta("import_id")) {
 			mesh->set_meta("import_id", get_meta("import_id"));
+		}
+		if (has_meta("source_face_count")) {
+			// Original polygon (quad/n-gon) count from the source file,
+			// counted by the importer before triangulation. Used by the
+			// Model workspace statistics overlay.
+			mesh->set_meta("source_face_count", get_meta("source_face_count"));
 		}
 		for (int i = 0; i < blend_shapes.size(); i++) {
 			mesh->add_blend_shape(blend_shapes[i]);
@@ -1573,7 +1599,7 @@ void ImporterMesh::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_surface_name", "surface_idx", "name"), &ImporterMesh::set_surface_name);
 	ClassDB::bind_method(D_METHOD("set_surface_material", "surface_idx", "material"), &ImporterMesh::set_surface_material);
 
-	ClassDB::bind_method(D_METHOD("generate_lods", "normal_merge_angle", "normal_split_angle", "bone_transform_array"), &ImporterMesh::_generate_lods_bind);
+	ClassDB::bind_method(D_METHOD("generate_lods", "normal_merge_angle", "normal_split_angle", "bone_transform_array", "lod_count", "lod_reduction"), &ImporterMesh::_generate_lods_bind, DEFVAL(0), DEFVAL(0.5f));
 	ClassDB::bind_method(D_METHOD("get_mesh", "base_mesh"), &ImporterMesh::get_mesh, DEFVAL(Ref<ArrayMesh>()));
 	ClassDB::bind_static_method("ImporterMesh", D_METHOD("from_mesh", "mesh"), &ImporterMesh::from_mesh);
 	ClassDB::bind_method(D_METHOD("clear"), &ImporterMesh::clear);

@@ -92,8 +92,8 @@
 #include "editor/gui/window_wrapper.h"
 #include "editor/import/3d/editor_import_collada.h"
 #include "editor/import/3d/resource_importer_obj.h"
+#include "editor/import/3d/model_editor_plugin.h"
 #include "editor/import/3d/resource_importer_scene.h"
-#include "editor/import/3d/scene_import_settings.h"
 #include "editor/import/audio_stream_import_settings.h"
 #include "editor/import/dynamic_font_import_settings.h"
 #include "editor/import/fbx_importer_manager.h"
@@ -8759,9 +8759,6 @@ EditorNode::EditorNode() {
 	project_settings_editor = memnew(ProjectSettingsEditor(&editor_data));
 	gui_base->add_child(project_settings_editor);
 
-	scene_import_settings = memnew(SceneImportSettingsDialog);
-	gui_base->add_child(scene_import_settings);
-
 	audio_stream_import_settings = memnew(AudioStreamImportSettingsDialog);
 	gui_base->add_child(audio_stream_import_settings);
 
@@ -9191,6 +9188,9 @@ EditorNode::EditorNode() {
 
 	add_editor_plugin(memnew(CanvasItemEditorPlugin));
 	add_editor_plugin(memnew(Node3DEditorPlugin));
+	// Model workspace (Advanced Import Settings as a main screen tab,
+	// right next to Level/Code) instead of the old modal dialog.
+	add_editor_plugin(memnew(ModelEditorPlugin));
 	add_editor_plugin(memnew(ScriptEditorPlugin));
 
 	if (!Engine::get_singleton()->is_recovery_mode_hint()) {

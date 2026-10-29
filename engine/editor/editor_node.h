@@ -102,7 +102,6 @@ class OrphanResourcesDialog;
 class ProgressDialog;
 class ProjectExportDialog;
 class ProjectSettingsEditor;
-class SceneImportSettingsDialog;
 class ProjectUpgradeTool;
 
 #ifdef ANDROID_ENABLED
@@ -472,7 +471,6 @@ private:
 	EditorProgress *save_scene_progress = nullptr;
 
 	DynamicFontImportSettingsDialog *fontdata_import_settings = nullptr;
-	SceneImportSettingsDialog *scene_import_settings = nullptr;
 	AudioStreamImportSettingsDialog *audio_stream_import_settings = nullptr;
 
 	HashSet<String> force_textfile_extensions;

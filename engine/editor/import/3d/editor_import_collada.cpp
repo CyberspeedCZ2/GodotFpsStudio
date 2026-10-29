@@ -82,7 +82,7 @@ struct ColladaImport {
 	HashSet<String> mesh_unique_names;
 	HashSet<String> material_unique_names;
 
-	Error _populate_skeleton(Skeleton3D *p_skeleton, Collada::Node *p_node, int &r_bone, int p_parent);
+	Error _populate_skeleton(Skeleton3D *p_skeleton, Collada::Node *p_node, int &r_bone, int p_parent, const Transform3D &p_parent_rest = Transform3D());
 	Error _create_scene_skeletons(Collada::Node *p_node);
 	Error _create_scene(Collada::Node *p_node, Node3D *p_parent);
 	Error _create_resources(Collada::Node *p_node, bool p_use_compression);
@@ -99,7 +99,7 @@ struct ColladaImport {
 	void _pre_process_lights(Collada::Node *p_node);
 };
 
-Error ColladaImport::_populate_skeleton(Skeleton3D *p_skeleton, Collada::Node *p_node, int &r_bone, int p_parent) {
+Error ColladaImport::_populate_skeleton(Skeleton3D *p_skeleton, Collada::Node *p_node, int &r_bone, int p_parent, const Transform3D &p_parent_rest) {
 	if (p_node->type != Collada::Node::TYPE_JOINT) {
 		return OK;
 	}
@@ -119,25 +119,30 @@ Error ColladaImport::_populate_skeleton(Skeleton3D *p_skeleton, Collada::Node *p
 
 	skeleton_bone_map[p_skeleton][joint->sid] = r_bone;
 
-	{
-		Transform3D xform = joint->compute_transform(collada);
-		xform = collada.fix_transform(xform) * joint->post_transform;
+	Transform3D xform = joint->compute_transform(collada);
+	xform = collada.fix_transform(xform) * joint->post_transform;
+	Transform3D global_xform = p_parent_rest * xform; // Accumulated bind transform in skeleton space (same space as the inverse bind matrix path).
 
-		p_skeleton->set_bone_pose_position(r_bone, xform.origin);
-		p_skeleton->set_bone_pose_rotation(r_bone, xform.basis.get_rotation_quaternion());
-		p_skeleton->set_bone_pose_scale(r_bone, xform.basis.get_scale());
-	}
+	p_skeleton->set_bone_pose_position(r_bone, xform.origin);
+	p_skeleton->set_bone_pose_rotation(r_bone, xform.basis.get_rotation_quaternion());
+	p_skeleton->set_bone_pose_scale(r_bone, xform.basis.get_scale());
 
 	if (collada.state.bone_rest_map.has(joint->sid)) {
 		p_skeleton->set_bone_rest(r_bone, collada.fix_transform(collada.state.bone_rest_map[joint->sid]));
 		//should map this bone to something for animation?
 	} else {
-		WARN_PRINT("Collada: Joint has no rest.");
+		// Animation-only COLLADA exports (e.g. Mixamo animation clips) contain a skeleton
+		// and animation tracks but no skin controller, so bone_rest_map stays empty and
+		// every joint used to end up with a useless identity rest plus a warning. Fall
+		// back to the joint's accumulated bind transform (skeleton space, like the
+		// inverse bind matrix path) so localize_rests() can derive a proper
+		// parent-relative rest pose instead.
+		p_skeleton->set_bone_rest(r_bone, global_xform);
 	}
 
 	int id = r_bone++;
 	for (int i = 0; i < p_node->children.size(); i++) {
-		Error err = _populate_skeleton(p_skeleton, p_node->children[i], r_bone, id);
+		Error err = _populate_skeleton(p_skeleton, p_node->children[i], r_bone, id, global_xform);
 		if (err) {
 			return err;
 		}
@@ -489,9 +494,17 @@ Error ColladaImport::_create_mesh_surfaces(bool p_optimize, Ref<ImporterMesh> &p
 		}
 	}
 
+	// Original polygon (quad/n-gon) count from the source file, counted
+	// before triangulation. Every entry in <triangles>/<polylist> is one
+	// source polygon (3 vertices for triangles, n for polylist), so the sum
+	// of the primitive counts is the source polygon count. Stored as
+	// "source_face_count" mesh metadata for the Model workspace statistics
+	// overlay.
+	int64_t source_face_count = 0;
 	int surface = 0;
 	for (int p_i = 0; p_i < meshdata.primitives.size(); p_i++) {
 		const Collada::MeshData::Primitives &p = meshdata.primitives[p_i];
+		source_face_count += p.count;
 
 		/* VERTEX SOURCE */
 		ERR_FAIL_COND_V(!p.sources.has("VERTEX"), ERR_INVALID_DATA);
@@ -1064,6 +1077,10 @@ Error ColladaImport::_create_mesh_surfaces(bool p_optimize, Ref<ImporterMesh> &p
 		/*****************/
 
 		surface++;
+	}
+
+	if (source_face_count > 0) {
+		p_mesh->set_meta("source_face_count", source_face_count);
 	}
 
 	return OK;

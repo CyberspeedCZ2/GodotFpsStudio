@@ -20,6 +20,7 @@ const CIVILIAN_PERSONALITY_NERVOUS: int = 2
 const LOCOMOTION_WALK: int = 0
 const LOCOMOTION_RUN: int = 1
 const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
+const HEAD_TRACKER_SCRIPT_PATH: String = "res://Scripts/NPC/npc_head_tracker.gd"
 
 @export_group("Role")
 ## Civilian fears weapons and flees; Hostile attacks on sight; Friendly flees from stress like a civilian and fights only after real provocation.
@@ -135,6 +136,24 @@ const ROUTE_ACTIONS_META: StringName = &"_fps_npc_point_actions"
 ## Interact animation from the model library.
 @export var model_interact_animation_name: StringName = &"Interact"
 
+@export_group("Head Tracking")
+## NPC turns its head bone toward the watched player instead of rotating the whole body on the spot.
+@export var head_tracking_enabled: bool = true
+## Head bone name inside the model skeleton. KayKit rigs use "head".
+@export var head_bone_name: StringName = &"head"
+## Maximum head yaw (left/right) relative to the animated pose, in degrees.
+@export_range(0.0, 85.0, 1.0) var head_max_yaw_degrees: float = 40.0
+## Maximum head pitch (up/down) relative to the animated pose, in degrees.
+@export_range(0.0, 60.0, 1.0) var head_max_pitch_degrees: float = 25.0
+## Eye height above the head bone origin (which sits at the neck); the gaze ray starts here.
+@export_range(0.0, 0.8, 0.01) var head_gaze_eye_offset: float = 0.35
+## How fast the head turns toward the gaze target, in degrees per second.
+@export_range(30.0, 720.0, 10.0) var head_turn_speed_degrees: float = 360.0
+## Body starts turning toward the gaze target once the needed head yaw exceeds this angle.
+@export_range(0.0, 85.0, 1.0) var body_follow_threshold_degrees: float = 30.0
+## Eye-level height above a target's origin used when the target has no Camera3D descendant.
+@export_range(0.0, 3.0, 0.05) var gaze_fallback_height: float = 1.6
+
 @export_group("Small Props")
 @export_flags_3d_physics var reactive_prop_collision_mask: int = 1 << 7
 @export_range(0.0, 30.0, 0.1) var reactive_prop_push_force: float = 4.0
@@ -203,6 +222,9 @@ var _observation_cooldown_until_msec: int = 0
 var _observation_turn_from_position: Vector3 = Vector3.ZERO
 var _hit_reaction_until_msec: int = 0
 var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var _head_tracker: SkeletonModifier3D = null
+var _gaze_target_active: bool = false
+var _gaze_target_point: Vector3 = Vector3.ZERO
 
 @onready var nav_agent: NavigationAgent3D = get_node_or_null("NavigationAgent3D") as NavigationAgent3D
 @onready var debug_label: Label3D = get_node_or_null("DebugLabel") as Label3D
@@ -232,12 +254,14 @@ func _ready() -> void:
 		nav_agent.velocity_computed.connect(_on_velocity_computed)
 	if movement_mode == MOVEMENT_MODE_ASSIGNED_PATH:
 		_initialize_route_start_index()
+	_setup_head_tracker()
 	_update_labels()
 	_set_ai_state("Idle")
 
 
 func _physics_process(delta: float) -> void:
 	_physics_delta = delta
+	_gaze_target_active = false
 	_refresh_threat_sensor()
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
@@ -511,7 +535,7 @@ func _tick_current_route_action() -> bool:
 		&"look_at":
 			_set_ai_state("Looking")
 			if _route_action_target is Node3D:
-				_face_toward_point((_route_action_target as Node3D).global_position, _physics_delta)
+				_track_target_with_head(_resolve_gaze_point(_route_action_target), _physics_delta)
 			if elapsed >= _route_action_duration_seconds:
 				_finish_route_action()
 		&"play_animation":
@@ -532,7 +556,7 @@ func _tick_current_route_action() -> bool:
 		&"take_cover":
 			_set_ai_state("Taking cover")
 			if _route_action_target is Node3D:
-				_face_toward_point((_route_action_target as Node3D).global_position, _physics_delta)
+				_track_target_with_head(_resolve_gaze_point(_route_action_target), _physics_delta)
 			if _route_action_duration_seconds > 0.0 and elapsed >= _route_action_duration_seconds:
 				_finish_route_action()
 		_:
@@ -817,7 +841,7 @@ func _tick_hostile_response(target: Node3D) -> void:
 	if target_visible and distance <= attack_range:
 		_clear_cover()
 		stop()
-		_face_toward_point(target.global_position, _physics_delta)
+		_track_target_with_head(_resolve_gaze_point(target), _physics_delta)
 		_set_ai_state("Attacking")
 		if Time.get_ticks_msec() >= _route_next_attack_msec:
 			_perform_attack(target)
@@ -1056,7 +1080,7 @@ func tick_player_observation() -> bool:
 		_tick_observation_turn_away()
 		return true
 	stop()
-	_face_toward_point(target.global_position, _physics_delta)
+	_track_target_with_head(_resolve_gaze_point(target), _physics_delta)
 	if _player_has_visible_weapon(target):
 		_set_ai_state("Wary of visible weapon")
 	else:
@@ -1094,7 +1118,7 @@ func _tick_flashlight_observation(target: Node3D, now: int) -> bool:
 
 	if _flashlight_reaction_until_msec > now:
 		stop()
-		_face_toward_point(target.global_position, _physics_delta)
+		_track_target_with_head(_resolve_gaze_point(target), _physics_delta)
 		_set_ai_state("Shielding eyes from flashlight")
 		return true
 
@@ -1108,7 +1132,7 @@ func _tick_flashlight_observation(target: Node3D, now: int) -> bool:
 			return true
 
 	stop()
-	_face_toward_point(target.global_position, _physics_delta)
+	_track_target_with_head(_resolve_gaze_point(target), _physics_delta)
 	_set_ai_state("Observing flashlight")
 	return true
 
@@ -1535,3 +1559,63 @@ func _face_toward_point(point: Vector3, delta: float) -> void:
 func _rotate_yaw_toward(current_yaw: float, target_yaw: float, max_delta: float) -> float:
 	var difference: float = wrapf(target_yaw - current_yaw, -PI, PI)
 	return current_yaw + clampf(difference, -max_delta, max_delta)
+
+
+func is_head_gaze_active() -> bool:
+	return _gaze_target_active
+
+
+func get_head_gaze_point() -> Vector3:
+	return _gaze_target_point
+
+
+func _resolve_gaze_point(target: Node) -> Vector3:
+	if target == null or not is_instance_valid(target):
+		return global_position + -global_transform.basis.z * 2.0
+	var target_node: Node3D = target as Node3D
+	if target_node == null:
+		return global_position + -global_transform.basis.z * 2.0
+	var camera: Camera3D = target_node.find_child("Camera3D", true, false) as Camera3D
+	if camera != null:
+		# The tracker aims at the target's eyes/camera height, not its ground origin.
+		return camera.global_position
+	return Vector3(target_node.global_position.x, target_node.global_position.y + gaze_fallback_height, target_node.global_position.z)
+
+
+func _setup_head_tracker() -> void:
+	_head_tracker = null
+	if not head_tracking_enabled:
+		return
+	var skeleton: Skeleton3D = find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton == null:
+		return
+	if skeleton.find_bone(head_bone_name) < 0:
+		return
+	if not ResourceLoader.exists(HEAD_TRACKER_SCRIPT_PATH):
+		# Standalone template instantiation has no tracker script; full body facing stays the fallback.
+		return
+	var tracker: SkeletonModifier3D = SkeletonModifier3D.new()
+	tracker.name = "NPCHeadTracker"
+	tracker.set_script(load(HEAD_TRACKER_SCRIPT_PATH))
+	tracker.set("head_bone_name", head_bone_name)
+	skeleton.add_child(tracker)
+	tracker.set("controller", self)
+	_head_tracker = tracker
+
+
+func _track_target_with_head(point: Vector3, delta: float) -> void:
+	if _head_tracker == null or not is_instance_valid(_head_tracker):
+		# No head rig: fall back to turning the whole body like before.
+		_face_toward_point(point, delta)
+		return
+	_gaze_target_active = true
+	_gaze_target_point = point
+	var flat: Vector3 = point - global_position
+	flat.y = 0.0
+	if flat.length_squared() <= 0.0001:
+		return
+	var target_yaw: float = atan2(-flat.x, -flat.z)
+	var yaw_error: float = absf(wrapf(target_yaw - global_rotation.y, -PI, PI))
+	var follow_threshold: float = minf(body_follow_threshold_degrees, head_max_yaw_degrees)
+	if rad_to_deg(yaw_error) >= follow_threshold:
+		_face_toward_point(point, delta)

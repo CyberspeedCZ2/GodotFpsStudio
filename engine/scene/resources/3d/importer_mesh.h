@@ -83,7 +83,7 @@ protected:
 	void _set_data(const Dictionary &p_data);
 	Dictionary _get_data() const;
 
-	void _generate_lods_bind(float p_normal_merge_angle, float p_normal_split_angle, Array p_skin_pose_transform_array);
+	void _generate_lods_bind(float p_normal_merge_angle, float p_normal_split_angle, Array p_skin_pose_transform_array, int p_lod_count, float p_lod_reduction);
 
 	static void _bind_methods();
 
@@ -117,7 +117,13 @@ public:
 
 	void optimize_indices();
 
-	void generate_lods(float p_normal_merge_angle, Array p_skin_pose_transform_array);
+	// Generates screen-error based LOD levels for every surface.
+	// p_lod_count <= 0 keeps the legacy automatic behavior: keep halving the
+	// triangle count until the simplifier can not reduce any further.
+	// p_lod_count > 0 generates exactly that many levels, each retaining
+	// p_lod_reduction (clamped to 0.05..0.95) of the previous level's
+	// triangles.
+	void generate_lods(float p_normal_merge_angle, Array p_skin_pose_transform_array, int p_lod_count = 0, float p_lod_reduction = 0.5f);
 
 	void create_shadow_mesh();
 	Ref<ImporterMesh> get_shadow_mesh() const;

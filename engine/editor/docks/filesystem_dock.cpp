@@ -1360,7 +1360,7 @@ void FileSystemDock::_select_file(const String &p_path, bool p_select_in_favorit
 			}
 
 			if (is_imported) {
-				SceneImportSettingsDialog::get_singleton()->open_settings(p_path, resource_type);
+				SceneImportSettingsScreen::get_singleton()->open_settings(p_path, resource_type);
 			} else {
 				EditorNode::get_singleton()->load_scene_or_resource(fpath);
 			}
