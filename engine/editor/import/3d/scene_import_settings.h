@@ -165,7 +165,6 @@ class SceneImportSettingsScreen : public Control {
 	int lod_selected_level = 0;
 	Label *lod_status_label = nullptr;
 	Label *lod_transition_estimate = nullptr;
-	SpinBox *lod_bias_input = nullptr;
 	SpinBox *lod_target_distance_input = nullptr;
 	double lod_target_anchor = 0.0;
 	OptionButton *lod_preset_selector = nullptr;
@@ -369,7 +368,7 @@ class SceneImportSettingsScreen : public Control {
 	void _lod_select_level(int p_level);
 	void _lod_add_level();
 	void _lod_remove_level(int p_index);
-	void _lod_level_value_changed(double p_value, int p_index, bool p_bias);
+	void _lod_level_value_changed(double p_value, int p_index);
 	void _lod_target_distance_changed(double p_value);
 	void _lod_generate_toggled(bool p_enabled);
 	void _lod_merge_angle_changed(double p_value);

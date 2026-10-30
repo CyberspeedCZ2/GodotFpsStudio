@@ -3494,33 +3494,41 @@ void SceneImportSettingsScreen::_lod_remove_level(int p_index) {
 	_update_lod_settings_panel();
 }
 
-void SceneImportSettingsScreen::_lod_level_value_changed(double p_value, int p_index, bool p_bias) {
+void SceneImportSettingsScreen::_lod_level_value_changed(double p_value, int p_index) {
 	Array levels = _get_custom_lod_levels();
 	if (p_index < 0 || p_index >= levels.size()) {
 		return;
 	}
 	Dictionary level = levels[p_index];
-	level[p_bias ? "transition_bias" : "keep"] = p_bias ? CLAMP(p_value, 0.1, 10.0) : CLAMP(p_value / 100.0, 0.05, 0.95);
+	level["keep"] = CLAMP(p_value / 100.0, 0.05, 0.95);
 	levels[p_index] = level;
 	_set_custom_lod_levels(levels);
-	if (p_bias && lod_target_distance_input && lod_target_anchor > 0.0 && p_value > 0.0) {
-		lod_target_distance_input->set_value_no_signal(lod_target_anchor / p_value);
-	}
 	if (lod_preset_selector) {
 		lod_preset_selector->select(4);
 	}
 }
 
 void SceneImportSettingsScreen::_lod_target_distance_changed(double p_value) {
-	if (!lod_bias_input || p_value <= 0.0 || lod_target_anchor <= 0.0) {
+	const int level_index = lod_selected_level - 1;
+	if (p_value <= 0.0 || lod_target_anchor <= 0.0) {
 		return;
 	}
-	// Change the same stored per-level bias used by the renderer. This is
-	// an estimate, because re-simplification and neighboring levels can
-	// constrain the final error value.
-	lod_bias_input->set_value(CLAMP(lod_target_anchor / p_value, 0.1, 10.0));
+	Array levels = _get_custom_lod_levels();
+	if (level_index < 0 || level_index >= levels.size()) {
+		return;
+	}
+	// Adjust the stored per-level transition value while keeping the target
+	// distance control as the only user-facing control for LOD timing.
+	const double transition_bias = CLAMP(lod_target_anchor / p_value, 0.1, 10.0);
+	Dictionary level = levels[level_index];
+	level["transition_bias"] = transition_bias;
+	levels[level_index] = level;
+	_set_custom_lod_levels(levels);
 	if (lod_target_distance_input) {
-		lod_target_distance_input->set_value_no_signal(lod_target_anchor / lod_bias_input->get_value());
+		lod_target_distance_input->set_value_no_signal(lod_target_anchor / transition_bias);
+	}
+	if (lod_preset_selector) {
+		lod_preset_selector->select(4);
 	}
 }
 
@@ -3672,7 +3680,6 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 	lod_card_select_buttons.clear();
 	lod_status_label = nullptr;
 	lod_transition_estimate = nullptr;
-	lod_bias_input = nullptr;
 	lod_target_distance_input = nullptr;
 	lod_target_anchor = 0.0;
 	lod_preset_selector = nullptr;
@@ -3820,7 +3827,7 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 		keep->set_value_no_signal((double)level.get("keep", 0.5) * 100.0);
 		keep->set_suffix("%");
 		keep->set_tooltip_text(TTR("Target percentage of triangles retained from the preceding LOD. The simplifier may stop before reaching the target."));
-		keep->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_level_value_changed).bind(i, false));
+		keep->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_level_value_changed).bind(i));
 		HSlider *keep_slider = memnew(HSlider);
 		keep_slider->set_min(5); keep_slider->set_max(95); keep_slider->set_step(1);
 		keep_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
@@ -3829,28 +3836,6 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 		keep->share(keep_slider);
 		row->add_child(keep_slider);
 		row->add_child(keep);
-		HBoxContainer *bias_row = memnew(HBoxContainer);
-		content->add_child(bias_row);
-		Label *bias_label = memnew(Label);
-		bias_label->set_text(TTR("Transition bias"));
-		bias_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		bias_row->add_child(bias_label);
-		SpinBox *bias = memnew(SpinBox);
-		lod_bias_input = bias;
-		bias->set_min(0.1); bias->set_max(10); bias->set_step(0.01);
-		bias->set_editable(md.has_import_id);
-		bias->set_value_no_signal(level.get("transition_bias", 1.0));
-		bias->set_tooltip_text(TTR("Higher values switch sooner. Neighboring thresholds are kept in order. Actual transitions also depend on the camera and viewport."));
-		HSlider *bias_slider = memnew(HSlider);
-		bias_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		bias_slider->set_custom_minimum_size(Size2(70 * EDSCALE, 0));
-		bias_slider->set_editable(md.has_import_id);
-		bias_slider->set_tooltip_text(TTR("Move left to switch later, right to switch earlier."));
-		bias->share(bias_slider);
-		bias_row->add_child(bias_slider);
-		bias->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_level_value_changed).bind(i, true));
-		bias_row->add_child(bias);
-
 		lod_transition_estimate = memnew(Label);
 		lod_transition_estimate->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 		String estimate;
@@ -3901,8 +3886,8 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 		lod_transition_estimate->set_tooltip_text(TTR("Estimate for a 1920 x 1080 perspective viewport, vertical FOV 75 degrees, unit mesh scale, instance LOD Bias 1, and the current project LOD pixel threshold. Distance is measured from the camera to the nearest point of the mesh bounding box. Different surfaces can switch at different distances. Actual results depend on camera, scale, viewport resolution and runtime settings."));
 		content->add_child(lod_transition_estimate);
 		if (reference_distance > 0.0 && md.has_import_id) {
-			// The target controls the same bias as the slider. For meshes
-			// with multiple surfaces it targets the earliest switch.
+			// For meshes with multiple surfaces, the target controls the
+			// earliest transition across surfaces.
 			lod_target_anchor = reference_distance * (double)level.get("transition_bias", 1.0);
 			HBoxContainer *target_row = memnew(HBoxContainer);
 			content->add_child(target_row);
@@ -3915,7 +3900,7 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 			lod_target_distance_input->set_max(MAX(lod_target_anchor / 0.1, 0.01));
 			lod_target_distance_input->set_step(0.01);
 			lod_target_distance_input->set_value_no_signal(reference_distance);
-			lod_target_distance_input->set_tooltip_text(TTR("Approximate target for the earliest surface switch under the reference camera. This updates Transition bias and the live preview; Apply Changes generates the project asset when ready."));
+			lod_target_distance_input->set_tooltip_text(TTR("Approximate target for the earliest surface switch under the reference camera. This updates LOD timing and the live preview; Apply Changes generates the project asset when ready."));
 			lod_target_distance_input->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_target_distance_changed));
 			HSlider *target_slider = memnew(HSlider);
 			target_slider->set_min(lod_target_distance_input->get_min());

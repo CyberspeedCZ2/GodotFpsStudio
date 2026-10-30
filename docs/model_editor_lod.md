@@ -17,8 +17,7 @@ Na kartě **LOD** lze zapnout nebo vypnout generování LOD, zvolit předvolbu (
 U vybrané úrovně jsou dostupné:
 
 - **Retain triangles (%)** – cílový podíl trojúhelníků zachovaný oproti předchozí úrovni. Zjednodušovač nemusí přesného cíle dosáhnout.
-- **Transition bias** – posunuje okamžik přechodu. Vyšší hodnota přechod uspíší; nižší jej oddálí.
-- **Reference target (m)** – přibližný cíl vzdálenosti přechodu. Ovládá stejný parametr jako Transition bias.
+- **Reference target (m)** – přibližný cíl vzdálenosti přechodu pro referenční kameru. Ovládá načasování přechodu a aktualizuje živý náhled.
 
 Odhad vzdálenosti používá referenční kameru 1920 × 1080, vertikální zorné pole 75°, měřítko instance 1, LOD bias 1 a aktuální projektový práh LOD. Jde o orientační hodnotu: skutečné přepnutí závisí také na kameře, rozlišení, měřítku instance, projektových nastaveních a jednotlivých površích meshe.
 
