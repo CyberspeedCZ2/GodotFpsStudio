@@ -99,7 +99,6 @@ class SceneImportSettingsScreen : public Control {
 	AABB skeleton_aabb;
 
 	Button *light_1_switch = nullptr;
-	Button *light_2_switch = nullptr;
 	Button *light_rotate_switch = nullptr;
 	Button *frame_button = nullptr;
 	Button *wireframe_toggle = nullptr;
@@ -235,12 +234,10 @@ class SceneImportSettingsScreen : public Control {
 
 	struct ThemeCache {
 		Ref<Texture2D> light_1_icon;
-		Ref<Texture2D> light_2_icon;
 		Ref<Texture2D> rotate_icon;
 	} theme_cache;
 
 	DirectionalLight3D *light1 = nullptr;
-	DirectionalLight3D *light2 = nullptr;
 	MeshInstance3D *preview_floor = nullptr;
 	Ref<PlaneMesh> preview_floor_mesh;
 	Ref<ShaderMaterial> preview_floor_material;
@@ -397,7 +394,6 @@ class SceneImportSettingsScreen : public Control {
 	void _skeleton_tree_entered(Skeleton3D *p_skeleton);
 	void _cleanup();
 	void _on_light_1_switch_pressed();
-	void _on_light_2_switch_pressed();
 	void _on_light_rotate_switch_pressed();
 
 	void _get_active_camera_ptrs(float **r_rot_x, float **r_rot_y, float **r_zoom, Vector2 **r_pan);

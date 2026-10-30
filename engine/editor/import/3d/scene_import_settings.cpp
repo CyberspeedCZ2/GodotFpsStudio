@@ -833,14 +833,16 @@ void SceneImportSettingsScreen::_update_preview_floor(const AABB &p_bounds) {
 
 	const Vector3 center = p_bounds.get_center();
 	const real_t extent = MAX(p_bounds.get_longest_axis_size(), (real_t)0.5);
-	preview_floor_size = CLAMP(extent * 10.0, 40.0, 1000.0);
+	// Extend the simple plane well beyond the visible horizon. Depth fog fades
+	// it into the sky before its finite edge can appear in the viewport.
+	preview_floor_size = CLAMP(extent * 10.0, 1000.0, 4000.0);
 	preview_floor_mesh->set_size(Size2(preview_floor_size, preview_floor_size));
 	const real_t grid_step = extent < 8.0 ? 0.5 : (extent < 40.0 ? 1.0 : (extent < 160.0 ? 5.0 : 10.0));
 	const real_t floor_y = p_bounds.position.y - MAX(extent * 0.001, (real_t)0.002);
 	preview_floor->set_position(Vector3(center.x, floor_y, center.z));
 	preview_floor_material->set_shader_parameter("grid_origin", Vector2(center.x, center.z));
 	preview_floor_material->set_shader_parameter("grid_step", grid_step);
-	preview_floor_material->set_shader_parameter("fade_distance", preview_floor_size * 0.72);
+	preview_floor_material->set_shader_parameter("fade_distance", CLAMP(extent * 18.0, 45.0, 180.0));
 	preview_floor->show();
 
 	// Keep the soft shadow sharp around the subject without clipping it on
@@ -2099,14 +2101,9 @@ void SceneImportSettingsScreen::_on_light_1_switch_pressed() {
 	light1->set_visible(light_1_switch->is_pressed());
 }
 
-void SceneImportSettingsScreen::_on_light_2_switch_pressed() {
-	light2->set_visible(light_2_switch->is_pressed());
-}
-
 void SceneImportSettingsScreen::_on_light_rotate_switch_pressed() {
 	bool light_top_level = !light_rotate_switch->is_pressed();
 	light1->set_as_top_level_keep_local(light_top_level);
-	light2->set_as_top_level_keep_local(light_top_level);
 }
 
 void SceneImportSettingsScreen::_get_active_camera_ptrs(float **r_rot_x, float **r_rot_y, float **r_zoom, Vector2 **r_pan) {
@@ -2457,7 +2454,6 @@ void SceneImportSettingsScreen::_reimport_button_pressed() {
 void SceneImportSettingsScreen::_update_theme_item_cache() {
 	Control::_update_theme_item_cache();
 	theme_cache.light_1_icon = get_editor_theme_icon(SNAME("MaterialPreviewLight1"));
-	theme_cache.light_2_icon = get_editor_theme_icon(SNAME("MaterialPreviewLight2"));
 	theme_cache.rotate_icon = get_editor_theme_icon(SNAME("PreviewRotate"));
 }
 
@@ -2472,7 +2468,6 @@ void SceneImportSettingsScreen::_notification(int p_what) {
 			animation_stop_button->set_button_icon(get_editor_theme_icon(SNAME("Stop")));
 
 			light_1_switch->set_button_icon(theme_cache.light_1_icon);
-			light_2_switch->set_button_icon(theme_cache.light_2_icon);
 			light_rotate_switch->set_button_icon(theme_cache.rotate_icon);
 
 			frame_button->set_button_icon(get_editor_theme_icon(SNAME("CenterView")));
@@ -2979,7 +2974,7 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	light_rotate_switch->set_toggle_mode(true);
 	light_rotate_switch->set_pressed(true);
 	light_rotate_switch->set_focus_mode(Control::FOCUS_NONE);
-	light_rotate_switch->set_tooltip_text(TTR("Rotate Lights With Model"));
+	light_rotate_switch->set_tooltip_text(TTR("Rotate Sun With Model"));
 	light_rotate_switch->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_light_rotate_switch_pressed));
 	hb_tools->add_child(light_rotate_switch);
 
@@ -2988,18 +2983,9 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	light_1_switch->set_toggle_mode(true);
 	light_1_switch->set_pressed(true);
 	light_1_switch->set_focus_mode(Control::FOCUS_NONE);
-	light_1_switch->set_tooltip_text(TTR("Primary Light"));
+	light_1_switch->set_tooltip_text(TTR("Sun Light"));
 	light_1_switch->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_light_1_switch_pressed));
 	hb_tools->add_child(light_1_switch);
-
-	light_2_switch = memnew(Button);
-	light_2_switch->set_theme_type_variation("PreviewLightButton");
-	light_2_switch->set_toggle_mode(true);
-	light_2_switch->set_pressed(true);
-	light_2_switch->set_focus_mode(Control::FOCUS_NONE);
-	light_2_switch->set_tooltip_text(TTR("Secondary Light"));
-	light_2_switch->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_light_2_switch_pressed));
-	hb_tools->add_child(light_2_switch);
 
 	// LOD selection is placed below the preview, leaving the toolbar for camera tools.
 	HBoxContainer *lod_preview_bar = memnew(HBoxContainer);
@@ -3085,8 +3071,20 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	environment->set_background(Environment::BG_SKY);
 	environment->set_sky(sky);
 	environment->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
-	environment->set_ambient_light_energy(0.55);
+	// The procedural sky provides the broad, shadow-free skylight fill; the
+	// directional light below is the only direct light in the preview.
+	environment->set_ambient_light_energy(0.8);
 	environment->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
+	// Fade the floor into the sky palette so the edge of its large preview
+	// plane never creates a hard horizon stripe. Keep the model clear nearby.
+	environment->set_fog_enabled(true);
+	environment->set_fog_mode(Environment::FOG_MODE_DEPTH);
+	environment->set_fog_light_color(Color(0.18, 0.23, 0.31));
+	environment->set_fog_light_energy(1.0);
+	environment->set_fog_sky_affect(0.08);
+	environment->set_fog_depth_begin(45.0);
+	environment->set_fog_depth_end(220.0);
+	environment->set_fog_depth_curve(1.15);
 	// A custom FOV must be specified, as an orthogonal camera is used for the preview.
 	environment->set_sky_custom_fov(50.0);
 	camera->set_environment(environment);
@@ -3095,13 +3093,9 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	light1->set_transform(Transform3D(Basis::looking_at(Vector3(-1, -1, -1))));
 	light1->set_shadow(true);
 	light1->set_color(Color(1.0, 0.96, 0.9));
+	light1->set_param(Light3D::PARAM_SHADOW_OPACITY, 0.68);
 	light1->set_param(Light3D::PARAM_SHADOW_BLUR, 2.0);
 	camera->add_child(light1);
-
-	light2 = memnew(DirectionalLight3D);
-	light2->set_transform(Transform3D(Basis::looking_at(Vector3(0, 1, 0), Vector3(0, 0, 1))));
-	light2->set_color(Color(0.48f, 0.6f, 0.78f));
-	camera->add_child(light2);
 
 	// A lit floor receives the model's soft directional shadow. The fine and
 	// major grid lines are generated in the shader, so they remain stable at
