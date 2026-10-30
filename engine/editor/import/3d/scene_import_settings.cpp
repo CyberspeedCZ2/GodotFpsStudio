@@ -264,37 +264,64 @@ void SceneImportSettingsScreen::_set_default(const StringName &p_name, const Var
 	scene_import_settings_data->_set(p_name, p_value);
 }
 
-void SceneImportSettingsScreen::_fill_material(Tree *p_tree, const Ref<Material> &p_material, TreeItem *p_parent) {
+String SceneImportSettingsScreen::_get_material_import_id(const Ref<Material> &p_material) {
 	String import_id;
-	bool has_import_id = false;
 
 	if (p_material->has_meta("import_id")) {
 		import_id = p_material->get_meta("import_id");
-		has_import_id = true;
 	} else if (!p_material->get_name().is_empty()) {
 		import_id = p_material->get_name();
-		has_import_id = true;
 	} else if (unnamed_material_name_map.has(p_material)) {
 		import_id = unnamed_material_name_map[p_material];
 	} else {
 		import_id = "@MATERIAL:" + itos(material_map.size());
 		unnamed_material_name_map[p_material] = import_id;
 	}
+	return import_id;
+}
+
+static Ref<Material> load_external_material_for_preview(const HashMap<StringName, Variant> &p_settings) {
+	if (!p_settings.has("use_external/enabled") || !(bool)p_settings["use_external/enabled"]) {
+		return Ref<Material>();
+	}
+
+	Ref<Material> external_material;
+	if (p_settings.has("use_external/path")) {
+		const String path = p_settings["use_external/path"];
+		external_material = ResourceLoader::load(path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+	}
+	if (external_material.is_null() && p_settings.has("use_external/fallback_path")) {
+		const String fallback_path = p_settings["use_external/fallback_path"];
+		if (!fallback_path.is_empty()) {
+			external_material = ResourceLoader::load(fallback_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+		}
+	}
+	return external_material;
+}
+
+void SceneImportSettingsScreen::_fill_material(Tree *p_tree, const Ref<Material> &p_material, TreeItem *p_parent) {
+	const String import_id = _get_material_import_id(p_material);
+	const bool has_import_id = p_material->has_meta("import_id") || !p_material->get_name().is_empty();
 
 	bool created = false;
 	if (!material_map.has(import_id)) {
 		MaterialData md;
 		created = true;
 		md.has_import_id = has_import_id;
+		md.source_material = p_material;
 		md.material = p_material;
 
 		_load_default_subresource_settings(md.settings, "materials", import_id, ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MATERIAL);
+		Ref<Material> external_material = load_external_material_for_preview(md.settings);
+		if (external_material.is_valid()) {
+			md.material = external_material;
+		}
 
 		material_map[import_id] = md;
 	}
 
 	MaterialData &material_data = material_map[import_id];
-	ERR_FAIL_COND(p_material != material_data.material);
+	ERR_FAIL_COND(p_material != material_data.source_material);
 
 	Variant value;
 	if (_get_current("materials/extract", value) && (int)value != 0) {
@@ -562,6 +589,24 @@ void SceneImportSettingsScreen::_fill_scene(Node *p_node, TreeItem *p_parent_ite
 		// We want to show these icons for any import type that preserves meshes.
 		if (_resource_importer_scene->get_scene_import_type() != "AnimationLibrary") {
 			_fill_mesh(scene_tree, mesh_node->get_mesh(), item);
+		}
+		// pre_import() reads the source model without running the final importer
+		// post-fix pass, so external materials from the .import settings would
+		// otherwise be missing from Model View after opening or reimporting it.
+		const Ref<Mesh> preview_mesh = mesh_node->get_mesh();
+		for (int surface = 0; surface < preview_mesh->get_surface_count(); surface++) {
+			Ref<Material> source_material = preview_mesh->surface_get_material(surface);
+			if (source_material.is_null()) {
+				continue;
+			}
+			const String material_id = _get_material_import_id(source_material);
+			if (!material_map.has(material_id)) {
+				continue;
+			}
+			const Ref<Material> preview_material = material_map[material_id].material;
+			if (preview_material.is_valid() && preview_material != source_material) {
+				mesh_node->set_surface_override_material(surface, preview_material);
+			}
 		}
 
 		// Add the collider view.
@@ -3295,7 +3340,7 @@ void fragment() {
 
 	material_matte_button = memnew(Button);
 	material_matte_button->set_text(TTR("Make Matte"));
-	material_matte_button->set_tooltip_text(TTR("Roughness 0 is polished/glossy; 1 is matte. Set Roughness to 1.0 and remove the Roughness Texture. Save Material to keep this after reimport."));
+	material_matte_button->set_tooltip_text(TTR("Roughness 0 is polished/glossy; 1 is matte. Set Roughness to 1, Specular to 0, and remove the Roughness Texture. Save Material to keep this after reimport."));
 	material_matte_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_matte_button_pressed));
 	material_tab->add_child(material_matte_button);
 
@@ -3773,7 +3818,7 @@ static String get_material_roughness_hint(const Ref<Material> &p_material) {
 	}
 
 	const bool has_roughness_texture = base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_valid();
-	String hint = vformat(TTR("Current Roughness: %s (0 = polished/glossy, 1 = matte)."), String::num(base_material->get_roughness(), 2));
+	String hint = vformat(TTR("Current Roughness: %s (0 = polished/glossy, 1 = matte). Specular: %s."), String::num(base_material->get_roughness(), 2), String::num(base_material->get_specular(), 2));
 	if (has_roughness_texture) {
 		hint += " " + TTR("A Roughness Texture is active and can make parts glossier.");
 	}
@@ -3817,7 +3862,7 @@ void SceneImportSettingsScreen::_update_material_editor() {
 	}
 	if (BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(md.material.ptr())) {
 		material_matte_button->show();
-		const bool already_matte = base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f);
+		const bool already_matte = base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f) && Math::is_zero_approx(base_material->get_specular());
 		material_matte_button->set_disabled(already_matte);
 	}
 	if (md.modified) {
@@ -3846,12 +3891,13 @@ void SceneImportSettingsScreen::_material_matte_button_pressed() {
 	if (!base_material) {
 		return;
 	}
-	if (base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f)) {
+	if (base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f) && Math::is_zero_approx(base_material->get_specular())) {
 		return;
 	}
 
 	base_material->set_texture(BaseMaterial3D::TEXTURE_ROUGHNESS, Ref<Texture2D>());
 	base_material->set_roughness(1.0);
+	base_material->set_specular(0.0);
 	_material_inspector_property_edited("roughness_texture");
 	_update_material_editor();
 }

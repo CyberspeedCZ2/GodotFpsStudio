@@ -277,6 +277,7 @@ class SceneImportSettingsScreen : public Control {
 	struct MaterialData {
 		bool has_import_id;
 		bool modified = false;
+		Ref<Material> source_material;
 		Ref<Material> material;
 		TreeItem *scene_node = nullptr;
 		TreeItem *mesh_node = nullptr;
@@ -329,6 +330,7 @@ class SceneImportSettingsScreen : public Control {
 
 	bool _get_current(const StringName &p_name, Variant &r_ret) const;
 	void _set_default(const StringName &p_name, const Variant &p_value);
+	String _get_material_import_id(const Ref<Material> &p_material);
 	void _fill_material(Tree *p_tree, const Ref<Material> &p_material, TreeItem *p_parent);
 	void _fill_mesh(Tree *p_tree, const Ref<Mesh> &p_mesh, TreeItem *p_parent);
 	void _fill_animation(Tree *p_tree, const Ref<Animation> &p_anim, const String &p_name, TreeItem *p_parent);
