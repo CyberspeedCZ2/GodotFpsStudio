@@ -383,6 +383,7 @@ public:
 
 	EditorFileSystemDirectory *get_filesystem();
 	bool is_scanning() const;
+	bool has_pending_scan_changes() const { return scan_changes_pending; }
 	bool is_importing() const { return importing; }
 	bool doing_first_scan() const { return first_scan; }
 	float get_scanning_progress() const;

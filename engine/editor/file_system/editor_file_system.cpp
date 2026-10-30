@@ -1185,6 +1185,10 @@ void EditorFileSystem::scan() {
 		ResourceImporter::load_on_startup = nullptr;
 		emit_signal(SNAME("filesystem_changed"));
 		emit_signal(SNAME("sources_changed"), sources_changed.size() > 0);
+		if (scan_changes_pending) {
+			scan_changes_pending = false;
+			scan_changes();
+		}
 	} else {
 		ERR_FAIL_COND(thread.is_started());
 		set_process(true);
@@ -1782,6 +1786,10 @@ void EditorFileSystem::scan_changes() {
 		scanning_changes = false;
 		scanning_changes_done.set();
 		emit_signal(SNAME("sources_changed"), sources_changed.size() > 0);
+		if (scan_changes_pending) {
+			scan_changes_pending = false;
+			scan_changes();
+		}
 	} else {
 		ERR_FAIL_COND(thread_sources.is_started());
 		set_process(true);
@@ -1831,6 +1839,7 @@ void EditorFileSystem::_notification(int p_what) {
 				prevent_recursive_process_hack = true;
 
 				bool done_importing = false;
+				bool done_scanning = false;
 
 				if (scanning_changes) {
 					if (scanning_changes_done.is_set()) {
@@ -1869,9 +1878,10 @@ void EditorFileSystem::_notification(int p_what) {
 					ResourceImporter::load_on_startup = nullptr;
 					emit_signal(SNAME("filesystem_changed"));
 					emit_signal(SNAME("sources_changed"), sources_changed.size() > 0);
+					done_scanning = true;
 				}
 
-				if (done_importing && scan_changes_pending) {
+				if ((done_importing || done_scanning) && scan_changes_pending) {
 					scan_changes_pending = false;
 					scan_changes();
 				}
@@ -1883,7 +1893,7 @@ void EditorFileSystem::_notification(int p_what) {
 }
 
 bool EditorFileSystem::is_scanning() const {
-	return scanning || scanning_changes || first_scan;
+	return scanning || scanning_changes || first_scan || thread.is_started() || thread_sources.is_started();
 }
 
 float EditorFileSystem::get_scanning_progress() const {

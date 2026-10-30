@@ -24,6 +24,7 @@
 #include <atomic>
 
 class Label;
+class RichTextLabel;
 class Timer;
 class VBoxContainer;
 
@@ -40,6 +41,7 @@ class ModelImportWizard : public ConfirmationDialog {
 	VBoxContainer *options_container = nullptr;
 	VBoxContainer *settings_container = nullptr;
 	Label *source_label = nullptr;
+	RichTextLabel *activity_log = nullptr;
 	CheckBox *convert_checkbox = nullptr;
 	OptionButton *resolution_option = nullptr;
 	CheckBox *delete_original_checkbox = nullptr;
@@ -49,6 +51,11 @@ class ModelImportWizard : public ConfirmationDialog {
 		bool succeeded = false;
 		String error;
 		String output_path;
+		Vector<String> extracted_texture_paths;
+	};
+	struct PendingSourceDeletion {
+		String source_path;
+		bool source_is_project_asset = false;
 		Vector<String> extracted_texture_paths;
 	};
 
@@ -64,6 +71,14 @@ class ModelImportWizard : public ConfirmationDialog {
 	std::atomic<int> conversion_stage{ 0 };
 	std::atomic<int> conversion_index{ 0 };
 	Vector<String> pending_output_paths;
+	Vector<PendingSourceDeletion> pending_source_deletions;
+	bool pending_deletions_processed = false;
+	bool waiting_for_cleanup_scan = false;
+	bool filesystem_scan_retried = false;
+	int last_reported_conversion_stage = -1;
+	int last_reported_conversion_index = -1;
+	int last_reported_scan_percent = -10;
+	String last_reported_filesystem_phase;
 	uint64_t filesystem_wait_started = 0;
 	String pending_result_message;
 	bool pending_result_success = false;
@@ -75,6 +90,8 @@ class ModelImportWizard : public ConfirmationDialog {
 	static void _conversion_thread(void *p_userdata);
 	void _check_background_progress();
 	void _notification(int p_what);
+	void _append_activity_log(const String &p_message);
+	void _reset_activity_log();
 	void _show_progress(const String &p_message);
 	void _show_result(const String &p_message, bool p_success);
 

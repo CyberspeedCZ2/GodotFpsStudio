@@ -32,6 +32,7 @@
 #include "editor/docks/filesystem_dock.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/import/3d/resource_importer_scene.h"
+#include "editor/themes/editor_scale.h"
 #include "modules/fbx/editor/editor_scene_importer_ufbx.h"
 #include "modules/gltf/gltf_document.h"
 #include "modules/gltf/extensions/gltf_document_extension_convert_importer_mesh.h"
@@ -44,11 +45,16 @@
 #include "scene/resources/image_texture.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/label.h"
+#include "scene/gui/rich_text_label.h"
 #include "scene/main/timer.h"
 
 #include <algorithm>
 
 static const int MODEL_TEXTURE_LIMITS[] = { 4096, 2048, 1024, 512, 256 };
+
+static Size2i _model_import_dialog_size() {
+	return Size2i(int(760 * EDSCALE), int(560 * EDSCALE));
+}
 
 static String _model_source_absolute_path(const String &p_path) {
 	return p_path.begins_with("res://") ? ProjectSettings::get_singleton()->globalize_path(p_path) : p_path;
@@ -816,14 +822,15 @@ bool ModelImportWizard::supports_model_file(const String &p_path) {
 
 void ModelImportWizard::configure(const String &p_source_path, const String &p_target_directory, bool p_existing_asset) {
 	if (background_import_running || waiting_for_filesystem) {
-		popup_centered(Size2(520, 160));
+		popup_centered(_model_import_dialog_size());
 		return;
 	}
 	showing_result = false;
+	_reset_activity_log();
 	settings_container->show();
 	get_cancel_button()->show();
+	get_ok_button()->set_disabled(false);
 	set_ok_button_text(TTRC("Import"));
-	set_min_size(Size2(520, 0));
 	source_path = p_source_path;
 	source_paths.clear();
 	source_paths.push_back(p_source_path);
@@ -834,48 +841,51 @@ void ModelImportWizard::configure(const String &p_source_path, const String &p_t
 	if (source_is_project_asset) {
 		source_path = localized_source;
 	}
-	set_title(TTR(existing_asset_mode ? "Optimize Existing Model" : "Import 3D Model"));
-	source_label->set_text(source_path + "\n\n" + (existing_asset_mode ? TTR("Create a Godot-ready glTF source with separate resized textures. Existing scene references are checked before an optional source removal.") : TTR("Import GLB, glTF, or FBX. The optimized option creates a reusable glTF source, external binary data, and separate textures while preserving model materials, skeletons, and animations.")));
+	set_title(TTR("Model Import"));
+	source_label->set_text(vformat(TTR("Ready to process 1 model.\nDestination: %s"), target_directory));
+	_append_activity_log(vformat(TTR("Source, read in place: %s"), source_path));
+	_append_activity_log(vformat(TTR("Destination folder: %s"), target_directory));
+	_append_activity_log(TTR("Godot prepares the output in a temporary area, validates it, and then moves it into the project."));
+	_append_activity_log(existing_asset_mode ? TTR("The existing scene references will be checked before an optional source removal.") : TTR("The optimized output preserves geometry, materials, skeletons, and animations."));
 	convert_checkbox->set_disabled(existing_asset_mode);
 	convert_checkbox->set_pressed(true);
 	delete_original_checkbox->set_pressed(false);
 	delete_original_checkbox->set_text(source_is_project_asset ? TTR("Remove the original model and its unused source textures after conversion") : TTR("Remove the original model and its linked source textures after conversion"));
 	_options_changed();
-	popup_centered(Size2(560, 0));
+	popup_centered(_model_import_dialog_size());
 }
 
 void ModelImportWizard::configure_batch(const Vector<String> &p_source_paths, const String &p_target_directory) {
 	if (background_import_running || waiting_for_filesystem) {
-		popup_centered(Size2(520, 160));
+		popup_centered(_model_import_dialog_size());
 		return;
 	}
 	if (p_source_paths.is_empty()) {
 		return;
 	}
 	showing_result = false;
+	_reset_activity_log();
 	settings_container->show();
 	get_cancel_button()->show();
+	get_ok_button()->set_disabled(false);
 	set_ok_button_text(TTRC("Import"));
-	set_min_size(Size2(520, 0));
 	source_paths = p_source_paths;
 	source_path = source_paths[0];
 	target_directory = p_target_directory;
 	existing_asset_mode = false;
-	String source_list;
 	for (int i = 0; i < source_paths.size(); i++) {
-		if (i > 0) {
-			source_list += "\n";
-		}
-		source_list += source_paths[i];
+		_append_activity_log(vformat(TTR("Source %d, read in place: %s"), i + 1, source_paths[i]));
 	}
-	source_label->set_text(vformat(TTR("%d model files:\n%s\n\n%s"), source_paths.size(), source_list, TTR("Use the same conversion and texture settings for every selected model. Each output is verified before it is added to the project.")));
-	set_title(TTR("Import 3D Models"));
+	source_label->set_text(vformat(TTR("Ready to process %d model files.\nDestination: %s"), source_paths.size(), target_directory));
+	_append_activity_log(vformat(TTR("Destination folder: %s"), target_directory));
+	_append_activity_log(TTR("Godot prepares each output in a temporary area, validates it, and then moves it into the project."));
+	set_title(TTR("Model Import"));
 	convert_checkbox->set_disabled(false);
 	convert_checkbox->set_pressed(true);
 	delete_original_checkbox->set_pressed(false);
 	delete_original_checkbox->set_text(TTR("Remove original models and their unused source textures after conversion"));
 	_options_changed();
-	popup_centered(Size2(600, 0));
+	popup_centered(_model_import_dialog_size());
 }
 
 void ModelImportWizard::_options_changed() {
@@ -884,8 +894,27 @@ void ModelImportWizard::_options_changed() {
 	delete_original_checkbox->set_disabled(!converting);
 }
 
+void ModelImportWizard::_append_activity_log(const String &p_message) {
+	if (activity_log == nullptr || p_message.is_empty()) {
+		return;
+	}
+	activity_log->add_text(p_message + "\n");
+	activity_log->scroll_to_line(MAX(activity_log->get_line_count() - 1, 0));
+}
+
+void ModelImportWizard::_reset_activity_log() {
+	if (activity_log != nullptr) {
+		activity_log->clear();
+	}
+	last_reported_conversion_stage = -1;
+	last_reported_conversion_index = -1;
+	last_reported_scan_percent = -10;
+	last_reported_filesystem_phase = String();
+}
+
 void ModelImportWizard::_confirmed() {
 	if (background_import_running || waiting_for_filesystem) {
+		_append_activity_log(TTR("Dialog hidden. The import continues in the background."));
 		hide();
 		return;
 	}
@@ -893,30 +922,40 @@ void ModelImportWizard::_confirmed() {
 		hide();
 		return;
 	}
-	hide();
+	_append_activity_log(convert_checkbox->is_pressed() ? TTR("Mode: create a resized glTF source and separate textures.") : TTR("Mode: copy the source file into the project."));
+	if (convert_checkbox->is_pressed()) {
+		_append_activity_log(vformat(TTR("Maximum texture dimension: %d px."), resolution_option->get_selected_id()));
+		_append_activity_log(delete_original_checkbox->is_pressed() ? TTR("Source removal is enabled after a successful Godot import and reference check.") : TTR("Original source files will be kept."));
+	}
+	get_ok_button()->set_disabled(true);
 	call_deferred("_run_import");
 }
 
 void ModelImportWizard::_show_progress(const String &p_message) {
 	showing_result = false;
-	set_title(TTR("Optimizing Model"));
 	source_label->set_text(p_message);
-	settings_container->hide();
+	_append_activity_log(p_message);
+	convert_checkbox->set_disabled(true);
+	resolution_option->set_disabled(true);
+	delete_original_checkbox->set_disabled(true);
 	get_cancel_button()->hide();
-	set_ok_button_text(TTRC("Continue in Background"));
-	set_min_size(Size2(520, 160));
-	popup_centered(Size2(520, 160));
+	get_ok_button()->set_disabled(false);
+	set_ok_button_text(TTRC("Hide, Keep Running"));
 }
 
 void ModelImportWizard::_show_result(const String &p_message, bool p_success) {
 	showing_result = true;
-	set_title(TTR(p_success ? "Model Import Complete" : "Model Import Failed"));
-	source_label->set_text(p_message);
-	settings_container->hide();
+	source_label->set_text(TTR(p_success ? "Import finished." : "Import failed."));
+	_append_activity_log(p_message);
+	convert_checkbox->set_disabled(true);
+	resolution_option->set_disabled(true);
+	delete_original_checkbox->set_disabled(true);
 	get_cancel_button()->hide();
+	get_ok_button()->set_disabled(false);
 	set_ok_button_text(TTRC("Close"));
-	set_min_size(Size2(560, 220));
-	popup_centered(Size2(560, 220));
+	if (!is_visible()) {
+		popup_centered(_model_import_dialog_size());
+	}
 }
 
 void ModelImportWizard::_start_background_conversion() {
@@ -930,8 +969,11 @@ void ModelImportWizard::_start_background_conversion() {
 	background_conversion_ready = false;
 	conversion_stage.store(1);
 	conversion_index.store(0);
+	last_reported_conversion_stage = -1;
+	last_reported_conversion_index = -1;
 	import_finished.clear();
-	_show_progress(TTR("Converting the model and resizing its textures. You can continue working while this runs."));
+	_append_activity_log(vformat(TTR("Temporary conversion files are staged under the project cache. Final destination: %s"), background_target_directory));
+	_show_progress(TTR("Starting model conversion."));
 	if (import_thread.start(_conversion_thread, this) == Thread::UNASSIGNED_ID) {
 		_show_result(TTR("Godot could not start the background model conversion."), false);
 		return;
@@ -959,37 +1001,134 @@ void ModelImportWizard::_check_background_progress() {
 		const char *stages[] = { "Preparing", "Reading the model and its textures", "Resizing textures", "Writing the optimized model and textures", "Checking the converted model" };
 		const int stage = CLAMP(conversion_stage.load(), 0, 4);
 		const int index = CLAMP(conversion_index.load(), 0, background_source_paths.size() - 1);
-		source_label->set_text(vformat("%s\n%s (%d/%d)\n\n%s", TTR(stages[stage]), background_source_paths[index].get_file(), index + 1, background_source_paths.size(), TTR("The conversion is running. You can continue working in the background.")));
+		const String stage_message = vformat(TTR("%s (%d/%d): %s"), TTR(stages[stage]), index + 1, background_source_paths.size(), background_source_paths[index].get_file());
+		source_label->set_text(stage_message);
+		if (stage != last_reported_conversion_stage || index != last_reported_conversion_index) {
+			_append_activity_log(stage_message);
+			last_reported_conversion_stage = stage;
+			last_reported_conversion_index = index;
+		}
 	}
 	if (background_import_running && import_finished.is_set()) {
 		import_thread.wait_to_finish();
 		background_import_running = false;
 		background_conversion_ready = true;
-		_show_progress(TTR("Conversion finished. Godot is adding the model and textures to the project."));
+		_show_progress(TTR("Conversion and source validation finished. Godot is now importing the verified output into the project."));
 		_run_import();
 	}
-	if (waiting_for_filesystem && !EditorFileSystem::get_singleton()->is_scanning() && !EditorFileSystem::get_singleton()->is_importing()) {
+	if (waiting_for_filesystem) {
+		EditorFileSystem *filesystem = EditorFileSystem::get_singleton();
+		const bool filesystem_busy = filesystem->is_scanning() || filesystem->is_importing() || filesystem->has_pending_scan_changes();
+		const bool timed_out = OS::get_singleton()->get_ticks_msec() - filesystem_wait_started > 120000;
+		if (filesystem_busy && !timed_out) {
+			String phase;
+			if (waiting_for_cleanup_scan) {
+				phase = TTR("Godot is refreshing the project after source cleanup.");
+			} else if (filesystem->has_pending_scan_changes()) {
+				phase = TTR("Waiting for the queued project scan to start.");
+			} else if (filesystem->is_importing()) {
+				phase = TTR("Godot is importing the verified model and its textures.");
+			} else {
+				phase = vformat(TTR("Godot is scanning the project: %d%%"), int(filesystem->get_scanning_progress() * 100.0f));
+			}
+			source_label->set_text(phase);
+			if (phase != last_reported_filesystem_phase) {
+				_append_activity_log(phase);
+				last_reported_filesystem_phase = phase;
+			}
+			if (filesystem->is_scanning()) {
+				const int scan_percent = int(filesystem->get_scanning_progress() * 100.0f);
+				if (scan_percent >= last_reported_scan_percent + 10) {
+					_append_activity_log(vformat(TTR("Project scan progress: %d%%"), scan_percent));
+					last_reported_scan_percent = scan_percent;
+				}
+			}
+			return;
+		}
+		if (filesystem_busy && timed_out) {
+			waiting_for_filesystem = false;
+			progress_timer->stop();
+			if (waiting_for_cleanup_scan) {
+				pending_result_message += "\nThe optimized model was imported successfully. Godot is still refreshing the project after source cleanup.";
+			} else {
+				pending_result_message += "\nGodot did not finish scanning and importing the generated model in time. The original source was kept.";
+				pending_result_success = false;
+			}
+			pending_source_deletions.clear();
+			_show_result(pending_result_message, pending_result_success);
+			pending_result_message = String();
+			pending_output_paths.clear();
+			waiting_for_cleanup_scan = false;
+			return;
+		}
+
 		bool ready = true;
 		bool valid = true;
 		for (const String &path : pending_output_paths) {
 			int index = -1;
-			EditorFileSystemDirectory *directory = EditorFileSystem::get_singleton()->find_file(path, &index);
+			EditorFileSystemDirectory *directory = filesystem->find_file(path, &index);
 			if (directory == nullptr || index < 0) { ready = false; break; }
 			if (!directory->get_file_import_is_valid(index)) { valid = false; }
 		}
-		const bool timed_out = OS::get_singleton()->get_ticks_msec() - filesystem_wait_started > 120000;
+		if (!ready && !timed_out && !filesystem_scan_retried) {
+			filesystem_scan_retried = true;
+			filesystem_wait_started = OS::get_singleton()->get_ticks_msec();
+			_append_activity_log(TTR("The output is not registered yet. Starting one more project scan."));
+			source_label->set_text(TTR("Retrying the project scan."));
+			filesystem->scan_changes();
+			return;
+		}
 		if (!ready && !timed_out) { return; }
+		if (!ready || !valid) {
+			if (!ready) {
+				String missing_path;
+				for (const String &path : pending_output_paths) {
+					int index = -1;
+					EditorFileSystemDirectory *directory = filesystem->find_file(path, &index);
+					if (directory == nullptr || index < 0) {
+						missing_path = path;
+						break;
+					}
+				}
+				if (FileAccess::exists(_model_source_absolute_path(missing_path))) {
+					pending_result_message += vformat("\nThe generated file exists on disk at %s, but Godot did not register it after two project scans. The original source was kept.", missing_path);
+				} else {
+					pending_result_message += vformat("\nThe generated file is missing on disk: %s. The original source was kept.", missing_path);
+				}
+			} else {
+				pending_result_message += "\nGodot failed to import the generated model. The original source was kept; check the Output panel.";
+			}
+			pending_result_success = false;
+			pending_source_deletions.clear();
+			waiting_for_cleanup_scan = false;
+		} else if (!pending_deletions_processed) {
+			bool source_removed = false;
+			for (const PendingSourceDeletion &deletion : pending_source_deletions) {
+				String delete_result;
+				const bool deleted = _delete_original_source(deletion.source_path, deletion.source_is_project_asset, deletion.extracted_texture_paths, delete_result);
+				pending_result_message += "\n" + delete_result;
+				source_removed = source_removed || deleted;
+			}
+			pending_source_deletions.clear();
+			pending_deletions_processed = true;
+			if (source_removed) {
+				waiting_for_cleanup_scan = true;
+				filesystem_wait_started = OS::get_singleton()->get_ticks_msec();
+				_show_progress(TTR("Godot confirmed the optimized model imported successfully. Refreshing the project after source cleanup."));
+				filesystem->scan_changes();
+				return;
+			}
+		}
+
 		waiting_for_filesystem = false;
 		progress_timer->stop();
-		if (!ready || !valid) {
-			pending_result_message += "\nGodot has not finished importing the generated model. Check the Output panel.";
-			pending_result_success = false;
-		} else if (pending_output_paths.size() == 1) {
+		if (valid && ready && pending_output_paths.size() == 1) {
 			FileSystemDock::get_singleton()->select_file(pending_output_paths[0]);
 		}
 		_show_result(pending_result_message, pending_result_success);
 		pending_result_message = String();
 		pending_output_paths.clear();
+		waiting_for_cleanup_scan = false;
 	}
 }
 
@@ -1014,6 +1153,10 @@ void ModelImportWizard::_run_import() {
 	bool all_succeeded = true;
 	bool any_succeeded = false;
 	pending_output_paths.clear();
+	pending_source_deletions.clear();
+	pending_deletions_processed = false;
+	waiting_for_cleanup_scan = false;
+	filesystem_scan_retried = false;
 	const int resolution = resolution_option->get_selected_id();
 	for (int source_index = 0; source_index < source_paths.size(); source_index++) {
 		const String &path = source_paths[source_index];
@@ -1077,17 +1220,17 @@ void ModelImportWizard::_run_import() {
 				} else {
 					const String localized = ProjectSettings::get_singleton()->localize_path(source_absolute_path);
 					const bool in_project = localized.begins_with("res://") && !localized.begins_with("res://..");
-					String delete_path = in_project ? localized : path;
-					String delete_result;
-					_delete_original_source(delete_path, in_project, extracted_texture_paths, delete_result);
-					result_message += delete_result + "\n";
+					PendingSourceDeletion deletion;
+					deletion.source_path = in_project ? localized : source_absolute_path;
+					deletion.source_is_project_asset = in_project;
+					deletion.extracted_texture_paths = extracted_texture_paths;
+					pending_source_deletions.push_back(deletion);
+					result_message += "The original will be removed only after Godot confirms the optimized model imported successfully.\n";
 				}
 			}
 		}
 	}
-	if (any_succeeded) {
-		EditorFileSystem::get_singleton()->scan_changes();
-	}
+	const bool scan_project = any_succeeded;
 	if (use_background_results) {
 		background_conversion_ready = false;
 		background_results.clear();
@@ -1102,8 +1245,16 @@ void ModelImportWizard::_run_import() {
 		pending_result_success = all_succeeded;
 		waiting_for_filesystem = true;
 		filesystem_wait_started = OS::get_singleton()->get_ticks_msec();
-		_show_progress(TTR("Godot is importing the optimized model and registering its texture files."));
+		_append_activity_log(TTR("Verified output files to import:"));
+		for (const String &path : pending_output_paths) {
+			_append_activity_log(path);
+		}
+		_append_activity_log(TTR("Any requested source removal waits until Godot confirms the generated files imported successfully."));
+		_show_progress(TTR("Godot is scanning and importing the verified project files."));
 		progress_timer->start();
+		if (scan_project) {
+			EditorFileSystem::get_singleton()->scan_changes();
+		}
 	} else {
 		progress_timer->stop();
 		_show_result(result_message.strip_edges(), all_succeeded);
@@ -1120,15 +1271,22 @@ void ModelImportWizard::_bind_methods() {
 ModelImportWizard::ModelImportWizard() {
 	set_title(TTRC("Import 3D Model"));
 	set_text(String());
+	set_hide_on_ok(false);
 	set_ok_button_text(TTRC("Import"));
-	set_min_size(Size2(520, 0));
+	const Size2i dialog_size = _model_import_dialog_size();
+	set_min_size(dialog_size);
+	set_max_size(dialog_size);
+	set_size(dialog_size);
 	connect(SceneStringName(confirmed), callable_mp(this, &ModelImportWizard::_confirmed));
 
 	options_container = memnew(VBoxContainer);
+	options_container->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	options_container->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	add_child(options_container);
 
 	source_label = memnew(Label);
 	source_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	source_label->set_custom_minimum_size(Size2(0, 54) * EDSCALE);
 	options_container->add_child(source_label);
 	settings_container = memnew(VBoxContainer);
 	options_container->add_child(settings_container);
@@ -1156,6 +1314,20 @@ ModelImportWizard::ModelImportWizard() {
 	delete_original_checkbox->set_tooltip_text(TTRC("The source model is removed only after the generated glTF passes validation. Project references are checked before removing the model or any linked texture, even when the source is outside the project."));
 	settings_container->add_child(delete_original_checkbox);
 	delete_original_checkbox->connect(SceneStringName(toggled), callable_mp(this, &ModelImportWizard::_options_changed).unbind(1));
+
+	Label *activity_title = memnew(Label);
+	activity_title->set_text(TTRC("Import activity"));
+	options_container->add_child(activity_title);
+	activity_log = memnew(RichTextLabel);
+	activity_log->set_custom_minimum_size(Size2(0, 220) * EDSCALE);
+	activity_log->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	activity_log->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	activity_log->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	activity_log->set_fit_content(false);
+	activity_log->set_scroll_follow(true);
+	activity_log->set_use_bbcode(false);
+	activity_log->set_selection_enabled(true);
+	options_container->add_child(activity_log);
 
 	progress_timer = memnew(Timer);
 	progress_timer->set_wait_time(0.1);

@@ -769,11 +769,17 @@ String FileSystemDock::get_current_path() const {
 }
 
 String FileSystemDock::get_current_directory() const {
+	if (current_path == "Favorites") {
+		return "res://";
+	}
 	if (current_path.ends_with("/")) {
 		return current_path;
-	} else {
-		return current_path.get_base_dir();
 	}
+	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_RESOURCES);
+	if (dir.is_valid() && dir->dir_exists(current_path)) {
+		return current_path;
+	}
+	return current_path.get_base_dir();
 }
 
 void FileSystemDock::_set_current_path_line_edit_text(const String &p_path) {
@@ -3116,6 +3122,13 @@ String FileSystemDock::get_folder_path_at_mouse_position() const {
 		return String();
 	}
 	String fpath = item->get_metadata(0);
+	if (fpath == "Favorites") {
+		return String();
+	}
+	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_RESOURCES);
+	if (dir.is_valid() && dir->dir_exists(fpath)) {
+		return fpath;
+	}
 	return fpath.get_base_dir();
 }
 
