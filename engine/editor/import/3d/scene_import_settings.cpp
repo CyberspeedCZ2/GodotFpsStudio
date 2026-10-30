@@ -1910,6 +1910,9 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 
 	selected_type = p_type;
 	selected_id = p_id;
+	if (selected_type == "Material" && settings_tabs) {
+		settings_tabs->set_current_tab(5);
+	}
 	_update_material_editor();
 	lod_selected_level = 0;
 	lod_auto_toggle->set_disabled(false);
