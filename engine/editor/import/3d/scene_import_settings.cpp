@@ -3293,6 +3293,12 @@ void fragment() {
 	material_create_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_create_button_pressed));
 	material_tab->add_child(material_create_button);
 
+	material_matte_button = memnew(Button);
+	material_matte_button->set_text(TTR("Make Matte"));
+	material_matte_button->set_tooltip_text(TTR("Set Roughness to 1.0 and remove the Roughness Texture. Save Material to keep this after reimport."));
+	material_matte_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_matte_button_pressed));
+	material_tab->add_child(material_matte_button);
+
 	material_save_button = memnew(Button);
 	material_save_button->set_text(TTR("Save Material"));
 	material_save_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_save_button_pressed));
@@ -3761,12 +3767,13 @@ void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
 }
 
 void SceneImportSettingsScreen::_update_material_editor() {
-	if (!material_inspector || !material_editor_status || !material_create_button || !material_save_button || !material_preview_on_model_toggle) {
+	if (!material_inspector || !material_editor_status || !material_create_button || !material_matte_button || !material_save_button || !material_preview_on_model_toggle) {
 		return;
 	}
 	const bool has_material = selected_type == "Material" && material_map.has(selected_id);
 	material_preview_on_model_toggle->set_visible(has_material);
 	material_create_button->hide();
+	material_matte_button->hide();
 	material_inspector->edit(nullptr);
 	material_inspector->hide();
 	material_save_button->hide();
@@ -3794,6 +3801,11 @@ void SceneImportSettingsScreen::_update_material_editor() {
 	if (material_path.begins_with("uid://")) {
 		material_path = ResourceUID::uid_to_path(material_path);
 	}
+	if (BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(md.material.ptr())) {
+		material_matte_button->show();
+		const bool already_matte = base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f);
+		material_matte_button->set_disabled(already_matte);
+	}
 	if (md.modified) {
 		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Save Material or Apply Changes to save."), material_path.get_file()));
 	} else {
@@ -3809,6 +3821,25 @@ void SceneImportSettingsScreen::_material_create_button_pressed() {
 	if (selected_type == "Material" && material_map.has(selected_id)) {
 		_menu_callback(ACTION_EXTRACT_MATERIALS);
 	}
+}
+
+void SceneImportSettingsScreen::_material_matte_button_pressed() {
+	if (selected_type != "Material" || !material_map.has(selected_id)) {
+		return;
+	}
+	MaterialData &md = material_map[selected_id];
+	BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(md.material.ptr());
+	if (!base_material) {
+		return;
+	}
+	if (base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f)) {
+		return;
+	}
+
+	base_material->set_texture(BaseMaterial3D::TEXTURE_ROUGHNESS, Ref<Texture2D>());
+	base_material->set_roughness(1.0);
+	_material_inspector_property_edited("roughness_texture");
+	_update_material_editor();
 }
 
 void SceneImportSettingsScreen::_material_save_button_pressed() {
