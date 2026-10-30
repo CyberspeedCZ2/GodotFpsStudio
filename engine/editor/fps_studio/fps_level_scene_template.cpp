@@ -82,7 +82,7 @@ Ref<Environment> create_fps_level_environment() {
 	environment->set_fog_light_color(get_fps_level_horizon_color());
 	environment->set_fog_light_energy(1.0);
 	environment->set_fog_sky_affect(0.0);
-	environment->set_fog_depth_begin(30.0);
+	environment->set_fog_depth_begin(60.0);
 	environment->set_fog_depth_end(600.0);
 	environment->set_fog_depth_curve(1.2);
 	return environment;
