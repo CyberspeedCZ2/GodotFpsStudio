@@ -2251,7 +2251,10 @@ Error SceneImportSettingsScreen::_save_modified_external_materials() {
 			return ERR_INVALID_PARAMETER;
 		}
 
-		Error err = ResourceSaver::save(md.material, path, ResourceSaver::FLAG_CHANGE_PATH);
+		// The external material may already be present in ResourceCache as a
+		// different Resource loaded by the scene importer. Saving it to the
+		// configured path does not require taking over that cached resource path.
+		Error err = ResourceSaver::save(md.material, path);
 		if (err != OK) {
 			EditorNode::get_singleton()->add_io_error(TTR("Can't save material changes:") + "\n\t" + path);
 			return err;
