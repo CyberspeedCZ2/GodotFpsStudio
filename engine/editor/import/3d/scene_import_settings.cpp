@@ -31,6 +31,7 @@
 #include "scene_import_settings.h"
 
 #include "core/config/project_settings.h"
+#include "core/io/config_file.h"
 #include "core/io/resource_importer.h"
 #include "core/io/resource_saver.h"
 #include "core/math/projection.h"
@@ -48,6 +49,9 @@
 #include "scene/3d/multimesh_instance_3d.h"
 #include "scene/animation/animation_player.h"
 #include "scene/gui/scroll_container.h"
+#include "scene/gui/check_button.h"
+#include "scene/gui/grid_container.h"
+#include "scene/gui/spin_box.h"
 #include "scene/gui/separator.h"
 #include "scene/gui/subviewport_container.h"
 #include "scene/main/timer.h"
@@ -64,6 +68,9 @@
 // Camera framing margin applied around the fitted content so it never
 // touches the viewport edges.
 static constexpr real_t FRAME_MARGIN = 1.15;
+static constexpr real_t PREVIEW_FOV_DEGREES = 75.0;
+static constexpr real_t REFERENCE_VIEWPORT_WIDTH = 1920.0;
+static constexpr real_t REFERENCE_ASPECT = 16.0 / 9.0;
 // Orthographic zoom limits (fraction of the fitted content size).
 static constexpr real_t ZOOM_MIN = 0.05;
 static constexpr real_t ZOOM_MAX = 20.0;
@@ -103,6 +110,7 @@ class SceneImportSettingsData : public Object {
 	Vector<String> animation_list;
 
 	bool hide_options = false;
+	int section_filter = 4; // 1 mesh, 2 physics, 3 lighting, 4 all details.
 	String path;
 
 	ResourceImporterScene::InternalImportCategory category = ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MAX;
@@ -209,6 +217,13 @@ class SceneImportSettingsData : public Object {
 		}
 		Ref<ResourceImporterScene> resource_importer_scene = SceneImportSettingsScreen::get_singleton()->get_resource_importer_scene();
 		for (const ResourceImporter::ImportOption &E : options) {
+			const String name = E.option.name;
+			const bool lighting = name == "generate/shadow_meshes" || name == "generate/lightmap_uv" || name == "mesh_instance/cast_shadow";
+			const bool physics = name == "generate/physics" || name.begins_with("physics/") || name.begins_with("decomposition/") || name.begins_with("primitive/");
+			const bool mesh = category == ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH && !lighting && name != "generate/lods" && !name.begins_with("lods/");
+			if ((section_filter == 1 && !mesh) || (section_filter == 2 && !physics) || (section_filter == 3 && !lighting)) {
+				continue;
+			}
 			PropertyInfo option = E.option;
 			if (category == ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MAX) {
 				if (resource_importer_scene->get_option_visibility(path, E.option.name, current)) {
@@ -340,6 +355,14 @@ void SceneImportSettingsScreen::_fill_mesh(Tree *p_tree, const Ref<Mesh> &p_mesh
 		md.mesh = p_mesh;
 
 		_load_default_subresource_settings(md.settings, "meshes", import_id, ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH);
+		if (lod_source_meshes.has(import_id)) {
+			md.lod_source_mesh = lod_source_meshes[import_id];
+		}
+		if (lod_source_skin_pose_transforms.has(import_id)) {
+			md.lod_skin_pose_transforms = lod_source_skin_pose_transforms[import_id];
+		}
+		md.lod_pending = lod_config_pending_meshes.has(import_id);
+		lod_settings_pending = lod_settings_pending || md.lod_pending;
 
 		mesh_map[import_id] = md;
 	}
@@ -720,6 +743,9 @@ void SceneImportSettingsScreen::_update_view_gizmos() {
 }
 
 void SceneImportSettingsScreen::_update_camera() {
+	if (!camera || !base_viewport || !mesh_preview) {
+		return;
+	}
 	AABB camera_aabb;
 
 	float rot_x = cam_rot_x;
@@ -750,29 +776,89 @@ if (selected_type == "Node" || selected_type == "Animation" || selected_type.is_
 	}
 }
 
-Vector3 center = camera_aabb.get_center();
-float camera_size = camera_aabb.get_longest_axis_size();
-if (camera_size <= 0.0) {
-	// Degenerate AABB; fall back to the default preview cube size.
-	camera_size = 2.0;
-}
-
-frame_size = camera_size;
-
-// Small margin so the fitted content never touches the viewport edges.
-camera->set_orthogonal(camera_size * zoom * FRAME_MARGIN, 0.0001, camera_size * 2);
-
-Transform3D xf;
-xf.basis = Basis(Vector3(0, 1, 0), rot_y) * Basis(Vector3(1, 0, 0), rot_x);
-xf.origin = center;
-xf.translate_local(0, 0, camera_size);
-// Pan the camera in its own local plane (world units) so the content
-// follows the cursor.
-xf.translate_local(pan.x, pan.y, 0);
-
+	// The workspace can resize before a model is loaded. Never pass zero or
+	// non-finite dimensions to the renderer's orthographic projection.
+	if (!camera_aabb.is_finite() || camera_aabb.get_longest_axis_size() > 1e12) {
+		camera_aabb = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
+	}
+	zoom = Math::is_finite(zoom) ? CLAMP(zoom, (float)ZOOM_MIN, (float)ZOOM_MAX) : 1.0f;
+	rot_x = Math::is_finite(rot_x) ? rot_x : 0.0f;
+	rot_y = Math::is_finite(rot_y) ? rot_y : 0.0f;
+	if (!pan.is_finite()) {
+		pan = Vector2();
+	}
+	const Vector3 center = camera_aabb.get_center();
+	const Basis camera_basis = Basis(Vector3(0, 1, 0), rot_y) * Basis(Vector3(1, 0, 0), rot_x);
+	const Size2 viewport_size = base_viewport->get_size();
+	const float aspect = viewport_size.y > 0 ? MAX(viewport_size.x / viewport_size.y, 0.01f) : 1.0f;
+	const real_t half_fov_tangent = Math::tan(Math::deg_to_rad(PREVIEW_FOV_DEGREES * 0.5));
+	const float extent = MAX(camera_aabb.get_longest_axis_size(), 0.1f);
+	// Fit a sphere around the bounds instead of re-projecting the AABB at
+	// every orbit angle. The projected AABB width changes as the camera turns,
+	// which otherwise changes the camera distance and makes the model appear
+	// to zoom in and out during rotation.
+	const real_t half_horizontal_fov_tangent = half_fov_tangent * aspect;
+	const real_t narrow_half_fov = Math::atan(MIN(half_fov_tangent, half_horizontal_fov_tangent));
+	const real_t bounding_radius = MAX(camera_aabb.size.length() * 0.5, (real_t)0.05);
+	real_t fit_distance = bounding_radius / MAX(Math::sin(narrow_half_fov), (real_t)0.01);
+	fit_distance = MAX(fit_distance * FRAME_MARGIN, (real_t)0.1);
+	const real_t camera_distance = fit_distance * zoom;
+	// Pan uses the visible height at the target plane, so dragging continues
+	// to move the model by the same number of pixels at any zoom level.
+	frame_size = (float)(2.0 * fit_distance * half_fov_tangent / FRAME_MARGIN);
+	camera->set_perspective(PREVIEW_FOV_DEGREES, 0.001, MAX(camera_distance + extent * 4.0, (real_t)1.0));
+	Transform3D xf;
+	xf.basis = camera_basis;
+	xf.origin = center;
+	xf.translate_local(0, 0, camera_distance);
+	xf.translate_local(pan.x, pan.y, 0);
 	camera->set_transform(xf);
+	_update_preview_lod_threshold();
 
 	_update_mesh_stats();
+}
+
+void SceneImportSettingsScreen::_update_preview_lod_threshold() {
+	if (!camera || !base_viewport) {
+		return;
+	}
+	const real_t project_threshold = GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels");
+	const Size2 size = base_viewport->get_size();
+	if (size.x <= 0 || size.y <= 0 || !camera->is_inside_tree()) {
+		base_viewport->set_mesh_lod_threshold(project_threshold * lod_bias);
+		return;
+	}
+	const Projection reference = Projection::create_perspective(PREVIEW_FOV_DEGREES, REFERENCE_ASPECT, 0.05, 10000.0);
+	const real_t actual_multiplier = camera->get_camera_projection().get_lod_multiplier();
+	if (!Math::is_finite(actual_multiplier) || actual_multiplier <= 0.0) {
+		base_viewport->set_mesh_lod_threshold(project_threshold * lod_bias);
+		return;
+	}
+	// Match the reference camera even if this editor panel has a different
+	// resolution or aspect ratio; this modifies only the preview viewport.
+	const real_t threshold = project_threshold * lod_bias * size.x * reference.get_lod_multiplier() / (REFERENCE_VIEWPORT_WIDTH * actual_multiplier);
+	base_viewport->set_mesh_lod_threshold(threshold);
+}
+
+Ref<ImporterMesh> SceneImportSettingsScreen::_duplicate_importer_mesh(const Ref<ImporterMesh> &p_source) const {
+	if (p_source.is_null()) {
+		return Ref<ImporterMesh>();
+	}
+	Ref<ImporterMesh> copy;
+	copy.instantiate();
+	copy->set_name(p_source->get_name());
+	copy->set_blend_shape_mode(p_source->get_blend_shape_mode());
+	for (int i = 0; i < p_source->get_blend_shape_count(); i++) {
+		copy->add_blend_shape(p_source->get_blend_shape_name(i));
+	}
+	for (int i = 0; i < p_source->get_surface_count(); i++) {
+	TypedArray<Array> blend_shape_arrays;
+		for (int blend_shape = 0; blend_shape < p_source->get_blend_shape_count(); blend_shape++) {
+			blend_shape_arrays.push_back(p_source->get_surface_blend_shape_arrays(i, blend_shape));
+		}
+		copy->add_surface(p_source->get_surface_primitive_type(i), p_source->get_surface_arrays(i), blend_shape_arrays, Dictionary(), p_source->get_surface_material(i), p_source->get_surface_name(i), p_source->get_surface_format(i));
+	}
+	return copy;
 }
 
 // Generates LOD levels for the preview meshes so the statistics overlay can
@@ -789,6 +875,10 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 	if (src_mesh_node) {
 		Ref<ImporterMesh> importer_mesh = src_mesh_node->get_mesh();
 		if (importer_mesh.is_valid() && importer_mesh->get_surface_count() > 0) {
+			String mesh_id = importer_mesh->get_meta("import_id", importer_mesh->get_name());
+			if (!mesh_id.is_empty() && !lod_source_meshes.has(mesh_id)) {
+				lod_source_meshes[mesh_id] = _duplicate_importer_mesh(importer_mesh);
+			}
 			// Start from the main "Generate LODs" import setting; per-mesh
 			// overrides ("generate/lods") stored in .import subresources may
 			// force LOD generation on or off for this mesh, same as on
@@ -800,12 +890,15 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 			// Fixed LOD chain configuration (0 = legacy automatic halving).
 			int lod_count = defaults.has("meshes/lod_count") ? (int)defaults["meshes/lod_count"] : 0;
 			float lod_reduction = defaults.has("meshes/lod_reduction") ? (float)defaults["meshes/lod_reduction"] : 0.5f;
+			bool custom_lod_levels = false;
+			Array lod_levels;
 
-			String mesh_id = importer_mesh->get_meta("import_id", importer_mesh->get_name());
 			if (!mesh_id.is_empty() && base_subresource_settings.has("meshes")) {
 				Dictionary meshes_dict = base_subresource_settings["meshes"];
 				if (meshes_dict.has(mesh_id)) {
 					Dictionary mesh_settings = meshes_dict[mesh_id];
+					custom_lod_levels = mesh_settings.get("lods/custom_levels", false);
+					lod_levels = mesh_settings.get("lods/levels", Array());
 					if (mesh_settings.has("lods/normal_merge_angle")) {
 						merge_angle = (float)mesh_settings["lods/normal_merge_angle"];
 					}
@@ -856,7 +949,10 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 						}
 					}
 				}
-				importer_mesh->generate_lods(merge_angle, skin_pose_transform_array, lod_count, lod_reduction);
+				if (!mesh_id.is_empty()) {
+					lod_source_skin_pose_transforms[mesh_id] = skin_pose_transform_array;
+				}
+				importer_mesh->generate_lods(merge_angle, skin_pose_transform_array, lod_count, lod_reduction, custom_lod_levels, lod_levels);
 			}
 		}
 	}
@@ -1005,7 +1101,8 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 	// statistics, so the overlay stays hidden for them.
 	Ref<Mesh> selected_mesh;
 	if (selected_type == "Mesh" && mesh_map.has(selected_id)) {
-		selected_mesh = mesh_map[selected_id].mesh;
+		const MeshData &md = mesh_map[selected_id];
+		selected_mesh = md.live_preview_mesh.is_valid() ? md.live_preview_mesh : md.mesh;
 	}
 	const bool scene_mode = selected_type == "Node" || selected_type == "Animation" || selected_type.is_empty();
 	if (scene == nullptr || (!scene_mode && selected_mesh.is_null())) {
@@ -1029,27 +1126,52 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 		selected_stats = &stats_selected;
 	}
 
-	// The meshes to evaluate: every previewed mesh (scene mode) or just the
-	// selected one (per-mesh mode, matching what the preview shows).
-	Vector<const MeshStats *> evaluated_meshes;
+	struct PreviewMeshInstance {
+		const MeshStats *stats = nullptr;
+		AABB bounds;
+		real_t lod_scale = 1.0;
+	};
+	Vector<PreviewMeshInstance> evaluated_meshes;
 	if (selected_stats != nullptr) {
-		evaluated_meshes.push_back(selected_stats);
+		const Transform3D transform = mesh_preview->get_global_transform();
+		const Vector3 scale = transform.basis.get_scale_abs();
+		PreviewMeshInstance entry;
+		entry.stats = selected_stats;
+		entry.bounds = transform.xform(selected_mesh->get_aabb());
+		entry.lod_scale = MAX(scale.x, MAX(scale.y, scale.z)) * mesh_preview->get_lod_bias();
+		evaluated_meshes.push_back(entry);
 	} else {
-		for (const KeyValue<Ref<Mesh>, MeshStats> &E : mesh_stats_map) {
-			evaluated_meshes.push_back(&E.value);
+		for (const KeyValue<String, NodeData> &E : node_map) {
+			GeometryInstance3D *instance = Object::cast_to<GeometryInstance3D>(E.value.node);
+			if (!instance || !instance->is_visible_in_tree()) {
+				continue;
+			}
+			Ref<Mesh> mesh;
+			MeshInstance3D *mesh_node = Object::cast_to<MeshInstance3D>(instance);
+			MultiMeshInstance3D *multi = Object::cast_to<MultiMeshInstance3D>(instance);
+			if (mesh_node) {
+				mesh = lod_swapped_meshes.has(mesh_node) ? lod_swapped_meshes[mesh_node] : mesh_node->get_mesh();
+			} else if (multi && multi->get_multimesh().is_valid()) {
+				mesh = multi->get_multimesh()->get_mesh();
+			}
+			if (mesh.is_null() || !mesh_stats_map.has(mesh)) {
+				continue;
+			}
+			const Transform3D transform = instance->get_global_transform();
+			const Vector3 scale = transform.basis.get_scale_abs();
+			PreviewMeshInstance entry;
+			entry.stats = &mesh_stats_map[mesh];
+			entry.bounds = transform.xform(instance->get_aabb());
+			entry.lod_scale = MAX(scale.x, MAX(scale.y, scale.z)) * instance->get_lod_bias();
+			evaluated_meshes.push_back(entry);
 		}
 	}
-
-	// Screen-space LOD threshold, mirroring the rules used by the forward
-	// renderers (RendererViewport::draw_viewport divides the pixel threshold
-	// by the viewport width): screen_size = edge_length / lod_multiplier is
-	// compared against threshold / viewport_width. Orthogonal cameras use a
-	// fixed distance of 1, so zooming out lowers the projected edge size.
 	const Size2 viewport_size = base_viewport->get_size();
 	const float lod_threshold_pixels = base_viewport->get_mesh_lod_threshold();
 	const float lod_distance_multiplier = camera->get_camera_projection().get_lod_multiplier();
 	const bool lods_disabled = base_viewport->get_debug_draw() == Viewport::DEBUG_DRAW_DISABLE_LOD;
 	const real_t lod_threshold = (viewport_size.width > 0 && lod_threshold_pixels > 0.0) ? lod_threshold_pixels / viewport_size.width : 0.0;
+	const Vector3 camera_position = camera->get_global_transform().origin;
 
 	// Evaluate the LOD level the renderer currently picks for the preview
 	// camera, and the triangle count it actually draws with, using the same
@@ -1058,14 +1180,21 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 	// Highest LOD level available across the evaluated surfaces (LOD 0 is
 	// the full-detail base level).
 	int levels_count = 1;
-	for (const MeshStats *ms : evaluated_meshes) {
-		for (const MeshSurfaceStats &surface : ms->surfaces) {
+	for (const PreviewMeshInstance &instance : evaluated_meshes) {
+		for (const MeshSurfaceStats &surface : instance.stats->surfaces) {
 			levels_count = MAX(levels_count, surface.lod_edge_lengths.size() + 1);
 		}
+	}
+	const Vector<int> *preview_map = nullptr;
+	if (selected_type == "Mesh" && mesh_map.has(selected_id) && !mesh_map[selected_id].preview_lod_map.is_empty()) {
+		preview_map = &mesh_map[selected_id].preview_lod_map;
+		levels_count = preview_map->size();
 	}
 	stats_level_faces.clear();
 	stats_level_faces.resize(levels_count);
 	stats_level_faces.fill(0);
+	stats_level_vertices.resize(levels_count);
+	stats_level_vertices.fill(0);
 
 	// Evaluate the LOD level the renderer currently picks for the preview
 	// camera, and the triangle count it actually draws with, using the same
@@ -1079,22 +1208,28 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 	int lod_min = -1;
 	int lod_max = -1;
 	const bool manual_lod = lod_mode == LOD_MODE_MANUAL;
-	for (const MeshStats *ms : evaluated_meshes) {
-		for (const MeshSurfaceStats &surface : ms->surfaces) {
+	for (const PreviewMeshInstance &instance : evaluated_meshes) {
+		const Vector3 aabb_min = instance.bounds.position;
+		const Vector3 aabb_max = instance.bounds.position + instance.bounds.size;
+		const Vector3 surface_distance = Vector3().max(aabb_min - camera_position).max(camera_position - aabb_max);
+		const real_t distance = MAX(surface_distance.length(), (real_t)CMP_EPSILON);
+		for (const MeshSurfaceStats &surface : instance.stats->surfaces) {
 			// LOD level the renderer picks for this surface right now, and
 			// the triangle count it draws with.
 			int lod = 0;
 			uint64_t index_count = surface.index_count;
 			uint64_t vertex_count = surface.vertex_count;
 			if (manual_lod) {
-				if (lod_manual_level > 0 && lod_manual_level <= surface.lod_edge_lengths.size()) {
-					lod = lod_manual_level;
-					index_count = surface.lod_index_counts[lod - 1];
-					vertex_count = surface.lod_vertex_counts[lod - 1];
+				const int mapped_level = preview_map && lod_manual_level < preview_map->size() ? (*preview_map)[lod_manual_level] : lod_manual_level;
+				const int surface_level = MIN(mapped_level, surface.lod_edge_lengths.size());
+				if (surface_level > 0) {
+					lod = preview_map ? lod_manual_level : surface_level;
+					index_count = surface.lod_index_counts[surface_level - 1];
+					vertex_count = surface.lod_vertex_counts[surface_level - 1];
 				}
 			} else if (!lods_disabled && surface.lod_edge_lengths.size() > 0 && lod_threshold > 0.0) {
 				for (int i = 0; i < surface.lod_edge_lengths.size(); i++) {
-					const real_t screen_size = surface.lod_edge_lengths[i] / lod_distance_multiplier;
+					const real_t screen_size = surface.lod_edge_lengths[i] * instance.lod_scale / (distance * lod_distance_multiplier);
 					if (screen_size > lod_threshold) {
 						break;
 					}
@@ -1111,9 +1246,15 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 
 			// Per-level totals for the level breakdown row (level 0 = full
 			// detail).
-			stats_level_faces.write[0] += _mesh_faces_from_primitive(surface.primitive, surface.index_count, surface.vertex_count);
-			for (int i = 0; i < surface.lod_edge_lengths.size(); i++) {
-				stats_level_faces.write[i + 1] += _mesh_faces_from_primitive(surface.primitive, surface.lod_index_counts[i], surface.lod_vertex_counts[i]);
+			for (int i = 0; i < levels_count; i++) {
+				// A surface with fewer levels keeps its last available level, as
+				// in the manual preview. Include every surface in each total.
+				const int mapped_level = preview_map ? (*preview_map)[i] : i;
+				const int surface_level = MIN(mapped_level, surface.lod_index_counts.size());
+				const uint64_t level_indices = surface_level > 0 ? surface.lod_index_counts[surface_level - 1] : surface.index_count;
+				const uint64_t level_vertices = surface_level > 0 ? surface.lod_vertex_counts[surface_level - 1] : surface.vertex_count;
+				stats_level_faces.write[i] += _mesh_faces_from_primitive(surface.primitive, level_indices, level_vertices);
+				stats_level_vertices.write[i] += level_vertices;
 			}
 		}
 	}
@@ -1127,6 +1268,9 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 	stats_lod_min = lod_min;
 	stats_lod_max = lod_max;
 	stats_mixed_lod = lod_min != lod_max;
+	if (lod_preview_slider && lod_mode == LOD_MODE_AUTO) {
+		lod_preview_slider->set_value_no_signal(lod_max);
+	}
 
 	// Format the overlay text: each metric on its own line, plain white text.
 	// The "Polygons/Faces" row shows the original polygon count of the
@@ -1158,11 +1302,15 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 		text += vformat(TTR("LOD %s Triangles: %s"), itos(stats_lod_max), _format_stats_count(stats_active_faces));
 	}
 	text += "\n" + vformat(TTR("LOD Vertices: %s"), _format_stats_count(stats_active_vertices));
+	if (selected_stats != nullptr && !evaluated_meshes.is_empty()) {
+		const AABB &bounds = evaluated_meshes[0].bounds;
+		text += "\n" + vformat(TTR("Camera distance: %s m"), String::num(camera_position.distance_to(bounds.get_center()), 1));
+	}
 
 	// Keep the LOD level buttons and the inspector LOD cards in sync with
 	// the available levels (the guards prevent rebuilds on every camera
 	// move, so slider edits are never interrupted).
-	if (lod_buttons_container != nullptr && lod_picker_levels != levels_count - 1) {
+	if (lod_preview_slider != nullptr && lod_picker_levels != levels_count - 1) {
 		_update_lod_toolbar_buttons(levels_count - 1);
 	}
 	if (lod_settings_panel != nullptr && lod_level_settings.size() != stats_level_faces.size()) {
@@ -1173,10 +1321,15 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 	mesh_stats_panel->show();
 }
 
+void SceneImportSettingsScreen::_wireframe_toggled(bool p_enabled) {
+	base_viewport->set_debug_draw(p_enabled ? Viewport::DEBUG_DRAW_WIREFRAME : Viewport::DEBUG_DRAW_DISABLED);
+	_update_mesh_stats();
+}
+
 void SceneImportSettingsScreen::_lod_bias_changed(double p_value) {
 	lod_bias = CLAMP((float)p_value, 0.25f, 4.0f);
 	// Coarser levels switch in sooner as the screen-space threshold grows.
-	base_viewport->set_mesh_lod_threshold(16.0f * lod_bias);
+	_update_preview_lod_threshold();
 	_update_mesh_stats();
 }
 
@@ -1201,6 +1354,9 @@ Ref<Mesh> SceneImportSettingsScreen::_get_lod_preview_mesh(const Ref<Mesh> &p_me
 	preview.instantiate();
 	preview->set_name(vformat("%s (LOD %d preview)", p_mesh->get_name(), p_level));
 	preview->set_meta("lod_preview_level", p_level);
+	for (int b = 0; b < p_mesh->get_blend_shape_count(); b++) {
+		preview->add_blend_shape(p_mesh->get_blend_shape_name(b));
+	}
 	for (int s = 0; s < p_mesh->get_surface_count(); s++) {
 		Array arrays = p_mesh->surface_get_arrays(s);
 		if (arrays.size() != Mesh::ARRAY_MAX) {
@@ -1214,15 +1370,13 @@ Ref<Mesh> SceneImportSettingsScreen::_get_lod_preview_mesh(const Ref<Mesh> &p_me
 			}
 		}
 		edge_lengths.sort();
-		if (p_level > edge_lengths.size()) {
-			continue;
+		if (!edge_lengths.is_empty()) {
+			Vector<int> lod_indices = lods[edge_lengths[MIN(p_level, edge_lengths.size()) - 1]];
+			if (!lod_indices.is_empty()) {
+				arrays[Mesh::ARRAY_INDEX] = lod_indices;
+			}
 		}
-		Vector<int> lod_indices = lods[edge_lengths[p_level - 1]];
-		if (lod_indices.is_empty()) {
-			continue;
-		}
-		arrays[Mesh::ARRAY_INDEX] = lod_indices;
-		preview->add_surface_from_arrays(p_mesh->surface_get_primitive_type(s), arrays);
+		preview->add_surface_from_arrays(p_mesh->surface_get_primitive_type(s), arrays, p_mesh->surface_get_blend_shape_arrays(s));
 		preview->surface_set_material(preview->get_surface_count() - 1, p_mesh->surface_get_material(s));
 	}
 
@@ -1246,10 +1400,20 @@ void SceneImportSettingsScreen::_apply_lod_preview() {
 	lod_swapped_meshes.clear();
 
 	if (lod_mode != LOD_MODE_MANUAL || scene == nullptr) {
-		base_viewport->set_mesh_lod_threshold(16.0f * lod_bias);
+		_update_preview_lod_threshold();
 		return;
 	}
 
+	if (selected_type == "Mesh" && mesh_map.has(selected_id) && mesh_preview->is_visible()) {
+		const MeshData &md = mesh_map[selected_id];
+		Ref<Mesh> original = md.live_preview_mesh.is_valid() ? md.live_preview_mesh : md.mesh;
+		const int source_level = !md.preview_lod_map.is_empty() && lod_manual_level < md.preview_lod_map.size() ? md.preview_lod_map[lod_manual_level] : lod_manual_level;
+		Ref<Mesh> preview = _get_lod_preview_mesh(original, source_level);
+		if (preview != original) {
+			lod_swapped_meshes[mesh_preview] = original;
+			mesh_preview->set_mesh(preview);
+		}
+	}
 	for (const KeyValue<String, NodeData> &E : node_map) {
 		MeshInstance3D *mesh_node = Object::cast_to<MeshInstance3D>(E.value.node);
 		if (mesh_node == nullptr || !mesh_node->is_visible_in_tree()) {
@@ -1293,7 +1457,11 @@ void SceneImportSettingsScreen::update_view() {
 }
 
 void SceneImportSettingsScreen::open_settings(const String &p_path, const String &p_scene_import_type) {
+	if (lod_edit_timer) {
+		lod_edit_timer->stop();
+	}
 	if (scene) {
+		_save_lod_config();
 		_cleanup();
 		memdelete(scene);
 		scene = nullptr;
@@ -1319,6 +1487,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 
 	base_path = p_path;
 	current_import_type = p_scene_import_type;
+	lod_settings_pending = false;
 
 	mesh_set.clear();
 	animation_map.clear();
@@ -1353,7 +1522,12 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	lod_preview_mesh_cache.clear();
 	lod_picker_levels = -1;
 	lod_level_settings.clear();
-	base_viewport->set_mesh_lod_threshold(16.0);
+	lod_config_pending_meshes.clear();
+	lod_source_meshes.clear();
+	lod_source_skin_pose_transforms.clear();
+	lod_config_data.clear();
+	lod_auto_toggle->set_disabled(false);
+	base_viewport->set_mesh_lod_threshold((float)GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels"));
 	if (lod_auto_toggle != nullptr) {
 		lod_auto_toggle->set_pressed_no_signal(true);
 	}
@@ -1379,6 +1553,36 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 					defaults[E] = value;
 				}
 			}
+		}
+	}
+
+	// Keep in-progress LOD edits outside the import metadata. Updating the
+	// .import file marks the source asset stale and makes the editor reimport
+	// it on its next startup, so editable settings live in a sidecar until the
+	// user applies them with Reimport.
+	{
+		Ref<ConfigFile> lod_config;
+		lod_config.instantiate();
+		if (lod_config->load(base_path + ".lodcfg") == OK) {
+			lod_config_data = lod_config->get_value("lod", "meshes", Dictionary());
+		}
+		Dictionary imported_meshes = base_subresource_settings.get("meshes", Dictionary());
+		for (const Variant &key : lod_config_data.keys()) {
+			const String mesh_id = key;
+			Dictionary pending_settings = lod_config_data[key];
+			Dictionary import_settings = imported_meshes.get(mesh_id, Dictionary());
+			for (const Variant &setting_key : pending_settings.keys()) {
+				const String setting_name = setting_key;
+				const Variant setting_value = pending_settings[setting_key];
+				if (!import_settings.has(setting_name) || import_settings[setting_name] != setting_value) {
+					lod_config_pending_meshes.insert(mesh_id);
+				}
+				import_settings[setting_name] = setting_value;
+			}
+			imported_meshes[mesh_id] = import_settings;
+		}
+		if (!lod_config_data.is_empty()) {
+			base_subresource_settings["meshes"] = imported_meshes;
 		}
 	}
 
@@ -1454,6 +1658,13 @@ Node *SceneImportSettingsScreen::get_selected_node() {
 }
 
 void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, const String &p_id) {
+	// Restore the previous pinned preview before the selection changes its mesh.
+	for (const KeyValue<MeshInstance3D *, Ref<Mesh>> &entry : lod_swapped_meshes) {
+		if (entry.key && entry.value.is_valid()) {
+			entry.key->set_mesh(entry.value);
+		}
+	}
+	lod_swapped_meshes.clear();
 	selecting = true;
 	scene_import_settings_data->hide_options = false;
 	// Only AnimationLibrary and actual scenes can make use of the animation and skeleton options.
@@ -1542,14 +1753,14 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 				md.mesh_node->select(0);
 				mesh_tree->ensure_cursor_is_visible();
 			}
-			if (p_from != scene_tree) {
+			if (p_from != scene_tree && md.scene_node != nullptr) {
 				md.scene_node->uncollapse_tree();
 				md.scene_node->select(0);
 				scene_tree->ensure_cursor_is_visible();
 			}
 		}
 
-		mesh_preview->set_mesh(md.mesh);
+		mesh_preview->set_mesh(md.live_preview_mesh.is_valid() ? md.live_preview_mesh : md.mesh);
 		mesh_preview->show();
 		_reset_animation();
 
@@ -1593,6 +1804,10 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 
 	selected_type = p_type;
 	selected_id = p_id;
+	lod_selected_level = 0;
+	lod_auto_toggle->set_disabled(false);
+	_apply_lod_preview();
+	lod_level_settings.clear(); // Rebuild for the selected mesh, including when level counts match.
 
 	selecting = false;
 
@@ -1624,6 +1839,16 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	scene_import_settings_data->options = options;
 	inspector->edit(scene_import_settings_data);
 	scene_import_settings_data->notify_property_list_changed();
+	lod_settings_pending = false;
+	for (const KeyValue<String, MeshData> &entry : mesh_map) {
+		lod_settings_pending = lod_settings_pending || entry.value.lod_pending;
+	}
+	_update_lod_settings_panel();
+	if (settings_tabs) {
+		const int tab = p_type == "Mesh" ? 0 : 4;
+		settings_tabs->set_current_tab(tab);
+		_settings_tab_changed(tab);
+	}
 }
 
 void SceneImportSettingsScreen::_inspector_property_edited(const String &p_name) {
@@ -1958,7 +2183,16 @@ void SceneImportSettingsScreen::_viewport_input(const Ref<InputEvent> &p_input) 
 void SceneImportSettingsScreen::_re_import() {
 	HashMap<StringName, Variant> main_settings;
 
-	main_settings = scene_import_settings_data->current;
+	// The inspector's current map belongs to the selected subresource. Build
+	// file-wide settings from the importer defaults and saved scene settings.
+	List<ResourceImporter::ImportOption> scene_options;
+	_resource_importer_scene->get_import_options(base_path, &scene_options);
+	for (const ResourceImporter::ImportOption &option : scene_options) {
+		main_settings[option.option.name] = option.default_value;
+	}
+	for (const KeyValue<StringName, Variant> &entry : defaults) {
+		main_settings[entry.key] = entry.value;
+	}
 	main_settings.erase("_subresources");
 	Dictionary nodes;
 	Dictionary materials;
@@ -2032,6 +2266,10 @@ void SceneImportSettingsScreen::_update_empty_state() {
 }
 
 void SceneImportSettingsScreen::_close_screen() {
+	_save_lod_config();
+	if (lod_edit_timer) {
+		lod_edit_timer->stop();
+	}
 	if (scene) {
 		_cleanup();
 		memdelete(scene);
@@ -2048,6 +2286,10 @@ void SceneImportSettingsScreen::_close_screen() {
 	material_map.clear();
 	unnamed_material_name_map.clear();
 	mesh_map.clear();
+	lod_source_meshes.clear();
+	lod_source_skin_pose_transforms.clear();
+	lod_config_pending_meshes.clear();
+	lod_config_data.clear();
 	node_map.clear();
 	defaults.clear();
 	base_subresource_settings.clear();
@@ -2086,7 +2328,8 @@ void SceneImportSettingsScreen::_close_screen() {
 	lod_preview_mesh_cache.clear();
 	lod_picker_levels = -1;
 	lod_level_settings.clear();
-	base_viewport->set_mesh_lod_threshold(16.0);
+	lod_auto_toggle->set_disabled(false);
+	base_viewport->set_mesh_lod_threshold((float)GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels"));
 	if (lod_auto_toggle != nullptr) {
 		lod_auto_toggle->set_pressed_no_signal(true);
 	}
@@ -2122,10 +2365,55 @@ void SceneImportSettingsScreen::_reimport_button_pressed() {
 	if (base_path.is_empty()) {
 		return;
 	}
+	if (lod_edit_timer) {
+		lod_edit_timer->stop();
+	}
+	_save_lod_config();
+	const String path = base_path;
+	const String import_type = current_import_type;
+	const String old_type = selected_type;
+	const String old_id = selected_id;
+	const int old_data_tab = data_mode->get_current_tab();
+	const int old_settings_tab = settings_tabs->get_current_tab();
+	const int old_lod_mode = lod_mode;
+	const int old_lod_level = lod_manual_level;
+	const int old_selected_level = lod_selected_level;
+	float *rot_x = nullptr, *rot_y = nullptr, *zoom = nullptr;
+	Vector2 *pan = nullptr;
+	_get_active_camera_ptrs(&rot_x, &rot_y, &zoom, &pan);
+	const float saved_rot_x = *rot_x, saved_rot_y = *rot_y, saved_zoom = *zoom;
+	const Vector2 saved_pan = *pan;
 	_re_import();
-	// The workspace screen stays open; reload the preview with the fresh
-	// import result so the user can continue tweaking the settings.
-	open_settings(base_path, current_import_type);
+	open_settings(path, import_type);
+	if (!scene) {
+		return;
+	}
+	if (old_type == "Mesh" && mesh_map.has(old_id)) {
+		MeshData &md = mesh_map[old_id];
+		md.cam_rot_x = saved_rot_x;
+		md.cam_rot_y = saved_rot_y;
+		md.cam_zoom = saved_zoom;
+		md.cam_pan = saved_pan;
+		if (md.mesh_node) {
+			md.mesh_node->uncollapse_tree();
+			md.mesh_node->select(0);
+		}
+		_select(mesh_tree, "Mesh", old_id);
+		data_mode->set_current_tab(old_data_tab);
+		if (old_lod_mode == LOD_MODE_MANUAL && old_lod_level < stats_level_faces.size()) {
+			_on_lod_level_selected(old_lod_level);
+		}
+		lod_selected_level = MIN(old_selected_level, _get_custom_lod_levels().size());
+		_update_lod_settings_panel();
+		settings_tabs->set_current_tab(old_settings_tab);
+		_settings_tab_changed(old_settings_tab);
+	} else if (old_type.is_empty() || old_type == "Node" || old_type == "Animation") {
+		cam_rot_x = saved_rot_x;
+		cam_rot_y = saved_rot_y;
+		cam_zoom = saved_zoom;
+		cam_pan = saved_pan;
+		_update_camera();
+	}
 }
 
 void SceneImportSettingsScreen::_update_theme_item_cache() {
@@ -2598,7 +2886,7 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	// Raise the LOD screen-space threshold well above the default 1.0 px so
 	// the preview picks lower generated LOD levels within the usable zoom
 	// range (the preview camera is orthogonal and static otherwise).
-	base_viewport->set_mesh_lod_threshold(16.0);
+	base_viewport->set_mesh_lod_threshold((float)GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels"));
 
 	HBoxContainer *viewport_hbox = memnew(HBoxContainer);
 	vp_container->add_child(viewport_hbox);
@@ -2623,11 +2911,21 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	vb_overlay->add_child(hb_tools);
 
 	frame_button = memnew(Button);
+	frame_button->set_text(TTR("Frame"));
 	frame_button->set_theme_type_variation("PreviewLightButton");
 	frame_button->set_focus_mode(Control::FOCUS_NONE);
 	frame_button->set_tooltip_text(TTR("Frame Model (reset camera zoom, rotation and pan)"));
 	frame_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_reset_camera));
 	hb_tools->add_child(frame_button);
+
+	wireframe_toggle = memnew(Button);
+	wireframe_toggle->set_text(TTR("Wireframe"));
+	wireframe_toggle->set_theme_type_variation("PreviewLightButton");
+	wireframe_toggle->set_toggle_mode(true);
+	wireframe_toggle->set_focus_mode(Control::FOCUS_NONE);
+	wireframe_toggle->set_tooltip_text(TTR("Show mesh edges in the preview."));
+	wireframe_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_wireframe_toggled));
+	hb_tools->add_child(wireframe_toggle);
 
 	skeleton_visibility_toggle = memnew(Button);
 	skeleton_visibility_toggle->set_theme_type_variation("PreviewLightButton");
@@ -2665,36 +2963,30 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	light_2_switch->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_light_2_switch_pressed));
 	hb_tools->add_child(light_2_switch);
 
-	// LOD preview controls (UE5-style): an "Auto" toggle with the switching
-	// bias, then one flat button per LOD level that swaps the preview meshes
-	// for the actual decimated geometry of that level.
+	// LOD selection is placed below the preview, leaving the toolbar for camera tools.
+	HBoxContainer *lod_preview_bar = memnew(HBoxContainer);
+	vp_vb->add_child(lod_preview_bar);
+	Label *lod_label = memnew(Label);
+	lod_label->set_text(TTR("LOD Preview"));
+	lod_preview_bar->add_child(lod_label);
 	lod_auto_toggle = memnew(Button);
 	lod_auto_toggle->set_text(TTR("Auto"));
-	lod_auto_toggle->set_flat(true);
 	lod_auto_toggle->set_toggle_mode(true);
 	lod_auto_toggle->set_pressed(true);
-	lod_auto_toggle->set_focus_mode(Control::FOCUS_NONE);
-	lod_auto_toggle->set_tooltip_text(TTR("Automatic LOD switching: the renderer picks the level from the preview camera (the bias scales the switching threshold).\nTurn Auto off and use the LOD 0..N buttons to inspect a single level up close."));
+	lod_auto_toggle->set_tooltip_text(TTR("Automatic selection simulates the 1080p, 75-degree reference camera. The camera distance is measured to the nearest point of the mesh bounds. Drag the slider to inspect a specific level."));
 	lod_auto_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_on_lod_auto_toggled));
-	hb_tools->add_child(lod_auto_toggle);
-
-	lod_bias_slider = memnew(HSlider);
-	lod_bias_slider->set_min(0.25);
-	lod_bias_slider->set_max(4.0);
-	lod_bias_slider->set_step(0.05);
-	lod_bias_slider->set_value_no_signal(1.0);
-	lod_bias_slider->set_custom_minimum_size(Size2(80.0 * EDSCALE, 0));
-	lod_bias_slider->set_focus_mode(Control::FOCUS_NONE);
-	lod_bias_slider->set_tooltip_text(TTR("LOD bias for Auto mode: scales the screen-space threshold used to switch LOD levels.\nAbove 1.0 switches to coarser levels sooner; below 1.0 keeps finer levels longer."));
-	lod_bias_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_bias_changed));
-	hb_tools->add_child(lod_bias_slider);
-
-	// One flat button per LOD level, rebuilt whenever the available levels
-	// change (see _update_lod_toolbar_buttons).
-	lod_buttons_container = memnew(HBoxContainer);
-	lod_buttons_container->add_theme_constant_override("separation", 2.0 * EDSCALE);
-	hb_tools->add_child(lod_buttons_container);
-	_update_lod_toolbar_buttons(0);
+	lod_preview_bar->add_child(lod_auto_toggle);
+	lod_preview_slider = memnew(HSlider);
+	lod_preview_slider->set_min(0);
+	lod_preview_slider->set_max(1);
+	lod_preview_slider->set_step(1);
+	lod_preview_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	lod_preview_slider->set_tooltip_text(TTR("Inspect generated LOD levels. This does not change game transitions."));
+	lod_preview_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_on_lod_preview_changed));
+	lod_preview_bar->add_child(lod_preview_slider);
+	lod_preview_label = memnew(Label);
+	lod_preview_label->set_text(TTR("Auto"));
+	lod_preview_bar->add_child(lod_preview_label);
 
 	// Mesh statistics overlay (bottom-right corner of the preview):
 	// triangle/polygon totals of the model and of the LOD level the preview
@@ -2707,14 +2999,16 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 
 	mesh_stats_panel = memnew(PanelContainer);
 	mesh_stats_panel->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-	vb_overlay->add_child(mesh_stats_panel);
+	viewport_hbox->add_child(mesh_stats_panel);
+	viewport_hbox->move_child(mesh_stats_panel, 0);
+	mesh_stats_panel->set_v_size_flags(Control::SIZE_SHRINK_BEGIN);
 
-	// No visible background; the container only insets the text from the
+	// A quiet backdrop keeps statistics legible over light meshes. The container only insets the text from the
 	// viewport edges. Plain white label text as requested.
 	Ref<StyleBoxFlat> stats_bg;
 	stats_bg.instantiate();
-	stats_bg->set_bg_color(Color(0, 0, 0, 0));
-	stats_bg->set_content_margin_individual(0, 0, 8.0 * EDSCALE, 8.0 * EDSCALE);
+	stats_bg->set_bg_color(Color(0, 0, 0, 0.55));
+	stats_bg->set_content_margin_individual(8.0 * EDSCALE, 4.0 * EDSCALE, 8.0 * EDSCALE, 4.0 * EDSCALE);
 	mesh_stats_panel->add_theme_style_override(SceneStringName(panel), stats_bg);
 
 	mesh_stats_label = memnew(Label);
@@ -2729,6 +3023,7 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	camera = memnew(Camera3D);
 	base_viewport->add_child(camera);
 	camera->make_current();
+	vp_container->connect(SceneStringName(resized), callable_mp(this, &SceneImportSettingsScreen::_update_camera));
 
 	if (GLOBAL_GET("rendering/lights_and_shadows/use_physical_light_units")) {
 		camera_attributes.instantiate();
@@ -2832,27 +3127,34 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	inspector->set_use_doc_hints(true);
 	inspector->set_theme_type_variation(SNAME("EditorInspectorForeground"));
 
-	// Inspector column: the generic import options on top and the per-LOD
-	// level configuration cards below (screen-size thresholds with the
-	// estimated switch distances).
-	VBoxContainer *inspector_column = memnew(VBoxContainer);
-	inspector_column->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	inspector_column->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	inspector_column->add_child(inspector);
-
+	settings_tabs = memnew(TabContainer);
+	settings_tabs->set_custom_minimum_size(Size2(320 * EDSCALE, 0));
+	settings_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	property_split->add_child(settings_tabs);
 	_build_lod_settings_panel();
-
 	ScrollContainer *lod_panel_scroll = memnew(ScrollContainer);
+	lod_panel_scroll->set_name(TTR("LOD"));
 	lod_panel_scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	lod_panel_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	lod_panel_scroll->set_custom_minimum_size(Size2(0, 200 * EDSCALE));
 	lod_panel_scroll->add_child(lod_settings_panel);
-	inspector_column->add_child(lod_panel_scroll);
-
-	property_split->add_child(inspector_column);
+	settings_tabs->add_child(lod_panel_scroll);
+	int tab_index = 1;
+	for (const String &tab_name : { TTR("Mesh"), TTR("Physics"), TTR("Lighting"), TTR("Details") }) {
+		VBoxContainer *tab = memnew(VBoxContainer);
+		tab->set_name(tab_name);
+		settings_tabs->add_child(tab);
+		Label *hint = memnew(Label);
+		hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		hint->hide();
+		tab->add_child(hint);
+		settings_tab_hints[tab_index++] = hint;
+	}
+	inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_tabs->get_tab_control(4)->add_child(inspector);
 
 	scene_import_settings_data = memnew(SceneImportSettingsData);
+	settings_tabs->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_changed));
 
 	// Bottom action bar replacing the modal dialog's OK/Cancel buttons.
 	HBoxContainer *confirm_hb = memnew(HBoxContainer);
@@ -2860,8 +3162,8 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	main_vb->add_child(confirm_hb);
 
 	reimport_button = memnew(Button);
-	reimport_button->set_text(TTR("Reimport"));
-	reimport_button->set_tooltip_text(TTR("Reimport the model with the current settings"));
+	reimport_button->set_text(TTR("Apply Changes"));
+	reimport_button->set_tooltip_text(TTR("Generate the imported model once with all saved settings."));
 	reimport_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_reimport_button_pressed));
 	confirm_hb->add_child(reimport_button);
 
@@ -2917,6 +3219,12 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	update_view_timer->connect("timeout", callable_mp(this, &SceneImportSettingsScreen::_update_view_gizmos));
 	add_child(update_view_timer);
 
+	lod_edit_timer = memnew(Timer);
+	lod_edit_timer->set_wait_time(0.35);
+	lod_edit_timer->set_one_shot(true);
+	lod_edit_timer->connect("timeout", callable_mp(this, &SceneImportSettingsScreen::_finish_lod_edit_update));
+	add_child(lod_edit_timer);
+
 	EditorNode::get_singleton()->register_hdr_viewport(base_viewport);
 	
 }
@@ -2925,37 +3233,29 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 // only when the number of available levels changes (p_max_level = highest
 // available level index, LOD 0 = full detail).
 void SceneImportSettingsScreen::_update_lod_toolbar_buttons(int p_max_level) {
-	if (lod_buttons_container == nullptr) {
-		return;
+	lod_picker_levels = MAX(p_max_level, 0);
+	if (lod_preview_slider) {
+		lod_preview_slider->set_value_no_signal(MIN(lod_manual_level, lod_picker_levels));
+		lod_preview_slider->set_max(MAX(lod_picker_levels, 1));
+		lod_preview_slider->set_editable(lod_picker_levels > 0);
 	}
-
-	for (Button *btn : lod_level_buttons) {
-		if (btn) {
-			btn->queue_free();
-		}
-	}
-	lod_level_buttons.clear();
-	lod_picker_levels = p_max_level;
-
-	for (int i = 0; i <= p_max_level; i++) {
-		Button *lod_btn = memnew(Button);
-		lod_btn->set_flat(true);
-		lod_btn->set_text(vformat(TTR("LOD %d"), i));
-		lod_btn->set_toggle_mode(true);
-		lod_btn->set_focus_mode(Control::FOCUS_NONE);
-		lod_btn->set_tooltip_text(vformat(TTR("Preview only LOD %d: swap the preview meshes for the decimated geometry of this level."), i));
-		lod_btn->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_lod_level_selected).bind(i));
-		lod_buttons_container->add_child(lod_btn);
-		lod_level_buttons.push_back(lod_btn);
-	}
-
 	_update_lod_button_states();
+}
+
+void SceneImportSettingsScreen::_on_lod_preview_changed(double p_value) {
+	_on_lod_level_selected(CLAMP((int)p_value, 0, lod_picker_levels));
 }
 
 // Refreshes the pressed state of the per-level buttons (and the LOD card
 // select buttons) from the current lod_mode / lod_manual_level.
 void SceneImportSettingsScreen::_update_lod_button_states() {
 	const bool manual = lod_mode == LOD_MODE_MANUAL;
+	if (lod_preview_label) {
+		lod_preview_label->set_text(manual ? vformat(TTR("LOD %d"), lod_manual_level) : TTR("Auto"));
+	}
+	if (lod_preview_slider && manual) {
+		lod_preview_slider->set_value_no_signal(lod_manual_level);
+	}
 	for (int i = 0; i < lod_level_buttons.size(); i++) {
 		if (lod_level_buttons[i]) {
 			lod_level_buttons[i]->set_pressed(manual && lod_manual_level == i);
@@ -2975,6 +3275,9 @@ void SceneImportSettingsScreen::_on_lod_level_selected(int p_level) {
 	// Manual level pin: swap the preview meshes for this level's geometry.
 	lod_mode = LOD_MODE_MANUAL;
 	lod_manual_level = p_level;
+	if (selected_type == "Mesh") {
+		lod_selected_level = p_level;
+	}
 	if (lod_auto_toggle != nullptr) {
 		lod_auto_toggle->set_pressed_no_signal(false);
 	}
@@ -2984,6 +3287,9 @@ void SceneImportSettingsScreen::_on_lod_level_selected(int p_level) {
 	_update_lod_button_states();
 	_apply_lod_preview();
 	_update_mesh_stats();
+	if (selected_type == "Mesh") {
+		_update_lod_settings_panel();
+	}
 }
 
 void SceneImportSettingsScreen::_on_lod_auto_toggled(bool p_enabled) {
@@ -3006,210 +3312,613 @@ void SceneImportSettingsScreen::_on_lod_auto_toggled(bool p_enabled) {
 	_update_mesh_stats();
 }
 
-// Gather LOD level statistics from the mesh stats. User-edited screen-size
-// thresholds are preserved across rebuilds while the level count is stable.
-void SceneImportSettingsScreen::_gather_lod_level_settings() {
-	Vector<LODLevelSettings> previous = lod_level_settings;
-	lod_level_settings.clear();
+// Default level entries mirror the already generated chain. The settings
+// become explicit only after the user edits them.
+Array SceneImportSettingsScreen::_get_custom_lod_levels() const {
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
+		return Array();
+	}
+	const MeshData &md = mesh_map[selected_id];
+	if (md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"])) {
+		return Array(md.settings["lods/levels"]).duplicate(true);
+	}
+	Array levels;
+	for (int i = 1; i < stats_level_faces.size(); i++) {
+		Dictionary level;
+		const float keep = stats_level_faces[i - 1] ? (float)stats_level_faces[i] / stats_level_faces[i - 1] : 0.5f;
+		level["keep"] = CLAMP(keep, 0.05f, 0.95f);
+		level["transition_bias"] = 1.0f;
+		levels.push_back(level);
+	}
+	return levels;
+}
 
-	if (stats_level_faces.size() == 0) {
+void SceneImportSettingsScreen::_set_custom_lod_levels(const Array &p_levels) {
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
 		return;
 	}
+	MeshData &md = mesh_map[selected_id];
+	if (!md.has_import_id) {
+		return;
+	}
+	md.settings["lods/custom_levels"] = true;
+	md.settings["lods/levels"] = p_levels.duplicate(true);
+	md.lod_pending = true;
+	md.lod_preview_dirty = true;
+	lod_settings_pending = true;
+	if (lod_transition_estimate) {
+		lod_transition_estimate->set_text(TTR("Updating LOD preview…"));
+	}
+	if (lod_status_label) {
+		lod_status_label->set_text(TTR("Changes are saved with this model. Preview updates live; Reimport applies them to the project asset."));
+	}
+	_schedule_lod_edit_update();
+}
 
-	// Default screen sizes halve per level: LOD 0 = 1.0, LOD 1 = 0.5,
-	// LOD 2 = 0.25, LOD 3 = 0.125, etc.
-	for (int i = 0; i < stats_level_faces.size(); i++) {
-		LODLevelSettings settings;
-		settings.level = i;
-		settings.triangle_count = stats_level_faces[i];
-		settings.vertex_count = 0;
-		settings.screen_size = Math::pow(0.5f, (float)i);
-		if (i < previous.size()) {
-			// Preserve user-edited thresholds across rebuilds.
-			settings.screen_size = previous[i].screen_size;
+void SceneImportSettingsScreen::_schedule_lod_edit_update() {
+	if (lod_edit_timer) {
+		lod_edit_timer->start();
+	} else {
+		_finish_lod_edit_update();
+	}
+}
+
+void SceneImportSettingsScreen::_save_lod_config() {
+	if (base_path.is_empty() || mesh_map.is_empty()) {
+		return;
+	}
+	for (const KeyValue<String, MeshData> &entry : mesh_map) {
+		Dictionary saved_settings;
+		for (const StringName &key : { StringName("generate/lods"), StringName("lods/normal_merge_angle"), StringName("lods/count"), StringName("lods/reduction"), StringName("lods/custom_levels"), StringName("lods/levels") }) {
+			if (entry.value.settings.has(key)) {
+				saved_settings[String(key)] = entry.value.settings[key];
+			}
 		}
-		settings.distance = _calculate_distance_from_screen_size(settings.screen_size);
-		settings.enabled = true;
-
-		if (i > 0 && stats_level_faces[0] > 0) {
-			settings.reduction_percent = 100.0f * (1.0f - (float)settings.triangle_count / (float)stats_level_faces[0]);
+		if (saved_settings.is_empty()) {
+			lod_config_data.erase(entry.key);
 		} else {
-			settings.reduction_percent = 0.0f;
+			lod_config_data[entry.key] = saved_settings;
 		}
-
-		lod_level_settings.push_back(settings);
+	}
+	Ref<ConfigFile> config;
+	config.instantiate();
+	config->set_value("lod", "version", 1);
+	config->set_value("lod", "meshes", lod_config_data);
+	const Error error = config->save(base_path + ".lodcfg");
+	if (error != OK) {
+		ERR_PRINT("Unable to save model LOD settings: " + base_path + ".lodcfg");
 	}
 }
 
-// Calculate approximate distance from screen size threshold
-float SceneImportSettingsScreen::_calculate_distance_from_screen_size(float p_screen_size) {
-	// FOV-based distance calculation
-	// Assuming 75° FOV and 1m tall object
-	constexpr float DEFAULT_FOV = 75.0f;
-	constexpr float OBJECT_HEIGHT = 1.0f;
-	
-	if (p_screen_size <= 0.001f) {
-		return 1000.0f; // Far plane
+void SceneImportSettingsScreen::_finish_lod_edit_update() {
+	_save_lod_config();
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
+		return;
 	}
-	
-	float fov_radians = Math::deg_to_rad(DEFAULT_FOV);
-	float distance = (OBJECT_HEIGHT / (2.0f * p_screen_size)) / Math::tan(fov_radians / 2.0f);
-	
-	return distance;
-}
+	MeshData &md = mesh_map[selected_id];
+	if (!md.lod_pending || md.lod_source_mesh.is_null()) {
+		return;
+	}
+	for (const KeyValue<MeshInstance3D *, Ref<Mesh>> &entry : lod_swapped_meshes) {
+		if (entry.key != nullptr && entry.value.is_valid()) {
+			entry.key->set_mesh(entry.value);
+		}
+	}
+	lod_swapped_meshes.clear();
 
-// Build LOD Settings Panel for the inspector
-void SceneImportSettingsScreen::_build_lod_settings_panel() {
-	if (lod_settings_panel != nullptr) {
-		return; // Already built
+	const int mode = md.settings.has("generate/lods") ? (int)md.settings["generate/lods"] : 0;
+	const bool generate_lods = mode == 1 || (mode == 0 && (!defaults.has("meshes/generate_lods") || bool(defaults["meshes/generate_lods"])));
+	Ref<ImporterMesh> preview_source = _duplicate_importer_mesh(md.lod_source_mesh);
+	if (preview_source.is_null()) {
+		return;
+	}
+	if (generate_lods) {
+		const float merge_angle = md.settings.has("lods/normal_merge_angle") ? (float)md.settings["lods/normal_merge_angle"] : 20.0f;
+		const int lod_count = md.settings.has("lods/count") ? (int)md.settings["lods/count"] : (defaults.has("meshes/lod_count") ? (int)defaults["meshes/lod_count"] : 0);
+		const float reduction = md.settings.has("lods/reduction") ? (float)md.settings["lods/reduction"] : (defaults.has("meshes/lod_reduction") ? (float)defaults["meshes/lod_reduction"] : 0.5f);
+		const bool custom_levels = md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]);
+		const Array levels = custom_levels ? Array(md.settings["lods/levels"]) : Array();
+		preview_source->generate_lods(merge_angle, md.lod_skin_pose_transforms, lod_count, reduction, custom_levels, levels);
 	}
 
-	lod_settings_panel = memnew(VBoxContainer);
-	lod_settings_panel->set_name(TTR("LOD Settings"));
-	lod_settings_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	lod_settings_panel->set_v_size_flags(Control::SIZE_SHRINK_BEGIN);
-
-	Label *header = memnew(Label);
-	header->set_text(TTR("LOD Levels"));
-	header->add_theme_font_size_override("font_size", 15);
-	lod_settings_panel->add_child(header);
-
-	// The actual per-LOD cards are created dynamically in
-	// _update_lod_settings_panel() whenever the available levels change.
+	md.live_preview_mesh = preview_source->get_mesh();
+	md.lod_preview_dirty = false;
+	md.preview_lod_map.clear();
+	lod_preview_mesh_cache.clear();
+	stats_selected_mesh.unref();
+	mesh_preview->set_mesh(md.live_preview_mesh);
+	_update_mesh_stats();
+	const int max_level = MAX(stats_level_faces.size() - 1, 0);
+	lod_manual_level = MIN(lod_manual_level, max_level);
+	lod_selected_level = MIN(lod_selected_level, max_level);
+	lod_auto_toggle->set_disabled(false);
+	if (lod_mode == LOD_MODE_AUTO) {
+		lod_auto_toggle->set_pressed_no_signal(true);
+	} else {
+		_apply_lod_preview();
+	}
+	_update_mesh_stats();
 	_update_lod_settings_panel();
 }
 
-// Update LOD Settings Panel with current mesh data
-void SceneImportSettingsScreen::_update_lod_settings_panel() {
-	if (lod_settings_panel == nullptr) {
+void SceneImportSettingsScreen::_lod_select_level(int p_level) {
+	lod_selected_level = p_level;
+	if (p_level < stats_level_faces.size()) {
+		_on_lod_level_selected(p_level);
+	} else {
+		_update_lod_settings_panel();
+	}
+}
+
+void SceneImportSettingsScreen::_lod_add_level() {
+	Array levels = _get_custom_lod_levels();
+	if (levels.size() >= 10) {
 		return;
 	}
+	Dictionary level;
+	level["keep"] = 0.5;
+	level["transition_bias"] = 1.0;
+	levels.push_back(level);
+	_set_custom_lod_levels(levels);
+	lod_selected_level = levels.size();
+	_update_lod_settings_panel();
+}
 
-	// Clear existing LOD cards (keep header)
+void SceneImportSettingsScreen::_lod_remove_level(int p_index) {
+	Array levels = _get_custom_lod_levels();
+	if (p_index < 0 || p_index >= levels.size()) {
+		return;
+	}
+	MeshData &md = mesh_map[selected_id];
+	// Keep the target of the next surviving level relative to its new
+	// predecessor when the removed level was in the middle of the chain.
+	if (p_index + 1 < levels.size()) {
+		Dictionary removed = levels[p_index];
+		Dictionary next = levels[p_index + 1];
+		next["keep"] = CLAMP((double)removed.get("keep", 0.5) * (double)next.get("keep", 0.5), 0.05, 0.95);
+		levels[p_index + 1] = next;
+	}
+	levels.remove_at(p_index);
+	md.preview_lod_map.clear();
+	_set_custom_lod_levels(levels);
+	lod_selected_level = MIN(lod_selected_level, levels.size());
+	_update_lod_settings_panel();
+}
+
+void SceneImportSettingsScreen::_lod_level_value_changed(double p_value, int p_index, bool p_bias) {
+	Array levels = _get_custom_lod_levels();
+	if (p_index < 0 || p_index >= levels.size()) {
+		return;
+	}
+	Dictionary level = levels[p_index];
+	level[p_bias ? "transition_bias" : "keep"] = p_bias ? CLAMP(p_value, 0.1, 10.0) : CLAMP(p_value / 100.0, 0.05, 0.95);
+	levels[p_index] = level;
+	_set_custom_lod_levels(levels);
+	if (p_bias && lod_target_distance_input && lod_target_anchor > 0.0 && p_value > 0.0) {
+		lod_target_distance_input->set_value_no_signal(lod_target_anchor / p_value);
+	}
+	if (lod_preset_selector) {
+		lod_preset_selector->select(4);
+	}
+}
+
+void SceneImportSettingsScreen::_lod_target_distance_changed(double p_value) {
+	if (!lod_bias_input || p_value <= 0.0 || lod_target_anchor <= 0.0) {
+		return;
+	}
+	// Change the same stored per-level bias used by the renderer. This is
+	// an estimate, because re-simplification and neighboring levels can
+	// constrain the final error value.
+	lod_bias_input->set_value(CLAMP(lod_target_anchor / p_value, 0.1, 10.0));
+	if (lod_target_distance_input) {
+		lod_target_distance_input->set_value_no_signal(lod_target_anchor / lod_bias_input->get_value());
+	}
+}
+
+void SceneImportSettingsScreen::_lod_generate_toggled(bool p_enabled) {
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
+		return;
+	}
+	if (!mesh_map[selected_id].has_import_id) {
+		_update_lod_settings_panel();
+		return;
+	}
+	mesh_map[selected_id].settings["generate/lods"] = p_enabled ? 1 : 2;
+	mesh_map[selected_id].lod_pending = true;
+	mesh_map[selected_id].lod_preview_dirty = true;
+	lod_settings_pending = true;
+	if (lod_transition_estimate) {
+		lod_transition_estimate->set_text(TTR("Updating LOD preview…"));
+	}
+	if (lod_status_label) {
+		lod_status_label->set_text(TTR("Changes are saved with this model. Preview updates live; Reimport applies them to the project asset."));
+	}
+	scene_import_settings_data->current["generate/lods"] = p_enabled ? 1 : 2;
+	scene_import_settings_data->notify_property_list_changed();
+	_schedule_lod_edit_update();
+}
+
+void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
+	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 4) {
+		return;
+	}
+	if (p_tab == 0) {
+		return;
+	}
+	Control *container = settings_tabs->get_tab_control(p_tab);
+	if (!container) {
+		return;
+	}
+	if (inspector->get_parent() != container) {
+		inspector->reparent(container);
+	}
+	scene_import_settings_data->section_filter = p_tab;
+	Label *hint = settings_tab_hints[p_tab];
+	if (hint) {
+		String message;
+		if (p_tab == 1 && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH) {
+			message = TTR("Select a mesh resource in the scene tree or Meshes tab.");
+		} else if (p_tab == 2 && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH_3D_NODE) {
+			message = TTR("Select a mesh instance node in the Scene tree to configure collision and physics.");
+		} else if (p_tab == 3 && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH_3D_NODE) {
+			message = TTR("Select a mesh or mesh instance to configure shadows and lightmap options.");
+		}
+		hint->set_text(message);
+		hint->set_visible(!message.is_empty());
+	}
+	scene_import_settings_data->notify_property_list_changed();
+}
+
+void SceneImportSettingsScreen::_lod_merge_angle_changed(double p_value) {
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
+		return;
+	}
+	MeshData &md = mesh_map[selected_id];
+	if (!md.has_import_id) {
+		return;
+	}
+	md.settings["lods/normal_merge_angle"] = p_value;
+	md.lod_pending = true;
+	md.lod_preview_dirty = true;
+	lod_settings_pending = true;
+	if (lod_transition_estimate) {
+		lod_transition_estimate->set_text(TTR("Updating LOD preview…"));
+	}
+	scene_import_settings_data->current["lods/normal_merge_angle"] = p_value;
+	scene_import_settings_data->notify_property_list_changed();
+	if (lod_status_label) {
+		lod_status_label->set_text(TTR("Changes are saved with this model. Preview updates live; Reimport applies them to the project asset."));
+	}
+	_schedule_lod_edit_update();
+}
+
+void SceneImportSettingsScreen::_lod_preset_selected(int p_index) {
+	if (p_index == 0) {
+		_lod_reset_levels();
+		return;
+	}
+	// Each fraction is relative to the preceding level.
+	const double keep = p_index == 1 ? 0.7 : p_index == 2 ? 0.5 : 0.35;
+	Array levels;
+	for (int i = 0; i < 3; i++) {
+		Dictionary level;
+		level["keep"] = keep;
+		level["transition_bias"] = 1.0;
+		levels.push_back(level);
+	}
+	_set_custom_lod_levels(levels);
+	MeshData &md = mesh_map[selected_id];
+	md.preview_lod_map.clear();
+	_update_lod_settings_panel();
+}
+
+void SceneImportSettingsScreen::_lod_reset_levels() {
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
+		return;
+	}
+	mesh_map[selected_id].settings.erase("lods/custom_levels");
+	mesh_map[selected_id].settings.erase("lods/levels");
+	mesh_map[selected_id].preview_lod_map.clear();
+	mesh_map[selected_id].live_preview_mesh.unref();
+	stats_selected_mesh.unref();
+	lod_auto_toggle->set_disabled(false);
+	lod_picker_levels = -1;
+	_apply_lod_preview();
+	_update_mesh_stats();
+	mesh_map[selected_id].lod_pending = true;
+	mesh_map[selected_id].lod_preview_dirty = true;
+	lod_settings_pending = true;
+	_schedule_lod_edit_update();
+	_update_lod_settings_panel();
+}
+
+void SceneImportSettingsScreen::_build_lod_settings_panel() {
+	lod_settings_panel = memnew(VBoxContainer);
+	lod_settings_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	lod_settings_panel->set_v_size_flags(Control::SIZE_SHRINK_BEGIN);
+	Label *header = memnew(Label);
+	header->set_text(TTR("LOD Settings"));
+	lod_settings_panel->add_child(header);
+}
+
+void SceneImportSettingsScreen::_gather_lod_level_settings() {
+	lod_level_settings.clear();
+	for (int i = 0; i < stats_level_faces.size(); i++) {
+		LODLevelSettings level;
+		level.level = i;
+		level.triangle_count = stats_level_faces[i];
+		lod_level_settings.push_back(level);
+	}
+}
+
+void SceneImportSettingsScreen::_update_lod_settings_panel() {
+	if (!lod_settings_panel) {
+		return;
+	}
 	while (lod_settings_panel->get_child_count() > 1) {
 		Node *child = lod_settings_panel->get_child(1);
 		lod_settings_panel->remove_child(child);
 		child->queue_free();
 	}
-	lod_distance_labels.clear();
 	lod_card_select_buttons.clear();
-
-	// Gather current LOD statistics
+	lod_status_label = nullptr;
+	lod_transition_estimate = nullptr;
+	lod_bias_input = nullptr;
+	lod_target_distance_input = nullptr;
+	lod_target_anchor = 0.0;
+	lod_preset_selector = nullptr;
 	_gather_lod_level_settings();
-
-	if (lod_level_settings.size() == 0) {
-		Label *no_lods = memnew(Label);
-		no_lods->set_text(TTR("No LOD levels. Enable \"Generate LODs\" in the import options and reimport to create them."));
-		lod_settings_panel->add_child(no_lods);
+	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
+		Label *hint = memnew(Label);
+		hint->set_text(TTR("Select a mesh to configure its LOD levels."));
+		hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		lod_settings_panel->add_child(hint);
 		return;
 	}
-	
-	// Create a card for each LOD level
-	for (int i = 0; i < lod_level_settings.size(); i++) {
-		const LODLevelSettings &settings = lod_level_settings[i];
-		
-		// Card container
-		PanelContainer *card = memnew(PanelContainer);
-		card->set_v_size_flags(Control::SIZE_SHRINK_BEGIN);
-		lod_settings_panel->add_child(card);
-		
-		VBoxContainer *card_vb = memnew(VBoxContainer);
-		card->add_child(card_vb);
-		
-		// Header with level name and select button
-		HBoxContainer *header_hb = memnew(HBoxContainer);
-		card_vb->add_child(header_hb);
-		
-		Label *level_label = memnew(Label);
-		level_label->set_text(vformat(TTR("LOD %d"), i));
-		level_label->add_theme_font_size_override("font_size", 14);
-		level_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		header_hb->add_child(level_label);
-		
-		Button *select_btn = memnew(Button);
-		select_btn->set_focus_mode(Control::FOCUS_NONE);
-		select_btn->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_lod_level_selected).bind(i));
-		header_hb->add_child(select_btn);
-		lod_card_select_buttons.push_back(select_btn);
-		
-		// Geometry stats
-		Label *geo_stats = memnew(Label);
-		String stats_text = vformat(TTR("Triangles: %s"), _format_stats_count(settings.triangle_count));
+	MeshData &md = mesh_map[selected_id];
+	const int mode = md.settings.has("generate/lods") ? (int)md.settings["generate/lods"] : 0;
+	const bool enabled = mode == 1 || (mode == 0 && (!defaults.has("meshes/generate_lods") || bool(defaults["meshes/generate_lods"])));
+	CheckButton *generate = memnew(CheckButton);
+	generate->set_text(TTR("Generate LODs"));
+	generate->set_pressed_no_signal(enabled);
+	generate->set_disabled(!md.has_import_id);
+	generate->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_lod_generate_toggled));
+	lod_settings_panel->add_child(generate);
+	HBoxContainer *angle_row = memnew(HBoxContainer);
+	lod_settings_panel->add_child(angle_row);
+	Label *angle_label = memnew(Label);
+	angle_label->set_text(TTR("Normal Merge Angle"));
+	angle_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	angle_row->add_child(angle_label);
+	SpinBox *angle = memnew(SpinBox);
+	angle->set_min(0); angle->set_max(180); angle->set_step(1);
+	angle->set_editable(md.has_import_id);
+	angle->set_suffix(" deg");
+	angle->set_value_no_signal(md.settings.has("lods/normal_merge_angle") ? (double)md.settings["lods/normal_merge_angle"] : 20.0);
+	angle->set_tooltip_text(TTR("Lower values preserve more geometry edges during LOD simplification."));
+	angle->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_merge_angle_changed));
+	angle_row->add_child(angle);
+	HBoxContainer *preset_row = memnew(HBoxContainer);
+	lod_settings_panel->add_child(preset_row);
+	Label *preset_label = memnew(Label);
+	preset_label->set_text(TTR("LOD Preset"));
+	preset_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	preset_row->add_child(preset_label);
+	OptionButton *preset = memnew(OptionButton);
+	lod_preset_selector = preset;
+	preset->add_item(TTR("Automatic"));
+	preset->add_item(TTR("Quality"));
+	preset->add_item(TTR("Balanced"));
+	preset->add_item(TTR("Performance"));
+	preset->add_item(TTR("Custom"));
+	preset->select(md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]) ? 4 : 0);
+	preset->set_item_disabled(4, true);
+	preset->set_disabled(!md.has_import_id);
+	preset->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_lod_preset_selected));
+	preset_row->add_child(preset);
+
+	const Array levels = _get_custom_lod_levels();
+	lod_selected_level = CLAMP(lod_selected_level, 0, levels.size());
+	lod_status_label = memnew(Label);
+	lod_status_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	String lod_status = lod_settings_pending ? TTR("Changes are saved with this model. Preview updates live; Apply Changes generates the project asset once when you are ready.") : TTR("Statistics from the current imported mesh.");
+	if (!md.has_import_id) {
+		lod_status = TTR("This mesh has no stable import ID. Name it in the source file before saving per-mesh LOD settings.");
+	} else if (!lod_settings_pending && enabled && md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]) && levels.size() > MAX(stats_level_faces.size() - 1, 0)) {
+		lod_status = vformat(TTR("Generated %d of %d requested LODs. The mesh could not be simplified further."), MAX(stats_level_faces.size() - 1, 0), levels.size());
+	}
+	lod_status_label->set_text(lod_status);
+	lod_settings_panel->add_child(lod_status_label);
+
+	GridContainer *table = memnew(GridContainer);
+	table->set_columns(4);
+	table->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	lod_settings_panel->add_child(table);
+	for (const String &title : { TTR("Level"), TTR("Triangles"), TTR("Vertices"), String() }) {
+		Label *heading = memnew(Label);
+		heading->set_text(title);
+		heading->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		table->add_child(heading);
+	}
+	for (int i = 0; i <= levels.size(); i++) {
+		Button *select = memnew(Button);
+		select->set_text(vformat(TTR("LOD %d"), i));
+		select->set_toggle_mode(true);
+		select->set_pressed_no_signal(i == lod_selected_level);
+		select->set_tooltip_text(i == 0 ? TTR("Base mesh") : TTR("Select this level to edit its settings and preview it."));
+		select->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_lod_select_level).bind(i));
+		table->add_child(select);
+		const bool known = !md.lod_preview_dirty && i < stats_level_faces.size();
+		Label *triangles = memnew(Label);
+		triangles->set_text(known ? _format_stats_count(stats_level_faces[i]) : (lod_settings_pending ? TTR("Updating…") : TTR("Unavailable")));
+		if (!known) {
+			triangles->set_tooltip_text(TTR("This LOD level is being generated in the preview, or the mesh could not be simplified further."));
+		}
+		triangles->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		table->add_child(triangles);
+		Label *vertices = memnew(Label);
+		vertices->set_text(known && i < stats_level_vertices.size() ? _format_stats_count(stats_level_vertices[i]) : (lod_settings_pending ? TTR("Updating…") : TTR("Unavailable")));
+		if (!known) {
+			vertices->set_tooltip_text(TTR("This LOD level is being generated in the preview, or the mesh could not be simplified further."));
+		}
+		vertices->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		table->add_child(vertices);
+		Button *remove = memnew(Button);
+		remove->set_text(TTR("Remove"));
+		remove->set_disabled(i == 0 || !md.has_import_id);
 		if (i > 0) {
-			stats_text += vformat(" (↓%.1f%%)", settings.reduction_percent);
+			remove->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_lod_remove_level).bind(i - 1));
 		}
-		geo_stats->set_text(stats_text);
-		card_vb->add_child(geo_stats);
-		
-		// Screen Size control
-		Label *screen_label = memnew(Label);
-		screen_label->set_text(TTR("Screen Size Threshold:"));
-		card_vb->add_child(screen_label);
-		
-		HBoxContainer *screen_hb = memnew(HBoxContainer);
-		card_vb->add_child(screen_hb);
-		
-		HSlider *screen_slider = memnew(HSlider);
-		screen_slider->set_min(0.01);
-		screen_slider->set_max(1.0);
-		screen_slider->set_step(0.01);
-		screen_slider->set_value(settings.screen_size);
-		screen_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		screen_slider->set_custom_minimum_size(Size2(200 * EDSCALE, 0));
-		screen_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_on_lod_screen_size_changed).bind(i));
-		screen_hb->add_child(screen_slider);
-		
-		SpinBox *screen_spin = memnew(SpinBox);
-		screen_spin->set_min(0.01);
-		screen_spin->set_max(1.0);
-		screen_spin->set_step(0.01);
-		screen_spin->set_value(settings.screen_size);
-		screen_spin->share(screen_slider);
-		screen_hb->add_child(screen_spin);
-		
-		Label *percent_label = memnew(Label);
-		percent_label->set_text("%");
-		screen_hb->add_child(percent_label);
-		
-		// Distance display (live-updated from the slider callback)
-		Label *distance_label = memnew(Label);
-		distance_label->set_text(vformat(TTR("Estimated Distance: ~%.1f m"), settings.distance));
-		distance_label->add_theme_font_size_override("font_size", 10);
-		card_vb->add_child(distance_label);
-		lod_distance_labels.push_back(distance_label);
-		
-		// Help text for LOD 0
-		if (i == 0) {
-			Label *hint = memnew(Label);
-			hint->set_text(TTR("This is the highest quality LOD (base mesh)"));
-			hint->add_theme_font_size_override("font_size", 10);
-			hint->add_theme_color_override("font_color", Color(0.7, 0.7, 0.7));
-			card_vb->add_child(hint);
+		table->add_child(remove);
+	}
+	Button *add = memnew(Button);
+	add->set_text(TTR("+ Add LOD"));
+	add->set_disabled(levels.size() >= 10 || !md.has_import_id);
+	add->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_lod_add_level));
+	lod_settings_panel->add_child(add);
+
+	PanelContainer *details = memnew(PanelContainer);
+	lod_settings_panel->add_child(details);
+	VBoxContainer *content = memnew(VBoxContainer);
+	details->add_child(content);
+	Label *selected = memnew(Label);
+	selected->set_text(vformat(TTR("Selected LOD %d"), lod_selected_level));
+	content->add_child(selected);
+	if (lod_selected_level == 0) {
+		Label *base_hint = memnew(Label);
+		base_hint->set_text(TTR("The original mesh is always retained."));
+		base_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		content->add_child(base_hint);
+	} else {
+		const int i = lod_selected_level - 1;
+		Dictionary level = levels[i];
+		HBoxContainer *row = memnew(HBoxContainer);
+		content->add_child(row);
+		Label *keep_label = memnew(Label);
+		keep_label->set_text(TTR("Retain triangles (%)"));
+		keep_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		row->add_child(keep_label);
+		SpinBox *keep = memnew(SpinBox);
+		keep->set_min(5); keep->set_max(95); keep->set_step(1);
+		keep->set_editable(md.has_import_id);
+		keep->set_value_no_signal((double)level.get("keep", 0.5) * 100.0);
+		keep->set_suffix("%");
+		keep->set_tooltip_text(TTR("Target percentage of triangles retained from the preceding LOD. The simplifier may stop before reaching the target."));
+		keep->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_level_value_changed).bind(i, false));
+		HSlider *keep_slider = memnew(HSlider);
+		keep_slider->set_min(5); keep_slider->set_max(95); keep_slider->set_step(1);
+		keep_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		keep_slider->set_editable(md.has_import_id);
+		keep_slider->set_tooltip_text(TTR("Adjust the percentage of triangles retained at this level."));
+		keep->share(keep_slider);
+		row->add_child(keep_slider);
+		row->add_child(keep);
+		HBoxContainer *bias_row = memnew(HBoxContainer);
+		content->add_child(bias_row);
+		Label *bias_label = memnew(Label);
+		bias_label->set_text(TTR("Transition bias"));
+		bias_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		bias_row->add_child(bias_label);
+		SpinBox *bias = memnew(SpinBox);
+		lod_bias_input = bias;
+		bias->set_min(0.1); bias->set_max(10); bias->set_step(0.01);
+		bias->set_editable(md.has_import_id);
+		bias->set_value_no_signal(level.get("transition_bias", 1.0));
+		bias->set_tooltip_text(TTR("Higher values switch sooner. Neighboring thresholds are kept in order. Actual transitions also depend on the camera and viewport."));
+		HSlider *bias_slider = memnew(HSlider);
+		bias_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		bias_slider->set_custom_minimum_size(Size2(70 * EDSCALE, 0));
+		bias_slider->set_editable(md.has_import_id);
+		bias_slider->set_tooltip_text(TTR("Move left to switch later, right to switch earlier."));
+		bias->share(bias_slider);
+		bias_row->add_child(bias_slider);
+		bias->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_level_value_changed).bind(i, true));
+		bias_row->add_child(bias);
+
+		lod_transition_estimate = memnew(Label);
+		lod_transition_estimate->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		String estimate;
+		double reference_distance = 0.0;
+		const float pixel_threshold = GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels");
+		if (md.lod_preview_dirty) {
+			estimate = TTR("Updating LOD preview…");
+		} else if (pixel_threshold <= 0.0f) {
+			estimate = TTR("Automatic LOD selection is disabled by the project pixel threshold.");
+		} else {
+			// Renderer uses error * model_scale / (distance * projection
+			// multiplier) <= pixel threshold / viewport width. Estimate
+			// for a unit-scale instance with per-instance LOD bias 1.
+			const Projection reference = Projection::create_perspective(75.0, 16.0 / 9.0, 0.05, 10000.0);
+			const double divisor = pixel_threshold * reference.get_lod_multiplier();
+			double near_distance = 0.0;
+			double far_distance = 0.0;
+			bool found = false;
+			for (const MeshSurfaceStats &surface : stats_selected.surfaces) {
+				if (i >= surface.lod_edge_lengths.size()) {
+					continue;
+				}
+				const double distance = surface.lod_edge_lengths[i] * 1920.0 / divisor;
+				if (!Math::is_finite(distance) || distance < 0.0) {
+					continue;
+				}
+				if (!found) {
+					near_distance = distance;
+					far_distance = distance;
+					found = true;
+				} else {
+					near_distance = MIN(near_distance, distance);
+					far_distance = MAX(far_distance, distance);
+				}
+			}
+			if (found) {
+				reference_distance = near_distance;
+			}
+			if (!found) {
+				estimate = TTR("No imported transition is available for this level.");
+			} else if (Math::is_equal_approx(near_distance, far_distance)) {
+				estimate = vformat(TTR("Reference switch distance: approximately %s m"), String::num(near_distance, 1));
+			} else {
+				estimate = vformat(TTR("Reference switch distance: approximately %s-%s m across surfaces"), String::num(near_distance, 1), String::num(far_distance, 1));
+			}
 		}
-		
-		// Add spacing between cards
-		if (i < lod_level_settings.size() - 1) {
-			lod_settings_panel->add_child(memnew(HSeparator));
+		lod_transition_estimate->set_text(estimate);
+		lod_transition_estimate->set_tooltip_text(TTR("Estimate for a 1920 x 1080 perspective viewport, vertical FOV 75 degrees, unit mesh scale, instance LOD Bias 1, and the current project LOD pixel threshold. Distance is measured from the camera to the nearest point of the mesh bounding box. Different surfaces can switch at different distances. Actual results depend on camera, scale, viewport resolution and runtime settings."));
+		content->add_child(lod_transition_estimate);
+		if (reference_distance > 0.0 && md.has_import_id) {
+			// The target controls the same bias as the slider. For meshes
+			// with multiple surfaces it targets the earliest switch.
+			lod_target_anchor = reference_distance * (double)level.get("transition_bias", 1.0);
+			HBoxContainer *target_row = memnew(HBoxContainer);
+			content->add_child(target_row);
+			Label *target_label = memnew(Label);
+			target_label->set_text(TTR("Reference target (m)"));
+			target_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+			target_row->add_child(target_label);
+			lod_target_distance_input = memnew(SpinBox);
+			lod_target_distance_input->set_min(MAX(lod_target_anchor / 10.0, 0.001));
+			lod_target_distance_input->set_max(MAX(lod_target_anchor / 0.1, 0.01));
+			lod_target_distance_input->set_step(0.01);
+			lod_target_distance_input->set_value_no_signal(reference_distance);
+			lod_target_distance_input->set_tooltip_text(TTR("Approximate target for the earliest surface switch under the reference camera. This updates Transition bias and the live preview; Apply Changes generates the project asset when ready."));
+			lod_target_distance_input->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_lod_target_distance_changed));
+			HSlider *target_slider = memnew(HSlider);
+			target_slider->set_min(lod_target_distance_input->get_min());
+			target_slider->set_max(lod_target_distance_input->get_max());
+			target_slider->set_step(0.01);
+			target_slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+			target_slider->set_editable(md.has_import_id);
+			target_slider->set_tooltip_text(lod_target_distance_input->get_tooltip_text());
+			lod_target_distance_input->share(target_slider);
+			target_row->add_child(target_slider);
+			target_row->add_child(lod_target_distance_input);
 		}
 	}
 
-	_update_lod_button_states();
-}
-
-// Callback when a per-level screen size slider changes: update the stored
-// threshold and its estimated switch distance without rebuilding the panel
-// (so the drag is not interrupted).
-void SceneImportSettingsScreen::_on_lod_screen_size_changed(float p_value, int p_level) {
-	if (p_level < 0 || p_level >= lod_level_settings.size()) {
-		return;
-	}
-
-	lod_level_settings.write[p_level].screen_size = p_value;
-	lod_level_settings.write[p_level].distance = _calculate_distance_from_screen_size(p_value);
-
-	if (p_level < lod_distance_labels.size() && lod_distance_labels[p_level] != nullptr) {
-		lod_distance_labels[p_level]->set_text(vformat(TTR("Estimated Distance: ~%.1f m"), lod_level_settings[p_level].distance));
-	}
+	Button *reset = memnew(Button);
+	reset->set_text(TTR("Use automatic levels"));
+	reset->set_disabled(!md.has_import_id);
+	reset->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_lod_reset_levels));
+	lod_settings_panel->add_child(reset);
 }
 
 SceneImportSettingsScreen::~SceneImportSettingsScreen() {

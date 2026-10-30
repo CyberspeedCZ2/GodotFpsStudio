@@ -2302,6 +2302,8 @@ void ResourceImporterScene::get_internal_import_options(InternalImportCategory p
 			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/normal_merge_angle", PROPERTY_HINT_RANGE, "0,180,1,degrees"), 20.0f));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "lods/count", PROPERTY_HINT_RANGE, "0,10,1"), 0));
 			r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "lods/reduction", PROPERTY_HINT_RANGE, "0,0.95,0.05"), 0.0f));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "lods/custom_levels", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), false));
+			r_options->push_back(ImportOption(PropertyInfo(Variant::ARRAY, "lods/levels", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), Array()));
 		} break;
 		case INTERNAL_IMPORT_CATEGORY_MATERIAL: {
 			r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "use_external/enabled", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_UPDATE_ALL_IF_MODIFIED), false));
@@ -2755,6 +2757,8 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 				String save_to_file;
 				int lod_count_override = 0;
 				float lod_reduction_override = 0.0f;
+				bool custom_lod_levels = false;
+				Array lod_levels;
 
 				String mesh_id = importer_mesh->get_meta("import_id", importer_mesh->get_name());
 
@@ -2765,6 +2769,8 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 					// detectable.
 					lod_count_override = mesh_settings.get("lods/count", 0);
 					lod_reduction_override = mesh_settings.get("lods/reduction", 0.0f);
+					custom_lod_levels = mesh_settings.get("lods/custom_levels", false);
+					lod_levels = mesh_settings.get("lods/levels", Array());
 					{
 						//fill node settings for this node with default values
 						List<ImportOption> iopts;
@@ -2855,7 +2861,7 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 					Array skin_pose_transform_array = _get_skinned_pose_transforms(src_mesh_node);
 					importer_mesh->generate_lods(merge_angle, skin_pose_transform_array,
 							lod_count_override > 0 ? lod_count_override : p_lod_count,
-							lod_reduction_override > 0.0f ? lod_reduction_override : p_lod_reduction);
+							lod_reduction_override > 0.0f ? lod_reduction_override : p_lod_reduction, custom_lod_levels, lod_levels);
 				}
 
 				if (create_shadow_meshes) {

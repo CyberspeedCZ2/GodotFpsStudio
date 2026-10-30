@@ -1,6 +1,6 @@
 # LOD UI Redesign - UE5 Style
 **Datum:** 29. 10. 2026  
-**Status:** Návrh - čeká na schválení
+**Status:** Návrh schválen a implementován 30. 10. 2026. Aktuální chování editoru popisuje [dokumentace Model Editoru](../docs/model_editor_lod.md); některé podrobnosti výsledného rozhraní se od tohoto původního návrhu liší.
 
 ## 1. Aktuální problémy
 

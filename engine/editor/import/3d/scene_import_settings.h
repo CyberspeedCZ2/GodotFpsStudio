@@ -50,8 +50,10 @@
 
 class EditorFileDialog;
 class EditorInspector;
+class ImporterMesh;
 class SceneImportSettingsData;
 class Timer;
+class SpinBox;
 
 // Full-size workspace screen (the "Model" main editor tab) hosting the
 // advanced scene import settings. Formerly a modal ConfirmationDialog
@@ -99,6 +101,7 @@ class SceneImportSettingsScreen : public Control {
 	Button *light_2_switch = nullptr;
 	Button *light_rotate_switch = nullptr;
 	Button *frame_button = nullptr;
+	Button *wireframe_toggle = nullptr;
 	Button *skeleton_visibility_toggle = nullptr;
 
 	Label *file_label = nullptr;
@@ -129,6 +132,7 @@ class SceneImportSettingsScreen : public Control {
 	// detail) across the currently previewed meshes, and the unique vertex
 	// count of the active level; for the statistics overlay.
 	Vector<uint64_t> stats_level_faces;
+	Vector<uint64_t> stats_level_vertices;
 	uint64_t stats_active_vertices = 0;
 
 	// LOD preview state (toolbar controls): automatic renderer-driven
@@ -153,6 +157,18 @@ class SceneImportSettingsScreen : public Control {
 	HBoxContainer *lod_buttons_container = nullptr;
 	Vector<Button *> lod_level_buttons;
 	HSlider *lod_bias_slider = nullptr;
+	HSlider *lod_preview_slider = nullptr;
+	Label *lod_preview_label = nullptr;
+	TabContainer *settings_tabs = nullptr;
+	Label *settings_tab_hints[5] = {};
+	bool lod_settings_pending = false;
+	int lod_selected_level = 0;
+	Label *lod_status_label = nullptr;
+	Label *lod_transition_estimate = nullptr;
+	SpinBox *lod_bias_input = nullptr;
+	SpinBox *lod_target_distance_input = nullptr;
+	double lod_target_anchor = 0.0;
+	OptionButton *lod_preset_selector = nullptr;
 	
 	// LOD Settings Panel (per-level configuration)
 	VBoxContainer *lod_settings_panel = nullptr;
@@ -248,7 +264,7 @@ class SceneImportSettingsScreen : public Control {
 
 	float cam_rot_x = 0.0f;
 	float cam_rot_y = 0.0f;
-	float cam_zoom = 0.0f;
+	float cam_zoom = 1.0f;
 	Vector2 cam_pan;
 	// Size of the currently framed content, used to scale pan/zoom navigation.
 	float frame_size = 1.0f;
@@ -283,6 +299,13 @@ class SceneImportSettingsScreen : public Control {
 		float cam_zoom = 1;
 		Vector2 cam_pan;
 		HashMap<StringName, Variant> settings;
+		bool lod_pending = false;
+		bool lod_preview_dirty = false;
+		Ref<ImporterMesh> lod_source_mesh;
+		Array lod_skin_pose_transforms;
+		Ref<Mesh> live_preview_mesh;
+		// Preview indices retained after deletions, including base level 0.
+		Vector<int> preview_lod_map;
 	};
 	HashMap<String, MeshData> mesh_map;
 
@@ -316,26 +339,43 @@ class SceneImportSettingsScreen : public Control {
 
 	void _update_view_gizmos();
 	void _update_camera();
+	void _update_preview_lod_threshold();
 	void _gather_mesh_stats();
 	bool _gather_mesh_stats_for_mesh(const Ref<Mesh> &p_mesh, MeshStats &r_stats);
 	void _update_mesh_stats();
 	void _apply_lod_preview();
 	Ref<Mesh> _get_lod_preview_mesh(const Ref<Mesh> &p_mesh, int p_level);
 	void _lod_bias_changed(double p_value);
+	void _wireframe_toggled(bool p_enabled);
 	void _generate_preview_lods(Node *p_node);
+	Ref<ImporterMesh> _duplicate_importer_mesh(const Ref<ImporterMesh> &p_source) const;
+	void _schedule_lod_edit_update();
+	void _finish_lod_edit_update();
+	void _save_lod_config();
 
 	// LOD picker (viewport toolbar) methods.
 	void _update_lod_toolbar_buttons(int p_max_level);
 	void _update_lod_button_states();
 	void _on_lod_level_selected(int p_level);
 	void _on_lod_auto_toggled(bool p_enabled);
+	void _on_lod_preview_changed(double p_value);
 	
 	// LOD Inspector Panel methods
 	void _build_lod_settings_panel();
 	void _update_lod_settings_panel();
 	void _gather_lod_level_settings();
-	void _on_lod_screen_size_changed(float p_value, int p_level);
-	float _calculate_distance_from_screen_size(float p_screen_size);
+	Array _get_custom_lod_levels() const;
+	void _set_custom_lod_levels(const Array &p_levels);
+	void _lod_select_level(int p_level);
+	void _lod_add_level();
+	void _lod_remove_level(int p_index);
+	void _lod_level_value_changed(double p_value, int p_index, bool p_bias);
+	void _lod_target_distance_changed(double p_value);
+	void _lod_generate_toggled(bool p_enabled);
+	void _lod_merge_angle_changed(double p_value);
+	void _settings_tab_changed(int p_tab);
+	void _lod_reset_levels();
+	void _lod_preset_selected(int p_index);
 	void _select(Tree *p_from, const String &p_type, const String &p_id);
 	void _inspector_property_edited(const String &p_name);
 	void _reset_bone_transforms();
@@ -395,12 +435,17 @@ class SceneImportSettingsScreen : public Control {
 	void _save_dir_confirm();
 
 	Dictionary base_subresource_settings;
+	Dictionary lod_config_data;
+	HashSet<String> lod_config_pending_meshes;
+	HashMap<String, Ref<ImporterMesh>> lod_source_meshes;
+	HashMap<String, Array> lod_source_skin_pose_transforms;
 
 	void _load_default_subresource_settings(HashMap<StringName, Variant> &settings, const String &p_type, const String &p_import_id, ResourceImporterScene::InternalImportCategory p_category);
 
 	bool generate_collider = false;
 
 	Timer *update_view_timer = nullptr;
+	Timer *lod_edit_timer = nullptr;
 
 protected:
 	virtual void _update_theme_item_cache() override;

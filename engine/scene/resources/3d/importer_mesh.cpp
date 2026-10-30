@@ -567,7 +567,7 @@ void ImporterMesh::optimize_indices() {
 	} \
 	write_array[vert_idx] = transformed_vert;
 
-void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transform_array, int p_lod_count, float p_lod_reduction) {
+void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transform_array, int p_lod_count, float p_lod_reduction, bool p_custom_levels, const Array &p_level_settings) {
 	if (!SurfaceTool::simplify_scale_func) {
 		return;
 	}
@@ -763,9 +763,10 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 		// unbounded halving behavior; a positive count generates exactly
 		// that many levels, each retaining lod_reduction of the previous
 		// level's triangles.
-		const int lod_count = MAX(p_lod_count, 0);
+		const int lod_count = p_custom_levels ? p_level_settings.size() : MAX(p_lod_count, 0);
 		const float lod_reduction = CLAMP(p_lod_reduction, 0.05f, 0.95f);
 		int lod_level = 0;
+		float last_lod_error = 0.0f;
 
 		LocalVector<int> current_indices(merged_indices);
 		float current_error = 0.0f;
@@ -774,13 +775,18 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 		while (current_indices.size() > min_target_indices * 2) {
 			unsigned int current_index_count = current_indices.size();
 			unsigned int target_index_count;
-			if (lod_count > 0) {
+			if (p_custom_levels || lod_count > 0) {
 				if (lod_level >= lod_count) {
 					print_verbose("  LOD stop: requested " + itos(lod_count) + " levels generated");
 					break;
 				}
-				// Fixed per-level reduction (fraction of triangles kept).
-				target_index_count = MAX((unsigned int)Math::round(((double)(current_index_count / 3)) * lod_reduction) * 3, min_target_indices);
+				// Per-level fractions are relative to the preceding level.
+				float keep = lod_reduction;
+				if (p_custom_levels && p_level_settings[lod_level].get_type() == Variant::DICTIONARY) {
+					Dictionary level = p_level_settings[lod_level];
+					keep = CLAMP((float)level.get("keep", 0.5), 0.05f, 0.95f);
+				}
+				target_index_count = MAX((unsigned int)Math::round(((double)(current_index_count / 3)) * keep) * 3, min_target_indices);
 			} else {
 				// Legacy automatic halving (unbounded).
 				target_index_count = MAX(((current_index_count / 3) / 2) * 3, min_target_indices);
@@ -836,7 +842,7 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 			new_indices.resize(new_index_count);
 			current_indices = new_indices;
 
-			if (new_index_count == 0 || (new_index_count >= current_index_count * 0.75f)) {
+			if (new_index_count == 0 || (p_custom_levels ? new_index_count >= current_index_count : new_index_count >= current_index_count * 0.75f)) {
 				print_verbose("  LOD stop: got " + itos(new_index_count / 3) + " triangles when asking for " + itos(target_index_count / 3));
 				break;
 			}
@@ -855,7 +861,15 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 			}
 
 			Surface::LOD lod;
-			lod.distance = MAX(current_error * scale, CMP_EPSILON2);
+			float transition_bias = 1.0f;
+			if (p_custom_levels && p_level_settings[lod_level].get_type() == Variant::DICTIONARY) {
+				Dictionary level = p_level_settings[lod_level];
+				transition_bias = CLAMP((float)level.get("transition_bias", 1.0), 0.1f, 10.0f);
+			}
+			// Smaller error keys switch earlier. Keep keys strictly increasing so
+			// each generated level stays reachable in the renderer's sorted chain.
+			lod.distance = MAX(MAX(current_error * scale / transition_bias, CMP_EPSILON2), last_lod_error * 1.001f + CMP_EPSILON2);
+			last_lod_error = lod.distance;
 			lod.indices = new_indices;
 			surfaces.write[i].lods.push_back(lod);
 			lod_level++;

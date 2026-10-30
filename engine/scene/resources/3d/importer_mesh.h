@@ -123,7 +123,7 @@ public:
 	// p_lod_count > 0 generates exactly that many levels, each retaining
 	// p_lod_reduction (clamped to 0.05..0.95) of the previous level's
 	// triangles.
-	void generate_lods(float p_normal_merge_angle, Array p_skin_pose_transform_array, int p_lod_count = 0, float p_lod_reduction = 0.5f);
+	void generate_lods(float p_normal_merge_angle, Array p_skin_pose_transform_array, int p_lod_count = 0, float p_lod_reduction = 0.5f, bool p_custom_levels = false, const Array &p_level_settings = Array());
 
 	void create_shadow_mesh();
 	Ref<ImporterMesh> get_shadow_mesh() const;
