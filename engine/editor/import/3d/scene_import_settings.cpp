@@ -3332,20 +3332,10 @@ void fragment() {
 	material_preview_on_model_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_material_preview_on_model_toggled));
 	material_tab->add_child(material_preview_on_model_toggle);
 
-	material_editor_status = memnew(Label);
-	material_editor_status->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	material_tab->add_child(material_editor_status);
-
 	material_create_button = memnew(Button);
 	material_create_button->set_text(TTR("Create editable material files…"));
 	material_create_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_create_button_pressed));
 	material_tab->add_child(material_create_button);
-
-	material_matte_button = memnew(Button);
-	material_matte_button->set_text(TTR("Make Matte"));
-	material_matte_button->set_tooltip_text(TTR("Roughness 0 is polished/glossy; 1 is matte. Set Roughness to 1, Specular to 0, and remove the Roughness Texture. Save Material to keep this after reimport."));
-	material_matte_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_matte_button_pressed));
-	material_tab->add_child(material_matte_button);
 
 	material_save_button = memnew(Button);
 	material_save_button->set_text(TTR("Save Material"));
@@ -3814,65 +3804,28 @@ void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
 	EditorSettings::get_singleton()->set_setting(MODEL_SETTINGS_PANEL_WIDTH_SETTING, Math::round(panel_width));
 }
 
-static String get_material_roughness_hint(const Ref<Material> &p_material) {
-	BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(p_material.ptr());
-	if (!base_material) {
-		return String();
-	}
-
-	const bool has_roughness_texture = base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_valid();
-	String hint = vformat(TTR("Current Roughness: %s (0 = polished/glossy, 1 = matte). Specular: %s."), String::num(base_material->get_roughness(), 2), String::num(base_material->get_specular(), 2));
-	if (has_roughness_texture) {
-		hint += " " + TTR("A Roughness Texture is active and can make parts glossier.");
-	}
-	return hint;
-}
-
 void SceneImportSettingsScreen::_update_material_editor() {
-	if (!material_inspector || !material_editor_status || !material_create_button || !material_matte_button || !material_save_button || !material_preview_on_model_toggle) {
+	if (!material_inspector || !material_create_button || !material_save_button || !material_preview_on_model_toggle) {
 		return;
 	}
 	const bool has_material = selected_type == "Material" && material_map.has(selected_id);
 	material_preview_on_model_toggle->set_visible(has_material);
 	material_create_button->hide();
-	material_matte_button->hide();
 	material_inspector->edit(nullptr);
 	material_inspector->hide();
 	material_save_button->hide();
 
 	if (!has_material) {
-		material_editor_status->set_text(TTR("Select a material to edit its properties and preview it on the model."));
 		return;
 	}
 
 	MaterialData &md = material_map[selected_id];
 	const bool is_external = md.settings.has("use_external/enabled") && (bool)md.settings["use_external/enabled"];
 	if (!is_external) {
-		material_editor_status->set_text(TTR("Create editable material files first. This keeps your changes when the model is reimported."));
 		material_create_button->show();
 		return;
 	}
 
-	String material_path;
-	if (md.settings.has("use_external/fallback_path")) {
-		material_path = md.settings["use_external/fallback_path"];
-	}
-	if (material_path.is_empty() && md.settings.has("use_external/path")) {
-		material_path = md.settings["use_external/path"];
-	}
-	if (material_path.begins_with("uid://")) {
-		material_path = ResourceUID::uid_to_path(material_path);
-	}
-	if (BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(md.material.ptr())) {
-		material_matte_button->show();
-		const bool already_matte = base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f) && Math::is_zero_approx(base_material->get_specular());
-		material_matte_button->set_disabled(already_matte);
-	}
-	if (md.modified) {
-		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Save Material or Apply Changes to save."), material_path.get_file()) + "\n" + get_material_roughness_hint(md.material));
-	} else {
-		material_editor_status->set_text(vformat(TTR("Editing %s. Save Material writes the resource; Apply Changes also reimports the model."), material_path.get_file()) + "\n" + get_material_roughness_hint(md.material));
-	}
 	material_save_button->set_disabled(!md.modified);
 	material_save_button->show();
 	material_inspector->edit(md.material.ptr());
@@ -3884,27 +3837,6 @@ void SceneImportSettingsScreen::_material_create_button_pressed() {
 		_menu_callback(ACTION_EXTRACT_MATERIALS);
 	}
 }
-
-void SceneImportSettingsScreen::_material_matte_button_pressed() {
-	if (selected_type != "Material" || !material_map.has(selected_id)) {
-		return;
-	}
-	MaterialData &md = material_map[selected_id];
-	BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(md.material.ptr());
-	if (!base_material) {
-		return;
-	}
-	if (base_material->get_texture(BaseMaterial3D::TEXTURE_ROUGHNESS).is_null() && Math::is_equal_approx(base_material->get_roughness(), 1.0f) && Math::is_zero_approx(base_material->get_specular())) {
-		return;
-	}
-
-	base_material->set_texture(BaseMaterial3D::TEXTURE_ROUGHNESS, Ref<Texture2D>());
-	base_material->set_roughness(1.0);
-	base_material->set_specular(0.0);
-	_material_inspector_property_edited("roughness_texture");
-	_update_material_editor();
-}
-
 void SceneImportSettingsScreen::_material_save_button_pressed() {
 	if (selected_type != "Material" || !material_map.has(selected_id)) {
 		return;
@@ -3916,11 +3848,6 @@ void SceneImportSettingsScreen::_material_save_button_pressed() {
 	if (_save_modified_external_materials() != OK) {
 		return;
 	}
-	String material_path;
-	if (md.settings.has("use_external/fallback_path")) {
-		material_path = md.settings["use_external/fallback_path"];
-	}
-	material_editor_status->set_text(vformat(TTR("Saved %s."), material_path.get_file()) + "\n" + get_material_roughness_hint(md.material));
 	material_save_button->set_disabled(true);
 }
 
@@ -3952,13 +3879,6 @@ void SceneImportSettingsScreen::_material_inspector_property_edited(const String
 	MaterialData &md = material_map[selected_id];
 	md.modified = true;
 	material_save_button->set_disabled(false);
-	String material_path;
-	if (md.settings.has("use_external/fallback_path")) {
-		material_path = md.settings["use_external/fallback_path"];
-	}
-	if (material_editor_status) {
-		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Save Material or Apply Changes to save."), material_path.get_file()) + "\n" + get_material_roughness_hint(md.material));
-	}
 }
 
 void SceneImportSettingsScreen::_lod_merge_angle_changed(double p_value) {

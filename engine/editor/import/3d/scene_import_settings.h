@@ -86,9 +86,7 @@ class SceneImportSettingsScreen : public Control {
 
 	EditorInspector *inspector = nullptr;
 	EditorInspector *material_inspector = nullptr;
-	Label *material_editor_status = nullptr;
 	Button *material_create_button = nullptr;
-	Button *material_matte_button = nullptr;
 	Button *material_save_button = nullptr;
 	CheckButton *material_preview_on_model_toggle = nullptr;
 	bool material_preview_on_model = true;
@@ -384,7 +382,6 @@ class SceneImportSettingsScreen : public Control {
 	void _property_split_dragged(int p_offset);
 	void _update_material_editor();
 	void _material_create_button_pressed();
-	void _material_matte_button_pressed();
 	void _material_save_button_pressed();
 	void _material_preview_on_model_toggled(bool p_enabled);
 	void _material_inspector_property_edited(const String &p_name);
