@@ -2251,7 +2251,7 @@ Error SceneImportSettingsScreen::_save_modified_external_materials() {
 			return ERR_INVALID_PARAMETER;
 		}
 
-		Error err = ResourceSaver::save(md.material, path);
+		Error err = ResourceSaver::save(md.material, path, ResourceSaver::FLAG_CHANGE_PATH);
 		if (err != OK) {
 			EditorNode::get_singleton()->add_io_error(TTR("Can't save material changes:") + "\n\t" + path);
 			return err;
@@ -3286,6 +3286,11 @@ void fragment() {
 	material_create_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_create_button_pressed));
 	material_tab->add_child(material_create_button);
 
+	material_save_button = memnew(Button);
+	material_save_button->set_text(TTR("Save Material"));
+	material_save_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_save_button_pressed));
+	material_tab->add_child(material_save_button);
+
 	material_inspector = memnew(EditorInspector);
 	material_inspector->set_custom_minimum_size(Size2(300 * EDSCALE, 0));
 	material_inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -3733,7 +3738,7 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 }
 
 void SceneImportSettingsScreen::_update_material_editor() {
-	if (!material_inspector || !material_editor_status || !material_create_button || !material_preview_on_model_toggle) {
+	if (!material_inspector || !material_editor_status || !material_create_button || !material_save_button || !material_preview_on_model_toggle) {
 		return;
 	}
 	const bool has_material = selected_type == "Material" && material_map.has(selected_id);
@@ -3741,6 +3746,7 @@ void SceneImportSettingsScreen::_update_material_editor() {
 	material_create_button->hide();
 	material_inspector->edit(nullptr);
 	material_inspector->hide();
+	material_save_button->hide();
 
 	if (!has_material) {
 		material_editor_status->set_text(TTR("Select a material to edit its properties and preview it on the model."));
@@ -3766,10 +3772,12 @@ void SceneImportSettingsScreen::_update_material_editor() {
 		material_path = ResourceUID::uid_to_path(material_path);
 	}
 	if (md.modified) {
-		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Apply Changes to save the material."), material_path.get_file()));
+		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Save Material or Apply Changes to save."), material_path.get_file()));
 	} else {
-		material_editor_status->set_text(vformat(TTR("Editing %s. Material changes are saved when you click Apply Changes."), material_path.get_file()));
+		material_editor_status->set_text(vformat(TTR("Editing %s. Save Material writes the resource; Apply Changes also reimports the model."), material_path.get_file()));
 	}
+	material_save_button->set_disabled(!md.modified);
+	material_save_button->show();
 	material_inspector->edit(md.material.ptr());
 	material_inspector->show();
 }
@@ -3778,6 +3786,25 @@ void SceneImportSettingsScreen::_material_create_button_pressed() {
 	if (selected_type == "Material" && material_map.has(selected_id)) {
 		_menu_callback(ACTION_EXTRACT_MATERIALS);
 	}
+}
+
+void SceneImportSettingsScreen::_material_save_button_pressed() {
+	if (selected_type != "Material" || !material_map.has(selected_id)) {
+		return;
+	}
+	MaterialData &md = material_map[selected_id];
+	if (!md.modified) {
+		return;
+	}
+	if (_save_modified_external_materials() != OK) {
+		return;
+	}
+	String material_path;
+	if (md.settings.has("use_external/fallback_path")) {
+		material_path = md.settings["use_external/fallback_path"];
+	}
+	material_editor_status->set_text(vformat(TTR("Saved %s."), material_path.get_file()));
+	material_save_button->set_disabled(true);
 }
 
 void SceneImportSettingsScreen::_material_preview_on_model_toggled(bool p_enabled) {
@@ -3807,12 +3834,13 @@ void SceneImportSettingsScreen::_material_inspector_property_edited(const String
 	}
 	MaterialData &md = material_map[selected_id];
 	md.modified = true;
+	material_save_button->set_disabled(false);
 	String material_path;
 	if (md.settings.has("use_external/fallback_path")) {
 		material_path = md.settings["use_external/fallback_path"];
 	}
 	if (material_editor_status) {
-		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Apply Changes to save the material."), material_path.get_file()));
+		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Save Material or Apply Changes to save."), material_path.get_file()));
 	}
 }
 
