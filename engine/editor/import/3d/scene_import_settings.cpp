@@ -51,6 +51,8 @@
 #include "scene/animation/animation_player.h"
 #include "scene/gui/scroll_container.h"
 #include "scene/gui/check_button.h"
+#include "scene/gui/button.h"
+#include "scene/gui/box_container.h"
 #include "scene/gui/grid_container.h"
 #include "scene/gui/spin_box.h"
 #include "scene/gui/separator.h"
@@ -647,7 +649,9 @@ void SceneImportSettingsScreen::_update_view_gizmos() {
 		previous_rest_as_reset = new_rest_as_reset;
 	}
 	if (reshow_settings) {
-		_re_import();
+		if (_re_import() != OK) {
+			return;
+		}
 		open_settings(base_path);
 		return;
 	}
@@ -754,29 +758,36 @@ void SceneImportSettingsScreen::_update_camera() {
 	float rot_y = cam_rot_y;
 	float zoom = cam_zoom;
 	Vector2 pan;
-if (selected_type == "Node" || selected_type == "Animation" || selected_type.is_empty()) {
-	camera_aabb = contents_aabb;
-	pan = cam_pan;
-} else {
-	if (mesh_preview->get_mesh().is_valid()) {
-		camera_aabb = mesh_preview->get_transform().xform(mesh_preview->get_mesh()->get_aabb());
+	if (selected_type == "Node" || selected_type == "Animation" || selected_type.is_empty() || (selected_type == "Material" && material_preview_on_model)) {
+		camera_aabb = contents_aabb;
+		pan = cam_pan;
+		if (selected_type == "Material" && material_map.has(selected_id)) {
+			const MaterialData &md = material_map[selected_id];
+			rot_x = md.cam_rot_x;
+			rot_y = md.cam_rot_y;
+			zoom = md.cam_zoom;
+			pan = md.cam_pan;
+		}
 	} else {
-		camera_aabb = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
+		if (mesh_preview->get_mesh().is_valid()) {
+			camera_aabb = mesh_preview->get_transform().xform(mesh_preview->get_mesh()->get_aabb());
+		} else {
+			camera_aabb = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
+		}
+		if (selected_type == "Mesh" && mesh_map.has(selected_id)) {
+			const MeshData &md = mesh_map[selected_id];
+			rot_x = md.cam_rot_x;
+			rot_y = md.cam_rot_y;
+			zoom = md.cam_zoom;
+			pan = md.cam_pan;
+		} else if (selected_type == "Material" && material_map.has(selected_id)) {
+			const MaterialData &md = material_map[selected_id];
+			rot_x = md.cam_rot_x;
+			rot_y = md.cam_rot_y;
+			zoom = md.cam_zoom;
+			pan = md.cam_pan;
+		}
 	}
-	if (selected_type == "Mesh" && mesh_map.has(selected_id)) {
-		const MeshData &md = mesh_map[selected_id];
-		rot_x = md.cam_rot_x;
-		rot_y = md.cam_rot_y;
-		zoom = md.cam_zoom;
-		pan = md.cam_pan;
-	} else if (selected_type == "Material" && material_map.has(selected_id)) {
-		const MaterialData &md = material_map[selected_id];
-		rot_x = md.cam_rot_x;
-		rot_y = md.cam_rot_y;
-		zoom = md.cam_zoom;
-		pan = md.cam_pan;
-	}
-}
 
 	// The workspace can resize before a model is loaded. Never pass zero or
 	// non-finite dimensions to the renderer's orthographic projection.
@@ -1500,6 +1511,9 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 		memdelete(scene);
 		scene = nullptr;
 	}
+	if (material_inspector) {
+		material_inspector->edit(nullptr);
+	}
 
 	scene_import_settings_data->settings = nullptr;
 	scene_import_settings_data->path = p_path;
@@ -1667,6 +1681,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 
 	// Start with the root item (Scene) selected.
 	scene_tree->get_root()->select(0);
+	_update_material_editor();
 
 	file_label->set_text(base_path.get_file());
 	file_label->set_tooltip_text(base_path);
@@ -1807,17 +1822,23 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 		scene_import_settings_data->category = ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH;
 	} else if (p_type == "Material") {
 		node_selected->hide();
-		if (Object::cast_to<Node3D>(scene)) {
-			Object::cast_to<Node3D>(scene)->hide();
-		}
-
-		mesh_preview->show();
 		_reset_animation();
 
 		MaterialData &md = material_map[p_id];
 
 		material_preview->set_material(md.material);
-		mesh_preview->set_mesh(material_preview);
+		if (material_preview_on_model) {
+			if (Object::cast_to<Node3D>(scene)) {
+				Object::cast_to<Node3D>(scene)->show();
+			}
+			mesh_preview->hide();
+		} else {
+			if (Object::cast_to<Node3D>(scene)) {
+				Object::cast_to<Node3D>(scene)->hide();
+			}
+			mesh_preview->set_mesh(material_preview);
+			mesh_preview->show();
+		}
 
 		if (p_from != mesh_tree) {
 			md.mesh_node->uncollapse_tree();
@@ -1841,6 +1862,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 
 	selected_type = p_type;
 	selected_id = p_id;
+	_update_material_editor();
 	lod_selected_level = 0;
 	lod_auto_toggle->set_disabled(false);
 	_apply_lod_preview();
@@ -1882,7 +1904,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	}
 	_update_lod_settings_panel();
 	if (settings_tabs) {
-		const int tab = p_type == "Mesh" ? 0 : 4;
+		const int tab = p_type == "Mesh" ? 0 : (p_type == "Material" ? 5 : 4);
 		settings_tabs->set_current_tab(tab);
 		_settings_tab_changed(tab);
 	}
@@ -2203,7 +2225,47 @@ void SceneImportSettingsScreen::_viewport_input(const Ref<InputEvent> &p_input) 
 	}
 }
 
-void SceneImportSettingsScreen::_re_import() {
+Error SceneImportSettingsScreen::_save_modified_external_materials() {
+	for (KeyValue<String, MaterialData> &entry : material_map) {
+		MaterialData &md = entry.value;
+		if (!md.modified) {
+			continue;
+		}
+		if (md.material.is_null() || !md.settings.has("use_external/enabled") || !(bool)md.settings["use_external/enabled"]) {
+			EditorNode::get_singleton()->add_io_error(TTR("Can't save material changes. Create an editable material file first."));
+			return ERR_INVALID_PARAMETER;
+		}
+
+		String path;
+		if (md.settings.has("use_external/fallback_path")) {
+			path = md.settings["use_external/fallback_path"];
+		}
+		if (path.is_empty() && md.settings.has("use_external/path")) {
+			path = md.settings["use_external/path"];
+		}
+		if (path.begins_with("uid://")) {
+			path = ResourceUID::uid_to_path(path);
+		}
+		if (!path.is_resource_file()) {
+			EditorNode::get_singleton()->add_io_error(TTR("Can't save material changes to an invalid resource path:") + "\n\t" + path);
+			return ERR_INVALID_PARAMETER;
+		}
+
+		Error err = ResourceSaver::save(md.material, path);
+		if (err != OK) {
+			EditorNode::get_singleton()->add_io_error(TTR("Can't save material changes:") + "\n\t" + path);
+			return err;
+		}
+		md.modified = false;
+	}
+	return OK;
+}
+
+Error SceneImportSettingsScreen::_re_import() {
+	Error material_save_error = _save_modified_external_materials();
+	if (material_save_error != OK) {
+		return material_save_error;
+	}
 	HashMap<StringName, Variant> main_settings;
 
 	// The inspector's current map belongs to the selected subresource. Build
@@ -2280,6 +2342,7 @@ void SceneImportSettingsScreen::_re_import() {
 
 	_cleanup(); // Prevent skeletons and other pointers from pointing to dangling references.
 	EditorFileSystem::get_singleton()->reimport_file_with_custom_parameters(base_path, _resource_importer_scene->get_importer_name(), main_settings);
+	return OK;
 }
 
 void SceneImportSettingsScreen::_update_empty_state() {
@@ -2316,6 +2379,9 @@ void SceneImportSettingsScreen::_close_screen() {
 	node_map.clear();
 	defaults.clear();
 	base_subresource_settings.clear();
+	if (material_inspector) {
+		material_inspector->edit(nullptr);
+	}
 
 	scene_tree->clear();
 	material_tree->clear();
@@ -2332,6 +2398,7 @@ void SceneImportSettingsScreen::_close_screen() {
 	}
 	animation_preview->hide();
 	inspector->edit(nullptr);
+	_update_material_editor();
 
 	mesh_stats_map.clear();
 	stats_selected_mesh = Ref<Mesh>();
@@ -2409,7 +2476,9 @@ void SceneImportSettingsScreen::_reimport_button_pressed() {
 	_get_active_camera_ptrs(&rot_x, &rot_y, &zoom, &pan);
 	const float saved_rot_x = *rot_x, saved_rot_y = *rot_y, saved_zoom = *zoom;
 	const Vector2 saved_pan = *pan;
-	_re_import();
+	if (_re_import() != OK) {
+		return;
+	}
 	open_settings(path, import_type);
 	if (!scene) {
 		return;
@@ -2431,6 +2500,20 @@ void SceneImportSettingsScreen::_reimport_button_pressed() {
 		}
 		lod_selected_level = MIN(old_selected_level, _get_custom_lod_levels().size());
 		_update_lod_settings_panel();
+		settings_tabs->set_current_tab(old_settings_tab);
+		_settings_tab_changed(old_settings_tab);
+	} else if (old_type == "Material" && material_map.has(old_id)) {
+		MaterialData &md = material_map[old_id];
+		md.cam_rot_x = saved_rot_x;
+		md.cam_rot_y = saved_rot_y;
+		md.cam_zoom = saved_zoom;
+		md.cam_pan = saved_pan;
+		if (md.material_node) {
+			md.material_node->uncollapse_tree();
+			md.material_node->select(0);
+		}
+		_select(material_tree, "Material", old_id);
+		data_mode->set_current_tab(old_data_tab);
 		settings_tabs->set_current_tab(old_settings_tab);
 		_settings_tab_changed(old_settings_tab);
 	} else if (old_type.is_empty() || old_type == "Node" || old_type == "Animation") {
@@ -2746,9 +2829,16 @@ void SceneImportSettingsScreen::_save_dir_confirm() {
 	}
 
 	if (current_action == ACTION_EXTRACT_MATERIALS) {
-		//as this happens right now, the scene needs to be saved and reimported.
-		_re_import();
+		// Keep the selected material open in its editable resource view after extraction.
+		const String selected_material_id = selected_type == "Material" ? selected_id : String();
+		if (_re_import() != OK) {
+			return;
+		}
 		open_settings(base_path);
+		if (!selected_material_id.is_empty() && material_map.has(selected_material_id)) {
+			_select(material_tree, "Material", selected_material_id);
+			data_mode->set_current_tab(2);
+		}
 	} else {
 		scene_import_settings_data->notify_property_list_changed();
 	}
@@ -2771,7 +2861,7 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	action_menu->set_focus_mode(Control::FOCUS_ALL);
 	menu_hb->add_child(action_menu);
 
-	action_menu->get_popup()->add_item(TTR("Extract Materials"), ACTION_EXTRACT_MATERIALS);
+	action_menu->get_popup()->add_item(TTR("Create Editable Materials…"), ACTION_EXTRACT_MATERIALS);
 	action_menu->get_popup()->add_separator();
 	action_menu->get_popup()->add_item(TTR("Set Animation Save Paths"), ACTION_CHOOSE_ANIMATION_SAVE_PATHS);
 	action_menu->get_popup()->add_item(TTR("Set Mesh Save Paths"), ACTION_CHOOSE_MESH_SAVE_PATHS);
@@ -3174,6 +3264,36 @@ void fragment() {
 	}
 	inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->get_tab_control(4)->add_child(inspector);
+
+	VBoxContainer *material_tab = memnew(VBoxContainer);
+	material_tab->set_name(TTR("Material"));
+	material_tab->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	material_tab->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_tabs->add_child(material_tab);
+
+	material_preview_on_model_toggle = memnew(CheckButton);
+	material_preview_on_model_toggle->set_text(TTR("Preview on full model"));
+	material_preview_on_model_toggle->set_pressed_no_signal(material_preview_on_model);
+	material_preview_on_model_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_material_preview_on_model_toggled));
+	material_tab->add_child(material_preview_on_model_toggle);
+
+	material_editor_status = memnew(Label);
+	material_editor_status->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	material_tab->add_child(material_editor_status);
+
+	material_create_button = memnew(Button);
+	material_create_button->set_text(TTR("Create editable material files…"));
+	material_create_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_create_button_pressed));
+	material_tab->add_child(material_create_button);
+
+	material_inspector = memnew(EditorInspector);
+	material_inspector->set_custom_minimum_size(Size2(300 * EDSCALE, 0));
+	material_inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	material_inspector->set_use_doc_hints(true);
+	material_inspector->set_theme_type_variation(SNAME("EditorInspectorForeground"));
+	material_inspector->connect(SNAME("property_edited"), callable_mp(this, &SceneImportSettingsScreen::_material_inspector_property_edited));
+	material_tab->add_child(material_inspector);
+	_update_material_editor();
 
 	scene_import_settings_data = memnew(SceneImportSettingsData);
 	settings_tabs->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_changed));
@@ -3578,7 +3698,11 @@ void SceneImportSettingsScreen::_lod_generate_toggled(bool p_enabled) {
 }
 
 void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
-	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 4) {
+	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 5) {
+		return;
+	}
+	if (p_tab == 5) {
+		_update_material_editor();
 		return;
 	}
 	if (p_tab == 0) {
@@ -3606,6 +3730,90 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 		hint->set_visible(!message.is_empty());
 	}
 	scene_import_settings_data->notify_property_list_changed();
+}
+
+void SceneImportSettingsScreen::_update_material_editor() {
+	if (!material_inspector || !material_editor_status || !material_create_button || !material_preview_on_model_toggle) {
+		return;
+	}
+	const bool has_material = selected_type == "Material" && material_map.has(selected_id);
+	material_preview_on_model_toggle->set_visible(has_material);
+	material_create_button->hide();
+	material_inspector->edit(nullptr);
+	material_inspector->hide();
+
+	if (!has_material) {
+		material_editor_status->set_text(TTR("Select a material to edit its properties and preview it on the model."));
+		return;
+	}
+
+	MaterialData &md = material_map[selected_id];
+	const bool is_external = md.settings.has("use_external/enabled") && (bool)md.settings["use_external/enabled"];
+	if (!is_external) {
+		material_editor_status->set_text(TTR("Create editable material files first. This keeps your changes when the model is reimported."));
+		material_create_button->show();
+		return;
+	}
+
+	String material_path;
+	if (md.settings.has("use_external/fallback_path")) {
+		material_path = md.settings["use_external/fallback_path"];
+	}
+	if (material_path.is_empty() && md.settings.has("use_external/path")) {
+		material_path = md.settings["use_external/path"];
+	}
+	if (material_path.begins_with("uid://")) {
+		material_path = ResourceUID::uid_to_path(material_path);
+	}
+	if (md.modified) {
+		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Apply Changes to save the material."), material_path.get_file()));
+	} else {
+		material_editor_status->set_text(vformat(TTR("Editing %s. Material changes are saved when you click Apply Changes."), material_path.get_file()));
+	}
+	material_inspector->edit(md.material.ptr());
+	material_inspector->show();
+}
+
+void SceneImportSettingsScreen::_material_create_button_pressed() {
+	if (selected_type == "Material" && material_map.has(selected_id)) {
+		_menu_callback(ACTION_EXTRACT_MATERIALS);
+	}
+}
+
+void SceneImportSettingsScreen::_material_preview_on_model_toggled(bool p_enabled) {
+	material_preview_on_model = p_enabled;
+	if (selected_type != "Material" || !material_map.has(selected_id)) {
+		return;
+	}
+	if (p_enabled) {
+		if (Object::cast_to<Node3D>(scene)) {
+			Object::cast_to<Node3D>(scene)->show();
+		}
+		mesh_preview->hide();
+	} else {
+		if (Object::cast_to<Node3D>(scene)) {
+			Object::cast_to<Node3D>(scene)->hide();
+		}
+		material_preview->set_material(material_map[selected_id].material);
+		mesh_preview->set_mesh(material_preview);
+		mesh_preview->show();
+	}
+	_update_camera();
+}
+
+void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {
+	if (selected_type != "Material" || !material_map.has(selected_id)) {
+		return;
+	}
+	MaterialData &md = material_map[selected_id];
+	md.modified = true;
+	String material_path;
+	if (md.settings.has("use_external/fallback_path")) {
+		material_path = md.settings["use_external/fallback_path"];
+	}
+	if (material_editor_status) {
+		material_editor_status->set_text(vformat(TTR("Unsaved changes to %s. Click Apply Changes to save the material."), material_path.get_file()));
+	}
 }
 
 void SceneImportSettingsScreen::_lod_merge_angle_changed(double p_value) {

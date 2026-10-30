@@ -50,11 +50,15 @@
 
 class EditorFileDialog;
 class EditorInspector;
+class Button;
+class CheckButton;
 class ImporterMesh;
+class Label;
 class ShaderMaterial;
 class SceneImportSettingsData;
 class Timer;
 class SpinBox;
+class VBoxContainer;
 
 // Full-size workspace screen (the "Model" main editor tab) hosting the
 // advanced scene import settings. Formerly a modal ConfirmationDialog
@@ -81,6 +85,11 @@ class SceneImportSettingsScreen : public Control {
 	Tree *material_tree = nullptr;
 
 	EditorInspector *inspector = nullptr;
+	EditorInspector *material_inspector = nullptr;
+	Label *material_editor_status = nullptr;
+	Button *material_create_button = nullptr;
+	CheckButton *material_preview_on_model_toggle = nullptr;
+	bool material_preview_on_model = true;
 
 	SubViewport *base_viewport = nullptr;
 
@@ -265,6 +274,7 @@ class SceneImportSettingsScreen : public Control {
 
 	struct MaterialData {
 		bool has_import_id;
+		bool modified = false;
 		Ref<Material> material;
 		TreeItem *scene_node = nullptr;
 		TreeItem *mesh_node = nullptr;
@@ -367,6 +377,11 @@ class SceneImportSettingsScreen : public Control {
 	void _lod_generate_toggled(bool p_enabled);
 	void _lod_merge_angle_changed(double p_value);
 	void _settings_tab_changed(int p_tab);
+	void _update_material_editor();
+	void _material_create_button_pressed();
+	void _material_preview_on_model_toggled(bool p_enabled);
+	void _material_inspector_property_edited(const String &p_name);
+	Error _save_modified_external_materials();
 	void _lod_reset_levels();
 	void _lod_preset_selected(int p_index);
 	void _select(Tree *p_from, const String &p_type, const String &p_id);
@@ -397,7 +412,7 @@ class SceneImportSettingsScreen : public Control {
 	SceneImportSettingsData *scene_import_settings_data = nullptr;
 	Ref<ResourceImporterScene> _resource_importer_scene;
 
-	void _re_import();
+	Error _re_import();
 
 	String base_path;
 	String current_import_type = "PackedScene";
