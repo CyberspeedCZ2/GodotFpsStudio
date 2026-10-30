@@ -68,7 +68,7 @@ Ref<Environment> create_fps_level_environment() {
 	environment->set_background(Environment::BG_SKY);
 	environment->set_sky(sky);
 	environment->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
-	environment->set_ambient_light_energy(1.0);
+	environment->set_ambient_light_energy(1.35);
 	environment->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
 	// Fade the preview floor's finite edge into the same color as the sky
 	// horizon, while leaving the sky itself unchanged.
@@ -77,9 +77,9 @@ Ref<Environment> create_fps_level_environment() {
 	environment->set_fog_light_color(get_fps_level_horizon_color());
 	environment->set_fog_light_energy(1.0);
 	environment->set_fog_sky_affect(0.0);
-	environment->set_fog_depth_begin(45.0);
-	environment->set_fog_depth_end(220.0);
-	environment->set_fog_depth_curve(1.15);
+	environment->set_fog_depth_begin(30.0);
+	environment->set_fog_depth_end(600.0);
+	environment->set_fog_depth_curve(1.2);
 	return environment;
 }
 
@@ -87,12 +87,15 @@ DirectionalLight3D *create_fps_level_sun() {
 	DirectionalLight3D *sun = memnew(DirectionalLight3D);
 	sun->set_rotation(Vector3(-0.8, -0.6, 0.0));
 	sun->set_color(Color(1.0, 1.0, 1.0));
-	sun->set_param(Light3D::PARAM_ENERGY, 1.0);
+	sun->set_param(Light3D::PARAM_ENERGY, 1.2);
 	sun->set_shadow(true);
 	sun->set_shadow_mode(DirectionalLight3D::SHADOW_PARALLEL_4_SPLITS);
 	sun->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, 100.0);
 	sun->set_param(Light3D::PARAM_SHADOW_OPACITY, 0.55);
 	sun->set_param(Light3D::PARAM_SHADOW_BLUR, 2.0);
+	// Keep the sun lighting the model without drawing its disk or moving its
+	// glow across the sky as the preview camera orbits around the model.
+	sun->set_sky_mode(DirectionalLight3D::SKY_MODE_LIGHT_ONLY);
 	return sun;
 }
 

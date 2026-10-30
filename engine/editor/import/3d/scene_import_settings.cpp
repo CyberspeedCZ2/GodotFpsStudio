@@ -835,7 +835,7 @@ void SceneImportSettingsScreen::_update_preview_floor(const AABB &p_bounds) {
 	const real_t extent = MAX(p_bounds.get_longest_axis_size(), (real_t)0.5);
 	// Extend the simple plane well beyond the visible horizon. Depth fog fades
 	// it into the sky before its finite edge can appear in the viewport.
-	preview_floor_size = CLAMP(extent * 10.0, 1000.0, 4000.0);
+	preview_floor_size = CLAMP(extent * 10.0, 1600.0, 4000.0);
 	preview_floor_mesh->set_size(Size2(preview_floor_size, preview_floor_size));
 	const real_t grid_step = extent < 8.0 ? 0.5 : (extent < 40.0 ? 1.0 : (extent < 160.0 ? 5.0 : 10.0));
 	const real_t floor_y = p_bounds.position.y - MAX(extent * 0.001, (real_t)0.002);
