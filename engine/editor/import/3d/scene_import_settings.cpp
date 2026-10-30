@@ -3350,7 +3350,7 @@ void SceneImportSettingsScreen::_set_custom_lod_levels(const Array &p_levels) {
 		lod_transition_estimate->set_text(TTR("Updating LOD preview…"));
 	}
 	if (lod_status_label) {
-		lod_status_label->set_text(TTR("Changes are saved with this model. Preview updates live; Reimport applies them to the project asset."));
+		lod_status_label->set_text(TTR("Updating LOD preview… Changes are pending. Apply Changes generates the project asset."));
 	}
 	_schedule_lod_edit_update();
 }
@@ -3469,6 +3469,7 @@ void SceneImportSettingsScreen::_lod_remove_level(int p_index) {
 	if (p_index < 0 || p_index >= levels.size()) {
 		return;
 	}
+	const int removed_level = p_index + 1; // LOD 0 is the retained source mesh.
 	MeshData &md = mesh_map[selected_id];
 	// Keep the target of the next surviving level relative to its new
 	// predecessor when the removed level was in the middle of the chain.
@@ -3481,7 +3482,15 @@ void SceneImportSettingsScreen::_lod_remove_level(int p_index) {
 	levels.remove_at(p_index);
 	md.preview_lod_map.clear();
 	_set_custom_lod_levels(levels);
-	lod_selected_level = MIN(lod_selected_level, levels.size());
+	// Keep the same surviving LOD selected when an earlier row is removed.
+	// If the selected row itself was removed, keep its index to select the
+	// next level that shifted into its place, or fall back to the previous
+	// level when the removed row was the last one.
+	if (lod_selected_level > removed_level) {
+		lod_selected_level--;
+	} else if (lod_selected_level == removed_level) {
+		lod_selected_level = MIN(removed_level, levels.size());
+	}
 	_update_lod_settings_panel();
 }
 
@@ -3531,7 +3540,7 @@ void SceneImportSettingsScreen::_lod_generate_toggled(bool p_enabled) {
 		lod_transition_estimate->set_text(TTR("Updating LOD preview…"));
 	}
 	if (lod_status_label) {
-		lod_status_label->set_text(TTR("Changes are saved with this model. Preview updates live; Reimport applies them to the project asset."));
+		lod_status_label->set_text(TTR("Updating LOD preview… Changes are pending. Apply Changes generates the project asset."));
 	}
 	scene_import_settings_data->current["generate/lods"] = p_enabled ? 1 : 2;
 	scene_import_settings_data->notify_property_list_changed();
@@ -3587,7 +3596,7 @@ void SceneImportSettingsScreen::_lod_merge_angle_changed(double p_value) {
 	scene_import_settings_data->current["lods/normal_merge_angle"] = p_value;
 	scene_import_settings_data->notify_property_list_changed();
 	if (lod_status_label) {
-		lod_status_label->set_text(TTR("Changes are saved with this model. Preview updates live; Reimport applies them to the project asset."));
+		lod_status_label->set_text(TTR("Updating LOD preview… Changes are pending. Apply Changes generates the project asset."));
 	}
 	_schedule_lod_edit_update();
 }
@@ -3721,7 +3730,14 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 	lod_selected_level = CLAMP(lod_selected_level, 0, levels.size());
 	lod_status_label = memnew(Label);
 	lod_status_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	String lod_status = lod_settings_pending ? TTR("Changes are saved with this model. Preview updates live; Apply Changes generates the project asset once when you are ready.") : TTR("Statistics from the current imported mesh.");
+	String lod_status;
+	if (md.lod_preview_dirty) {
+		lod_status = TTR("Updating LOD preview… Changes are pending. Apply Changes generates the project asset when you are ready.");
+	} else if (lod_settings_pending) {
+		lod_status = TTR("Preview is up to date. LOD settings are saved with this model; Apply Changes generates the project asset when you are ready.");
+	} else {
+		lod_status = TTR("Statistics from the current imported mesh.");
+	}
 	if (!md.has_import_id) {
 		lod_status = TTR("This mesh has no stable import ID. Name it in the source file before saving per-mesh LOD settings.");
 	} else if (!lod_settings_pending && enabled && md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]) && levels.size() > MAX(stats_level_faces.size() - 1, 0)) {
@@ -3750,14 +3766,14 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 		table->add_child(select);
 		const bool known = !md.lod_preview_dirty && i < stats_level_faces.size();
 		Label *triangles = memnew(Label);
-		triangles->set_text(known ? _format_stats_count(stats_level_faces[i]) : (lod_settings_pending ? TTR("Updating…") : TTR("Unavailable")));
+		triangles->set_text(known ? _format_stats_count(stats_level_faces[i]) : (md.lod_preview_dirty ? TTR("Updating…") : TTR("Unavailable")));
 		if (!known) {
 			triangles->set_tooltip_text(TTR("This LOD level is being generated in the preview, or the mesh could not be simplified further."));
 		}
 		triangles->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 		table->add_child(triangles);
 		Label *vertices = memnew(Label);
-		vertices->set_text(known && i < stats_level_vertices.size() ? _format_stats_count(stats_level_vertices[i]) : (lod_settings_pending ? TTR("Updating…") : TTR("Unavailable")));
+		vertices->set_text(known && i < stats_level_vertices.size() ? _format_stats_count(stats_level_vertices[i]) : (md.lod_preview_dirty ? TTR("Updating…") : TTR("Unavailable")));
 		if (!known) {
 			vertices->set_tooltip_text(TTR("This LOD level is being generated in the preview, or the mesh could not be simplified further."));
 		}
@@ -3786,7 +3802,7 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 	content->add_child(selected);
 	if (lod_selected_level == 0) {
 		Label *base_hint = memnew(Label);
-		base_hint->set_text(TTR("The original mesh is always retained."));
+		base_hint->set_text(md.lod_preview_dirty ? TTR("Updating LOD preview…") : TTR("The original mesh is always retained."));
 		base_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 		content->add_child(base_hint);
 	} else {

@@ -22,7 +22,7 @@ U vybrané úrovně jsou dostupné:
 
 Odhad vzdálenosti používá referenční kameru 1920 × 1080, vertikální zorné pole 75°, měřítko instance 1, LOD bias 1 a aktuální projektový práh LOD. Jde o orientační hodnotu: skutečné přepnutí závisí také na kameře, rozlišení, měřítku instance, projektových nastaveních a jednotlivých površích meshe.
 
-Seznam úrovní zobrazuje počty trojúhelníků a vrcholů. Během přepočtu náhledu se hodnoty označí jako aktualizované; pokud mesh nelze dále zjednodušit, nedostupná úroveň nemá statistiky. Po odstranění úrovně se ruční náhled omezí na rozsah, který skutečně zůstal.
+Seznam úrovní zobrazuje počty trojúhelníků a vrcholů. Během přepočtu náhledu jsou neaktuální hodnoty označené „Updating…“. Po dokončení se nedostupné úrovně zobrazí jako „Unavailable“; čekání na tlačítko Apply Changes se od právě probíhající aktualizace rozlišuje. Po odstranění úrovně se výběr zachová u stejného zbývajícího LOD, případně přejde na nejbližší úroveň, pokud byla odstraněna právě vybraná.
 
 ## Náhled bez opakovaného importu
 
