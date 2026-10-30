@@ -75,6 +75,9 @@ static constexpr real_t FRAME_MARGIN = 1.15;
 static constexpr real_t PREVIEW_FOV_DEGREES = 75.0;
 static constexpr real_t REFERENCE_VIEWPORT_WIDTH = 1920.0;
 static constexpr real_t REFERENCE_ASPECT = 16.0 / 9.0;
+static constexpr real_t MODEL_SETTINGS_PANEL_MIN_WIDTH = 320.0;
+static constexpr real_t MODEL_SETTINGS_PANEL_DEFAULT_WIDTH = 400.0;
+static const String MODEL_SETTINGS_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/inspector_width";
 // Orthographic zoom limits (fraction of the fitted content size).
 static constexpr real_t ZOOM_MIN = 0.05;
 static constexpr real_t ZOOM_MAX = 20.0;
@@ -3247,9 +3250,7 @@ void fragment() {
 	settings_tabs->set_h_size_flags(Control::SIZE_FILL);
 	settings_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	property_split->add_child(settings_tabs);
-	// Keep the inspector usable at 320 px minimum, but start it 80 px wider.
-	// A negative split offset moves the divider left to widen the last child.
-	property_split->set_split_offset(-80 * EDSCALE);
+	property_split->connect(SNAME("dragged"), callable_mp(this, &SceneImportSettingsScreen::_property_split_dragged));
 	_build_lod_settings_panel();
 	ScrollContainer *lod_panel_scroll = memnew(ScrollContainer);
 	lod_panel_scroll->set_name(TTR("LOD"));
@@ -3377,6 +3378,13 @@ void fragment() {
 	lod_edit_timer->set_one_shot(true);
 	lod_edit_timer->connect("timeout", callable_mp(this, &SceneImportSettingsScreen::_finish_lod_edit_update));
 	add_child(lod_edit_timer);
+
+	// Restore the user's panel width, or use a 400 px default while enforcing
+	// the inspector's 320 px minimum. Widths are stored before editor scaling.
+	const real_t panel_minimum_width = settings_tabs->get_combined_minimum_size().x;
+	const real_t saved_panel_width = MAX((real_t)EDITOR_DEF(MODEL_SETTINGS_PANEL_WIDTH_SETTING, MODEL_SETTINGS_PANEL_DEFAULT_WIDTH), MODEL_SETTINGS_PANEL_MIN_WIDTH) * EDSCALE;
+	const real_t desired_panel_width = MAX(panel_minimum_width, saved_panel_width);
+	property_split->set_split_offset(Math::round(panel_minimum_width - desired_panel_width));
 
 	EditorNode::get_singleton()->register_hdr_viewport(base_viewport);
 	
@@ -3741,6 +3749,15 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 		hint->set_visible(!message.is_empty());
 	}
 	scene_import_settings_data->notify_property_list_changed();
+}
+
+void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
+	if (!settings_tabs) {
+		return;
+	}
+	const real_t minimum_width = settings_tabs->get_combined_minimum_size().x;
+	const real_t panel_width = MAX(minimum_width, minimum_width - p_offset) / EDSCALE;
+	EditorSettings::get_singleton()->set_setting(MODEL_SETTINGS_PANEL_WIDTH_SETTING, Math::round(panel_width));
 }
 
 void SceneImportSettingsScreen::_update_material_editor() {
