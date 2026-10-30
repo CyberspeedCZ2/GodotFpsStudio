@@ -96,8 +96,6 @@ class SceneImportSettingsScreen : public Control {
 	bool has_skeleton_aabb = false;
 	AABB skeleton_aabb;
 
-	Button *light_1_switch = nullptr;
-	Button *light_rotate_switch = nullptr;
 	Button *frame_button = nullptr;
 	Button *wireframe_toggle = nullptr;
 	Button *skeleton_visibility_toggle = nullptr;
@@ -229,11 +227,6 @@ class SceneImportSettingsScreen : public Control {
 
 	Button *reimport_button = nullptr;
 	Button *close_button = nullptr;
-
-	struct ThemeCache {
-		Ref<Texture2D> light_1_icon;
-		Ref<Texture2D> rotate_icon;
-	} theme_cache;
 
 	DirectionalLight3D *light1 = nullptr;
 	MeshInstance3D *preview_floor = nullptr;
@@ -391,9 +384,6 @@ class SceneImportSettingsScreen : public Control {
 	void _scene_tree_selected();
 	void _skeleton_tree_entered(Skeleton3D *p_skeleton);
 	void _cleanup();
-	void _on_light_1_switch_pressed();
-	void _on_light_rotate_switch_pressed();
-
 	void _get_active_camera_ptrs(float **r_rot_x, float **r_rot_y, float **r_zoom, Vector2 **r_pan);
 	void _reset_camera();
 	void _viewport_input(const Ref<InputEvent> &p_input);
@@ -447,7 +437,6 @@ class SceneImportSettingsScreen : public Control {
 	Timer *lod_edit_timer = nullptr;
 
 protected:
-	virtual void _update_theme_item_cache() override;
 	void _notification(int p_what);
 
 public:

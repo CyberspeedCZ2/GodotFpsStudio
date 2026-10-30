@@ -845,7 +845,7 @@ void SceneImportSettingsScreen::_update_preview_floor(const AABB &p_bounds) {
 	preview_floor_material->set_shader_parameter("fade_distance", CLAMP(extent * 18.0, 45.0, 180.0));
 	preview_floor->show();
 
-	// Keep the soft shadow sharp around the subject without clipping it on
+	// Keep the fixed sun's shadow around the subject without clipping it on
 	// large imported models.
 	if (light1 != nullptr) {
 		light1->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, CLAMP(extent * 2.0, 20.0, 250.0));
@@ -2097,15 +2097,6 @@ void SceneImportSettingsScreen::_cleanup() {
 	set_process(false);
 }
 
-void SceneImportSettingsScreen::_on_light_1_switch_pressed() {
-	light1->set_visible(light_1_switch->is_pressed());
-}
-
-void SceneImportSettingsScreen::_on_light_rotate_switch_pressed() {
-	bool light_top_level = !light_rotate_switch->is_pressed();
-	light1->set_as_top_level_keep_local(light_top_level);
-}
-
 void SceneImportSettingsScreen::_get_active_camera_ptrs(float **r_rot_x, float **r_rot_y, float **r_zoom, Vector2 **r_pan) {
 	float *rot_x = &cam_rot_x;
 	float *rot_y = &cam_rot_y;
@@ -2451,12 +2442,6 @@ void SceneImportSettingsScreen::_reimport_button_pressed() {
 	}
 }
 
-void SceneImportSettingsScreen::_update_theme_item_cache() {
-	Control::_update_theme_item_cache();
-	theme_cache.light_1_icon = get_editor_theme_icon(SNAME("MaterialPreviewLight1"));
-	theme_cache.rotate_icon = get_editor_theme_icon(SNAME("PreviewRotate"));
-}
-
 void SceneImportSettingsScreen::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
@@ -2466,9 +2451,6 @@ void SceneImportSettingsScreen::_notification(int p_what) {
 				animation_play_button->set_button_icon(get_editor_theme_icon(SNAME("MainPlay")));
 			}
 			animation_stop_button->set_button_icon(get_editor_theme_icon(SNAME("Stop")));
-
-			light_1_switch->set_button_icon(theme_cache.light_1_icon);
-			light_rotate_switch->set_button_icon(theme_cache.rotate_icon);
 
 			frame_button->set_button_icon(get_editor_theme_icon(SNAME("CenterView")));
 			skeleton_visibility_toggle->set_button_icon(get_editor_theme_icon(SNAME("SkeletonPreview")));
@@ -2969,24 +2951,6 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	skeleton_visibility_toggle->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_update_skeleton_preview_visibility));
 	hb_tools->add_child(skeleton_visibility_toggle);
 
-	light_rotate_switch = memnew(Button);
-	light_rotate_switch->set_theme_type_variation("PreviewLightButton");
-	light_rotate_switch->set_toggle_mode(true);
-	light_rotate_switch->set_pressed(true);
-	light_rotate_switch->set_focus_mode(Control::FOCUS_NONE);
-	light_rotate_switch->set_tooltip_text(TTR("Rotate Sun With Model"));
-	light_rotate_switch->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_light_rotate_switch_pressed));
-	hb_tools->add_child(light_rotate_switch);
-
-	light_1_switch = memnew(Button);
-	light_1_switch->set_theme_type_variation("PreviewLightButton");
-	light_1_switch->set_toggle_mode(true);
-	light_1_switch->set_pressed(true);
-	light_1_switch->set_focus_mode(Control::FOCUS_NONE);
-	light_1_switch->set_tooltip_text(TTR("Sun Light"));
-	light_1_switch->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_on_light_1_switch_pressed));
-	hb_tools->add_child(light_1_switch);
-
 	// LOD selection is placed below the preview, leaving the toolbar for camera tools.
 	HBoxContainer *lod_preview_bar = memnew(HBoxContainer);
 	vp_vb->add_child(lod_preview_bar);
@@ -3056,12 +3020,13 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 
 	// Share the same sky, ambient fill and sun used by newly created FPS Levels.
 	environment = create_fps_level_environment();
-	// A custom FOV must be specified, as an orthogonal camera is used for the preview.
-	environment->set_sky_custom_fov(50.0);
+	// Leave the sky FOV at 0 so it follows the perspective camera FOV below.
 	camera->set_environment(environment);
 
 	light1 = create_fps_level_sun();
-	camera->add_child(light1);
+	// Keep the sun in preview-world space. Camera orbiting changes the view,
+	// not the light direction or the model's shadow.
+	base_viewport->add_child(light1);
 
 	// A lit floor receives the model's soft directional shadow. The fine and
 	// major grid lines are generated in the shader, so they remain stable at
@@ -3072,7 +3037,7 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 shader_type spatial;
 
 uniform vec3 floor_color : source_color = vec3(0.16, 0.18, 0.21);
-uniform vec3 horizon_color : source_color = vec3(0.6463, 0.6558, 0.6708);
+uniform vec3 horizon_color : source_color = vec3(0.43, 0.51, 0.61);
 uniform vec3 minor_grid_color : source_color = vec3(0.22, 0.32, 0.45);
 uniform vec3 major_grid_color : source_color = vec3(0.32, 0.45, 0.62);
 uniform vec2 grid_origin = vec2(0.0);

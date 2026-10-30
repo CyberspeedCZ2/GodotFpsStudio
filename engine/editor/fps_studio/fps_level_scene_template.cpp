@@ -46,18 +46,23 @@ static void _add_owned_child(Node *p_root, Node *p_child) {
 }
 
 Color get_fps_level_horizon_color() {
-	// Keep both halves of the procedural sky on the same horizon color. This
-	// removes the hard seam where the sky and ground portions meet.
-	return Color(0.6463, 0.6558, 0.6708);
+	// Keep a muted blue-gray horizon shared by both halves of the sky and the
+	// depth fog, avoiding a bright white band where the floor meets the sky.
+	return Color(0.43, 0.51, 0.61);
 }
 
 Ref<Environment> create_fps_level_environment() {
 	Ref<ProceduralSkyMaterial> sky_material;
 	sky_material.instantiate();
-	// Match the cool sky and warm ground used by the Godot 3D preview, with a
-	// single shared horizon color so there is no visible color band.
+	// Use a smooth, cool gradient instead of the default dark brown ground
+	// hemisphere, which can show through around the model at oblique angles.
+	sky_material->set_sky_top_color(Color(0.30, 0.42, 0.58));
 	sky_material->set_sky_horizon_color(get_fps_level_horizon_color());
+	sky_material->set_sky_curve(0.65);
+	sky_material->set_ground_bottom_color(get_fps_level_horizon_color());
 	sky_material->set_ground_horizon_color(get_fps_level_horizon_color());
+	sky_material->set_ground_curve(0.65);
+	sky_material->set_sun_angle_max(0.0);
 
 	Ref<Sky> sky;
 	sky.instantiate();
