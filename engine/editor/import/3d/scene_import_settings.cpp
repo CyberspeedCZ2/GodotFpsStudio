@@ -40,6 +40,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
+#include "editor/fps_studio/fps_level_scene_template.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/3d/skeleton_3d_editor_plugin.h"
@@ -59,7 +60,6 @@
 #include "scene/resources/3d/importer_mesh.h"
 #include "scene/resources/material.h"
 #include "scene/resources/shader.h"
-#include "scene/resources/sky.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/style_box_flat.h"
 #include "scene/resources/surface_tool.h"
@@ -3054,47 +3054,13 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 		camera->set_attributes(camera_attributes);
 	}
 
-	// A cool slate gradient gives the model a little color while retaining
-	// enough contrast to judge its imported materials.
-	procedural_sky_material.instantiate();
-	procedural_sky_material->set_sky_top_color(Color(0.38, 0.48, 0.62));
-	procedural_sky_material->set_sky_horizon_color(Color(0.26, 0.31, 0.39));
-	procedural_sky_material->set_ground_horizon_color(Color(0.18, 0.23, 0.31));
-	procedural_sky_material->set_ground_bottom_color(Color(0.055, 0.075, 0.11));
-	procedural_sky_material->set_sky_curve(2.0);
-	procedural_sky_material->set_ground_curve(0.5);
-	// Hide the sun from the sky.
-	procedural_sky_material->set_sun_angle_max(0.0);
-	sky.instantiate();
-	sky->set_material(procedural_sky_material);
-	environment.instantiate();
-	environment->set_background(Environment::BG_SKY);
-	environment->set_sky(sky);
-	environment->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
-	// The procedural sky provides the broad, shadow-free skylight fill; the
-	// directional light below is the only direct light in the preview.
-	environment->set_ambient_light_energy(0.8);
-	environment->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
-	// Fade the floor into the sky palette so the edge of its large preview
-	// plane never creates a hard horizon stripe. Keep the model clear nearby.
-	environment->set_fog_enabled(true);
-	environment->set_fog_mode(Environment::FOG_MODE_DEPTH);
-	environment->set_fog_light_color(Color(0.18, 0.23, 0.31));
-	environment->set_fog_light_energy(1.0);
-	environment->set_fog_sky_affect(0.08);
-	environment->set_fog_depth_begin(45.0);
-	environment->set_fog_depth_end(220.0);
-	environment->set_fog_depth_curve(1.15);
+	// Share the same sky, ambient fill and sun used by newly created FPS Levels.
+	environment = create_fps_level_environment();
 	// A custom FOV must be specified, as an orthogonal camera is used for the preview.
 	environment->set_sky_custom_fov(50.0);
 	camera->set_environment(environment);
 
-	light1 = memnew(DirectionalLight3D);
-	light1->set_transform(Transform3D(Basis::looking_at(Vector3(-1, -1, -1))));
-	light1->set_shadow(true);
-	light1->set_color(Color(1.0, 0.96, 0.9));
-	light1->set_param(Light3D::PARAM_SHADOW_OPACITY, 0.68);
-	light1->set_param(Light3D::PARAM_SHADOW_BLUR, 2.0);
+	light1 = create_fps_level_sun();
 	camera->add_child(light1);
 
 	// A lit floor receives the model's soft directional shadow. The fine and
@@ -3105,8 +3071,8 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	preview_floor_shader->set_code(R"shader(
 shader_type spatial;
 
-uniform vec3 floor_color : source_color = vec3(0.075, 0.095, 0.13);
-uniform vec3 horizon_color : source_color = vec3(0.16, 0.20, 0.27);
+uniform vec3 floor_color : source_color = vec3(0.16, 0.18, 0.21);
+uniform vec3 horizon_color : source_color = vec3(0.6463, 0.6558, 0.6708);
 uniform vec3 minor_grid_color : source_color = vec3(0.22, 0.32, 0.45);
 uniform vec3 major_grid_color : source_color = vec3(0.32, 0.45, 0.62);
 uniform vec2 grid_origin = vec2(0.0);
@@ -3140,6 +3106,8 @@ void fragment() {
 )shader");
 	preview_floor_material.instantiate();
 	preview_floor_material->set_shader(preview_floor_shader);
+	preview_floor_material->set_shader_parameter("floor_color", Color(0.16, 0.18, 0.21));
+	preview_floor_material->set_shader_parameter("horizon_color", get_fps_level_horizon_color());
 	preview_floor_mesh.instantiate();
 	preview_floor_mesh->set_size(Size2(preview_floor_size, preview_floor_size));
 	preview_floor_mesh->set_material(preview_floor_material);

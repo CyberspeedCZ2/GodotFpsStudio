@@ -2292,7 +2292,7 @@ void SceneTreeDock::_notification(int p_what) {
 			beginner_node_shortcuts->add_child(button_fps_level);
 			button_fps_level->set_text(TTR("FPS Level"));
 			button_fps_level->set_button_icon(get_editor_theme_icon(SNAME("Node3D")));
-			button_fps_level->set_tooltip_text(TTR("Create a level with a floor, a preview block, a directional light, and a camera."));
+			button_fps_level->set_tooltip_text(TTR("Create a level with a floor, a preview block, a sky environment, a directional sun, and a camera."));
 			button_fps_level->connect(SceneStringName(pressed), callable_mp(this, &SceneTreeDock::_tool_selected).bind(TOOL_CREATE_FPS_LEVEL, false));
 
 			button_ui = memnew(Button);

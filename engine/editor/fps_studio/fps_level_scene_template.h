@@ -29,6 +29,12 @@
 
 #pragma once
 
+#include "scene/3d/light_3d.h"
+#include "scene/resources/environment.h"
+
 class Node3D;
 
 Node3D *create_fps_level_scene_root();
+Ref<Environment> create_fps_level_environment();
+DirectionalLight3D *create_fps_level_sun();
+Color get_fps_level_horizon_color();

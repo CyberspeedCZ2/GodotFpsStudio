@@ -240,7 +240,7 @@ SceneCreateDialog::SceneCreateDialog() {
 		node_type_fps_level = memnew(CheckBox);
 		vb->add_child(node_type_fps_level);
 		node_type_fps_level->set_text(TTR("FPS Level"));
-		node_type_fps_level->set_tooltip_text(TTR("Create a level with a floor, a preview block, a directional light, and a camera."));
+		node_type_fps_level->set_tooltip_text(TTR("Create a level with a floor, a preview block, a sky environment, a directional sun, and a camera."));
 		node_type_fps_level->set_theme_type_variation("CheckBoxNoIconTint");
 		node_type_fps_level->set_button_group(node_type_group);
 		node_type_fps_level->set_meta(type_meta, ROOT_FPS_LEVEL);
