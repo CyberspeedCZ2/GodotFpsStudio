@@ -51,6 +51,7 @@
 class EditorFileDialog;
 class EditorInspector;
 class ImporterMesh;
+class ShaderMaterial;
 class SceneImportSettingsData;
 class Timer;
 class SpinBox;
@@ -240,6 +241,10 @@ class SceneImportSettingsScreen : public Control {
 
 	DirectionalLight3D *light1 = nullptr;
 	DirectionalLight3D *light2 = nullptr;
+	MeshInstance3D *preview_floor = nullptr;
+	Ref<PlaneMesh> preview_floor_mesh;
+	Ref<ShaderMaterial> preview_floor_material;
+	real_t preview_floor_size = 40.0;
 	Ref<ArrayMesh> selection_mesh;
 	MeshInstance3D *node_selected = nullptr;
 
@@ -338,6 +343,7 @@ class SceneImportSettingsScreen : public Control {
 
 	void _update_view_gizmos();
 	void _update_camera();
+	void _update_preview_floor(const AABB &p_bounds);
 	void _update_preview_lod_threshold();
 	void _gather_mesh_stats();
 	bool _gather_mesh_stats_for_mesh(const Ref<Mesh> &p_mesh, MeshStats &r_stats);

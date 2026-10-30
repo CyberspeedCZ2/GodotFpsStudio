@@ -57,6 +57,8 @@
 #include "scene/main/timer.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/3d/importer_mesh.h"
+#include "scene/resources/material.h"
+#include "scene/resources/shader.h"
 #include "scene/resources/sky.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/style_box_flat.h"
@@ -806,7 +808,9 @@ if (selected_type == "Node" || selected_type == "Animation" || selected_type.is_
 	// Pan uses the visible height at the target plane, so dragging continues
 	// to move the model by the same number of pixels at any zoom level.
 	frame_size = (float)(2.0 * fit_distance * half_fov_tangent / FRAME_MARGIN);
-	camera->set_perspective(PREVIEW_FOV_DEGREES, 0.001, MAX(camera_distance + extent * 4.0, (real_t)1.0));
+	_update_preview_floor(camera_aabb);
+	const real_t far_clip = MAX(camera_distance + extent * 4.0, camera_distance + preview_floor_size);
+	camera->set_perspective(PREVIEW_FOV_DEGREES, 0.001, MAX(far_clip, (real_t)1.0));
 	Transform3D xf;
 	xf.basis = camera_basis;
 	xf.origin = center;
@@ -816,6 +820,34 @@ if (selected_type == "Node" || selected_type == "Animation" || selected_type.is_
 	_update_preview_lod_threshold();
 
 	_update_mesh_stats();
+}
+
+void SceneImportSettingsScreen::_update_preview_floor(const AABB &p_bounds) {
+	if (preview_floor == nullptr || preview_floor_mesh.is_null() || preview_floor_material.is_null() || scene == nullptr || !p_bounds.is_finite()) {
+		if (preview_floor != nullptr) {
+			preview_floor->hide();
+		}
+		preview_floor_size = 40.0;
+		return;
+	}
+
+	const Vector3 center = p_bounds.get_center();
+	const real_t extent = MAX(p_bounds.get_longest_axis_size(), (real_t)0.5);
+	preview_floor_size = CLAMP(extent * 10.0, 40.0, 1000.0);
+	preview_floor_mesh->set_size(Size2(preview_floor_size, preview_floor_size));
+	const real_t grid_step = extent < 8.0 ? 0.5 : (extent < 40.0 ? 1.0 : (extent < 160.0 ? 5.0 : 10.0));
+	const real_t floor_y = p_bounds.position.y - MAX(extent * 0.001, (real_t)0.002);
+	preview_floor->set_position(Vector3(center.x, floor_y, center.z));
+	preview_floor_material->set_shader_parameter("grid_origin", Vector2(center.x, center.z));
+	preview_floor_material->set_shader_parameter("grid_step", grid_step);
+	preview_floor_material->set_shader_parameter("fade_distance", preview_floor_size * 0.72);
+	preview_floor->show();
+
+	// Keep the soft shadow sharp around the subject without clipping it on
+	// large imported models.
+	if (light1 != nullptr) {
+		light1->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, CLAMP(extent * 2.0, 20.0, 250.0));
+	}
 }
 
 void SceneImportSettingsScreen::_update_preview_lod_threshold() {
@@ -1498,6 +1530,9 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	defaults.clear();
 
 	mesh_preview->hide();
+	if (preview_floor != nullptr) {
+		preview_floor->hide();
+	}
 
 	selected_id = "";
 	selected_type = "";
@@ -2304,6 +2339,9 @@ void SceneImportSettingsScreen::_close_screen() {
 	bones_mesh_preview->set_mesh(Ref<Mesh>());
 	mesh_preview->set_mesh(Ref<Mesh>());
 	mesh_preview->hide();
+	if (preview_floor != nullptr) {
+		preview_floor->hide();
+	}
 	animation_preview->hide();
 	inspector->edit(nullptr);
 
@@ -3030,15 +3068,13 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 		camera->set_attributes(camera_attributes);
 	}
 
-	// Use a grayscale gradient sky to avoid skewing the preview towards a specific color,
-	// but still allow shaded areas to be easily distinguished (using the ambient and reflected light).
-	// This also helps the user orient themselves in the preview, since the bottom of the sky is black
-	// and the top of the sky is white.
+	// A cool slate gradient gives the model a little color while retaining
+	// enough contrast to judge its imported materials.
 	procedural_sky_material.instantiate();
-	procedural_sky_material->set_sky_top_color(Color(1, 1, 1));
-	procedural_sky_material->set_sky_horizon_color(Color(0.5, 0.5, 0.5));
-	procedural_sky_material->set_ground_horizon_color(Color(0.5, 0.5, 0.5));
-	procedural_sky_material->set_ground_bottom_color(Color(0, 0, 0));
+	procedural_sky_material->set_sky_top_color(Color(0.38, 0.48, 0.62));
+	procedural_sky_material->set_sky_horizon_color(Color(0.26, 0.31, 0.39));
+	procedural_sky_material->set_ground_horizon_color(Color(0.18, 0.23, 0.31));
+	procedural_sky_material->set_ground_bottom_color(Color(0.055, 0.075, 0.11));
 	procedural_sky_material->set_sky_curve(2.0);
 	procedural_sky_material->set_ground_curve(0.5);
 	// Hide the sun from the sky.
@@ -3048,6 +3084,9 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	environment.instantiate();
 	environment->set_background(Environment::BG_SKY);
 	environment->set_sky(sky);
+	environment->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
+	environment->set_ambient_light_energy(0.55);
+	environment->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
 	// A custom FOV must be specified, as an orthogonal camera is used for the preview.
 	environment->set_sky_custom_fov(50.0);
 	camera->set_environment(environment);
@@ -3055,12 +3094,68 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	light1 = memnew(DirectionalLight3D);
 	light1->set_transform(Transform3D(Basis::looking_at(Vector3(-1, -1, -1))));
 	light1->set_shadow(true);
+	light1->set_color(Color(1.0, 0.96, 0.9));
+	light1->set_param(Light3D::PARAM_SHADOW_BLUR, 2.0);
 	camera->add_child(light1);
 
 	light2 = memnew(DirectionalLight3D);
 	light2->set_transform(Transform3D(Basis::looking_at(Vector3(0, 1, 0), Vector3(0, 0, 1))));
-	light2->set_color(Color(0.5f, 0.5f, 0.5f));
+	light2->set_color(Color(0.48f, 0.6f, 0.78f));
 	camera->add_child(light2);
+
+	// A lit floor receives the model's soft directional shadow. The fine and
+	// major grid lines are generated in the shader, so they remain stable at
+	// every preview size without adding objects to the imported scene.
+	Ref<Shader> preview_floor_shader;
+	preview_floor_shader.instantiate();
+	preview_floor_shader->set_code(R"shader(
+shader_type spatial;
+
+uniform vec3 floor_color : source_color = vec3(0.075, 0.095, 0.13);
+uniform vec3 horizon_color : source_color = vec3(0.16, 0.20, 0.27);
+uniform vec3 minor_grid_color : source_color = vec3(0.22, 0.32, 0.45);
+uniform vec3 major_grid_color : source_color = vec3(0.32, 0.45, 0.62);
+uniform vec2 grid_origin = vec2(0.0);
+uniform float grid_step = 0.5;
+uniform float fade_distance = 30.0;
+
+varying vec3 preview_world_position;
+
+void vertex() {
+	preview_world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+
+float grid_line(vec2 coord) {
+	vec2 derivative = max(fwidth(coord), vec2(0.0001));
+	vec2 distance_to_line = abs(fract(coord - 0.5) - 0.5) / derivative;
+	return 1.0 - min(min(distance_to_line.x, distance_to_line.y), 1.0);
+}
+
+void fragment() {
+	float distance_from_center = distance(preview_world_position.xz, grid_origin);
+	float grid_fade = 1.0 - smoothstep(fade_distance * 0.45, fade_distance, distance_from_center);
+	float minor = grid_line((preview_world_position.xz - grid_origin) / grid_step);
+	float major = grid_line((preview_world_position.xz - grid_origin) / (grid_step * 10.0));
+	vec3 color = mix(floor_color, horizon_color, 1.0 - grid_fade);
+	color = mix(color, minor_grid_color, minor * 0.24 * grid_fade);
+	color = mix(color, major_grid_color, major * 0.4 * grid_fade);
+	ALBEDO = color;
+	ROUGHNESS = 0.95;
+	METALLIC = 0.0;
+}
+)shader");
+	preview_floor_material.instantiate();
+	preview_floor_material->set_shader(preview_floor_shader);
+	preview_floor_mesh.instantiate();
+	preview_floor_mesh->set_size(Size2(preview_floor_size, preview_floor_size));
+	preview_floor_mesh->set_material(preview_floor_material);
+	preview_floor = memnew(MeshInstance3D);
+	preview_floor->set_name("ModelPreviewFloor");
+	preview_floor->set_mesh(preview_floor_mesh);
+	preview_floor->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	preview_floor->set_gi_mode(GeometryInstance3D::GI_MODE_DISABLED);
+	base_viewport->add_child(preview_floor);
+	preview_floor->hide();
 
 	{
 		Ref<StandardMaterial3D> selection_mat;

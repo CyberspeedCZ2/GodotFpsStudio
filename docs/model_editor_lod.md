@@ -6,6 +6,7 @@ Tento dokument popisuje aktuální chování pracovního prostoru Model v Godot 
 
 - Vlevo je strom scény a seznamy meshů a materiálů. Výběr meshe omezuje statistiky i LOD úpravy na tento mesh.
 - Uprostřed je 3D náhled. Ovládací prvky náhledu umožňují model orámovat, přepínat drátěný režim, zapínat automatický výběr LOD nebo ručně prohlížet dostupné úrovně.
+- Pod modelem je barevně tlumená perspektivní mřížka a měkký stín. Pomocná podlaha patří pouze náhledu a nepřidává se do importovaného modelu.
 - Přes náhled se zobrazují statistiky právě vykreslovaného LOD: počet trojúhelníků a vrcholů. Podle dostupných údajů může být zobrazen také počet původních polygonů.
 - Vpravo jsou oddělené karty LOD, Mesh, Physics, Lighting a Details.
 - Kamera se při prvním otevření přizpůsobí mezím modelu. Výpočet používá poloměr obalující koule, takže samotné otáčení modelu nemění vzdálenost kamery. Tlačítko Frame znovu vystředí a přiblíží aktuální obsah; zoom a posun zůstávají ručním ovládáním.
