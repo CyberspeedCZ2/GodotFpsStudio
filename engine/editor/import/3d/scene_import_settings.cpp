@@ -3244,9 +3244,12 @@ void fragment() {
 
 	settings_tabs = memnew(TabContainer);
 	settings_tabs->set_custom_minimum_size(Size2(320 * EDSCALE, 0));
-	settings_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_tabs->set_h_size_flags(Control::SIZE_FILL);
 	settings_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	property_split->add_child(settings_tabs);
+	// Keep the inspector usable at 320 px minimum, but start it 80 px wider.
+	// A negative split offset moves the divider left to widen the last child.
+	property_split->set_split_offset(-80 * EDSCALE);
 	_build_lod_settings_panel();
 	ScrollContainer *lod_panel_scroll = memnew(ScrollContainer);
 	lod_panel_scroll->set_name(TTR("LOD"));
