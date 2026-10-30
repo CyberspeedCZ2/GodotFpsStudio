@@ -263,6 +263,7 @@ private:
 
 		Transform3D camera_transform;
 		Projection camera_projection;
+		bool camera_frustum_valid = false;
 
 		// Single threaded cull planes for regular lights
 		// (OMNI, SPOT). These lights reuse the same set of cull plane data.

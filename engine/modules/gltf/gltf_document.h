@@ -75,6 +75,7 @@ public:
 private:
 	int _naming_version = 2;
 	String _image_format = "PNG";
+	int _max_image_dimension = 0;
 	float _lossy_quality = 0.75f;
 	String _fallback_image_format = "None";
 	float _fallback_image_quality = 0.25f;
@@ -105,6 +106,8 @@ public:
 	int get_naming_version() const;
 	void set_image_format(const String &p_image_format);
 	String get_image_format() const;
+	void set_max_image_dimension(int p_max_image_dimension);
+	int get_max_image_dimension() const;
 	void set_lossy_quality(float p_lossy_quality);
 	float get_lossy_quality() const;
 	void set_fallback_image_format(const String &p_fallback_image_format);

@@ -55,6 +55,7 @@ class HBoxContainer;
 class LineEdit;
 class ProgressBar;
 class SceneCreateDialog;
+class ModelImportWizard;
 class ShaderCreateDialog;
 class DirectoryCreateDialog;
 class EditorResourceTooltipPlugin;
@@ -156,6 +157,7 @@ private:
 		FILE_MENU_NEW_SCRIPT,
 		FILE_MENU_NEW_SCENE,
 		FILE_MENU_RUN_SCRIPT,
+		FILE_MENU_OPTIMIZE_MODEL,
 		FILE_MENU_MAX,
 		// Extra shortcuts that don't exist in the menu.
 		EXTRA_FOCUS_PATH,
@@ -239,6 +241,7 @@ private:
 	CreateDialog *new_resource_dialog = nullptr;
 
 	AcceptDialog *unrecognized_ext_dialog = nullptr;
+	ModelImportWizard *model_import_wizard = nullptr;
 
 	String confirm_move_to_dir;
 	bool confirm_to_copy = false;
@@ -437,6 +440,7 @@ public:
 	static constexpr double ITEM_ALPHA_MAX = 0.15;
 	static constexpr double ITEM_BG_DARK_SCALE = 0.3;
 
+	static bool supports_model_file(const String &p_path);
 	static Color get_dir_icon_color(const String &p_dir_path, const Color &p_default);
 
 	const HashMap<String, Color> &get_folder_colors() const;
@@ -448,6 +452,8 @@ public:
 	String get_current_path() const;
 	String get_current_directory() const;
 	String get_folder_path_at_mouse_position() const;
+	void show_model_import_wizard(const String &p_source_path, const String &p_target_directory, bool p_existing_asset);
+	void show_model_import_wizard_batch(const Vector<String> &p_source_paths, const String &p_target_directory);
 
 	void navigate_to_path(const String &p_path);
 	void focus_on_path();

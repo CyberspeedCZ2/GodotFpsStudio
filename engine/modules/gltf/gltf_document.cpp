@@ -967,6 +967,14 @@ Array GLTFDocument::_decode_accessor_as_variants(const Ref<GLTFState> p_gltf_sta
 
 Error GLTFDocument::_serialize_meshes(Ref<GLTFState> p_state) {
 	Array meshes;
+	// Parsed states already have material indices. Reuse their material objects
+	// instead of appending a duplicate when rebuilding mesh primitives.
+	for (GLTFMaterialIndex material_i = 0; material_i < p_state->materials.size(); material_i++) {
+		const Ref<Material> material = p_state->materials[material_i];
+		if (material.is_valid() && !p_state->material_cache.has(material)) {
+			p_state->material_cache.insert(material, material_i);
+		}
+	}
 	for (GLTFMeshIndex gltf_mesh_i = 0; gltf_mesh_i < p_state->meshes.size(); gltf_mesh_i++) {
 		print_verbose("glTF: Serializing mesh: " + itos(gltf_mesh_i));
 		Ref<GLTFMesh> &gltf_mesh = p_state->meshes.write[gltf_mesh_i];
@@ -1996,6 +2004,14 @@ String GLTFDocument::get_image_format() const {
 	return _image_format;
 }
 
+void GLTFDocument::set_max_image_dimension(int p_max_image_dimension) {
+	_max_image_dimension = MAX(0, p_max_image_dimension);
+}
+
+int GLTFDocument::get_max_image_dimension() const {
+	return _max_image_dimension;
+}
+
 void GLTFDocument::set_lossy_quality(float p_lossy_quality) {
 	_lossy_quality = p_lossy_quality;
 }
@@ -2042,6 +2058,21 @@ Error GLTFDocument::_serialize_images(Ref<GLTFState> p_state) {
 			if (image.is_null()) {
 				ERR_PRINT("glTF export: Image's image is null.");
 			} else {
+				if (_max_image_dimension > 0 && MAX(image->get_width(), image->get_height()) > _max_image_dimension) {
+					image = image->duplicate();
+					if (image->is_compressed()) {
+						image->decompress();
+					}
+					if (image->is_compressed()) {
+						ERR_PRINT(vformat("glTF export: Image '%s' could not be decompressed for resizing.", p_state->images[i]->get_name()));
+						return FAILED;
+					}
+					const int longest_side = MAX(image->get_width(), image->get_height());
+					const double scale = double(_max_image_dimension) / double(longest_side);
+					const int width = MAX(1, int(Math::round(image->get_width() * scale)));
+					const int height = MAX(1, int(Math::round(image->get_height() * scale)));
+					image->resize(width, height, Image::INTERPOLATE_LANCZOS);
+				}
 				String image_name = p_state->images[i]->get_name();
 				if (image_name.is_empty()) {
 					image_name = itos(i).pad_zeros(3);
@@ -3484,6 +3515,11 @@ void GLTFDocument::_remove_duplicate_skins(Ref<GLTFState> p_state) {
 		for (int j = i + 1; j < p_state->skins.size(); ++j) {
 			const Ref<Skin> skin_i = p_state->skins[i]->godot_skin;
 			const Ref<Skin> skin_j = p_state->skins[j]->godot_skin;
+			// A parsed GLTFState has no Godot Skin resources until a scene is generated.
+			// Keep those source skins intact when serializing a parsed state directly.
+			if (skin_i.is_null() || skin_j.is_null()) {
+				continue;
+			}
 
 			if (_skins_are_same(skin_i, skin_j)) {
 				// replace it and delete the old
@@ -6873,6 +6909,8 @@ void GLTFDocument::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_image_format", "image_format"), &GLTFDocument::set_image_format);
 	ClassDB::bind_method(D_METHOD("get_image_format"), &GLTFDocument::get_image_format);
+	ClassDB::bind_method(D_METHOD("set_max_image_dimension", "max_image_dimension"), &GLTFDocument::set_max_image_dimension);
+	ClassDB::bind_method(D_METHOD("get_max_image_dimension"), &GLTFDocument::get_max_image_dimension);
 	ClassDB::bind_method(D_METHOD("set_lossy_quality", "lossy_quality"), &GLTFDocument::set_lossy_quality);
 	ClassDB::bind_method(D_METHOD("get_lossy_quality"), &GLTFDocument::get_lossy_quality);
 	ClassDB::bind_method(D_METHOD("set_fallback_image_format", "fallback_image_format"), &GLTFDocument::set_fallback_image_format);
@@ -6899,6 +6937,7 @@ void GLTFDocument::_bind_methods() {
 			&GLTFDocument::write_to_filesystem);
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "image_format"), "set_image_format", "get_image_format");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_image_dimension"), "set_max_image_dimension", "get_max_image_dimension");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lossy_quality"), "set_lossy_quality", "get_lossy_quality");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "fallback_image_format"), "set_fallback_image_format", "get_fallback_image_format");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "fallback_image_quality"), "set_fallback_image_quality", "get_fallback_image_quality");

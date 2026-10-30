@@ -44,6 +44,8 @@ class FBXState : public GLTFState {
 
 	// Smart pointer that holds the loaded scene.
 	ufbx_unique_ptr<ufbx_scene> scene;
+	Vector<String> source_texture_paths;
+	Vector<String> missing_texture_paths;
 	bool allow_geometry_helper_nodes = false;
 
 	HashMap<uint64_t, Image::AlphaMode> alpha_mode_cache;
@@ -61,4 +63,6 @@ protected:
 public:
 	bool get_allow_geometry_helper_nodes();
 	void set_allow_geometry_helper_nodes(bool p_allow_geometry_helper_nodes);
+	const Vector<String> &get_source_texture_paths() const { return source_texture_paths; }
+	const Vector<String> &get_missing_texture_paths() const { return missing_texture_paths; }
 };

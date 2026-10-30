@@ -468,6 +468,23 @@ Vector<Plane> Projection::get_projection_planes(const Transform3D &p_transform) 
 
 	Vector<Plane> planes;
 	planes.resize(6);
+	const real_t transform_determinant = p_transform.basis.determinant();
+	if (!p_transform.is_finite() || !Math::is_finite(transform_determinant) || Math::is_zero_approx(transform_determinant)) {
+		// Invalid or singular camera data has no usable frustum. Return zero planes
+		// instead of propagating non-finite values through plane normalization.
+		for (int i = 0; i < planes.size(); i++) {
+			planes.write[i] = Plane();
+		}
+		return planes;
+	}
+	for (int i = 0; i < 4; i++) {
+		if (!columns[i].is_finite()) {
+			for (int plane_index = 0; plane_index < planes.size(); plane_index++) {
+				planes.write[plane_index] = Plane();
+			}
+			return planes;
+		}
+	}
 
 	const real_t *matrix = (const real_t *)columns;
 

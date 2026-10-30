@@ -38,6 +38,9 @@ class Node;
 class EditorSceneFormatImporterUFBX : public EditorSceneFormatImporter {
 	GDCLASS(EditorSceneFormatImporterUFBX, EditorSceneFormatImporter);
 
+	Vector<String> source_texture_paths;
+	Vector<String> missing_texture_paths;
+
 public:
 	enum FBX_IMPORTER_TYPE {
 		FBX_IMPORTER_UFBX,
@@ -52,4 +55,6 @@ public:
 	virtual Variant get_option_visibility(const String &p_path, const String &p_scene_import_type, const String &p_option,
 			const HashMap<StringName, Variant> &p_options) override;
 	virtual void handle_compatibility_options(HashMap<StringName, Variant> &p_import_params) const override;
+	const Vector<String> &get_source_texture_paths() const { return source_texture_paths; }
+	const Vector<String> &get_missing_texture_paths() const { return missing_texture_paths; }
 };

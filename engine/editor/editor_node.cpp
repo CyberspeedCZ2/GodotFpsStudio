@@ -7051,6 +7051,23 @@ void EditorNode::_dropped_files(const Vector<String> &p_files) {
 		to_path = FileSystemDock::get_singleton()->get_current_directory();
 	}
 	to_path = ProjectSettings::get_singleton()->globalize_path(to_path);
+	Vector<String> model_files;
+	Vector<String> other_files;
+	for (const String &path : p_files) {
+		if (!DirAccess::dir_exists_absolute(path) && FileSystemDock::supports_model_file(path)) {
+			model_files.push_back(path);
+		} else {
+			other_files.push_back(path);
+		}
+	}
+	if (!model_files.is_empty()) {
+		if (!other_files.is_empty()) {
+			_add_dropped_files_recursive(other_files, to_path);
+			EditorFileSystem::get_singleton()->scan_changes();
+		}
+		FileSystemDock::get_singleton()->show_model_import_wizard_batch(model_files, to_path);
+		return;
+	}
 
 	_add_dropped_files_recursive(p_files, to_path);
 

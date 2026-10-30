@@ -73,6 +73,9 @@ String RenderingLightCuller::Data::plane_bitfield_to_string(unsigned int BF) {
 #endif
 
 void RenderingLightCuller::prepare_directional_light(const RendererSceneCull::Instance *p_instance, int32_t p_directional_light_id) {
+	if (data.is_active() && !data.camera_frustum_valid) {
+		return;
+	}
 	//data.directional_light = p_instance;
 	// Something is probably going wrong, we shouldn't have this many directional lights...
 	ERR_FAIL_COND(p_directional_light_id > 512);
@@ -87,7 +90,7 @@ void RenderingLightCuller::prepare_directional_light(const RendererSceneCull::In
 }
 
 bool RenderingLightCuller::_prepare_light(const RendererSceneCull::Instance &p_instance, int32_t p_directional_light_id) {
-	if (!data.is_active()) {
+	if (!data.is_active() || !data.camera_frustum_valid) {
 		return true;
 	}
 
@@ -229,7 +232,7 @@ bool RenderingLightCuller::_prepare_light(const RendererSceneCull::Instance &p_i
 }
 
 bool RenderingLightCuller::cull_directional_light(const RendererSceneCull::InstanceBounds &p_bound, int32_t p_directional_light_id, int32_t p_cascade) {
-	if (!data.is_active() || !is_caster_culling_active()) {
+	if (!data.is_active() || !data.camera_frustum_valid || !is_caster_culling_active()) {
 		return true;
 	}
 
@@ -257,7 +260,7 @@ bool RenderingLightCuller::cull_directional_light(const RendererSceneCull::Insta
 }
 
 void RenderingLightCuller::cull_regular_light(PagedArray<RendererSceneCull::Instance *> &r_instance_shadow_cull_result) {
-	if (!data.is_active() || !is_caster_culling_active()) {
+	if (!data.is_active() || !data.camera_frustum_valid || !is_caster_culling_active()) {
 		return;
 	}
 
@@ -425,7 +428,7 @@ bool RenderingLightCuller::add_light_camera_planes_directional(LightCullPlanes &
 }
 
 bool RenderingLightCuller::_add_light_camera_planes(LightCullPlanes &r_cull_planes, const LightSource &p_light_source, const CullFrustumData &p_cull_frustum) {
-	if (!data.is_active()) {
+	if (!data.is_active() || !data.camera_frustum_valid) {
 		return true;
 	}
 
@@ -602,6 +605,7 @@ bool RenderingLightCuller::_add_light_camera_planes(LightCullPlanes &r_cull_plan
 }
 
 bool RenderingLightCuller::prepare_camera(const Transform3D &p_cam_transform, const Projection &p_cam_matrix) {
+	data.camera_frustum_valid = false;
 	data.debug_count++;
 	if (data.debug_count >= 120) {
 		data.debug_count = 0;
@@ -623,6 +627,17 @@ bool RenderingLightCuller::prepare_camera(const Transform3D &p_cam_transform, co
 
 	if (!data.is_active()) {
 		return false;
+	}
+	// Some temporary editor viewports can submit an incomplete camera matrix
+	// while they are being resized. Light culling is optional, so skip invalid
+	// camera data before plane extraction emits NaN normalization warnings.
+	if (!p_cam_transform.is_finite()) {
+		return false;
+	}
+	for (int i = 0; i < 4; i++) {
+		if (!p_cam_matrix[i].is_finite()) {
+			return false;
+		}
 	}
 	// These are needed later to build per-cascade cull frustums for directional lights.
 	data.camera_transform = p_cam_transform;
@@ -658,7 +673,8 @@ bool RenderingLightCuller::prepare_camera(const Transform3D &p_cam_transform, co
 	}
 #endif
 
-	return create_frustum_points(&data.frustum_planes[0], data.frustum_points);
+	data.camera_frustum_valid = create_frustum_points(&data.frustum_planes[0], data.frustum_points);
+	return data.camera_frustum_valid;
 }
 
 bool RenderingLightCuller::create_frustum_points(const Plane *p_frustum_planes, Vector3 *r_result) const {
@@ -678,8 +694,11 @@ bool RenderingLightCuller::create_frustum_points(const Plane *p_frustum_planes, 
 		// 3 plane intersection, gives us a point.
 		bool res = p_frustum_planes[intersections[i][0]].intersect_3(p_frustum_planes[intersections[i][1]], p_frustum_planes[intersections[i][2]], &r_result[i]);
 
-		// What happens with a zero frustum? NYI - deal with this.
-		ERR_FAIL_COND_V(!res, false);
+		// Degenerate temporary viewports have no finite frustum corners. This
+		// only disables light culling for the current view.
+		if (!res || !r_result[i].is_finite()) {
+			return false;
+		}
 
 #ifdef LIGHT_CULLER_DEBUG_LOGGING
 		if (is_logging()) {

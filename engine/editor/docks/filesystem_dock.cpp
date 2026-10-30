@@ -54,6 +54,7 @@
 #include "editor/gui/directory_create_dialog.h"
 #include "editor/gui/editor_dir_dialog.h"
 #include "editor/import/3d/scene_import_settings.h"
+#include "editor/import/3d/model_import_wizard.h"
 #include "editor/inspector/editor_context_menu_plugin.h"
 #include "editor/inspector/editor_resource_preview.h"
 #include "editor/inspector/editor_resource_tooltip_plugins.h"
@@ -2362,6 +2363,14 @@ void FileSystemDock::_file_option(int p_option, const Vector<String> &p_selected
 	// The first one should be the active item.
 
 	switch (p_option) {
+		case FILE_MENU_OPTIMIZE_MODEL: {
+			if (p_selected.is_empty()) {
+				return;
+			}
+			const String source_path = p_selected[0];
+			show_model_import_wizard(source_path, source_path.get_base_dir(), true);
+		} break;
+
 		case FILE_MENU_SHOW_IN_EXPLORER: {
 			// Show the file/folder in the OS explorer.
 			String fpath = current_path;
@@ -3575,6 +3584,9 @@ void FileSystemDock::_file_and_folders_fill_popup(PopupMenu *p_popup, const Vect
 		}
 
 		if (filenames.size() == 1) {
+			if (ModelImportWizard::supports_model_file(filenames[0])) {
+				p_popup->add_icon_item(get_editor_theme_icon(SNAME("MeshInstance3D")), TTRC("Optimize Model Source..."), FILE_MENU_OPTIMIZE_MODEL);
+			}
 			p_popup->add_item(TTRC("Edit Dependencies..."), FILE_MENU_DEPENDENCIES);
 			p_popup->add_item(TTRC("View Owners..."), FILE_MENU_OWNERS);
 			p_popup->add_separator();
@@ -4546,6 +4558,8 @@ FileSystemDock::FileSystemDock() {
 	set_dock_shortcut(ED_SHORTCUT_AND_COMMAND("docks/open_filesystem", TTRC("Open FileSystem Dock"), KeyModifierMask::ALT | Key::F));
 	set_default_slot(EditorDock::DOCK_SLOT_LEFT_BR);
 	set_available_layouts(DOCK_LAYOUT_ALL);
+	model_import_wizard = memnew(ModelImportWizard);
+	add_child(model_import_wizard);
 
 	ProjectSettings::get_singleton()->add_hidden_prefix("file_customization/");
 
@@ -4858,4 +4872,22 @@ FileSystemDock::FileSystemDock() {
 
 FileSystemDock::~FileSystemDock() {
 	singleton = nullptr;
+}
+
+bool FileSystemDock::supports_model_file(const String &p_path) {
+	return ModelImportWizard::supports_model_file(p_path);
+}
+
+void FileSystemDock::show_model_import_wizard(const String &p_source_path, const String &p_target_directory, bool p_existing_asset) {
+	if (model_import_wizard == nullptr) {
+		return;
+	}
+	model_import_wizard->configure(p_source_path, p_target_directory, p_existing_asset);
+}
+
+void FileSystemDock::show_model_import_wizard_batch(const Vector<String> &p_source_paths, const String &p_target_directory) {
+	if (model_import_wizard == nullptr) {
+		return;
+	}
+	model_import_wizard->configure_batch(p_source_paths, p_target_directory);
 }

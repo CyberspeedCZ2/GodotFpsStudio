@@ -1050,6 +1050,8 @@ GLTFImageIndex FBXDocument::_parse_image_save_image(Ref<FBXState> p_state, const
 
 Error FBXDocument::_parse_images(Ref<FBXState> p_state, const String &p_base_path) {
 	ERR_FAIL_COND_V(p_state.is_null(), ERR_INVALID_PARAMETER);
+	p_state->source_texture_paths.clear();
+	p_state->missing_texture_paths.clear();
 
 	const ufbx_scene *fbx_scene = p_state->scene.get();
 	for (int texture_i = 0; texture_i < static_cast<int>(fbx_scene->texture_files.count); texture_i++) {
@@ -1063,22 +1065,40 @@ Error FBXDocument::_parse_images(Ref<FBXState> p_state, const String &p_base_pat
 			path = p_base_path.path_join(path);
 		}
 		path = path.simplify_path();
+		String resolved_texture_path = _get_texture_path(p_state->get_base_path(), path);
+		if (resolved_texture_path.is_empty()) {
+			// Keep the expected source path for actionable import diagnostics when
+			// an FBX references an external texture that is not present on disk.
+			resolved_texture_path = path;
+		}
+		// Keep the original external image paths so the model import wizard can
+		// remove those source files only when the user explicitly requests it.
+		if (fbx_texture_file.content.size == 0) {
+			if (FileAccess::exists(resolved_texture_path) && !p_state->source_texture_paths.has(resolved_texture_path)) {
+				p_state->source_texture_paths.push_back(resolved_texture_path);
+			}
+		}
 		Vector<uint8_t> data;
 		if (fbx_texture_file.content.size > 0 && fbx_texture_file.content.size <= INT_MAX) {
 			data.resize(int(fbx_texture_file.content.size));
 			memcpy(data.ptrw(), fbx_texture_file.content.data, fbx_texture_file.content.size);
 		} else {
-			String base_dir = p_state->get_base_path();
-			Ref<Texture2D> texture = ResourceLoader::load(_get_texture_path(base_dir, path), "Texture2D");
-			if (texture.is_valid()) {
-				p_state->images.push_back(texture);
-				p_state->source_images.push_back(texture->get_image());
-				continue;
+			// The model optimization wizard reads external image bytes directly in
+			// memory mode. This keeps files outside the project from being routed
+			// through EditorFileSystem import and works safely in its worker thread.
+			if (p_state->get_handle_binary_image_mode() != GLTFState::HANDLE_BINARY_IMAGE_MODE_EMBED_AS_UNCOMPRESSED) {
+				Ref<Texture2D> texture = ResourceLoader::load(resolved_texture_path, "Texture2D");
+				if (texture.is_valid()) {
+					p_state->images.push_back(texture);
+					p_state->source_images.push_back(texture->get_image());
+					continue;
+				}
 			}
 			// Fallback to loading as byte array.
-			data = FileAccess::get_file_as_bytes(path);
+			data = FileAccess::get_file_as_bytes(resolved_texture_path);
 			if (data.is_empty()) {
-				WARN_PRINT(vformat("FBX: Image index '%d' couldn't be loaded from path: %s because there was no data to load. Skipping it.", texture_i, path));
+				WARN_PRINT(vformat("FBX: Image index '%d' couldn't be loaded from path: %s because there was no data to load. Skipping it.", texture_i, resolved_texture_path));
+				p_state->missing_texture_paths.push_back(resolved_texture_path);
 				p_state->images.push_back(Ref<Texture2D>()); // Placeholder to keep count.
 				p_state->source_images.push_back(Ref<Image>());
 				continue;
@@ -1088,6 +1108,11 @@ Error FBXDocument::_parse_images(Ref<FBXState> p_state, const String &p_base_pat
 		// Parse the image data from bytes into an Image resource and save if needed.
 		String file_extension;
 		Ref<Image> img = _parse_image_bytes_into_image(p_state, data, path, texture_i);
+		if (img.is_null() || img->is_empty()) {
+			if (!p_state->missing_texture_paths.has(resolved_texture_path)) {
+				p_state->missing_texture_paths.push_back(resolved_texture_path);
+			}
+		}
 		img->set_name(itos(texture_i));
 		_parse_image_save_image(p_state, data, file_extension, texture_i, img);
 	}

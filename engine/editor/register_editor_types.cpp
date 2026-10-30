@@ -59,6 +59,7 @@
 #include "editor/gui/editor_toaster.h"
 #include "editor/import/3d/resource_importer_obj.h"
 #include "editor/import/3d/resource_importer_scene.h"
+#include "editor/import/3d/model_import_wizard.h"
 #include "editor/import/editor_import_plugin.h"
 #include "editor/import/resource_importer_bitmask.h"
 #include "editor/import/resource_importer_bmfont.h"
@@ -198,6 +199,7 @@ void register_editor_types() {
 	GDREGISTER_CLASS(EditorContextMenuPlugin);
 
 	GDREGISTER_ABSTRACT_CLASS(FileSystemDock);
+	GDREGISTER_CLASS(ModelImportWizard);
 	GDREGISTER_VIRTUAL_CLASS(EditorFileSystemImportFormatSupportQuery);
 
 	GDREGISTER_CLASS(EditorScenePostImport);

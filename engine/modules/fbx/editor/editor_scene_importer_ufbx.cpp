@@ -43,6 +43,8 @@ void EditorSceneFormatImporterUFBX::get_extensions(List<String> *r_extensions) c
 Node *EditorSceneFormatImporterUFBX::import_scene(const String &p_path, uint32_t p_flags,
 		const HashMap<StringName, Variant> &p_options,
 		List<String> *r_missing_deps, Error *r_err) {
+	source_texture_paths.clear();
+	missing_texture_paths.clear();
 	// FIXME: Hack to work around GH-86309.
 	if (p_options.has("fbx/importer") && int(p_options["fbx/importer"]) == FBX_IMPORTER_FBX2GLTF && GLOBAL_GET_CACHED(bool, "filesystem/import/fbx2gltf/enabled")) {
 		Ref<EditorSceneFormatImporterFBX2GLTF> fbx2gltf_importer;
@@ -84,6 +86,8 @@ Node *EditorSceneFormatImporterUFBX::import_scene(const String &p_path, uint32_t
 		}
 		return nullptr;
 	}
+	source_texture_paths = state->get_source_texture_paths();
+	missing_texture_paths = state->get_missing_texture_paths();
 	return fbx->generate_scene(state, state->get_bake_fps(), (bool)p_options["animation/trimming"], false);
 }
 
