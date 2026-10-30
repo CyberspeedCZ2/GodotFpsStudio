@@ -1678,12 +1678,14 @@ Node *ResourceImporterScene::_post_fix_node(Node *p_node, Node *p_root, HashMap<
 					}
 					if (matdata.has("use_external/enabled") && bool(matdata["use_external/enabled"]) && matdata.has("use_external/path")) {
 						String path = matdata["use_external/path"];
-						Ref<Material> external_mat = ResourceLoader::load(path);
+						// Reimport must pick up edits saved to an external material file,
+						// even if an older instance is still present in ResourceCache.
+						Ref<Material> external_mat = ResourceLoader::load(path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
 						if (external_mat.is_null()) {
 							if (matdata.has("use_external/fallback_path")) {
 								const String fallback_save_path = matdata["use_external/fallback_path"];
 								if (!fallback_save_path.is_empty()) {
-									external_mat = ResourceLoader::load(fallback_save_path);
+									external_mat = ResourceLoader::load(fallback_save_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
 									if (external_mat.is_valid()) {
 										path = fallback_save_path;
 									}
