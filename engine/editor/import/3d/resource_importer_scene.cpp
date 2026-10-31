@@ -3409,11 +3409,21 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 	scene = _replace_node_with_type_and_script(scene, root_type, root_script);
 
 	String root_name = p_options["nodes/root_name"];
+	const String source_extension = p_source_file.get_extension().to_lower();
 	if (!root_name.is_empty() && root_name != "Scene Root") {
 		// TODO: Remove `&& root_name != "Scene Root"` for Godot 5.0.
 		// For backwards compatibility with existing .import files,
 		// treat "Scene Root" as having no root name override.
 		scene->set_name(root_name);
+	} else if ((source_extension == "glb" || source_extension == "gltf") &&
+			Object::cast_to<MeshInstance3D>(scene) && String(scene->get_name()).begins_with("UB")) {
+		// Older UniBuilder exports used their internal primitive name as the
+		// glTF root. Use the asset's file name so existing exports get a useful
+		// node name when instanced into a level.
+		const String source_name = p_source_file.get_file().get_basename().validate_node_name();
+		if (!source_name.is_empty()) {
+			scene->set_name(source_name);
+		}
 	} else if (String(scene->get_name()).is_empty()) {
 		scene->set_name(p_save_path.get_file().get_basename());
 	}
