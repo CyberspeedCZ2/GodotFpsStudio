@@ -36,6 +36,7 @@
 #include "core/io/resource_saver.h"
 #include "core/math/projection.h"
 #include "core/object/callable_mp.h"
+#include "core/object/script_language.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -48,6 +49,7 @@
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
 #include "scene/3d/multimesh_instance_3d.h"
+#include "scene/3d/world_environment.h"
 #include "scene/animation/animation_player.h"
 #include "scene/gui/scroll_container.h"
 #include "scene/gui/check_button.h"
@@ -1603,6 +1605,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	base_path = p_path;
 	current_import_type = p_scene_import_type;
 	lod_settings_pending = false;
+	_setup_model_preview_lighting();
 
 	mesh_set.clear();
 	animation_map.clear();
@@ -3187,6 +3190,9 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	environment = create_fps_level_environment();
 	// Leave the sky FOV at 0 so it follows the perspective camera FOV below.
 	camera->set_environment(environment);
+	preview_world_environment_node = memnew(WorldEnvironment);
+	preview_world_environment_node->set_environment(environment);
+	base_viewport->add_child(preview_world_environment_node);
 
 	light1 = create_fps_level_sun();
 	// Keep the sun in preview-world space. Camera orbiting changes the view,
@@ -3365,6 +3371,20 @@ void fragment() {
 	material_isolate_toggle->set_tooltip_text(TTR("Hide other material surfaces in the full-model preview."));
 	material_isolate_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_material_isolate_toggled));
 	material_tab->add_child(material_isolate_toggle);
+
+	preview_day_night_label = memnew(Label);
+	preview_day_night_label->set_text(TTR("DayNightCycle: 12:00"));
+	material_tab->add_child(preview_day_night_label);
+
+	preview_day_night_slider = memnew(HSlider);
+	preview_day_night_slider->set_min(0.0);
+	preview_day_night_slider->set_max(24.0);
+	preview_day_night_slider->set_step(0.05);
+	preview_day_night_slider->set_tooltip_text(TTR("Set the preview time of day. This changes only the Model View lighting."));
+	preview_day_night_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_day_night_time_changed));
+	material_tab->add_child(preview_day_night_slider);
+	preview_day_night_label->hide();
+	preview_day_night_slider->hide();
 
 	material_create_button = memnew(Button);
 	material_create_button->set_text(TTR("Create editable material files…"));
@@ -3931,6 +3951,176 @@ void SceneImportSettingsScreen::_apply_material_isolation() {
 		}
 		mesh_node->set_surface_override_material(surface_data.surface_index, preview_material);
 	}
+}
+
+void SceneImportSettingsScreen::_setup_model_preview_lighting() {
+	if (!base_viewport || !camera || !light1 || !preview_world_environment_node) {
+		return;
+	}
+
+	if (preview_day_night_cycle != nullptr) {
+		base_viewport->remove_child(preview_day_night_cycle);
+		memdelete(preview_day_night_cycle);
+		preview_day_night_cycle = nullptr;
+	}
+	if (preview_moon_light != nullptr) {
+		base_viewport->remove_child(preview_moon_light);
+		memdelete(preview_moon_light);
+		preview_moon_light = nullptr;
+	}
+
+	environment = create_fps_level_environment();
+	DirectionalLight3D *default_sun = create_fps_level_sun();
+	light1->set_transform(default_sun->get_transform());
+	light1->set_color(default_sun->get_color());
+	light1->set_param(Light3D::PARAM_ENERGY, default_sun->get_param(Light3D::PARAM_ENERGY));
+	light1->set_param(Light3D::PARAM_INDIRECT_ENERGY, default_sun->get_param(Light3D::PARAM_INDIRECT_ENERGY));
+	light1->set_shadow(default_sun->has_shadow());
+	light1->set_shadow_mode(default_sun->get_shadow_mode());
+	light1->set_sky_mode(default_sun->get_sky_mode());
+	memdelete(default_sun);
+
+	Node *source_cycle = nullptr;
+	DirectionalLight3D *source_sun = nullptr;
+	WorldEnvironment *source_world_environment = nullptr;
+	float source_time_of_day = 12.0f;
+	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
+	if (edited_scene != nullptr) {
+		TypedArray<Node> world_environments = edited_scene->find_children("*", "WorldEnvironment", true, false);
+		if (!world_environments.is_empty()) {
+			Object *world_environment_object = world_environments[0];
+			source_world_environment = Object::cast_to<WorldEnvironment>(world_environment_object);
+		}
+
+		TypedArray<Node> directional_lights = edited_scene->find_children("*", "DirectionalLight3D", true, false);
+		if (!directional_lights.is_empty()) {
+			Object *directional_light_object = directional_lights[0];
+			source_sun = Object::cast_to<DirectionalLight3D>(directional_light_object);
+		}
+
+		TypedArray<Node> scene_nodes = edited_scene->find_children("*", "Node3D", true, false);
+		for (int i = 0; i < scene_nodes.size(); i++) {
+			Object *candidate_object = scene_nodes[i];
+			Node *candidate = Object::cast_to<Node>(candidate_object);
+			bool has_time_of_day = false;
+			Variant time_value = candidate->get("time_of_day", &has_time_of_day);
+			if (has_time_of_day) {
+				source_cycle = candidate;
+				source_time_of_day = time_value;
+				break;
+			}
+		}
+		if (source_cycle != nullptr) {
+			bool has_sun_reference = false;
+			Object *sun_reference = source_cycle->get("sun_light", &has_sun_reference);
+			if (has_sun_reference) {
+				source_sun = Object::cast_to<DirectionalLight3D>(sun_reference);
+			}
+			bool has_environment_reference = false;
+			Object *environment_reference = source_cycle->get("world_environment", &has_environment_reference);
+			if (has_environment_reference) {
+				source_world_environment = Object::cast_to<WorldEnvironment>(environment_reference);
+			}
+		}
+	}
+
+	if (source_world_environment != nullptr && source_world_environment->get_environment().is_valid()) {
+		Ref<Resource> duplicated_environment = source_world_environment->get_environment()->duplicate(true);
+		Ref<Environment> source_environment_copy = duplicated_environment;
+		if (source_environment_copy.is_valid()) {
+			environment = source_environment_copy;
+		}
+	}
+	preview_world_environment_node->set_environment(environment);
+	camera->set_environment(environment);
+
+	if (source_sun != nullptr) {
+		light1->set_transform(source_sun->get_global_transform());
+		light1->set_color(source_sun->get_color());
+		light1->set_param(Light3D::PARAM_ENERGY, source_sun->get_param(Light3D::PARAM_ENERGY));
+		light1->set_param(Light3D::PARAM_INDIRECT_ENERGY, source_sun->get_param(Light3D::PARAM_INDIRECT_ENERGY));
+		light1->set_param(Light3D::PARAM_SPECULAR, source_sun->get_param(Light3D::PARAM_SPECULAR));
+		light1->set_param(Light3D::PARAM_SHADOW_BIAS, source_sun->get_param(Light3D::PARAM_SHADOW_BIAS));
+		light1->set_param(Light3D::PARAM_SHADOW_BLUR, source_sun->get_param(Light3D::PARAM_SHADOW_BLUR));
+		light1->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, source_sun->get_param(Light3D::PARAM_SHADOW_MAX_DISTANCE));
+		light1->set_shadow(source_sun->has_shadow());
+		light1->set_shadow_mode(source_sun->get_shadow_mode());
+		light1->set_sky_mode(source_sun->get_sky_mode());
+	}
+
+	if (source_cycle != nullptr) {
+		Ref<Script> cycle_script = source_cycle->get_script();
+		if (cycle_script.is_valid()) {
+			preview_moon_light = memnew(DirectionalLight3D);
+			preview_moon_light->set_name("PreviewMoonLight");
+			preview_moon_light->set_color(Color(0.68, 0.80, 0.98));
+			preview_moon_light->set_param(Light3D::PARAM_ENERGY, 0.0);
+			preview_moon_light->set_param(Light3D::PARAM_SHADOW_BIAS, 0.05);
+			preview_moon_light->set_param(Light3D::PARAM_SHADOW_BLUR, 2.5);
+			preview_moon_light->set_shadow(true);
+			preview_moon_light->hide();
+			base_viewport->add_child(preview_moon_light);
+
+			preview_day_night_cycle = memnew(Node3D);
+			preview_day_night_cycle->set_name("PreviewDayNightCycle");
+			preview_day_night_cycle->set_script(cycle_script);
+			preview_day_night_cycle->set("sun_light", light1);
+			preview_day_night_cycle->set("moon_light", preview_moon_light);
+			preview_day_night_cycle->set("world_environment", preview_world_environment_node);
+			for (const StringName &property : { SNAME("day_duration_minutes"), SNAME("time_scale"), SNAME("latitude_tilt"), SNAME("azimuth_offset"), SNAME("sun_max_energy"), SNAME("moon_max_energy"), SNAME("moon_light_color") }) {
+				bool has_property = false;
+				Variant value = source_cycle->get(property, &has_property);
+				if (has_property) {
+					preview_day_night_cycle->set(property, value);
+				}
+			}
+			bool has_moon_color = false;
+			Color moon_color = preview_day_night_cycle->get("moon_light_color", &has_moon_color);
+			if (has_moon_color) {
+				preview_moon_light->set_color(moon_color);
+			}
+			preview_day_night_cycle->set("cycle_active", false);
+			preview_day_night_cycle->set("editor_preview_cycle", false);
+			base_viewport->add_child(preview_day_night_cycle);
+
+			const float preview_time = Math::fposmod((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "day_night_time", source_time_of_day), 24.0f);
+			preview_day_night_cycle->set("time_of_day", preview_time);
+			preview_day_night_slider->set_value_no_signal(preview_time);
+			_update_preview_day_night_label(preview_time);
+			preview_day_night_label->show();
+			preview_day_night_slider->show();
+			return;
+		}
+	}
+
+	preview_day_night_label->hide();
+	preview_day_night_slider->hide();
+}
+
+void SceneImportSettingsScreen::_preview_day_night_time_changed(double p_value) {
+	if (preview_day_night_cycle == nullptr) {
+		return;
+	}
+	const float time_of_day = Math::fposmod((float)p_value, 24.0f);
+	preview_day_night_cycle->set("time_of_day", time_of_day);
+	preview_day_night_slider->set_value_no_signal(time_of_day);
+	_update_preview_day_night_label(time_of_day);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", time_of_day);
+}
+
+void SceneImportSettingsScreen::_update_preview_day_night_label(double p_value) {
+	if (!preview_day_night_label) {
+		return;
+	}
+	const float time_of_day = Math::fposmod((float)p_value, 24.0f);
+	const int hour = (int)time_of_day;
+	int minute = Math::round((time_of_day - hour) * 60.0f);
+	int display_hour = hour;
+	if (minute >= 60) {
+		minute = 0;
+		display_hour = (display_hour + 1) % 24;
+	}
+	preview_day_night_label->set_text(vformat(TTR("DayNightCycle: %02d:%02d"), display_hour, minute));
 }
 
 void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {

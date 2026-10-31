@@ -59,6 +59,7 @@ class SceneImportSettingsData;
 class Timer;
 class SpinBox;
 class VBoxContainer;
+class WorldEnvironment;
 
 // Full-size workspace screen (the "Model" main editor tab) hosting the
 // advanced scene import settings. Formerly a modal ConfirmationDialog
@@ -97,6 +98,11 @@ class SceneImportSettingsScreen : public Control {
 	SubViewport *base_viewport = nullptr;
 
 	Camera3D *camera = nullptr;
+	WorldEnvironment *preview_world_environment_node = nullptr;
+	DirectionalLight3D *preview_moon_light = nullptr;
+	Node3D *preview_day_night_cycle = nullptr;
+	Label *preview_day_night_label = nullptr;
+	HSlider *preview_day_night_slider = nullptr;
 	Ref<CameraAttributesPractical> camera_attributes;
 	Ref<Environment> environment;
 	bool first_aabb = false;
@@ -398,6 +404,9 @@ class SceneImportSettingsScreen : public Control {
 	void _material_preview_on_model_toggled(bool p_enabled);
 	void _material_isolate_toggled(bool p_enabled);
 	void _apply_material_isolation();
+	void _setup_model_preview_lighting();
+	void _preview_day_night_time_changed(double p_value);
+	void _update_preview_day_night_label(double p_value);
 	void _material_inspector_property_edited(const String &p_name);
 	Error _save_modified_external_materials();
 	void _lod_reset_levels();

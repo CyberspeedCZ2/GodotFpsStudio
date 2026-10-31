@@ -41,6 +41,7 @@
 #include "scene/gui/button.h"
 #include "scene/gui/color_rect.h"
 #include "scene/gui/label.h"
+#include "scene/gui/separator.h"
 #include "scene/gui/subviewport_container.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/blit_material.h"
@@ -85,6 +86,9 @@ Ref<ShaderMaterial> MaterialEditor::make_shader_material(const Ref<Material> &p_
 
 void MaterialEditor::gui_input(const Ref<InputEvent> &p_event) {
 	ERR_FAIL_COND(p_event.is_null());
+	if (resizing_preview) {
+		return;
+	}
 
 	Ref<InputEventMouseMotion> mm = p_event;
 	if (mm.is_valid() && (mm->get_button_mask().has_flag(MouseButtonMask::LEFT))) {
@@ -99,6 +103,31 @@ void MaterialEditor::gui_input(const Ref<InputEvent> &p_event) {
 		}
 		_update_rotation();
 		_store_rotation_metadata();
+	}
+}
+
+void MaterialEditor::_set_preview_height(real_t p_height) {
+	const real_t height = CLAMP(p_height, 140.0, 1200.0);
+	set_custom_minimum_size(Size2(1, height) * EDSCALE);
+	EditorSettings::get_singleton()->set_project_metadata("inspector_options", "material_preview_height", Math::round(height));
+}
+
+void MaterialEditor::_resize_handle_gui_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventMouseButton> mouse_button = p_event;
+	if (mouse_button.is_valid() && mouse_button->get_button_index() == MouseButton::LEFT) {
+		resizing_preview = mouse_button->is_pressed();
+		if (resizing_preview) {
+			preview_resize_height = get_size().y / EDSCALE;
+		}
+		accept_event();
+		return;
+	}
+
+	Ref<InputEventMouseMotion> mouse_motion = p_event;
+	if (resizing_preview && mouse_motion.is_valid()) {
+		preview_resize_height += mouse_motion->get_relative().y / EDSCALE;
+		_set_preview_height(preview_resize_height);
+		accept_event();
 	}
 }
 
@@ -262,7 +291,8 @@ void MaterialEditor::_on_quad_switch_pressed() {
 }
 
 MaterialEditor::MaterialEditor() {
-	set_custom_minimum_size(Size2(1, 100) * EDSCALE);
+	const int stored_preview_height = EditorSettings::get_singleton()->get_project_metadata("inspector_options", "material_preview_height", 260);
+	set_custom_minimum_size(Size2(1, CLAMP(stored_preview_height, 140, 1200)) * EDSCALE);
 
 	// Canvas item
 
@@ -439,6 +469,16 @@ MaterialEditor::MaterialEditor() {
 		box_instance->hide();
 		quad_switch->set_pressed_no_signal(true);
 	}
+
+	resize_handle = memnew(HSeparator);
+	add_child(resize_handle);
+	resize_handle->set_anchors_and_offsets_preset(Control::PRESET_BOTTOM_WIDE);
+	resize_handle->set_offset(SIDE_TOP, -8 * EDSCALE);
+	resize_handle->set_custom_minimum_size(Size2(0, 8 * EDSCALE));
+	resize_handle->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	resize_handle->set_default_cursor_shape(Control::CURSOR_VSIZE);
+	resize_handle->set_tooltip_text(TTR("Drag to resize the material preview."));
+	resize_handle->connect(SceneStringName(gui_input), callable_mp(this, &MaterialEditor::_resize_handle_gui_input));
 
 	Vector2 stored_rot = EditorSettings::get_singleton()->get_project_metadata("inspector_options", "material_preview_rotation", Vector2());
 	_set_rotation(stored_rot.x, stored_rot.y);

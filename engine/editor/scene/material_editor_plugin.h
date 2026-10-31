@@ -44,6 +44,7 @@ class MeshInstance3D;
 class SubViewport;
 class SubViewportContainer;
 class Button;
+class HSeparator;
 class Label;
 
 class MaterialEditor : public Control {
@@ -53,10 +54,13 @@ class MaterialEditor : public Control {
 	Ref<Material> material;
 	SubViewportContainer *vc = nullptr;
 	SubViewport *viewport = nullptr;
+	HSeparator *resize_handle = nullptr;
 	VBoxContainer *layout_error = nullptr;
 	Label *error_label = nullptr;
 	bool is_unsupported_shader_mode = false;
 	bool autohide_buttons = false;
+	bool resizing_preview = false;
+	real_t preview_resize_height = 260.0;
 
 	struct ThemeCache {
 		Ref<Texture2D> light_1_icon;
@@ -103,6 +107,8 @@ class MaterialEditor : public Control {
 	void _set_rotation(real_t p_x_degrees, real_t p_y_degrees);
 	void _store_rotation_metadata();
 	void _update_rotation();
+	void _resize_handle_gui_input(const Ref<InputEvent> &p_event);
+	void _set_preview_height(real_t p_height);
 
 protected:
 	virtual void _update_theme_item_cache() override;
