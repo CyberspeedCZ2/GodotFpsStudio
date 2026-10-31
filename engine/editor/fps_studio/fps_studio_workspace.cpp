@@ -261,13 +261,15 @@ void FPSStudioWorkspace::load_project_central_layout(
 			debugger_node->get_default_debugger()->switch_to_debugger(selected_default_debugger_tab_idx);
 		}
 	}
-	load_main_screen_layout_from_config(p_config_file, p_editor_section);
+
+	// Always open the Level workspace when the editor starts. The selected
+	// workspace from the previous session is intentionally not restored.
+	if (editor_main_screen) {
+		callable_mp(editor_main_screen, &EditorMainScreen::select).call_deferred(EditorMainScreen::EDITOR_3D);
+	}
 
 	if (p_migrate_legacy_layout) {
 		load_bottom_panel_layout_from_config(p_default_layout, p_editor_section);
-		if (editor_main_screen) {
-			editor_main_screen->select(EditorMainScreen::EDITOR_3D);
-		}
 	}
 }
 
@@ -280,12 +282,6 @@ void FPSStudioWorkspace::load_docks_from_config(Ref<ConfigFile> p_config_file, c
 void FPSStudioWorkspace::load_bottom_panel_layout_from_config(Ref<ConfigFile> p_config_file, const String &p_section) {
 	if (bottom_panel) {
 		bottom_panel->load_layout_from_config(p_config_file, p_section);
-	}
-}
-
-void FPSStudioWorkspace::load_main_screen_layout_from_config(Ref<ConfigFile> p_config_file, const String &p_section) {
-	if (editor_main_screen) {
-		editor_main_screen->load_layout_from_config(p_config_file, p_section);
 	}
 }
 

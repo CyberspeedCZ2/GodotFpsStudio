@@ -87,7 +87,6 @@ public:
 			Ref<ConfigFile> p_config_file, Ref<ConfigFile> p_default_layout, const String &p_editor_section, bool p_migrate_legacy_layout);
 	void load_docks_from_config(Ref<ConfigFile> p_config_file, const String &p_section, bool p_first_load = false);
 	void load_bottom_panel_layout_from_config(Ref<ConfigFile> p_config_file, const String &p_section);
-	void load_main_screen_layout_from_config(Ref<ConfigFile> p_config_file, const String &p_section);
 	Vector<String> get_saved_layout_names(bool &r_default_overridden) const;
 	Error save_layout_preset(const String &p_name);
 	Error delete_layout_preset(const String &p_name);
