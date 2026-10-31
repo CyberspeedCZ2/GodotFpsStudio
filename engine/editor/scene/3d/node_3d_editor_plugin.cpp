@@ -8680,8 +8680,8 @@ void Node3DEditor::_fps_studio_geometry_mode_selected(int p_mode) {
 		static const char *mode_names[] = { "Object Mode", "Vertex Mode", "Edge Mode", "Face Mode" };
 		fps_studio_geometry_mode_menu->set_text(TTR(mode_names[fps_studio_geometry_selection_mode]));
 	}
-	if (fps_studio_geometry_extrude_amount) {
-		fps_studio_geometry_extrude_amount->set_visible(fps_studio_geometry_selection_mode == 3);
+	if (fps_studio_geometry_face_amount) {
+		fps_studio_geometry_face_amount->set_visible(fps_studio_geometry_selection_mode == 3);
 	}
 	if (fps_studio_geometry_selection_mode == 0 && editor_selection) {
 		for (Node *node : editor_selection->get_top_selected_node_list()) {
@@ -8699,7 +8699,7 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 	SceneTreeDock *scene_tree_dock = SceneTreeDock::get_singleton();
 	Node *target_node = nullptr;
 	Vector<int> selected_faces;
-	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES;
+	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_INSET_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES;
 	if (requires_face_selection) {
 		target_node = get_single_selected_node();
 		Node3DEditorSelectedItem *selected_item = target_node && editor_selection ? editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node) : nullptr;
@@ -8717,7 +8717,7 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 		}
 	}
 
-	const real_t amount = fps_studio_geometry_extrude_amount ? fps_studio_geometry_extrude_amount->get_value() : 1.0;
+	const real_t amount = fps_studio_geometry_face_amount ? fps_studio_geometry_face_amount->get_value() : 1.0;
 	const bool operation_applied = scene_tree_dock && scene_tree_dock->apply_fps_studio_geometry_operation(p_operation, target_node, selected_faces, amount);
 	if (operation_applied && target_node && editor_selection) {
 		Node3DEditorSelectedItem *selected_item = editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node);
@@ -11487,16 +11487,16 @@ Node3DEditor::Node3DEditor() {
 	fps_studio_geometry_mode_popup->set_item_checked(0, true);
 	fps_studio_geometry_mode_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_mode_selected));
 
-	fps_studio_geometry_extrude_amount = memnew(SpinBox);
-	fps_studio_geometry_extrude_amount->set_min(-1000.0);
-	fps_studio_geometry_extrude_amount->set_max(1000.0);
-	fps_studio_geometry_extrude_amount->set_step(0.1);
-	fps_studio_geometry_extrude_amount->set_value(1.0);
-	fps_studio_geometry_extrude_amount->set_prefix(TTR("Extrude: "));
-	fps_studio_geometry_extrude_amount->set_tooltip_text(TTR("Distance to move selected faces along their averaged normals."));
-	fps_studio_geometry_extrude_amount->set_custom_minimum_size(Size2(118 * EDSCALE, 0));
-	fps_studio_geometry_extrude_amount->set_visible(false);
-	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_extrude_amount);
+	fps_studio_geometry_face_amount = memnew(SpinBox);
+	fps_studio_geometry_face_amount->set_min(-1000.0);
+	fps_studio_geometry_face_amount->set_max(1000.0);
+	fps_studio_geometry_face_amount->set_step(0.1);
+	fps_studio_geometry_face_amount->set_value(1.0);
+	fps_studio_geometry_face_amount->set_prefix(TTR("Amount: "));
+	fps_studio_geometry_face_amount->set_tooltip_text(TTR("Distance used by face extrusion and inset."));
+	fps_studio_geometry_face_amount->set_custom_minimum_size(Size2(118 * EDSCALE, 0));
+	fps_studio_geometry_face_amount->set_visible(false);
+	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_face_amount);
 
 	MenuButton *fps_studio_geometry_tools_menu = memnew(MenuButton);
 	fps_studio_geometry_tools_menu->set_flat(false);
@@ -11506,7 +11506,7 @@ Node3DEditor::Node3DEditor() {
 	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_tools_menu);
 	PopupMenu *fps_studio_geometry_tools_popup = fps_studio_geometry_tools_menu->get_popup();
 	for (int operation = 0; operation < FPSStudioGeometry::MESH_OPERATION_MAX; operation++) {
-		if (operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE) {
+		if (operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE) {
 			fps_studio_geometry_tools_popup->add_separator();
 		}
 		fps_studio_geometry_tools_popup->add_item(TTR(FPSStudioGeometry::get_mesh_operation_name(FPSStudioGeometry::MeshOperation(operation))), operation);

@@ -21,7 +21,7 @@ const char *get_shape_name(int p_shape) {
 }
 
 const char *get_mesh_operation_name(MeshOperation p_operation) {
-	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Delete Faces", "Flip Face Normals", "Subdivide", "Conform Normals" };
+	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Inset Faces", "Delete Faces", "Flip Face Normals", "Subdivide", "Conform Normals" };
 	return p_operation >= 0 && p_operation < MESH_OPERATION_MAX ? operation_names[p_operation] : "Mesh Operation";
 }
 
@@ -74,6 +74,7 @@ struct GeometryExtrusionEdgeUse {
 	SurfaceTool::Vertex vertex_b;
 	int position_a = -1;
 	int position_b = -1;
+	Vector3 face_normal;
 };
 
 struct GeometryExtrusionEdge {
@@ -83,7 +84,13 @@ struct GeometryExtrusionEdge {
 	Vector<GeometryExtrusionEdgeUse> selected_uses;
 };
 
-static int _get_geometry_position_id(const Vector3 &p_position, HashMap<Vector3i, int> &r_position_ids, Vector<Vector3i> &r_positions) {
+struct GeometryBoundaryVertex {
+	int previous_position = -1;
+	int next_position = -1;
+	Vector3 normal_sum;
+};
+
+static int _get_geometry_position_id(const Vector3 &p_position, HashMap<Vector3i, int> &r_position_ids, Vector<Vector3> &r_positions) {
 	constexpr real_t position_precision = 100000.0;
 	const Vector3i position_key(
 		int(Math::round(p_position.x * position_precision)),
@@ -95,11 +102,11 @@ static int _get_geometry_position_id(const Vector3 &p_position, HashMap<Vector3i
 	}
 	const int new_position_id = r_positions.size();
 	r_position_ids.insert(position_key, new_position_id);
-	r_positions.push_back(position_key);
+	r_positions.push_back(p_position);
 	return new_position_id;
 }
 
-static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount, bool p_delete_faces, bool p_flip_normals, bool &r_surface_empty) {
+static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount, bool p_delete_faces, bool p_flip_normals, bool p_inset_faces, bool &r_surface_empty) {
 	r_surface_empty = false;
 	p_surface_tool->deindex();
 	const LocalVector<SurfaceTool::Vertex> &source_vertices = p_surface_tool->get_vertex_array();
@@ -108,7 +115,7 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 	}
 
 	HashMap<Vector3i, int> position_ids;
-	Vector<Vector3i> positions;
+	Vector<Vector3> positions;
 	Vector<GeometryExtrusionFace> faces;
 	faces.resize(source_vertices.size() / 3);
 	HashMap<Vector2i, GeometryExtrusionEdge> edges;
@@ -241,6 +248,7 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 			use.vertex_b = face.vertices[corner_b];
 			use.position_a = position_a;
 			use.position_b = position_b;
+			use.face_normal = face.normal;
 			edge->selected_uses.push_back(use);
 		}
 	}
@@ -252,12 +260,63 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 		}
 	}
 
+	HashMap<int, GeometryBoundaryVertex> boundary_vertices;
+	for (const KeyValue<Vector2i, GeometryExtrusionEdge> &edge_entry : edges) {
+		const GeometryExtrusionEdge &edge = edge_entry.value;
+		if (edge.selected_faces == 0 || (edge.selected_faces == edge.adjacent_faces && edge.adjacent_faces > 1)) {
+			continue;
+		}
+		for (const GeometryExtrusionEdgeUse &use : edge.selected_uses) {
+			GeometryBoundaryVertex *start = boundary_vertices.getptr(use.position_a);
+			if (!start) {
+				boundary_vertices.insert(use.position_a, GeometryBoundaryVertex());
+				start = boundary_vertices.getptr(use.position_a);
+			}
+			start->next_position = use.position_b;
+			start->normal_sum += use.face_normal;
+
+			GeometryBoundaryVertex *end = boundary_vertices.getptr(use.position_b);
+			if (!end) {
+				boundary_vertices.insert(use.position_b, GeometryBoundaryVertex());
+				end = boundary_vertices.getptr(use.position_b);
+			}
+			end->previous_position = use.position_a;
+			end->normal_sum += use.face_normal;
+		}
+	}
+
+	HashMap<int, Vector3> inset_offsets;
+	if (p_inset_faces) {
+		for (const KeyValue<int, GeometryBoundaryVertex> &boundary_entry : boundary_vertices) {
+			const GeometryBoundaryVertex &boundary = boundary_entry.value;
+			if (boundary.previous_position < 0 || boundary.next_position < 0 || boundary.normal_sum.length_squared() <= CMP_EPSILON2) {
+				continue;
+			}
+			const Vector3 position = positions[boundary_entry.key];
+			const Vector3 previous_direction = (position - positions[boundary.previous_position]).normalized();
+			const Vector3 next_direction = (positions[boundary.next_position] - position).normalized();
+			const Vector3 normal = boundary.normal_sum.normalized();
+			const Vector3 previous_inward = normal.cross(previous_direction).normalized();
+			const Vector3 next_inward = normal.cross(next_direction).normalized();
+			const Vector3 miter_direction = (previous_inward + next_inward).normalized();
+			const real_t denominator = miter_direction.dot(previous_inward);
+			Vector3 inset_offset;
+			if (denominator > 0.1) {
+				const real_t max_miter_length = Math::abs(p_amount) * 8.0;
+				inset_offset = miter_direction * CLAMP(p_amount / denominator, -max_miter_length, max_miter_length);
+			} else {
+				inset_offset = (previous_inward + next_inward).normalized() * p_amount;
+			}
+			inset_offsets.insert(boundary_entry.key, inset_offset);
+		}
+	}
+
 	result_vertices.reserve(faces.size() * 3 + edges.size() * 6);
 	for (const GeometryExtrusionFace &face : faces) {
 		for (int corner = 0; corner < 3; corner++) {
 			SurfaceTool::Vertex vertex = face.vertices[corner];
 			if (face.selected) {
-				const Vector3 *offset = extrusion_offsets.getptr(face.position_ids[corner]);
+				const Vector3 *offset = p_inset_faces ? inset_offsets.getptr(face.position_ids[corner]) : extrusion_offsets.getptr(face.position_ids[corner]);
 				if (offset) {
 					vertex.vertex += *offset;
 				}
@@ -276,8 +335,8 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 			SurfaceTool::Vertex bottom_b = use.vertex_b;
 			SurfaceTool::Vertex top_a = use.vertex_a;
 			SurfaceTool::Vertex top_b = use.vertex_b;
-			const Vector3 *offset_a = extrusion_offsets.getptr(use.position_a);
-			const Vector3 *offset_b = extrusion_offsets.getptr(use.position_b);
+			const Vector3 *offset_a = p_inset_faces ? inset_offsets.getptr(use.position_a) : extrusion_offsets.getptr(use.position_a);
+			const Vector3 *offset_b = p_inset_faces ? inset_offsets.getptr(use.position_b) : extrusion_offsets.getptr(use.position_b);
 			if (offset_a) {
 				top_a.vertex += *offset_a;
 			}
@@ -314,8 +373,9 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_operation, const Vector<int> &p_selected_faces, real_t p_amount) {
 	ERR_FAIL_COND_V(p_mesh.is_null() || p_mesh->get_surface_count() == 0, Ref<ArrayMesh>());
 	ERR_FAIL_INDEX_V(p_operation, MESH_OPERATION_MAX, Ref<ArrayMesh>());
-	const bool is_face_operation = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_DELETE_FACES || p_operation == MESH_OPERATION_FLIP_FACES;
-	ERR_FAIL_COND_V(is_face_operation && (p_selected_faces.is_empty() || (p_operation == MESH_OPERATION_EXTRUDE_FACES && Math::is_zero_approx(p_amount))), Ref<ArrayMesh>());
+	const bool is_face_operation = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_INSET_FACES || p_operation == MESH_OPERATION_DELETE_FACES || p_operation == MESH_OPERATION_FLIP_FACES;
+	const bool uses_face_amount = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_INSET_FACES;
+	ERR_FAIL_COND_V(is_face_operation && (p_selected_faces.is_empty() || (uses_face_amount && Math::is_zero_approx(p_amount))), Ref<ArrayMesh>());
 
 	HashSet<int> selected_faces;
 	if (is_face_operation) {
@@ -347,7 +407,7 @@ Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_ope
 
 		if (is_face_operation) {
 			if (primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
-				changed_selected_faces |= _modify_selected_geometry_surface(surface_tool, selected_faces, face_offset, p_amount, p_operation == MESH_OPERATION_DELETE_FACES, p_operation == MESH_OPERATION_FLIP_FACES, surface_empty);
+				changed_selected_faces |= _modify_selected_geometry_surface(surface_tool, selected_faces, face_offset, p_amount, p_operation == MESH_OPERATION_DELETE_FACES, p_operation == MESH_OPERATION_FLIP_FACES, p_operation == MESH_OPERATION_INSET_FACES, surface_empty);
 				face_offset += surface_face_count;
 			}
 		} else if (p_operation <= MESH_OPERATION_MIRROR_Z) {
