@@ -335,6 +335,7 @@ void EditorFileSystem::_first_scan_filesystem() {
 	// At the same time, to prevent looping multiple times in all files, it looks for extensions.
 	ep.step(TTR("Loading global class names..."), 1, true);
 	_first_scan_process_scripts(first_scan_root_dir, gdextension_extensions, existing_class_names, extensions);
+	_scan_fps_studio_unibuilder_scripts(existing_class_names);
 
 	// Removing invalid global class to prevent having invalid paths in ScriptServer.
 	bool save_scripts = _remove_invalid_global_class_names(existing_class_names);
@@ -407,6 +408,50 @@ void EditorFileSystem::_first_scan_process_scripts(const ScannedDirectory *p_sca
 	}
 }
 
+
+void EditorFileSystem::_scan_fps_studio_unibuilder_scripts(HashSet<String> &r_existing_class_names) {
+	Ref<DirAccess> packed_dir = memnew(DirAccessPack);
+	Vector<String> pending_directories;
+	pending_directories.push_back("res://addons/unibuilder");
+
+	while (!pending_directories.is_empty()) {
+		const String directory_path = pending_directories[pending_directories.size() - 1];
+		pending_directories.remove_at(pending_directories.size() - 1);
+		if (packed_dir->change_dir(directory_path) != OK || packed_dir->list_dir_begin() != OK) {
+			continue;
+		}
+
+		Vector<String> subdirectories;
+		for (String entry = packed_dir->get_next(); !entry.is_empty(); entry = packed_dir->get_next()) {
+			if (packed_dir->current_is_dir()) {
+				subdirectories.push_back(directory_path.path_join(entry));
+				continue;
+			}
+			if (entry.get_extension().to_lower() != "gd") {
+				continue;
+			}
+
+			const String path = directory_path.path_join(entry);
+			const String type = ResourceLoader::get_resource_type(path);
+			if (!ClassDB::is_parent_class(type, SNAME("Script"))) {
+				continue;
+			}
+
+			const ScriptClassInfo &info = _get_global_script_class(type, path);
+			ScriptClassInfoUpdate update(info);
+			update.type = type;
+			_register_global_class_script(path, path, update);
+			if (!info.name.is_empty()) {
+				r_existing_class_names.insert(info.name);
+			}
+		}
+		packed_dir->list_dir_end();
+
+		for (const String &subdirectory : subdirectories) {
+			pending_directories.push_back(subdirectory);
+		}
+	}
+}
 
 void EditorFileSystem::_scan_filesystem() {
 	// On the first scan, the first_scan_root_dir is created in _first_scan_filesystem.
@@ -3806,7 +3851,32 @@ void EditorFileSystem::remove_import_format_support_query(Ref<EditorFileSystemIm
 	import_support_queries.erase(p_query);
 }
 
+static void _load_fps_studio_unibuilder_pack() {
+	static bool loaded = false;
+	if (loaded) {
+		return;
+	}
+
+	const String pack_name = "FPSStudioUnibuilder.pck";
+	String pack_path = OS::get_singleton()->get_bundle_resource_dir().path_join(pack_name);
+	if (!FileAccess::exists(pack_path)) {
+		pack_path = OS::get_singleton()->get_executable_path().get_base_dir().path_join(pack_name);
+	}
+	if (!FileAccess::exists(pack_path)) {
+		return;
+	}
+
+	PackedData::get_singleton()->set_disabled(false);
+	if (PackedData::get_singleton()->add_pack(pack_path, false, 0) == OK) {
+		loaded = true;
+		print_verbose("Loaded built-in FPS Studio Unibuilder resources from " + pack_path);
+	} else {
+		ERR_PRINT(vformat("Unable to load built-in FPS Studio Unibuilder resources from: %s", pack_path));
+	}
+}
+
 EditorFileSystem::EditorFileSystem() {
+	_load_fps_studio_unibuilder_pack();
 #if defined(THREADS_ENABLED) && !defined(WEB_ENABLED)
 	// On web, threaded scanning blocks the browser's event loop, causing freezes.
 	// See GH-112072 for details.

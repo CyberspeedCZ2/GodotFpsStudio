@@ -39,7 +39,7 @@ Tento soubor slouží jako primární instrukce a kontext pro asistenta Antigrav
 - **RMB kontextové menu**: Rychlý klik otevře FPS menu, podržení/tažení zapne freelook kameru.
 - **FPS Gameplay prvky**: Player Start, Checkpoint, NPC Spawn, NPC Waypoint, NPC Action Point, NPC Cover Point, Objective Marker, Interaction Area, Navigation Region, Navigation Obstacle, Navigation Link.
 - **Vysoce kontrastní gizmo ikony**: Vlastní SVG gizma pro gameplay uzly čitelná i skrz modely levelu (`GizmoTrigger.svg`, `FPSPlayerStart`, `FPSCheckpoint`, atd.).
-- **FPS Studio Geometry Builder**: Nativní C++ nástroj editoru je ve výstavbě. RMB menu a lišta 3D viewportu vytváří základní MeshInstance3D tvary; Object/Vertex/Edge/Face režimy vybírají geometrii přes nativní subgizmo transformace. Lišta obsahuje také Mirror X/Y/Z, extruzi hran a ploch, inset, mazání, překlápění normál a subdivizi vybraných ploch, subdivizi celé sítě a Conform Normals; další nástroje pro editaci topologie, UV, materiálů a export se doplňují po etapách.
+- **UniBuilder CSG/brush modeling**: Integrovaný plný balíček (`DEMO = false`) bez demo limitů, interaktivní click-by-click vkládání z viewport menu.
 - **Editor tras pro NPC (`Path3D` / NPC Route)**:
   - C++ vrstva v `editor/scene/3d/path_3d_editor_plugin.cpp` a `npc_route_geometry.h`.
   - Podpora akcí na waypointech (Move, Wait, Look At, Animation, Interact, Attack, Cover).
@@ -231,7 +231,7 @@ Uživatel zadal následující požadavky na waypoint systém a chování NPC:
       - Do `Curve3D` se počítají hladké C1-spojité kubické Bézier tečny (`tangent_a` a `tangent_b`), které v patrol křivce vytvářejí elegantní plynulý oblouk okolo překážky.
     - **Striktní filtrování architektury levelu a šikmých ramp**:
       - `_is_valid_detour_obstacle(collider)` povoluje zakládání tras výhradně pro skutečné překážky (`RigidBody3D`, skupina `fps_heavy_obstacle` / `fps_obstacle`, vrstva 2 `Heavy Obstacle` nebo uzel s `NavigationObstacle3D`).
-      - Statická architektura levelu (stěny, dveře, šikmé rampy a pochozí povrchy na NavMeshi) je v `_cast_sphere_probe` detekována jako pochozí terén a nikdy nespouští falešné objízdné body na hranách ramp.
+      - Statická architektura levelu (stěny, dveře, šikmé rampy UniBuilderu a pochozí povrchy na NavMeshi) je v `_cast_sphere_probe` detekována jako pochozí terén a nikdy nespouští falešné objízdné body na hranách ramp.
     - Sestaveno, otestováno 5500snímkovou headless simulací bez jediné chyby. Commitnuto a pushnuto na GitHub (`main`).
 
 16. **Adaptivní variabilní offset, odstranění zablokovaných waypointů a NavMesh String-Pulling (Zero-Loop Funnel Bypass) — [HOTOVO]**:

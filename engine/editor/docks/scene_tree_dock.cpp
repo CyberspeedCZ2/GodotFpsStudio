@@ -47,7 +47,6 @@
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
-#include "editor/fps_studio/fps_studio_geometry.h"
 #include "editor/fps_studio/fps_level_scene_template.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/editor_paths.h"
@@ -1715,117 +1714,6 @@ bool SceneTreeDock::create_fps_player_start_at(const Vector3 &p_world_position) 
 	undo_redo->add_do_method(this, "_post_do_create", player_start);
 	undo_redo->commit_action();
 	emit_signal(SNAME("node_created"), player_start);
-	return true;
-}
-
-bool SceneTreeDock::create_fps_studio_geometry_at(int p_shape, const Vector3 &p_world_position) {
-	if (!profile_allow_editing || p_shape < 0 || p_shape >= FPSStudioGeometry::get_shape_count()) {
-		return false;
-	}
-
-	Node *scene_root = EditorNode::get_singleton()->get_edited_scene();
-	Node3D *scene_root_3d = Object::cast_to<Node3D>(scene_root);
-	if (!scene_root_3d) {
-		return false;
-	}
-
-	Ref<Mesh> mesh = FPSStudioGeometry::create_mesh(p_shape);
-	if (mesh.is_null()) {
-		return false;
-	}
-
-	MeshInstance3D *created_node = memnew(MeshInstance3D);
-	created_node->set_mesh(mesh);
-	const String shape_name = TTR(FPSStudioGeometry::get_shape_name(p_shape));
-	created_node->set_name(Node::adjust_name_casing(shape_name));
-	created_node->set_position(scene_root_3d->get_global_transform().affine_inverse().xform(p_world_position));
-	created_node->set_meta("fps_studio_geometry_kind", p_shape);
-	Array geometry_arrays = mesh->surface_get_arrays(0);
-	if (!geometry_arrays.is_empty()) {
-		PackedInt32Array indices = geometry_arrays[Mesh::ARRAY_INDEX];
-		if (indices.is_empty()) {
-			const PackedVector3Array vertices = geometry_arrays[Mesh::ARRAY_VERTEX];
-			indices.resize(vertices.size());
-			for (int vertex = 0; vertex < vertices.size(); vertex++) {
-				indices.set(vertex, vertex);
-			}
-			geometry_arrays[Mesh::ARRAY_INDEX] = indices;
-		}
-		created_node->set_meta("fps_studio_geometry_arrays", geometry_arrays);
-		created_node->set_meta("fps_studio_geometry_data_version", 1);
-	}
-	const String new_name = scene_root_3d->validate_child_name(created_node);
-
-	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
-	undo_redo->create_action_for_history(vformat(TTR("Create %s Mesh"), shape_name), editor_data->get_current_edited_scene_history_id());
-	undo_redo->add_do_method(editor_selection, "clear");
-	undo_redo->add_do_method(scene_root_3d, "add_child", created_node, true);
-	undo_redo->add_do_method(created_node, "set_owner", scene_root);
-	undo_redo->add_do_method(editor_selection, "add_node", created_node);
-	undo_redo->add_do_reference(created_node);
-	undo_redo->add_undo_method(scene_root_3d, "remove_child", created_node);
-
-	EditorDebuggerNode *debugger = EditorDebuggerNode::get_singleton();
-	undo_redo->add_do_method(debugger, "live_debug_create_node", scene_root->get_path_to(scene_root_3d), created_node->get_class(), new_name);
-	undo_redo->add_undo_method(debugger, "live_debug_remove_node", NodePath(String(scene_root->get_path_to(scene_root_3d)).path_join(new_name)));
-	undo_redo->add_do_method(this, "_post_do_create", created_node);
-	undo_redo->commit_action();
-	emit_signal(SNAME("node_created"), created_node);
-	return true;
-}
-
-bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation, Node *p_target_node, const Vector<int> &p_selected_elements, real_t p_amount) {
-	if (!profile_allow_editing || p_operation < 0 || p_operation >= FPSStudioGeometry::MESH_OPERATION_MAX || !editor_selection) {
-		return false;
-	}
-	const bool requires_element_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_EDGES || p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_INSET_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE_FACES;
-	if (requires_element_selection && (!p_target_node || p_selected_elements.is_empty())) {
-		return false;
-	}
-
-	struct OperationTarget {
-		MeshInstance3D *node = nullptr;
-		Ref<Mesh> original_mesh;
-		Ref<ArrayMesh> updated_mesh;
-		Variant original_arrays;
-		Variant updated_arrays;
-	};
-	Vector<OperationTarget> targets;
-	const FPSStudioGeometry::MeshOperation operation = FPSStudioGeometry::MeshOperation(p_operation);
-	for (Node *selected_node : editor_selection->get_top_selected_node_list()) {
-		if (p_target_node && selected_node != p_target_node) {
-			continue;
-		}
-		MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(selected_node);
-		if (!mesh_instance || !mesh_instance->has_meta("fps_studio_geometry_kind") || mesh_instance->get_mesh().is_null()) {
-			continue;
-		}
-
-		OperationTarget target;
-		target.node = mesh_instance;
-		target.original_mesh = mesh_instance->get_mesh();
-		target.updated_mesh = FPSStudioGeometry::apply_mesh_operation(target.original_mesh, operation, p_selected_elements, p_amount);
-		if (target.updated_mesh.is_null()) {
-			continue;
-		}
-		target.original_arrays = mesh_instance->get_meta("fps_studio_geometry_arrays", Array());
-		target.updated_arrays = target.updated_mesh->get_surface_count() > 0 ? Variant(target.updated_mesh->surface_get_arrays(0)) : Variant(Array());
-		targets.push_back(target);
-	}
-	if (targets.is_empty()) {
-		return false;
-	}
-
-	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
-	const String operation_name = TTR(FPSStudioGeometry::get_mesh_operation_name(operation));
-	undo_redo->create_action(vformat(TTR("%s FPS Studio Geometry"), operation_name));
-	for (const OperationTarget &target : targets) {
-		undo_redo->add_do_property(target.node, "mesh", target.updated_mesh);
-		undo_redo->add_undo_property(target.node, "mesh", target.original_mesh);
-		undo_redo->add_do_method(target.node, "set_meta", "fps_studio_geometry_arrays", target.updated_arrays);
-		undo_redo->add_undo_method(target.node, "set_meta", "fps_studio_geometry_arrays", target.original_arrays);
-	}
-	undo_redo->commit_action();
 	return true;
 }
 
