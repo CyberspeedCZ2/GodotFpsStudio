@@ -16,6 +16,8 @@ static func export_file(mesh_data: UBMeshData, object_name: String, path: String
 	mi.mesh = mesh
 	mi.transform = xf
 	root.add_child(mi)
+	# The glTF exporter skips descendant nodes without an owner in the editor.
+	mi.owner = root
 
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()

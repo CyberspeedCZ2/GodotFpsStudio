@@ -698,6 +698,19 @@ Error GLTFDocument::_encode_buffer_glb(Ref<GLTFState> p_state, const String &p_p
 	if (p_state->buffers.is_empty()) {
 		return OK;
 	}
+	bool has_buffer_data = false;
+	for (const Vector<uint8_t> &buffer_data : p_state->buffers) {
+		if (!buffer_data.is_empty()) {
+			has_buffer_data = true;
+			break;
+		}
+	}
+	if (!has_buffer_data && p_state->buffer_views.is_empty()) {
+		// Empty scenes do not need a placeholder buffer. The GLB writer omits
+		// the BIN chunk for empty data, so emitting a URI-less buffer here would
+		// leave the exported file with no source for that buffer.
+		return OK;
+	}
 	Array buffers;
 	if (!p_state->buffers.is_empty()) {
 		Vector<uint8_t> buffer_data = p_state->buffers[0];
@@ -794,6 +807,9 @@ Error GLTFDocument::_parse_buffers(Ref<GLTFState> p_state, const String &p_base_
 			ERR_FAIL_COND_V(byteLength < buffer_data.size(), ERR_PARSE_ERROR);
 		} else if (i == 0 && p_state->glb_data.size()) {
 			buffer_data = p_state->glb_data;
+		} else if (buffer.has("byteLength") && int64_t(buffer["byteLength"]) == 0) {
+			// Tolerate empty buffers without a BIN chunk. Older exports may
+			// contain a zero-length placeholder even though they have no data.
 		} else {
 			ERR_PRINT("glTF: Buffer " + itos(i) + " has no data and cannot be loaded.");
 		}
