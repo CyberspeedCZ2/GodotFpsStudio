@@ -827,7 +827,8 @@ private:
 	MenuButton *transform_menu = nullptr;
 	PopupMenu *gizmos_menu = nullptr;
 	MenuButton *view_layout_menu = nullptr;
-	MenuButton *fps_studio_geometry_mode_menu = nullptr;
+	Button *fps_studio_geometry_mode_buttons[4] = {};
+	Label *fps_studio_geometry_mode_label = nullptr;
 	SpinBox *fps_studio_geometry_operation_amount = nullptr;
 	HBoxContainer *main_menu_hbox = nullptr;
 

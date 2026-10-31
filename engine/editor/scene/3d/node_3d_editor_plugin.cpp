@@ -7522,7 +7522,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_context_menu->add_child(fps_lights_submenu);
 	fps_context_menu->add_child(fps_other_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("FPS Gameplay"), fps_gameplay_submenu);
-	fps_context_menu->add_submenu_node_item(TTRC("FPS Studio Geometry"), fps_geometry_submenu);
+	fps_context_menu->add_submenu_node_item(TTRC("Godot Mesh"), fps_geometry_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("CSG"), fps_csg_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("Lights"), fps_lights_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("Common Nodes"), fps_other_submenu);
@@ -7640,7 +7640,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 		}
 	}
 	fps_context_menu->set_item_tooltip(0, TTR("FPS-oriented spawn, objective, NPC, trigger, and navigation helpers."));
-	fps_context_menu->set_item_tooltip(1, TTR("Create editable Godot mesh nodes for FPS Studio level geometry."));
+	fps_context_menu->set_item_tooltip(1, TTR("Create editable Godot Mesh objects."));
 	fps_context_menu->set_item_tooltip(2, TTR("Native CSG primitives for blockout geometry."));
 	fps_context_menu->set_item_tooltip(3, TTR("Add native 3D lights and baked-lighting helpers."));
 	fps_context_menu->set_item_tooltip(4, TTR("Add common 3D scene nodes."));
@@ -8669,16 +8669,14 @@ void Node3DEditor::_fps_studio_geometry_mode_selected(int p_mode) {
 	if (fps_studio_geometry_gizmo_plugin.is_valid()) {
 		fps_studio_geometry_gizmo_plugin->set_selection_mode(fps_studio_geometry_selection_mode);
 	}
-	if (fps_studio_geometry_mode_menu) {
-		PopupMenu *popup = fps_studio_geometry_mode_menu->get_popup();
-		for (int mode = 0; mode < 4; mode++) {
-			const int item_index = popup->get_item_index(mode);
-			if (item_index >= 0) {
-				popup->set_item_checked(item_index, mode == fps_studio_geometry_selection_mode);
-			}
+	for (int mode = 0; mode < 4; mode++) {
+		if (fps_studio_geometry_mode_buttons[mode]) {
+			fps_studio_geometry_mode_buttons[mode]->set_pressed_no_signal(mode == fps_studio_geometry_selection_mode);
 		}
+	}
+	if (fps_studio_geometry_mode_label) {
 		static const char *mode_names[] = { "Object Mode", "Vertex Mode", "Edge Mode", "Face Mode" };
-		fps_studio_geometry_mode_menu->set_text(TTR(mode_names[fps_studio_geometry_selection_mode]));
+		fps_studio_geometry_mode_label->set_text(TTR(mode_names[fps_studio_geometry_selection_mode]));
 	}
 	if (fps_studio_geometry_operation_amount) {
 		fps_studio_geometry_operation_amount->set_visible(fps_studio_geometry_selection_mode == 2 || fps_studio_geometry_selection_mode == 3);
@@ -8732,7 +8730,7 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 	if (!operation_applied) {
 		Node3DEditorViewport *target_viewport = get_last_used_viewport();
 		if (target_viewport) {
-			target_viewport->set_message(TTR("Select one or more FPS Studio geometry meshes first."));
+			target_viewport->set_message(TTR("Select one or more Godot Mesh objects first."));
 		}
 	}
 }
@@ -11463,11 +11461,25 @@ Node3DEditor::Node3DEditor() {
 	fps_studio_geometry_toolbar->add_child(fps_studio_geometry_toolbar_hbox);
 	toolbar_rows->add_child(fps_studio_geometry_toolbar);
 
+	HBoxContainer *fps_studio_geometry_brand = memnew(HBoxContainer);
+	fps_studio_geometry_brand->add_theme_constant_override("separation", 4 * EDSCALE);
+	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_brand);
+	TextureRect *fps_studio_geometry_brand_icon = memnew(TextureRect);
+	fps_studio_geometry_brand_icon->set_texture(get_editor_theme_icon(SNAME("MeshInstance3D")));
+	fps_studio_geometry_brand_icon->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
+	fps_studio_geometry_brand_icon->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	fps_studio_geometry_brand_icon->set_custom_minimum_size(Size2(22, 22) * EDSCALE);
+	fps_studio_geometry_brand->add_child(fps_studio_geometry_brand_icon);
+	Label *fps_studio_geometry_brand_label = memnew(Label);
+	fps_studio_geometry_brand_label->set_text(TTRC("Godot Mesh"));
+	fps_studio_geometry_brand_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+	fps_studio_geometry_brand->add_child(fps_studio_geometry_brand_label);
+
 	MenuButton *fps_studio_geometry_menu = memnew(MenuButton);
 	fps_studio_geometry_menu->set_flat(false);
 	fps_studio_geometry_menu->set_theme_type_variation("FlatMenuButton");
-	fps_studio_geometry_menu->set_text(TTRC("FPS Studio Geometry"));
-	fps_studio_geometry_menu->set_tooltip_text(TTRC("Create native FPS Studio level geometry in the active 3D viewport."));
+	fps_studio_geometry_menu->set_button_icon(get_editor_theme_icon(SNAME("Add")));
+	fps_studio_geometry_menu->set_tooltip_text(TTRC("Create native Godot Mesh geometry."));
 	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_menu);
 	PopupMenu *fps_studio_geometry_popup = fps_studio_geometry_menu->get_popup();
 	for (int i = 0; i < FPSStudioGeometry::get_shape_count(); i++) {
@@ -11475,19 +11487,29 @@ Node3DEditor::Node3DEditor() {
 	}
 	fps_studio_geometry_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_shape_requested));
 
-	fps_studio_geometry_mode_menu = memnew(MenuButton);
-	fps_studio_geometry_mode_menu->set_flat(false);
-	fps_studio_geometry_mode_menu->set_theme_type_variation("FlatMenuButton");
-	fps_studio_geometry_mode_menu->set_text(TTRC("Object Mode"));
-	fps_studio_geometry_mode_menu->set_tooltip_text(TTRC("Choose how to select FPS Studio geometry."));
-	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_mode_menu);
-	PopupMenu *fps_studio_geometry_mode_popup = fps_studio_geometry_mode_menu->get_popup();
-	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Object Mode"), 0);
-	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Vertex Mode"), 1);
-	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Edge Mode"), 2);
-	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Face Mode"), 3);
-	fps_studio_geometry_mode_popup->set_item_checked(0, true);
-	fps_studio_geometry_mode_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_mode_selected));
+	fps_studio_geometry_toolbar_hbox->add_child(memnew(VSeparator));
+	static const char *mode_names[] = { "Object Mode", "Vertex Mode", "Edge Mode", "Face Mode" };
+	static const StringName mode_icons[] = { SNAME("ToolSelect"), SNAME("EditorPosition"), SNAME("ToolConnect"), SNAME("ToolTriangle") };
+	Ref<ButtonGroup> fps_studio_geometry_mode_button_group;
+	fps_studio_geometry_mode_button_group.instantiate();
+	for (int mode = 0; mode < 4; mode++) {
+		Button *mode_button = memnew(Button);
+		fps_studio_geometry_mode_buttons[mode] = mode_button;
+		mode_button->set_theme_type_variation(SceneStringName(FlatButton));
+		mode_button->set_toggle_mode(true);
+		mode_button->set_button_group(fps_studio_geometry_mode_button_group);
+		mode_button->set_button_icon(get_editor_theme_icon(mode_icons[mode]));
+		mode_button->set_tooltip_text(TTR(mode_names[mode]));
+		mode_button->set_accessibility_name(TTR(mode_names[mode]));
+		mode_button->set_custom_minimum_size(Size2(30, 0) * EDSCALE);
+		mode_button->connect(SceneStringName(pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_mode_selected).bind(mode));
+		fps_studio_geometry_toolbar_hbox->add_child(mode_button);
+	}
+	fps_studio_geometry_mode_buttons[0]->set_pressed_no_signal(true);
+	fps_studio_geometry_mode_label = memnew(Label);
+	fps_studio_geometry_mode_label->set_text(TTRC("Object Mode"));
+	fps_studio_geometry_mode_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_mode_label);
 
 	fps_studio_geometry_operation_amount = memnew(SpinBox);
 	fps_studio_geometry_operation_amount->set_min(-1000.0);
@@ -11500,11 +11522,37 @@ Node3DEditor::Node3DEditor() {
 	fps_studio_geometry_operation_amount->set_visible(false);
 	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_operation_amount);
 
+	fps_studio_geometry_toolbar_hbox->add_child(memnew(VSeparator));
+	struct GeometryQuickTool {
+		FPSStudioGeometry::MeshOperation operation;
+		const char *icon;
+	};
+	static const GeometryQuickTool quick_tools[] = {
+		{ FPSStudioGeometry::MESH_OPERATION_MIRROR_X, "MirrorX" },
+		{ FPSStudioGeometry::MESH_OPERATION_MIRROR_Y, "MirrorY" },
+		{ FPSStudioGeometry::MESH_OPERATION_EXTRUDE_EDGES, "ToolConnect" },
+		{ FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES, "ToolTriangle" },
+		{ FPSStudioGeometry::MESH_OPERATION_INSET_FACES, "Edit" },
+		{ FPSStudioGeometry::MESH_OPERATION_DELETE_FACES, "Remove" },
+		{ FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE_FACES, "Mesh" },
+	};
+	for (const GeometryQuickTool &quick_tool : quick_tools) {
+		Button *quick_tool_button = memnew(Button);
+		quick_tool_button->set_theme_type_variation(SceneStringName(FlatButton));
+		quick_tool_button->set_button_icon(get_editor_theme_icon(StringName(quick_tool.icon)));
+		quick_tool_button->set_tooltip_text(TTR(FPSStudioGeometry::get_mesh_operation_name(quick_tool.operation)));
+		quick_tool_button->set_accessibility_name(TTR(FPSStudioGeometry::get_mesh_operation_name(quick_tool.operation)));
+		quick_tool_button->set_custom_minimum_size(Size2(30, 0) * EDSCALE);
+		quick_tool_button->connect(SceneStringName(pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_operation_requested).bind(quick_tool.operation));
+		fps_studio_geometry_toolbar_hbox->add_child(quick_tool_button);
+	}
+
 	MenuButton *fps_studio_geometry_tools_menu = memnew(MenuButton);
 	fps_studio_geometry_tools_menu->set_flat(false);
 	fps_studio_geometry_tools_menu->set_theme_type_variation("FlatMenuButton");
 	fps_studio_geometry_tools_menu->set_text(TTRC("Mesh Tools"));
-	fps_studio_geometry_tools_menu->set_tooltip_text(TTRC("Apply native mesh operations to selected FPS Studio geometry."));
+	fps_studio_geometry_tools_menu->set_button_icon(get_editor_theme_icon(SNAME("Tools")));
+	fps_studio_geometry_tools_menu->set_tooltip_text(TTRC("Apply native mesh operations to selected Godot Mesh objects."));
 	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_tools_menu);
 	PopupMenu *fps_studio_geometry_tools_popup = fps_studio_geometry_tools_menu->get_popup();
 	for (int operation = 0; operation < FPSStudioGeometry::MESH_OPERATION_MAX; operation++) {
