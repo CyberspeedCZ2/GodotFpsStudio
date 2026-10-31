@@ -76,6 +76,7 @@
 #include "scene/3d/physics/character_body_3d.h"
 #include "scene/3d/physics/collision_shape_3d.h"
 #include "scene/3d/physics/rigid_body_3d.h"
+#include "scene/3d/physics/static_body_3d.h"
 #include "scene/resources/3d/box_shape_3d.h"
 #include "scene/resources/3d/capsule_shape_3d.h"
 #include "scene/resources/3d/cylinder_shape_3d.h"
@@ -1359,6 +1360,44 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 		} break;
 		case TOOL_ACCESSIBILITY_WARNINGS: {
 			scene_tree->set_accessibility_warnings(!EDITOR_GET("docks/scene_tree/accessibility_warnings"), true);
+		} break;
+		case TOOL_CREATE_TRIMESH_STATIC_BODY: {
+#ifndef PHYSICS_3D_DISABLED
+			if (!profile_allow_editing) {
+				break;
+			}
+
+			const List<Node *> selection = editor_selection->get_top_selected_node_list();
+			if (selection.size() != 1) {
+				break;
+			}
+
+			MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(selection.front()->get());
+			if (!mesh_instance) {
+				break;
+			}
+
+			Node *static_body = mesh_instance->create_trimesh_collision_node();
+			if (!static_body) {
+				accept->set_text(TTR("Could not create a trimesh collision shape from this mesh."));
+				accept->popup_centered();
+				break;
+			}
+
+			EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
+			Node *owner = EditorNode::get_singleton()->get_edited_scene();
+			ur->create_action(TTR("Create Trimesh Static Body"));
+			ur->add_do_method(mesh_instance, "add_child", static_body, true);
+			ur->add_do_method(static_body, "set_owner", owner);
+			for (int i = 0; i < static_body->get_child_count(); i++) {
+				ur->add_do_method(static_body->get_child(i), "set_owner", owner);
+				ur->add_do_method(Node3DEditor::get_singleton(), SceneStringName(_request_gizmo), static_body->get_child(i));
+			}
+			ur->add_do_method(Node3DEditor::get_singleton(), SceneStringName(_request_gizmo), static_body);
+			ur->add_do_reference(static_body);
+			ur->add_undo_method(mesh_instance, "remove_child", static_body);
+			ur->commit_action();
+#endif
 		} break;
 		case TOOL_SCENE_EDITABLE_CHILDREN: {
 			if (!profile_allow_editing) {
@@ -4482,6 +4521,13 @@ void SceneTreeDock::_tree_rmb(const Vector2 &p_menu_pos) {
 
 			menu->add_icon_shortcut(get_editor_theme_icon(SNAME("Add")), ED_GET_SHORTCUT("scene_tree/add_child_node"), TOOL_NEW);
 			menu->add_icon_shortcut(get_editor_theme_icon(SNAME("Instance")), ED_GET_SHORTCUT("scene_tree/instantiate_scene"), TOOL_INSTANTIATE);
+			MeshInstance3D *selected_mesh = Object::cast_to<MeshInstance3D>(selected);
+			if (selected_mesh && selected_mesh->get_mesh().is_valid()) {
+#ifndef PHYSICS_3D_DISABLED
+				menu->add_separator();
+				menu->add_item(TTR("Create Trimesh Static Body"), TOOL_CREATE_TRIMESH_STATIC_BODY);
+#endif
+			}
 		}
 		menu->add_icon_shortcut(get_editor_theme_icon(SNAME("Collapse")), ED_GET_SHORTCUT("scene_tree/expand_collapse_all"), TOOL_EXPAND_COLLAPSE);
 
