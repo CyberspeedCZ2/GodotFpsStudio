@@ -8701,7 +8701,7 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 	Vector<int> selected_faces;
 	if (p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES) {
 		target_node = get_single_selected_node();
-		Node3DEditorSelectedItem *selected_item = target_node ? editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node) : nullptr;
+		Node3DEditorSelectedItem *selected_item = target_node && editor_selection ? editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node) : nullptr;
 		if (fps_studio_geometry_selection_mode == 3 && selected_item && selected_item->gizmo.is_valid()) {
 			for (const KeyValue<int, Transform3D> &selected_face : selected_item->subgizmos) {
 				selected_faces.push_back(selected_face.key);
@@ -8717,7 +8717,16 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 	}
 
 	const real_t amount = fps_studio_geometry_extrude_amount ? fps_studio_geometry_extrude_amount->get_value() : 1.0;
-	if (!scene_tree_dock || !scene_tree_dock->apply_fps_studio_geometry_operation(p_operation, target_node, selected_faces, amount)) {
+	const bool operation_applied = scene_tree_dock && scene_tree_dock->apply_fps_studio_geometry_operation(p_operation, target_node, selected_faces, amount);
+	if (operation_applied && target_node && editor_selection) {
+		Node3DEditorSelectedItem *selected_item = editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node);
+		if (selected_item && selected_item->gizmo.is_valid()) {
+			selected_item->subgizmos.clear();
+			selected_item->gizmo->redraw();
+			update_transform_gizmo();
+		}
+	}
+	if (!operation_applied) {
 		Node3DEditorViewport *target_viewport = get_last_used_viewport();
 		if (target_viewport) {
 			target_viewport->set_message(TTR("Select one or more FPS Studio geometry meshes first."));
