@@ -4227,14 +4227,14 @@ void SceneImportSettingsScreen::_update_preview_sun_cycle_duration_label(double 
 	if (!preview_sun_cycle_duration_label) {
 		return;
 	}
-	preview_sun_cycle_duration_label->set_text(vformat(TTR("Cycle Duration: %d s"), Math::round(p_value)));
+	preview_sun_cycle_duration_label->set_text(vformat(TTR("Cycle Duration: %d s"), (int64_t)Math::round(p_value)));
 }
 
 void SceneImportSettingsScreen::_update_preview_sun_rotation_label(double p_value) {
 	if (!preview_sun_rotation_label) {
 		return;
 	}
-	preview_sun_rotation_label->set_text(vformat(TTR("Sun Rotation: %d°"), Math::round(p_value)));
+	preview_sun_rotation_label->set_text(vformat(TTR("Sun Rotation: %d°"), (int64_t)Math::round(p_value)));
 }
 
 void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {
