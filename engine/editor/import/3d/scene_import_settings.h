@@ -103,6 +103,12 @@ class SceneImportSettingsScreen : public Control {
 	Node3D *preview_day_night_cycle = nullptr;
 	Label *preview_day_night_label = nullptr;
 	HSlider *preview_day_night_slider = nullptr;
+	CheckButton *preview_sun_animation_toggle = nullptr;
+	Label *preview_sun_cycle_duration_label = nullptr;
+	HSlider *preview_sun_cycle_duration_slider = nullptr;
+	Label *preview_sun_rotation_label = nullptr;
+	HSlider *preview_sun_rotation_slider = nullptr;
+	float preview_day_night_base_azimuth_offset = 0.0f;
 	Ref<CameraAttributesPractical> camera_attributes;
 	Ref<Environment> environment;
 	bool first_aabb = false;
@@ -406,7 +412,13 @@ class SceneImportSettingsScreen : public Control {
 	void _apply_material_isolation();
 	void _setup_model_preview_lighting();
 	void _preview_day_night_time_changed(double p_value);
+	void _preview_day_night_cycle_time_changed(double p_value, const String &);
+	void _preview_sun_animation_toggled(bool p_enabled);
+	void _preview_sun_cycle_duration_changed(double p_value);
+	void _preview_sun_rotation_changed(double p_value);
 	void _update_preview_day_night_label(double p_value);
+	void _update_preview_sun_cycle_duration_label(double p_value);
+	void _update_preview_sun_rotation_label(double p_value);
 	void _material_inspector_property_edited(const String &p_name);
 	Error _save_modified_external_materials();
 	void _lod_reset_levels();

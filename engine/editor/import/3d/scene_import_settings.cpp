@@ -3383,8 +3383,40 @@ void fragment() {
 	preview_day_night_slider->set_tooltip_text(TTR("Set the preview time of day. This changes only the Model View lighting."));
 	preview_day_night_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_day_night_time_changed));
 	material_tab->add_child(preview_day_night_slider);
+
+	preview_sun_animation_toggle = memnew(CheckButton);
+	preview_sun_animation_toggle->set_text(TTR("Animate Sun"));
+	preview_sun_animation_toggle->set_tooltip_text(TTR("Animate the preview's DayNightCycle. This changes only the Model View lighting."));
+	preview_sun_animation_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_animation_toggled));
+	material_tab->add_child(preview_sun_animation_toggle);
+
+	preview_sun_cycle_duration_label = memnew(Label);
+	material_tab->add_child(preview_sun_cycle_duration_label);
+	preview_sun_cycle_duration_slider = memnew(HSlider);
+	preview_sun_cycle_duration_slider->set_min(10.0);
+	preview_sun_cycle_duration_slider->set_max(600.0);
+	preview_sun_cycle_duration_slider->set_step(5.0);
+	preview_sun_cycle_duration_slider->set_tooltip_text(TTR("Set the duration of one full day and night in the preview."));
+	preview_sun_cycle_duration_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_cycle_duration_changed));
+	material_tab->add_child(preview_sun_cycle_duration_slider);
+
+	preview_sun_rotation_label = memnew(Label);
+	material_tab->add_child(preview_sun_rotation_label);
+	preview_sun_rotation_slider = memnew(HSlider);
+	preview_sun_rotation_slider->set_min(-180.0);
+	preview_sun_rotation_slider->set_max(180.0);
+	preview_sun_rotation_slider->set_step(1.0);
+	preview_sun_rotation_slider->set_tooltip_text(TTR("Rotate the sun around the model horizontally. This changes only the Model View lighting."));
+	preview_sun_rotation_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_rotation_changed));
+	material_tab->add_child(preview_sun_rotation_slider);
+
 	preview_day_night_label->hide();
 	preview_day_night_slider->hide();
+	preview_sun_animation_toggle->hide();
+	preview_sun_cycle_duration_label->hide();
+	preview_sun_cycle_duration_slider->hide();
+	preview_sun_rotation_label->hide();
+	preview_sun_rotation_slider->hide();
 
 	material_create_button = memnew(Button);
 	material_create_button->set_text(TTR("Create editable material files…"));
@@ -4067,12 +4099,17 @@ void SceneImportSettingsScreen::_setup_model_preview_lighting() {
 			preview_day_night_cycle->set("sun_light", light1);
 			preview_day_night_cycle->set("moon_light", preview_moon_light);
 			preview_day_night_cycle->set("world_environment", preview_world_environment_node);
-			for (const StringName &property : { SNAME("day_duration_minutes"), SNAME("time_scale"), SNAME("latitude_tilt"), SNAME("azimuth_offset"), SNAME("sun_max_energy"), SNAME("moon_max_energy"), SNAME("moon_light_color") }) {
+			for (const StringName &property : { SNAME("latitude_tilt"), SNAME("azimuth_offset"), SNAME("sun_max_energy"), SNAME("moon_max_energy"), SNAME("moon_light_color") }) {
 				bool has_property = false;
 				Variant value = source_cycle->get(property, &has_property);
 				if (has_property) {
 					preview_day_night_cycle->set(property, value);
 				}
+			}
+			bool has_azimuth_offset = false;
+			preview_day_night_base_azimuth_offset = preview_day_night_cycle->get("azimuth_offset", &has_azimuth_offset);
+			if (!has_azimuth_offset) {
+				preview_day_night_base_azimuth_offset = 0.0f;
 			}
 			bool has_moon_color = false;
 			Color moon_color = preview_day_night_cycle->get("moon_light_color", &has_moon_color);
@@ -4081,20 +4118,43 @@ void SceneImportSettingsScreen::_setup_model_preview_lighting() {
 			}
 			preview_day_night_cycle->set("cycle_active", false);
 			preview_day_night_cycle->set("editor_preview_cycle", false);
+			preview_day_night_cycle->set("time_scale", 1.0f);
+			preview_day_night_cycle->connect(SNAME("time_changed"), callable_mp(this, &SceneImportSettingsScreen::_preview_day_night_cycle_time_changed));
 			base_viewport->add_child(preview_day_night_cycle);
 
 			const float preview_time = Math::fposmod((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "day_night_time", source_time_of_day), 24.0f);
+			const float cycle_duration_seconds = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_cycle_duration_seconds", 60.0), 10.0f, 600.0f);
+			const float sun_rotation_degrees = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_rotation_degrees", 0.0), -180.0f, 180.0f);
+			const bool animate_sun = EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_animation_enabled", false);
+			preview_day_night_cycle->set("azimuth_offset", preview_day_night_base_azimuth_offset + sun_rotation_degrees);
+			preview_day_night_cycle->set("day_duration_minutes", cycle_duration_seconds / 60.0f);
 			preview_day_night_cycle->set("time_of_day", preview_time);
+			preview_day_night_cycle->set("editor_preview_cycle", animate_sun);
 			preview_day_night_slider->set_value_no_signal(preview_time);
 			_update_preview_day_night_label(preview_time);
+			preview_sun_animation_toggle->set_pressed_no_signal(animate_sun);
+			preview_sun_cycle_duration_slider->set_value_no_signal(cycle_duration_seconds);
+			_update_preview_sun_cycle_duration_label(cycle_duration_seconds);
+			preview_sun_rotation_slider->set_value_no_signal(sun_rotation_degrees);
+			_update_preview_sun_rotation_label(sun_rotation_degrees);
 			preview_day_night_label->show();
 			preview_day_night_slider->show();
+			preview_sun_animation_toggle->show();
+			preview_sun_cycle_duration_label->show();
+			preview_sun_cycle_duration_slider->show();
+			preview_sun_rotation_label->show();
+			preview_sun_rotation_slider->show();
 			return;
 		}
 	}
 
 	preview_day_night_label->hide();
 	preview_day_night_slider->hide();
+	preview_sun_animation_toggle->hide();
+	preview_sun_cycle_duration_label->hide();
+	preview_sun_cycle_duration_slider->hide();
+	preview_sun_rotation_label->hide();
+	preview_sun_rotation_slider->hide();
 }
 
 void SceneImportSettingsScreen::_preview_day_night_time_changed(double p_value) {
@@ -4106,6 +4166,46 @@ void SceneImportSettingsScreen::_preview_day_night_time_changed(double p_value) 
 	preview_day_night_slider->set_value_no_signal(time_of_day);
 	_update_preview_day_night_label(time_of_day);
 	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", time_of_day);
+}
+
+void SceneImportSettingsScreen::_preview_day_night_cycle_time_changed(double p_value, const String &) {
+	preview_day_night_slider->set_value_no_signal(p_value);
+	_update_preview_day_night_label(p_value);
+}
+
+void SceneImportSettingsScreen::_preview_sun_animation_toggled(bool p_enabled) {
+	if (preview_day_night_cycle == nullptr) {
+		return;
+	}
+	preview_day_night_cycle->set("editor_preview_cycle", p_enabled);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_animation_enabled", p_enabled);
+}
+
+void SceneImportSettingsScreen::_preview_sun_cycle_duration_changed(double p_value) {
+	if (preview_day_night_cycle == nullptr) {
+		return;
+	}
+	const float duration_seconds = CLAMP((float)p_value, 10.0f, 600.0f);
+	preview_day_night_cycle->set("day_duration_minutes", duration_seconds / 60.0f);
+	preview_sun_cycle_duration_slider->set_value_no_signal(duration_seconds);
+	_update_preview_sun_cycle_duration_label(duration_seconds);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_cycle_duration_seconds", duration_seconds);
+}
+
+void SceneImportSettingsScreen::_preview_sun_rotation_changed(double p_value) {
+	if (preview_day_night_cycle == nullptr) {
+		return;
+	}
+	const float rotation_degrees = CLAMP((float)p_value, -180.0f, 180.0f);
+	preview_day_night_cycle->set("azimuth_offset", preview_day_night_base_azimuth_offset + rotation_degrees);
+	bool has_time_of_day = false;
+	const float time_of_day = preview_day_night_cycle->get("time_of_day", &has_time_of_day);
+	if (has_time_of_day) {
+		preview_day_night_cycle->set("time_of_day", time_of_day);
+	}
+	preview_sun_rotation_slider->set_value_no_signal(rotation_degrees);
+	_update_preview_sun_rotation_label(rotation_degrees);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_rotation_degrees", rotation_degrees);
 }
 
 void SceneImportSettingsScreen::_update_preview_day_night_label(double p_value) {
@@ -4121,6 +4221,20 @@ void SceneImportSettingsScreen::_update_preview_day_night_label(double p_value) 
 		display_hour = (display_hour + 1) % 24;
 	}
 	preview_day_night_label->set_text(vformat(TTR("DayNightCycle: %02d:%02d"), display_hour, minute));
+}
+
+void SceneImportSettingsScreen::_update_preview_sun_cycle_duration_label(double p_value) {
+	if (!preview_sun_cycle_duration_label) {
+		return;
+	}
+	preview_sun_cycle_duration_label->set_text(vformat(TTR("Cycle Duration: %d s"), Math::round(p_value)));
+}
+
+void SceneImportSettingsScreen::_update_preview_sun_rotation_label(double p_value) {
+	if (!preview_sun_rotation_label) {
+		return;
+	}
+	preview_sun_rotation_label->set_text(vformat(TTR("Sun Rotation: %d°"), Math::round(p_value)));
 }
 
 void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {
