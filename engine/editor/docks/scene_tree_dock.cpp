@@ -1774,12 +1774,12 @@ bool SceneTreeDock::create_fps_studio_geometry_at(int p_shape, const Vector3 &p_
 	return true;
 }
 
-bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation, Node *p_target_node, const Vector<int> &p_selected_faces, real_t p_amount) {
+bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation, Node *p_target_node, const Vector<int> &p_selected_elements, real_t p_amount) {
 	if (!profile_allow_editing || p_operation < 0 || p_operation >= FPSStudioGeometry::MESH_OPERATION_MAX || !editor_selection) {
 		return false;
 	}
-	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_INSET_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE_FACES;
-	if (requires_face_selection && (!p_target_node || p_selected_faces.is_empty())) {
+	const bool requires_element_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_EDGES || p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_INSET_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE_FACES;
+	if (requires_element_selection && (!p_target_node || p_selected_elements.is_empty())) {
 		return false;
 	}
 
@@ -1804,7 +1804,7 @@ bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation, Node *p
 		OperationTarget target;
 		target.node = mesh_instance;
 		target.original_mesh = mesh_instance->get_mesh();
-		target.updated_mesh = FPSStudioGeometry::apply_mesh_operation(target.original_mesh, operation, p_selected_faces, p_amount);
+		target.updated_mesh = FPSStudioGeometry::apply_mesh_operation(target.original_mesh, operation, p_selected_elements, p_amount);
 		if (target.updated_mesh.is_null()) {
 			continue;
 		}

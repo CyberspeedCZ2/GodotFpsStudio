@@ -21,7 +21,7 @@ const char *get_shape_name(int p_shape) {
 }
 
 const char *get_mesh_operation_name(MeshOperation p_operation) {
-	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Inset Faces", "Delete Faces", "Flip Face Normals", "Subdivide Faces", "Subdivide Mesh", "Conform Normals" };
+	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Edges", "Extrude Faces", "Inset Faces", "Delete Faces", "Flip Face Normals", "Subdivide Faces", "Subdivide Mesh", "Conform Normals" };
 	return p_operation >= 0 && p_operation < MESH_OPERATION_MAX ? operation_names[p_operation] : "Mesh Operation";
 }
 
@@ -104,6 +104,169 @@ static int _get_geometry_position_id(const Vector3 &p_position, HashMap<Vector3i
 	r_position_ids.insert(position_key, new_position_id);
 	r_positions.push_back(p_position);
 	return new_position_id;
+}
+
+struct GeometryModelEdge {
+	int vertex_a = -1;
+	int vertex_b = -1;
+	int surface = -1;
+	int adjacent_faces = 0;
+	Vector3 first_face_normal;
+	Vector3 normal_sum;
+	bool is_crease = false;
+	SurfaceTool::Vertex source_a;
+	SurfaceTool::Vertex source_b;
+};
+
+static Ref<ArrayMesh> _extrude_selected_geometry_edges(const Ref<Mesh> &p_mesh, const Vector<int> &p_selected_elements, real_t p_amount) {
+	ERR_FAIL_COND_V(p_selected_elements.is_empty() || Math::is_zero_approx(p_amount), Ref<ArrayMesh>());
+
+	HashSet<int> selected_edge_ids;
+	for (int edge_id : p_selected_elements) {
+		selected_edge_ids.insert(edge_id);
+	}
+
+	HashMap<Vector3i, int> position_ids;
+	Vector<Vector3> positions;
+	HashMap<Vector2i, int> edge_to_index;
+	Vector<GeometryModelEdge> edges;
+	static const int edge_vertex_indices[3][2] = { { 0, 1 }, { 1, 2 }, { 2, 0 } };
+
+	for (int surface = 0; surface < p_mesh->get_surface_count(); surface++) {
+		if (p_mesh->surface_get_primitive_type(surface) != Mesh::PRIMITIVE_TRIANGLES) {
+			continue;
+		}
+		Ref<SurfaceTool> surface_tool;
+		surface_tool.instantiate();
+		surface_tool->create_from_arrays(p_mesh->surface_get_arrays(surface), Mesh::PRIMITIVE_TRIANGLES);
+		surface_tool->deindex();
+		const LocalVector<SurfaceTool::Vertex> &vertices = surface_tool->get_vertex_array();
+		for (int face_index = 0; face_index + 2 < vertices.size(); face_index += 3) {
+			const SurfaceTool::Vertex face_vertices[3] = { vertices[face_index], vertices[face_index + 1], vertices[face_index + 2] };
+			const int face_positions[3] = {
+				_get_geometry_position_id(face_vertices[0].vertex, position_ids, positions),
+				_get_geometry_position_id(face_vertices[1].vertex, position_ids, positions),
+				_get_geometry_position_id(face_vertices[2].vertex, position_ids, positions),
+			};
+			const Vector3 face_normal = (face_vertices[1].vertex - face_vertices[0].vertex).cross(face_vertices[2].vertex - face_vertices[0].vertex).normalized();
+			for (int edge_index = 0; edge_index < 3; edge_index++) {
+				const int corner_a = edge_vertex_indices[edge_index][0];
+				const int corner_b = edge_vertex_indices[edge_index][1];
+				const int position_a = face_positions[corner_a];
+				const int position_b = face_positions[corner_b];
+				const Vector2i edge_key(MIN(position_a, position_b), MAX(position_a, position_b));
+				int *edge_index_ptr = edge_to_index.getptr(edge_key);
+				if (!edge_index_ptr) {
+					GeometryModelEdge edge;
+					edge.vertex_a = position_a;
+					edge.vertex_b = position_b;
+					edge.surface = surface;
+					edge.adjacent_faces = 1;
+					edge.first_face_normal = face_normal;
+					edge.normal_sum = face_normal;
+					edge.source_a = face_vertices[corner_a];
+					edge.source_b = face_vertices[corner_b];
+					edge_to_index.insert(edge_key, edges.size());
+					edges.push_back(edge);
+				} else {
+					GeometryModelEdge &edge = edges.write[*edge_index_ptr];
+					edge.adjacent_faces++;
+					edge.is_crease |= edge.first_face_normal.dot(face_normal) < 0.999;
+					edge.normal_sum += face_normal;
+				}
+			}
+		}
+	}
+
+	HashMap<int, Vector3> vertex_normal_sums;
+	Vector<int> selected_edges;
+	int visible_edge_id = 0;
+	for (int edge_index = 0; edge_index < edges.size(); edge_index++) {
+		const GeometryModelEdge &edge = edges[edge_index];
+		if (edge.adjacent_faces == 2 && !edge.is_crease) {
+			continue;
+		}
+		if (selected_edge_ids.has(visible_edge_id)) {
+			selected_edges.push_back(edge_index);
+			Vector3 edge_normal = edge.normal_sum.length_squared() > CMP_EPSILON2 ? edge.normal_sum.normalized() : edge.first_face_normal;
+			for (int vertex_id : { edge.vertex_a, edge.vertex_b }) {
+				Vector3 *normal_sum = vertex_normal_sums.getptr(vertex_id);
+				if (normal_sum) {
+					*normal_sum += edge_normal;
+				} else {
+					vertex_normal_sums.insert(vertex_id, edge_normal);
+				}
+			}
+		}
+		visible_edge_id++;
+	}
+	if (selected_edges.is_empty()) {
+		return Ref<ArrayMesh>();
+	}
+
+	HashMap<int, Vector3> extrusion_offsets;
+	for (const KeyValue<int, Vector3> &normal_entry : vertex_normal_sums) {
+		if (normal_entry.value.length_squared() > CMP_EPSILON2) {
+			extrusion_offsets.insert(normal_entry.key, normal_entry.value.normalized() * p_amount);
+		}
+	}
+
+	Vector<Vector<SurfaceTool::Vertex>> side_vertices;
+	side_vertices.resize(p_mesh->get_surface_count());
+	for (int edge_index : selected_edges) {
+		const GeometryModelEdge &edge = edges[edge_index];
+		SurfaceTool::Vertex bottom_a = edge.source_a;
+		SurfaceTool::Vertex bottom_b = edge.source_b;
+		SurfaceTool::Vertex top_a = edge.source_a;
+		SurfaceTool::Vertex top_b = edge.source_b;
+		const Vector3 *offset_a = extrusion_offsets.getptr(edge.vertex_a);
+		const Vector3 *offset_b = extrusion_offsets.getptr(edge.vertex_b);
+		if (offset_a) {
+			top_a.vertex += *offset_a;
+		}
+		if (offset_b) {
+			top_b.vertex += *offset_b;
+		}
+		top_a.uv.y += Math::abs(p_amount);
+		top_b.uv.y += Math::abs(p_amount);
+		const Vector3 side_normal = (bottom_b.vertex - bottom_a.vertex).cross(top_b.vertex - bottom_b.vertex).normalized();
+		if (side_normal.length_squared() <= CMP_EPSILON2) {
+			continue;
+		}
+		bottom_a.normal = side_normal;
+		bottom_b.normal = side_normal;
+		top_a.normal = side_normal;
+		top_b.normal = side_normal;
+		Vector<SurfaceTool::Vertex> &surface_sides = side_vertices.write[edge.surface];
+		surface_sides.push_back(bottom_a);
+		surface_sides.push_back(bottom_b);
+		surface_sides.push_back(top_b);
+		surface_sides.push_back(bottom_a);
+		surface_sides.push_back(top_b);
+		surface_sides.push_back(top_a);
+	}
+
+	Ref<ArrayMesh> result;
+	result.instantiate();
+	for (int surface = 0; surface < p_mesh->get_surface_count(); surface++) {
+		const Mesh::PrimitiveType primitive_type = p_mesh->surface_get_primitive_type(surface);
+		Ref<SurfaceTool> surface_tool;
+		surface_tool.instantiate();
+		surface_tool->create_from_arrays(p_mesh->surface_get_arrays(surface), primitive_type);
+		surface_tool->set_material(p_mesh->surface_get_material(surface));
+		if (primitive_type == Mesh::PRIMITIVE_TRIANGLES && !side_vertices[surface].is_empty()) {
+			surface_tool->deindex();
+			LocalVector<SurfaceTool::Vertex> &vertices = surface_tool->get_vertex_array();
+			for (const SurfaceTool::Vertex &vertex : side_vertices[surface]) {
+				vertices.push_back(vertex);
+			}
+		}
+		const int result_surface = result->get_surface_count();
+		result = surface_tool->commit(result);
+		ERR_FAIL_COND_V(result.is_null(), Ref<ArrayMesh>());
+		result->surface_set_material(result_surface, p_mesh->surface_get_material(surface));
+	}
+	return result;
 }
 
 static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount, bool p_delete_faces, bool p_flip_normals, bool p_inset_faces, bool p_subdivide_faces, bool &r_surface_empty) {
@@ -397,16 +560,19 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 	return true;
 }
 
-Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_operation, const Vector<int> &p_selected_faces, real_t p_amount) {
+Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_operation, const Vector<int> &p_selected_elements, real_t p_amount) {
 	ERR_FAIL_COND_V(p_mesh.is_null() || p_mesh->get_surface_count() == 0, Ref<ArrayMesh>());
 	ERR_FAIL_INDEX_V(p_operation, MESH_OPERATION_MAX, Ref<ArrayMesh>());
+	if (p_operation == MESH_OPERATION_EXTRUDE_EDGES) {
+		return _extrude_selected_geometry_edges(p_mesh, p_selected_elements, p_amount);
+	}
 	const bool is_face_operation = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_INSET_FACES || p_operation == MESH_OPERATION_DELETE_FACES || p_operation == MESH_OPERATION_FLIP_FACES || p_operation == MESH_OPERATION_SUBDIVIDE_FACES;
 	const bool uses_face_amount = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_INSET_FACES;
-	ERR_FAIL_COND_V(is_face_operation && (p_selected_faces.is_empty() || (uses_face_amount && Math::is_zero_approx(p_amount))), Ref<ArrayMesh>());
+	ERR_FAIL_COND_V(is_face_operation && (p_selected_elements.is_empty() || (uses_face_amount && Math::is_zero_approx(p_amount))), Ref<ArrayMesh>());
 
 	HashSet<int> selected_faces;
 	if (is_face_operation) {
-		for (int face_id : p_selected_faces) {
+		for (int face_id : p_selected_elements) {
 			selected_faces.insert(face_id);
 		}
 	}
