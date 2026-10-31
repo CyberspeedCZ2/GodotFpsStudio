@@ -4234,7 +4234,7 @@ void SceneImportSettingsScreen::_update_preview_sun_rotation_label(double p_valu
 	if (!preview_sun_rotation_label) {
 		return;
 	}
-	preview_sun_rotation_label->set_text(vformat(TTR("Sun Rotation: %d°"), (int64_t)Math::round(p_value)));
+	preview_sun_rotation_label->set_text(vformat(TTR("Sun Rotation: %d deg"), (int64_t)Math::round(p_value)));
 }
 
 void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {
