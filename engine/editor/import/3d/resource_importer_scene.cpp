@@ -1515,6 +1515,45 @@ Node *ResourceImporterScene::_post_fix_node(Node *p_node, Node *p_root, HashMap<
 		}
 	}
 
+	// Some scene importers provide regular MeshInstance3D nodes instead of
+	// ImporterMeshInstance3D. Apply external material overrides to those nodes
+	// too, so edits made in Advanced Import Settings are preserved in the
+	// imported PackedScene.
+	if (MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node)) {
+		Ref<Mesh> mesh = mesh_instance->get_mesh();
+		if (mesh.is_valid()) {
+			for (int surface = 0; surface < mesh->get_surface_count(); surface++) {
+				Ref<Material> material = mesh_instance->get_active_material(surface);
+				if (material.is_null()) {
+					continue;
+				}
+
+				const String material_id = material->get_meta("import_id", material->get_name());
+				if (material_id.is_empty() || !p_material_data.has(material_id)) {
+					continue;
+				}
+
+				Dictionary material_settings = p_material_data[material_id];
+				if (!material_settings.has("use_external/enabled") || !bool(material_settings["use_external/enabled"])) {
+					continue;
+				}
+
+				String material_path = material_settings.get("use_external/path", String());
+				Ref<Material> external_material = ResourceLoader::load(material_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+				if (external_material.is_null()) {
+					material_path = material_settings.get("use_external/fallback_path", String());
+					if (!material_path.is_empty()) {
+						external_material = ResourceLoader::load(material_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+					}
+				}
+
+				if (external_material.is_valid()) {
+					mesh_instance->set_surface_override_material(surface, external_material);
+				}
+			}
+		}
+	}
+
 	if (Object::cast_to<ImporterMeshInstance3D>(p_node)) {
 		ObjectID node_id = p_node->get_instance_id();
 		for (int i = 0; i < post_importer_plugins.size(); i++) {

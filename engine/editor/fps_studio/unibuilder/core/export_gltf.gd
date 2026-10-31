@@ -10,10 +10,11 @@ static func export_file(mesh_data: UBMeshData, object_name: String, path: String
 	if mesh == null:
 		return FAILED
 
-	# Export the mesh instance as the scene root so imported models use the
-	# object name directly instead of an extra default-named Node3D wrapper.
+	# Use the exported file name as the imported scene root. This keeps the
+	# level node name meaningful even when the UniBuilder object has a generic name.
 	var root := MeshInstance3D.new()
-	root.name = object_name
+	var root_name := path.get_file().get_basename().validate_node_name()
+	root.name = root_name if not root_name.is_empty() else object_name
 	root.mesh = mesh
 	root.transform = xf
 
