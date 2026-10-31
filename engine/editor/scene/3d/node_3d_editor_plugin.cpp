@@ -50,6 +50,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/fps_studio/fps_studio_geometry.h"
+#include "editor/fps_studio/fps_studio_geometry_gizmo_plugin.h"
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/plugins/editor_plugin_list.h"
 #include "editor/run/editor_run_bar.h"
@@ -8663,6 +8664,35 @@ void Node3DEditor::_fps_studio_geometry_shape_requested(int p_shape) {
 	scene_tree_dock->create_fps_studio_geometry_at(p_shape, placement_position);
 }
 
+void Node3DEditor::_fps_studio_geometry_mode_selected(int p_mode) {
+	fps_studio_geometry_vertex_mode = p_mode == 1;
+	if (fps_studio_geometry_gizmo_plugin.is_valid()) {
+		fps_studio_geometry_gizmo_plugin->set_vertex_mode(fps_studio_geometry_vertex_mode);
+	}
+	if (fps_studio_geometry_mode_menu) {
+		PopupMenu *popup = fps_studio_geometry_mode_menu->get_popup();
+		const int object_mode_index = popup->get_item_index(0);
+		const int vertex_mode_index = popup->get_item_index(1);
+		if (object_mode_index >= 0) {
+			popup->set_item_checked(object_mode_index, !fps_studio_geometry_vertex_mode);
+		}
+		if (vertex_mode_index >= 0) {
+			popup->set_item_checked(vertex_mode_index, fps_studio_geometry_vertex_mode);
+		}
+		fps_studio_geometry_mode_menu->set_text(fps_studio_geometry_vertex_mode ? TTRC("Vertex Mode") : TTRC("Object Mode"));
+	}
+	if (!fps_studio_geometry_vertex_mode && editor_selection) {
+		for (Node *node : editor_selection->get_top_selected_node_list()) {
+			Node3DEditorSelectedItem *selected_item = editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(node);
+			if (selected_item) {
+				selected_item->subgizmos.clear();
+			}
+		}
+	}
+	update_all_gizmos();
+	update_transform_gizmo();
+}
+
 void Node3DEditor::_menu_item_pressed(int p_option) {
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 	switch (p_option) {
@@ -10724,6 +10754,9 @@ void Node3DEditor::_register_all_gizmos() {
 	add_gizmo_plugin(Ref<AudioStreamPlayer3DGizmoPlugin>(memnew(AudioStreamPlayer3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<AudioListener3DGizmoPlugin>(memnew(AudioListener3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<MeshInstance3DGizmoPlugin>(memnew(MeshInstance3DGizmoPlugin)));
+	fps_studio_geometry_gizmo_plugin.instantiate();
+	fps_studio_geometry_gizmo_plugin->set_vertex_mode(fps_studio_geometry_vertex_mode);
+	add_gizmo_plugin(fps_studio_geometry_gizmo_plugin);
 	add_gizmo_plugin(Ref<OccluderInstance3DGizmoPlugin>(memnew(OccluderInstance3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<SoftBody3DGizmoPlugin>(memnew(SoftBody3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<SpriteBase3DGizmoPlugin>(memnew(SpriteBase3DGizmoPlugin)));
@@ -11397,6 +11430,18 @@ Node3DEditor::Node3DEditor() {
 		fps_studio_geometry_popup->add_item(TTR(FPSStudioGeometry::get_shape_name(i)), i);
 	}
 	fps_studio_geometry_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_shape_requested));
+
+	fps_studio_geometry_mode_menu = memnew(MenuButton);
+	fps_studio_geometry_mode_menu->set_flat(false);
+	fps_studio_geometry_mode_menu->set_theme_type_variation("FlatMenuButton");
+	fps_studio_geometry_mode_menu->set_text(TTRC("Object Mode"));
+	fps_studio_geometry_mode_menu->set_tooltip_text(TTRC("Choose how to select FPS Studio geometry."));
+	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_mode_menu);
+	PopupMenu *fps_studio_geometry_mode_popup = fps_studio_geometry_mode_menu->get_popup();
+	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Object Mode"), 0);
+	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Vertex Mode"), 1);
+	fps_studio_geometry_mode_popup->set_item_checked(0, true);
+	fps_studio_geometry_mode_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_mode_selected));
 
 	context_toolbar_panel = memnew(PanelContainer);
 	context_toolbar_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);

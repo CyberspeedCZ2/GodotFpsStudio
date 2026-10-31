@@ -8,10 +8,11 @@ Replace the former third-party modeling integration with an original native C++ 
 
 - Removed the old modeling add-on source and license from `engine/editor/fps_studio/`, along with its resource-pack generator.
 - Removed automatic add-on loading, packed-script scanning, resource-pack loading, build packaging, and viewport signal references.
-- Deleted generated modeling resource packs from the installed app and retained app backups on disk.
+- Deleted generated modeling resource packs and stale app backups whose binaries contained the former integration. The user chose to retain Git history, so older commits still contain the original files.
 - Replaced the old RMB submenu with **FPS Studio Geometry** and added the same shape picker to the native 3D toolbar. It creates standard `MeshInstance3D` nodes from native Godot meshes, with Undo/Redo and scene ownership.
 - Added native starter shapes for box, plane, cylinder, cone, prism, stairs, arch, poly shape, door, sphere, torus, pipe, curved stairs, trim, trim walls, and wall.
-- The current implementation is the first foundation only. Interactive dimension drawing, topology editing, UV/material tools, collision, bake, and export still need implementation.
+- Added **Object Mode** and **Vertex Mode** to the native toolbar. Vertex Mode shows deduplicated vertex points for created geometry, supports marquee and point selection through subgizmos, and lets the standard editor transform gizmo move selected vertices with Undo/Redo.
+- The implementation is still partial. Interactive parameterized drawing, edge/face editing, topology operations, UV/material tools, automatic collision authoring, bake, and export still need implementation.
 
 ## Project constraints
 
@@ -24,12 +25,14 @@ Replace the former third-party modeling integration with an original native C++ 
 
 - Repository: `/Users/davidsoudil/Projects/Godot/GodotFpsStudio`
 - Branch: `main`
+- Last pushed commit: `18fd77d` — native geometry foundation and UniBuilder removal.
 - Main code: `engine/editor/scene/3d/node_3d_editor_plugin.cpp`, `engine/editor/docks/scene_tree_dock.cpp`, and matching headers.
+- Geometry model/gizmo code: `engine/editor/fps_studio/fps_studio_geometry.cpp` and `fps_studio_geometry_gizmo_plugin.cpp`.
 - Build script: `tools/build_macos.sh`
 - Native editor workspace: `engine/editor/fps_studio/fps_studio_workspace.cpp/.h`
 
 ## Verification still required
 
-- Finish the native builder and complete the requested feature set.
-- Run `git diff --check` and build with `./tools/build_macos.sh`.
-- Verify the installed app bundle signature. Do not open the GUI editor without an explicit request.
+- Continue with edge and face modes and the common topology operations, then UV/material authoring, collision, bake, and export.
+- The source currently has a new uncommitted Vertex Mode implementation; run `git diff --check`, build with `./tools/build_macos.sh`, verify the installed app signature, and then commit/push normally. Do not rewrite Git history or force-push; the user explicitly chose to keep history unchanged.
+- Do not open the GUI editor without an explicit request.
