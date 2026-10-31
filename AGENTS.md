@@ -39,7 +39,7 @@ Tento soubor slouží jako primární instrukce a kontext pro asistenta Antigrav
 - **RMB kontextové menu**: Rychlý klik otevře FPS menu, podržení/tažení zapne freelook kameru.
 - **FPS Gameplay prvky**: Player Start, Checkpoint, NPC Spawn, NPC Waypoint, NPC Action Point, NPC Cover Point, Objective Marker, Interaction Area, Navigation Region, Navigation Obstacle, Navigation Link.
 - **Vysoce kontrastní gizmo ikony**: Vlastní SVG gizma pro gameplay uzly čitelná i skrz modely levelu (`GizmoTrigger.svg`, `FPSPlayerStart`, `FPSCheckpoint`, atd.).
-- **FPS Studio Geometry Builder**: Nativní C++ nástroj editoru je ve výstavbě. RMB menu a lišta 3D viewportu vytváří základní MeshInstance3D tvary; Object/Vertex/Edge/Face režimy vybírají geometrii přes nativní subgizmo transformace. Lišta obsahuje také nativní operace Mirror X/Y/Z, Subdivide a Conform Normals; další nástroje pro editaci topologie, UV, materiálů a export se doplňují po etapách.
+- **FPS Studio Geometry Builder**: Nativní C++ nástroj editoru je ve výstavbě. RMB menu a lišta 3D viewportu vytváří základní MeshInstance3D tvary; Object/Vertex/Edge/Face režimy vybírají geometrii přes nativní subgizmo transformace. Lišta obsahuje také Mirror X/Y/Z, extruzi vybraných ploch s nastavitelným odsazením, Subdivide a Conform Normals; další nástroje pro editaci topologie, UV, materiálů a export se doplňují po etapách.
 - **Editor tras pro NPC (`Path3D` / NPC Route)**:
   - C++ vrstva v `editor/scene/3d/path_3d_editor_plugin.cpp` a `npc_route_geometry.h`.
   - Podpora akcí na waypointech (Move, Wait, Look At, Animation, Interact, Attack, Cover).

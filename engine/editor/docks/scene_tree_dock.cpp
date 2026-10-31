@@ -1774,8 +1774,11 @@ bool SceneTreeDock::create_fps_studio_geometry_at(int p_shape, const Vector3 &p_
 	return true;
 }
 
-bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation) {
+bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation, Node *p_target_node, const Vector<int> &p_selected_faces, real_t p_amount) {
 	if (!profile_allow_editing || p_operation < 0 || p_operation >= FPSStudioGeometry::MESH_OPERATION_MAX || !editor_selection) {
+		return false;
+	}
+	if (p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES && (!p_target_node || p_selected_faces.is_empty())) {
 		return false;
 	}
 
@@ -1789,6 +1792,9 @@ bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation) {
 	Vector<OperationTarget> targets;
 	const FPSStudioGeometry::MeshOperation operation = FPSStudioGeometry::MeshOperation(p_operation);
 	for (Node *selected_node : editor_selection->get_top_selected_node_list()) {
+		if (p_target_node && selected_node != p_target_node) {
+			continue;
+		}
 		MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(selected_node);
 		if (!mesh_instance || !mesh_instance->has_meta("fps_studio_geometry_kind") || mesh_instance->get_mesh().is_null()) {
 			continue;
@@ -1797,7 +1803,7 @@ bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation) {
 		OperationTarget target;
 		target.node = mesh_instance;
 		target.original_mesh = mesh_instance->get_mesh();
-		target.updated_mesh = FPSStudioGeometry::apply_mesh_operation(target.original_mesh, operation);
+		target.updated_mesh = FPSStudioGeometry::apply_mesh_operation(target.original_mesh, operation, p_selected_faces, p_amount);
 		if (target.updated_mesh.is_null()) {
 			continue;
 		}

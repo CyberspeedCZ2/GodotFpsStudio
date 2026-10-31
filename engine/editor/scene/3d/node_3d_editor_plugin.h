@@ -828,6 +828,7 @@ private:
 	PopupMenu *gizmos_menu = nullptr;
 	MenuButton *view_layout_menu = nullptr;
 	MenuButton *fps_studio_geometry_mode_menu = nullptr;
+	SpinBox *fps_studio_geometry_extrude_amount = nullptr;
 	HBoxContainer *main_menu_hbox = nullptr;
 
 	AcceptDialog *accept = nullptr;
