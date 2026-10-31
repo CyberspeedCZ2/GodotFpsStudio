@@ -348,7 +348,7 @@ private:
 	PopupMenu *fps_props_submenu = nullptr;
 	PopupMenu *fps_volume_submenu = nullptr;
 	PopupMenu *fps_navigation_submenu = nullptr;
-	PopupMenu *fps_unibuilder_submenu = nullptr;
+	PopupMenu *fps_geometry_submenu = nullptr;
 	PopupMenu *fps_csg_submenu = nullptr;
 	PopupMenu *fps_lights_submenu = nullptr;
 	PopupMenu *fps_other_submenu = nullptr;
@@ -392,7 +392,7 @@ private:
 		FPS_CONTEXT_ADD_SMALL_DEBRIS,
 		FPS_CONTEXT_ADD_SMALL_REACTIVE_PROP,
 		FPS_CONTEXT_ADD_NPC_CHARACTER,
-		FPS_CONTEXT_UNIBUILDER_SHAPE_BASE = 1000,
+		FPS_CONTEXT_GEOMETRY_SHAPE_BASE = 1000,
 	};
 
 	enum TransformMode {
@@ -859,6 +859,7 @@ private:
 	void _update_vertex_snap_tooltips();
 	void _xform_dialog_action();
 	void _menu_item_pressed(int p_option);
+	void _fps_studio_geometry_shape_requested(int p_shape);
 	void _menu_item_toggled(bool pressed, int p_option);
 	void _menu_gizmo_toggled(int p_option);
 	// Used for secondary menu items which are displayed depending on the currently selected node

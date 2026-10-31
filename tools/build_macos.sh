@@ -41,18 +41,8 @@ JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
 scons -j"$JOBS" platform=macos arch=arm64 dev_build=yes "cxxflags=-fmodules-cache-path=$CLANG_MODULE_CACHE_PATH"
 
 DEV_BINARY="$ENGINE/bin/godot.macos.editor.dev.arm64"
-UNIBUILDER_PACK="$ENGINE/bin/FPSStudioUnibuilder.pck"
 APP_STAGE="$(mktemp -d "$ROOT/.godot-fps-build.XXXXXX")"
 trap 'rm -rf "$APP_STAGE"' EXIT
-
-PACK_PROJECT_PATH="$ROOT/fps_vertical_slice"
-if [[ ! -d "$PACK_PROJECT_PATH" ]]; then
-    PACK_PROJECT_PATH="$APP_STAGE/pack_project"
-    mkdir -p "$PACK_PROJECT_PATH"
-    touch "$PACK_PROJECT_PATH/project.godot"
-fi
-
-"$DEV_BINARY" --headless --path "$PACK_PROJECT_PATH" --script "$ROOT/tools/pack_fps_studio_unibuilder.gd" -- "$ENGINE/editor/fps_studio/unibuilder" "$UNIBUILDER_PACK"
 APP_FINAL="$ROOT/Godot FPS Studio.app"
 APP_BACKUP="$ROOT/.Godot FPS Studio.app.previous"
 if [[ -e "$APP_BACKUP" ]]; then
@@ -64,7 +54,6 @@ APP_BINARY="$APP_CONTENTS/MacOS/Godot"
 ditto "$ENGINE/misc/dist/macos_tools.app" "$APP"
 mkdir -p "$APP_CONTENTS/MacOS" "$APP_CONTENTS/Resources"
 cp "$DEV_BINARY" "$APP_BINARY"
-cp "$UNIBUILDER_PACK" "$APP_CONTENTS/Resources/FPSStudioUnibuilder.pck"
 chmod +x "$APP_BINARY"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleName "Godot FPS Studio"' "$APP_CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string "Godot FPS Studio"' "$APP_CONTENTS/Info.plist"

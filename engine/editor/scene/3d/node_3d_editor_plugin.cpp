@@ -49,6 +49,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
+#include "editor/fps_studio/fps_studio_geometry.h"
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/plugins/editor_plugin_list.h"
 #include "editor/run/editor_run_bar.h"
@@ -3415,8 +3416,10 @@ void Node3DEditorViewport::_show_fps_context_menu(const Point2 &p_screen_pos) {
 }
 
 void Node3DEditorViewport::_fps_context_menu_item_pressed(int p_id) {
-	if (p_id >= FPS_CONTEXT_UNIBUILDER_SHAPE_BASE && p_id < FPS_CONTEXT_UNIBUILDER_SHAPE_BASE + 16) {
-		emit_signal("fps_context_shape_requested", p_id - FPS_CONTEXT_UNIBUILDER_SHAPE_BASE, viewport);
+	if (p_id >= FPS_CONTEXT_GEOMETRY_SHAPE_BASE && p_id < FPS_CONTEXT_GEOMETRY_SHAPE_BASE + FPSStudioGeometry::get_shape_count()) {
+		if (SceneTreeDock::get_singleton()) {
+			SceneTreeDock::get_singleton()->create_fps_studio_geometry_at(p_id - FPS_CONTEXT_GEOMETRY_SHAPE_BASE, fps_context_world_position);
+		}
 		return;
 	}
 
@@ -5769,7 +5772,6 @@ Dictionary Node3DEditorViewport::get_state() const {
 void Node3DEditorViewport::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("toggle_maximize_view", PropertyInfo(Variant::OBJECT, "viewport")));
 	ADD_SIGNAL(MethodInfo("clicked"));
-	ADD_SIGNAL(MethodInfo("fps_context_shape_requested", PropertyInfo(Variant::INT, "kind"), PropertyInfo(Variant::OBJECT, "viewport", PROPERTY_HINT_NODE_TYPE, "SubViewport")));
 }
 
 void Node3DEditorViewport::reset() {
@@ -7504,7 +7506,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_props_submenu = memnew(PopupMenu);
 	fps_volume_submenu = memnew(PopupMenu);
 	fps_navigation_submenu = memnew(PopupMenu);
-	fps_unibuilder_submenu = memnew(PopupMenu);
+	fps_geometry_submenu = memnew(PopupMenu);
 	fps_csg_submenu = memnew(PopupMenu);
 	fps_lights_submenu = memnew(PopupMenu);
 	fps_other_submenu = memnew(PopupMenu);
@@ -7514,12 +7516,12 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_gameplay_submenu->add_child(fps_props_submenu);
 	fps_gameplay_submenu->add_child(fps_volume_submenu);
 	fps_gameplay_submenu->add_child(fps_navigation_submenu);
-	fps_context_menu->add_child(fps_unibuilder_submenu);
+	fps_context_menu->add_child(fps_geometry_submenu);
 	fps_context_menu->add_child(fps_csg_submenu);
 	fps_context_menu->add_child(fps_lights_submenu);
 	fps_context_menu->add_child(fps_other_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("FPS Gameplay"), fps_gameplay_submenu);
-	fps_context_menu->add_submenu_node_item(TTRC("Unibuilder Models"), fps_unibuilder_submenu);
+	fps_context_menu->add_submenu_node_item(TTRC("FPS Studio Geometry"), fps_geometry_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("CSG"), fps_csg_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("Lights"), fps_lights_submenu);
 	fps_context_menu->add_submenu_node_item(TTRC("Common Nodes"), fps_other_submenu);
@@ -7557,12 +7559,8 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 
 	fps_player_submenu->add_item(TTRC("Objective Marker"), FPS_CONTEXT_ADD_OBJECTIVE_MARKER);
 
-	static const char *unibuilder_shape_names[] = {
-		"Cube", "Plane", "Cylinder", "Cone", "Prism", "Stairs", "Arch", "Poly Shape",
-		"Door", "Sphere", "Torus", "Pipe", "Curved Stairs", "Trim", "Trim Walls", "Wall",
-	};
-	for (uint32_t i = 0; i < 16; i++) {
-		fps_unibuilder_submenu->add_item(TTR(unibuilder_shape_names[i]), FPS_CONTEXT_UNIBUILDER_SHAPE_BASE + i);
+	for (int i = 0; i < FPSStudioGeometry::get_shape_count(); i++) {
+		fps_geometry_submenu->add_item(TTR(FPSStudioGeometry::get_shape_name(i)), FPS_CONTEXT_GEOMETRY_SHAPE_BASE + i);
 	}
 
 	fps_csg_submenu->add_item(TTRC("Box"), FPS_CONTEXT_ADD_CSG_BOX);
@@ -7590,7 +7588,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	fps_navigation_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_lights_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_other_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
-	fps_unibuilder_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
+	fps_geometry_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 	fps_csg_submenu->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditorViewport::_fps_context_menu_item_pressed));
 
 	// Tooltips explain what each authoring helper creates and where additional
@@ -7634,14 +7632,14 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	set_fps_tooltip(fps_csg_submenu, FPS_CONTEXT_ADD_CSG_SPHERE, TTR("Creates a CSG sphere that can participate in constructive solid geometry operations."));
 	set_fps_tooltip(fps_csg_submenu, FPS_CONTEXT_ADD_CSG_CYLINDER, TTR("Creates a CSG cylinder that can participate in constructive solid geometry operations."));
 	set_fps_tooltip(fps_csg_submenu, FPS_CONTEXT_ADD_CSG_TORUS, TTR("Creates a CSG torus that can participate in constructive solid geometry operations."));
-	for (int i = 0; i < 16; i++) {
-		const int item_index = fps_unibuilder_submenu->get_item_index(FPS_CONTEXT_UNIBUILDER_SHAPE_BASE + i);
+	for (int i = 0; i < FPSStudioGeometry::get_shape_count(); i++) {
+		const int item_index = fps_geometry_submenu->get_item_index(FPS_CONTEXT_GEOMETRY_SHAPE_BASE + i);
 		if (item_index >= 0) {
-			fps_unibuilder_submenu->set_item_tooltip(item_index, vformat(TTR("Starts UniBuilder's %s modeling tool in this viewport. Follow the placement hint to create it."), TTR(unibuilder_shape_names[i])));
+			fps_geometry_submenu->set_item_tooltip(item_index, vformat(TTR("Adds a native Godot %s mesh at the clicked location."), TTR(FPSStudioGeometry::get_shape_name(i))));
 		}
 	}
 	fps_context_menu->set_item_tooltip(0, TTR("FPS-oriented spawn, objective, NPC, trigger, and navigation helpers."));
-	fps_context_menu->set_item_tooltip(1, TTR("UniBuilder's modeling tools, kept separate from native CSG primitives."));
+	fps_context_menu->set_item_tooltip(1, TTR("Create editable Godot mesh nodes for FPS Studio level geometry."));
 	fps_context_menu->set_item_tooltip(2, TTR("Native CSG primitives for blockout geometry."));
 	fps_context_menu->set_item_tooltip(3, TTR("Add native 3D lights and baked-lighting helpers."));
 	fps_context_menu->set_item_tooltip(4, TTR("Add common 3D scene nodes."));
@@ -8643,6 +8641,26 @@ void Node3DEditor::_menu_gizmo_toggled(int p_option) {
 	gizmo_plugins_by_name.write[p_option]->set_state(state);
 
 	update_all_gizmos();
+}
+
+void Node3DEditor::_fps_studio_geometry_shape_requested(int p_shape) {
+	Node3DEditorViewport *target_viewport = get_last_used_viewport();
+	if (!target_viewport) {
+		target_viewport = get_editor_viewport(0);
+	}
+	SceneTreeDock *scene_tree_dock = SceneTreeDock::get_singleton();
+	if (!target_viewport || !scene_tree_dock) {
+		return;
+	}
+
+	Vector3 placement_position = target_viewport->fps_context_world_position;
+	if (placement_position.is_zero_approx()) {
+		placement_position = target_viewport->view_3d_controller->cursor.pos;
+	}
+	if (is_snap_enabled()) {
+		placement_position = snap_point(placement_position);
+	}
+	scene_tree_dock->create_fps_studio_geometry_at(p_shape, placement_position);
 }
 
 void Node3DEditor::_menu_item_pressed(int p_option) {
@@ -11359,6 +11377,26 @@ Node3DEditor::Node3DEditor() {
 	view_layout_menu->set_switch_on_hover(true);
 	view_layout_menu->set_shortcut_context(this);
 	main_menu_hbox->add_child(view_layout_menu);
+
+	PanelContainer *fps_studio_geometry_toolbar = memnew(PanelContainer);
+	fps_studio_geometry_toolbar->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	fps_studio_geometry_toolbar->set_v_size_flags(Control::SIZE_SHRINK_BEGIN);
+	fps_studio_geometry_toolbar->add_theme_style_override(SceneStringName(panel), get_theme_stylebox(SNAME("ContextualToolbar"), EditorStringName(EditorStyles)));
+	HBoxContainer *fps_studio_geometry_toolbar_hbox = memnew(HBoxContainer);
+	fps_studio_geometry_toolbar->add_child(fps_studio_geometry_toolbar_hbox);
+	toolbar_rows->add_child(fps_studio_geometry_toolbar);
+
+	MenuButton *fps_studio_geometry_menu = memnew(MenuButton);
+	fps_studio_geometry_menu->set_flat(false);
+	fps_studio_geometry_menu->set_theme_type_variation("FlatMenuButton");
+	fps_studio_geometry_menu->set_text(TTRC("FPS Studio Geometry"));
+	fps_studio_geometry_menu->set_tooltip_text(TTRC("Create native FPS Studio level geometry in the active 3D viewport."));
+	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_menu);
+	PopupMenu *fps_studio_geometry_popup = fps_studio_geometry_menu->get_popup();
+	for (int i = 0; i < FPSStudioGeometry::get_shape_count(); i++) {
+		fps_studio_geometry_popup->add_item(TTR(FPSStudioGeometry::get_shape_name(i)), i);
+	}
+	fps_studio_geometry_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_shape_requested));
 
 	context_toolbar_panel = memnew(PanelContainer);
 	context_toolbar_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);

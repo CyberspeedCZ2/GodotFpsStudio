@@ -1251,57 +1251,11 @@ void EditorNode::init_plugins() {
 	for (const String &addon : addons) {
 		set_addon_plugin_enabled(addon, true);
 	}
-	if (!addon_name_to_plugin.has("res://addons/unibuilder/plugin.cfg")) {
-		_load_fps_studio_unibuilder();
-	}
 	_initializing_plugins = false;
 
 	if (!pending_addons.is_empty()) {
 		EditorFileSystem::get_singleton()->connect("script_classes_updated", callable_mp(this, &EditorNode::_enable_pending_addons), CONNECT_ONE_SHOT);
 	}
-}
-
-void EditorNode::_load_fps_studio_unibuilder() {
-	const String config_path = "res://addons/unibuilder/plugin.cfg";
-	if (!FileAccess::exists(config_path)) {
-		return;
-	}
-
-	Ref<ConfigFile> config;
-	config.instantiate();
-	if (config->load(config_path) != OK || !config->has_section_key("plugin", "script")) {
-		WARN_PRINT("Unable to read the built-in FPS Studio Unibuilder plugin configuration.");
-		return;
-	}
-
-	String script_path = config->get_value("plugin", "script", String());
-	if (script_path.is_empty()) {
-		return;
-	}
-	script_path = config_path.get_base_dir().path_join(script_path);
-
-	Ref<Script> script = ResourceLoader::load(script_path, "Script", ResourceFormatLoader::CACHE_MODE_REUSE);
-	if (script.is_null() || script->get_instance_base_type() == StringName() ||
-			!ClassDB::is_parent_class(script->get_instance_base_type(), SNAME("EditorPlugin")) || !script->is_tool()) {
-		WARN_PRINT(vformat("Unable to load the built-in FPS Studio Unibuilder plugin script: %s", script_path));
-		return;
-	}
-
-	Object *instance = ClassDB::instantiate(script->get_instance_base_type());
-	if (!instance) {
-		WARN_PRINT(vformat("Could not instantiate the built-in FPS Studio Unibuilder plugin: %s", script_path));
-		return;
-	}
-	fps_studio_unibuilder_plugin = Object::cast_to<EditorPlugin>(instance);
-	if (!fps_studio_unibuilder_plugin) {
-		memdelete(instance);
-		WARN_PRINT(vformat("The built-in FPS Studio Unibuilder script does not create an EditorPlugin: %s", script_path));
-		return;
-	}
-
-	fps_studio_unibuilder_plugin->set_script(script);
-	fps_studio_unibuilder_plugin->set_plugin_version(config->get_value("plugin", "version", String()));
-	add_editor_plugin(fps_studio_unibuilder_plugin);
 }
 
 void EditorNode::_on_plugin_ready(Object *p_script, const String &p_activate_name) {
@@ -4245,12 +4199,6 @@ void EditorNode::_exit_editor(int p_exit_code) {
 }
 
 void EditorNode::unload_editor_addons() {
-	if (fps_studio_unibuilder_plugin) {
-		remove_editor_plugin(fps_studio_unibuilder_plugin, false);
-		memdelete(fps_studio_unibuilder_plugin);
-		fps_studio_unibuilder_plugin = nullptr;
-	}
-
 	for (const KeyValue<String, EditorPlugin *> &E : addon_name_to_plugin) {
 		print_verbose(vformat("Unloading addon: %s", E.key));
 		remove_editor_plugin(E.value, false);

@@ -353,6 +353,7 @@ public:
 	void add_root_node(Node *p_node);
 	bool create_fps_player_start_at(const Vector3 &p_world_position);
 	bool create_fps_gameplay_node_at(const StringName &p_class_name, const Vector3 &p_world_position);
+	bool create_fps_studio_geometry_at(int p_shape, const Vector3 &p_world_position);
 	bool create_fps_gameplay_element_at(FPSGameplayElement p_element, const Vector3 &p_world_position);
 	void open_fps_gameplay_scene_picker(const Vector3 &p_world_position, const String &p_node_name);
 	void set_edited_scene(Node *p_scene);

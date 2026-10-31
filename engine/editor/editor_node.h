@@ -267,7 +267,6 @@ private:
 	EditorLog *log = nullptr;
 	EditorNativeShaderSourceVisualizer *native_shader_source_visualizer = nullptr;
 	EditorPluginList *editor_plugins_force_input_forwarding = nullptr;
-	EditorPlugin *fps_studio_unibuilder_plugin = nullptr;
 	EditorPluginList *editor_plugins_force_over = nullptr;
 	EditorPluginList *editor_plugins_over = nullptr;
 	EditorQuickOpenDialog *quick_open_color_palette = nullptr;
@@ -730,7 +729,6 @@ public:
 	void _on_plugin_ready(Object *p_script, const String &p_activate_name);
 
 	void init_plugins();
-	void _load_fps_studio_unibuilder();
 
 	bool call_build();
 	void call_run_scene(const String &p_scene, Vector<String> &r_args);

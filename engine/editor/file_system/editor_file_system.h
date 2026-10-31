@@ -196,7 +196,6 @@ class EditorFileSystem : public Node {
 	void _scan_filesystem();
 	void _first_scan_filesystem();
 	void _first_scan_process_scripts(const ScannedDirectory *p_scan_dir, List<String> &p_gdextension_extensions, HashSet<String> &p_existing_class_names, HashSet<String> &p_extensions);
-	void _scan_fps_studio_unibuilder_scripts(HashSet<String> &r_existing_class_names);
 
 	static void _scan_for_uid_directory(const ScannedDirectory *p_scan_dir, const HashSet<String> &p_import_extensions);
 

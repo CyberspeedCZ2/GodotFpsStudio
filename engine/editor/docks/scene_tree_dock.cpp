@@ -47,6 +47,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
+#include "editor/fps_studio/fps_studio_geometry.h"
 #include "editor/fps_studio/fps_level_scene_template.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/editor_paths.h"
@@ -1714,6 +1715,62 @@ bool SceneTreeDock::create_fps_player_start_at(const Vector3 &p_world_position) 
 	undo_redo->add_do_method(this, "_post_do_create", player_start);
 	undo_redo->commit_action();
 	emit_signal(SNAME("node_created"), player_start);
+	return true;
+}
+
+bool SceneTreeDock::create_fps_studio_geometry_at(int p_shape, const Vector3 &p_world_position) {
+	if (!profile_allow_editing || p_shape < 0 || p_shape >= FPSStudioGeometry::get_shape_count()) {
+		return false;
+	}
+
+	Node *scene_root = EditorNode::get_singleton()->get_edited_scene();
+	Node3D *scene_root_3d = Object::cast_to<Node3D>(scene_root);
+	if (!scene_root_3d) {
+		return false;
+	}
+
+	Ref<Mesh> mesh = FPSStudioGeometry::create_mesh(p_shape);
+	if (mesh.is_null()) {
+		return false;
+	}
+
+	MeshInstance3D *created_node = memnew(MeshInstance3D);
+	created_node->set_mesh(mesh);
+	const String shape_name = TTR(FPSStudioGeometry::get_shape_name(p_shape));
+	created_node->set_name(Node::adjust_name_casing(shape_name));
+	created_node->set_position(scene_root_3d->get_global_transform().affine_inverse().xform(p_world_position));
+	created_node->set_meta("fps_studio_geometry_kind", p_shape);
+	Array geometry_arrays = mesh->surface_get_arrays(0);
+	if (!geometry_arrays.is_empty()) {
+		PackedInt32Array indices = geometry_arrays[Mesh::ARRAY_INDEX];
+		if (indices.is_empty()) {
+			const PackedVector3Array vertices = geometry_arrays[Mesh::ARRAY_VERTEX];
+			indices.resize(vertices.size());
+			for (int vertex = 0; vertex < vertices.size(); vertex++) {
+				indices.set(vertex, vertex);
+			}
+			geometry_arrays[Mesh::ARRAY_INDEX] = indices;
+		}
+		created_node->set_meta("fps_studio_geometry_arrays", geometry_arrays);
+		created_node->set_meta("fps_studio_geometry_data_version", 1);
+	}
+	const String new_name = scene_root_3d->validate_child_name(created_node);
+
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(vformat(TTR("Create %s Mesh"), shape_name), editor_data->get_current_edited_scene_history_id());
+	undo_redo->add_do_method(editor_selection, "clear");
+	undo_redo->add_do_method(scene_root_3d, "add_child", created_node, true);
+	undo_redo->add_do_method(created_node, "set_owner", scene_root);
+	undo_redo->add_do_method(editor_selection, "add_node", created_node);
+	undo_redo->add_do_reference(created_node);
+	undo_redo->add_undo_method(scene_root_3d, "remove_child", created_node);
+
+	EditorDebuggerNode *debugger = EditorDebuggerNode::get_singleton();
+	undo_redo->add_do_method(debugger, "live_debug_create_node", scene_root->get_path_to(scene_root_3d), created_node->get_class(), new_name);
+	undo_redo->add_undo_method(debugger, "live_debug_remove_node", NodePath(String(scene_root->get_path_to(scene_root_3d)).path_join(new_name)));
+	undo_redo->add_do_method(this, "_post_do_create", created_node);
+	undo_redo->commit_action();
+	emit_signal(SNAME("node_created"), created_node);
 	return true;
 }
 
