@@ -10,14 +10,12 @@ static func export_file(mesh_data: UBMeshData, object_name: String, path: String
 	if mesh == null:
 		return FAILED
 
-	var root := Node3D.new()
-	var mi := MeshInstance3D.new()
-	mi.name = object_name
-	mi.mesh = mesh
-	mi.transform = xf
-	root.add_child(mi)
-	# The glTF exporter skips descendant nodes without an owner in the editor.
-	mi.owner = root
+	# Export the mesh instance as the scene root so imported models use the
+	# object name directly instead of an extra default-named Node3D wrapper.
+	var root := MeshInstance3D.new()
+	root.name = object_name
+	root.mesh = mesh
+	root.transform = xf
 
 	var doc := GLTFDocument.new()
 	var state := GLTFState.new()
