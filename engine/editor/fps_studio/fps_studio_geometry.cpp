@@ -19,6 +19,128 @@ const char *get_shape_name(int p_shape) {
 	return p_shape >= 0 && p_shape < get_shape_count() ? shape_names[p_shape] : "Geometry";
 }
 
+const char *get_mesh_operation_name(MeshOperation p_operation) {
+	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Subdivide", "Conform Normals" };
+	return p_operation >= 0 && p_operation < MESH_OPERATION_MAX ? operation_names[p_operation] : "Mesh Operation";
+}
+
+static void _set_smooth_groups_from_normals(Ref<SurfaceTool> p_surface_tool) {
+	HashMap<Vector3, uint32_t> normal_groups;
+	uint32_t next_group = 0;
+	for (SurfaceTool::Vertex &vertex : p_surface_tool->get_vertex_array()) {
+		uint32_t *group = normal_groups.getptr(vertex.normal);
+		if (!group) {
+			normal_groups.insert(vertex.normal, next_group);
+			group = normal_groups.getptr(vertex.normal);
+			next_group++;
+		}
+		vertex.smooth_group = *group;
+	}
+}
+
+static SurfaceTool::Vertex _interpolate_geometry_vertex(const SurfaceTool::Vertex &p_a, const SurfaceTool::Vertex &p_b) {
+	SurfaceTool::Vertex midpoint;
+	midpoint.vertex = (p_a.vertex + p_b.vertex) * 0.5;
+	midpoint.normal = (p_a.normal + p_b.normal).normalized();
+	midpoint.binormal = (p_a.binormal + p_b.binormal).normalized();
+	midpoint.tangent = (p_a.tangent + p_b.tangent).normalized();
+	midpoint.uv = (p_a.uv + p_b.uv) * 0.5;
+	midpoint.uv2 = (p_a.uv2 + p_b.uv2) * 0.5;
+	midpoint.color = p_a.color.lerp(p_b.color, 0.5);
+	midpoint.smooth_group = p_a.smooth_group == p_b.smooth_group ? p_a.smooth_group : UINT32_MAX;
+	for (int channel = 0; channel < RSE::ARRAY_CUSTOM_COUNT; channel++) {
+		midpoint.custom[channel] = p_a.custom[channel].lerp(p_b.custom[channel], 0.5);
+	}
+	if (p_a.bones.size() == p_b.bones.size() && p_a.weights.size() == p_b.weights.size()) {
+		midpoint.bones = p_a.bones;
+		midpoint.weights.resize(p_a.weights.size());
+		for (int i = 0; i < p_a.weights.size(); i++) {
+			midpoint.weights.write[i] = (p_a.weights[i] + p_b.weights[i]) * 0.5;
+		}
+	}
+	return midpoint;
+}
+
+Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_operation) {
+	ERR_FAIL_COND_V(p_mesh.is_null() || p_mesh->get_surface_count() == 0, Ref<ArrayMesh>());
+	ERR_FAIL_INDEX_V(p_operation, MESH_OPERATION_MAX, Ref<ArrayMesh>());
+
+	Ref<ArrayMesh> result;
+	result.instantiate();
+	for (int surface = 0; surface < p_mesh->get_surface_count(); surface++) {
+		const Mesh::PrimitiveType primitive_type = p_mesh->surface_get_primitive_type(surface);
+		Ref<SurfaceTool> surface_tool;
+		surface_tool.instantiate();
+		surface_tool->create_from_arrays(p_mesh->surface_get_arrays(surface), primitive_type);
+		const Ref<Material> surface_material = p_mesh->surface_get_material(surface);
+		surface_tool->set_material(surface_material);
+
+		if (primitive_type == Mesh::PRIMITIVE_TRIANGLES && (p_operation == MESH_OPERATION_CONFORM_NORMALS || p_operation == MESH_OPERATION_SUBDIVIDE || p_operation <= MESH_OPERATION_MIRROR_Z)) {
+			_set_smooth_groups_from_normals(surface_tool);
+		}
+
+		if (p_operation <= MESH_OPERATION_MIRROR_Z) {
+			const int axis = int(p_operation);
+			if (primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
+				surface_tool->deindex();
+			}
+			LocalVector<SurfaceTool::Vertex> &vertices = surface_tool->get_vertex_array();
+			for (SurfaceTool::Vertex &vertex : vertices) {
+				vertex.vertex[axis] = -vertex.vertex[axis];
+				if (primitive_type != Mesh::PRIMITIVE_TRIANGLES) {
+					vertex.normal[axis] = -vertex.normal[axis];
+					vertex.binormal[axis] = -vertex.binormal[axis];
+					vertex.tangent[axis] = -vertex.tangent[axis];
+				}
+			}
+			if (primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
+				for (int i = 0; i + 2 < vertices.size(); i += 3) {
+					SWAP(vertices[i + 1], vertices[i + 2]);
+				}
+				surface_tool->generate_normals();
+			}
+		} else if (p_operation == MESH_OPERATION_CONFORM_NORMALS && primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
+			surface_tool->generate_normals();
+		} else if (p_operation == MESH_OPERATION_SUBDIVIDE && primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
+			surface_tool->deindex();
+			LocalVector<SurfaceTool::Vertex> &vertices = surface_tool->get_vertex_array();
+			if (vertices.size() % 3 != 0) {
+				return Ref<ArrayMesh>();
+			}
+			LocalVector<SurfaceTool::Vertex> subdivided_vertices;
+			subdivided_vertices.reserve(vertices.size() * 4);
+			for (int i = 0; i + 2 < vertices.size(); i += 3) {
+				const SurfaceTool::Vertex a = vertices[i];
+				const SurfaceTool::Vertex b = vertices[i + 1];
+				const SurfaceTool::Vertex c = vertices[i + 2];
+				const SurfaceTool::Vertex ab = _interpolate_geometry_vertex(a, b);
+				const SurfaceTool::Vertex bc = _interpolate_geometry_vertex(b, c);
+				const SurfaceTool::Vertex ca = _interpolate_geometry_vertex(c, a);
+				const SurfaceTool::Vertex triangles[] = {
+					a, ab, ca,
+					ab, b, bc,
+					ca, bc, c,
+					ab, bc, ca,
+				};
+				for (const SurfaceTool::Vertex &vertex : triangles) {
+					subdivided_vertices.push_back(vertex);
+				}
+			}
+			vertices.clear();
+			for (const SurfaceTool::Vertex &vertex : subdivided_vertices) {
+				vertices.push_back(vertex);
+			}
+			surface_tool->generate_normals();
+		}
+
+		const int result_surface = result->get_surface_count();
+		result = surface_tool->commit(result);
+		ERR_FAIL_COND_V(result.is_null(), Ref<ArrayMesh>());
+		result->surface_set_material(result_surface, surface_material);
+	}
+	return result;
+}
+
 Ref<Mesh> create_mesh(int p_shape) {
 	Ref<BoxMesh> box;
 	Ref<PlaneMesh> plane;

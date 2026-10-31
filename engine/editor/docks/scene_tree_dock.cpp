@@ -1774,6 +1774,54 @@ bool SceneTreeDock::create_fps_studio_geometry_at(int p_shape, const Vector3 &p_
 	return true;
 }
 
+bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation) {
+	if (!profile_allow_editing || p_operation < 0 || p_operation >= FPSStudioGeometry::MESH_OPERATION_MAX || !editor_selection) {
+		return false;
+	}
+
+	struct OperationTarget {
+		MeshInstance3D *node = nullptr;
+		Ref<Mesh> original_mesh;
+		Ref<ArrayMesh> updated_mesh;
+		Variant original_arrays;
+		Variant updated_arrays;
+	};
+	Vector<OperationTarget> targets;
+	const FPSStudioGeometry::MeshOperation operation = FPSStudioGeometry::MeshOperation(p_operation);
+	for (Node *selected_node : editor_selection->get_top_selected_node_list()) {
+		MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(selected_node);
+		if (!mesh_instance || !mesh_instance->has_meta("fps_studio_geometry_kind") || mesh_instance->get_mesh().is_null()) {
+			continue;
+		}
+
+		OperationTarget target;
+		target.node = mesh_instance;
+		target.original_mesh = mesh_instance->get_mesh();
+		target.updated_mesh = FPSStudioGeometry::apply_mesh_operation(target.original_mesh, operation);
+		if (target.updated_mesh.is_null()) {
+			continue;
+		}
+		target.original_arrays = mesh_instance->get_meta("fps_studio_geometry_arrays", Array());
+		target.updated_arrays = target.updated_mesh->get_surface_count() > 0 ? Variant(target.updated_mesh->surface_get_arrays(0)) : Variant(Array());
+		targets.push_back(target);
+	}
+	if (targets.is_empty()) {
+		return false;
+	}
+
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	const String operation_name = TTR(FPSStudioGeometry::get_mesh_operation_name(operation));
+	undo_redo->create_action(vformat(TTR("%s FPS Studio Geometry"), operation_name));
+	for (const OperationTarget &target : targets) {
+		undo_redo->add_do_property(target.node, "mesh", target.updated_mesh);
+		undo_redo->add_undo_property(target.node, "mesh", target.original_mesh);
+		undo_redo->add_do_method(target.node, "set_meta", "fps_studio_geometry_arrays", target.updated_arrays);
+		undo_redo->add_undo_method(target.node, "set_meta", "fps_studio_geometry_arrays", target.original_arrays);
+	}
+	undo_redo->commit_action();
+	return true;
+}
+
 bool SceneTreeDock::create_fps_gameplay_node_at(const StringName &p_class_name, const Vector3 &p_world_position) {
 	if (!profile_allow_editing) {
 		return false;

@@ -2,17 +2,17 @@
 
 ## Current objective
 
-Replace the former third-party modeling integration with an original native C++ geometry authoring tool inside Godot FPS Studio. Keep geometry creation reachable from the Level viewport right-click menu. Build feature parity in stages: viewport drawing, object/vertex/edge/face editing, topology tools, UV/material authoring, collision, bake, and export.
+Build a native C++ geometry authoring tool inside Godot FPS Studio and keep geometry creation reachable from the Level viewport right-click menu. The full target includes viewport drawing, object/vertex/edge/face editing, topology tools, UV/material authoring, collision, bake, and export.
 
 ## Work started
 
-- Removed the old modeling add-on source and license from `engine/editor/fps_studio/`, along with its resource-pack generator.
-- Removed automatic add-on loading, packed-script scanning, resource-pack loading, build packaging, and viewport signal references.
-- Deleted generated modeling resource packs and stale app backups whose binaries contained the former integration. The user chose to retain Git history, so older commits still contain the original files.
-- Replaced the old RMB submenu with **FPS Studio Geometry** and added the same shape picker to the native 3D toolbar. It creates standard `MeshInstance3D` nodes from native Godot meshes, with Undo/Redo and scene ownership.
+- Removed the external modeling add-on source, license, resource-pack generator, automatic loader, pack scanning/loading, build packaging, and viewport signal references from the current checkout.
+- Deleted generated modeling resource packs and stale app backups containing the removed integration. The user chose to retain Git history, so older commits still contain the deleted files.
+- Added **FPS Studio Geometry** to the Level viewport RMB menu and added the shape picker to the native 3D toolbar. It creates standard `MeshInstance3D` nodes from native Godot meshes, with Undo/Redo and scene ownership.
 - Added native starter shapes for box, plane, cylinder, cone, prism, stairs, arch, poly shape, door, sphere, torus, pipe, curved stairs, trim, trim walls, and wall.
 - Added **Object**, **Vertex**, **Edge**, and **Face** selection modes to the native toolbar. The modes use Godot's subgizmo selection and transform system; selected vertices, edges, and triangles can be translated, rotated, or scaled with Undo/Redo. Edge mode hides the internal diagonal between coplanar triangles.
-- The implementation is still partial. Interactive parameterized drawing, loop/extrude/inset/bevel and other topology operations, UV/material authoring, automatic collision authoring, bake, and export still need implementation.
+- Added native **Mirror X/Y/Z**, **Subdivide**, and **Conform Normals** operations to the 3D toolbar with Undo/Redo.
+- The implementation remains partial. The previous tool inventory included primitive drawing, soft selection, topology selection and editing operations, cut/insert tools, material assignment and vertex paint, UV editing, mesh merging and booleans, plus OBJ/glTF export. These native features remain to be built alongside parameters for interactive shapes, automatic collision authoring, and baking.
 
 ## Project constraints
 
@@ -32,6 +32,8 @@ Replace the former third-party modeling integration with an original native C++ 
 
 ## Verification still required
 
-- Continue with edge and face modes and the common topology operations, then UV/material authoring, collision, bake, and export.
-- The source currently has a new uncommitted Vertex Mode implementation; run `git diff --check`, build with `./tools/build_macos.sh`, verify the installed app signature, and then commit/push normally. Do not rewrite Git history or force-push; the user explicitly chose to keep history unchanged.
+- Continue with interactive parameterized drawing and topology operations (extrude, inset, bevel, loop/cut, bridge, merge, weld, delete/fill, and selection helpers), then soft selection/pivot tools, UV/material authoring, collision, bake, and export.
+- The current work adds mesh operations in `fps_studio_geometry.cpp` and the native 3D toolbar, with Undo/Redo integration in `scene_tree_dock.cpp`.
+- The user authorized normal pushes and chose to keep Git history unchanged. Never rewrite history or force-push.
+- Latest verification for this work: `git diff --check`, `./tools/build_macos.sh`, and the app signature check all passed after the documentation refresh.
 - Do not open the GUI editor without an explicit request.

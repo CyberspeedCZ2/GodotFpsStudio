@@ -8692,6 +8692,16 @@ void Node3DEditor::_fps_studio_geometry_mode_selected(int p_mode) {
 	update_transform_gizmo();
 }
 
+void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
+	SceneTreeDock *scene_tree_dock = SceneTreeDock::get_singleton();
+	if (!scene_tree_dock || !scene_tree_dock->apply_fps_studio_geometry_operation(p_operation)) {
+		Node3DEditorViewport *target_viewport = get_last_used_viewport();
+		if (target_viewport) {
+			target_viewport->set_message(TTR("Select one or more FPS Studio geometry meshes first."));
+		}
+	}
+}
+
 void Node3DEditor::_menu_item_pressed(int p_option) {
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 	switch (p_option) {
@@ -11443,6 +11453,21 @@ Node3DEditor::Node3DEditor() {
 	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Face Mode"), 3);
 	fps_studio_geometry_mode_popup->set_item_checked(0, true);
 	fps_studio_geometry_mode_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_mode_selected));
+
+	MenuButton *fps_studio_geometry_tools_menu = memnew(MenuButton);
+	fps_studio_geometry_tools_menu->set_flat(false);
+	fps_studio_geometry_tools_menu->set_theme_type_variation("FlatMenuButton");
+	fps_studio_geometry_tools_menu->set_text(TTRC("Mesh Tools"));
+	fps_studio_geometry_tools_menu->set_tooltip_text(TTRC("Apply native mesh operations to selected FPS Studio geometry."));
+	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_tools_menu);
+	PopupMenu *fps_studio_geometry_tools_popup = fps_studio_geometry_tools_menu->get_popup();
+	for (int operation = 0; operation < FPSStudioGeometry::MESH_OPERATION_MAX; operation++) {
+		if (operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE) {
+			fps_studio_geometry_tools_popup->add_separator();
+		}
+		fps_studio_geometry_tools_popup->add_item(TTR(FPSStudioGeometry::get_mesh_operation_name(FPSStudioGeometry::MeshOperation(operation))), operation);
+	}
+	fps_studio_geometry_tools_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_operation_requested));
 
 	context_toolbar_panel = memnew(PanelContainer);
 	context_toolbar_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);

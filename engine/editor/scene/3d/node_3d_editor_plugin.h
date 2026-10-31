@@ -863,6 +863,7 @@ private:
 	void _menu_item_pressed(int p_option);
 	void _fps_studio_geometry_shape_requested(int p_shape);
 	void _fps_studio_geometry_mode_selected(int p_mode);
+	void _fps_studio_geometry_operation_requested(int p_operation);
 	void _menu_item_toggled(bool pressed, int p_option);
 	void _menu_gizmo_toggled(int p_option);
 	// Used for secondary menu items which are displayed depending on the currently selected node
