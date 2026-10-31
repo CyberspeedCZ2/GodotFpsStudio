@@ -8665,23 +8665,22 @@ void Node3DEditor::_fps_studio_geometry_shape_requested(int p_shape) {
 }
 
 void Node3DEditor::_fps_studio_geometry_mode_selected(int p_mode) {
-	fps_studio_geometry_vertex_mode = p_mode == 1;
+	fps_studio_geometry_selection_mode = CLAMP(p_mode, 0, 3);
 	if (fps_studio_geometry_gizmo_plugin.is_valid()) {
-		fps_studio_geometry_gizmo_plugin->set_vertex_mode(fps_studio_geometry_vertex_mode);
+		fps_studio_geometry_gizmo_plugin->set_selection_mode(fps_studio_geometry_selection_mode);
 	}
 	if (fps_studio_geometry_mode_menu) {
 		PopupMenu *popup = fps_studio_geometry_mode_menu->get_popup();
-		const int object_mode_index = popup->get_item_index(0);
-		const int vertex_mode_index = popup->get_item_index(1);
-		if (object_mode_index >= 0) {
-			popup->set_item_checked(object_mode_index, !fps_studio_geometry_vertex_mode);
+		for (int mode = 0; mode < 4; mode++) {
+			const int item_index = popup->get_item_index(mode);
+			if (item_index >= 0) {
+				popup->set_item_checked(item_index, mode == fps_studio_geometry_selection_mode);
+			}
 		}
-		if (vertex_mode_index >= 0) {
-			popup->set_item_checked(vertex_mode_index, fps_studio_geometry_vertex_mode);
-		}
-		fps_studio_geometry_mode_menu->set_text(fps_studio_geometry_vertex_mode ? TTRC("Vertex Mode") : TTRC("Object Mode"));
+		static const char *mode_names[] = { "Object Mode", "Vertex Mode", "Edge Mode", "Face Mode" };
+		fps_studio_geometry_mode_menu->set_text(TTR(mode_names[fps_studio_geometry_selection_mode]));
 	}
-	if (!fps_studio_geometry_vertex_mode && editor_selection) {
+	if (fps_studio_geometry_selection_mode == 0 && editor_selection) {
 		for (Node *node : editor_selection->get_top_selected_node_list()) {
 			Node3DEditorSelectedItem *selected_item = editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(node);
 			if (selected_item) {
@@ -10755,7 +10754,7 @@ void Node3DEditor::_register_all_gizmos() {
 	add_gizmo_plugin(Ref<AudioListener3DGizmoPlugin>(memnew(AudioListener3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<MeshInstance3DGizmoPlugin>(memnew(MeshInstance3DGizmoPlugin)));
 	fps_studio_geometry_gizmo_plugin.instantiate();
-	fps_studio_geometry_gizmo_plugin->set_vertex_mode(fps_studio_geometry_vertex_mode);
+	fps_studio_geometry_gizmo_plugin->set_selection_mode(fps_studio_geometry_selection_mode);
 	add_gizmo_plugin(fps_studio_geometry_gizmo_plugin);
 	add_gizmo_plugin(Ref<OccluderInstance3DGizmoPlugin>(memnew(OccluderInstance3DGizmoPlugin)));
 	add_gizmo_plugin(Ref<SoftBody3DGizmoPlugin>(memnew(SoftBody3DGizmoPlugin)));
@@ -11440,6 +11439,8 @@ Node3DEditor::Node3DEditor() {
 	PopupMenu *fps_studio_geometry_mode_popup = fps_studio_geometry_mode_menu->get_popup();
 	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Object Mode"), 0);
 	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Vertex Mode"), 1);
+	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Edge Mode"), 2);
+	fps_studio_geometry_mode_popup->add_radio_check_item(TTRC("Face Mode"), 3);
 	fps_studio_geometry_mode_popup->set_item_checked(0, true);
 	fps_studio_geometry_mode_popup->connect(SceneStringName(id_pressed), callable_mp(this, &Node3DEditor::_fps_studio_geometry_mode_selected));
 

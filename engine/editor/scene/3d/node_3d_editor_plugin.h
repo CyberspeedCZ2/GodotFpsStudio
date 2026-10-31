@@ -909,7 +909,7 @@ private:
 	Vector<Ref<EditorNode3DGizmoPlugin>> gizmo_plugins_by_priority;
 	Vector<Ref<EditorNode3DGizmoPlugin>> gizmo_plugins_by_name;
 	Ref<FPSStudioGeometryGizmoPlugin> fps_studio_geometry_gizmo_plugin;
-	bool fps_studio_geometry_vertex_mode = false;
+	int fps_studio_geometry_selection_mode = 0;
 
 	void _register_all_gizmos();
 

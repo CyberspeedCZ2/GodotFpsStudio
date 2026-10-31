@@ -19,23 +19,44 @@ class FPSStudioGeometryGizmoPlugin : public EditorNode3DGizmoPlugin {
 		Vector3 position;
 		Vector<VertexReference> references;
 	};
+	struct EdgeGroup {
+		int vertex_a = -1;
+		int vertex_b = -1;
+		int adjacent_face_count = 0;
+		Vector3 first_face_normal;
+		bool is_crease = false;
+	};
+	struct FaceGroup {
+		int vertex_a = -1;
+		int vertex_b = -1;
+		int vertex_c = -1;
+	};
+	struct Topology {
+		Vector<VertexGroup> vertices;
+		Vector<EdgeGroup> edges;
+		Vector<FaceGroup> faces;
+	};
 
 	struct DragState {
 		Ref<Mesh> original_mesh;
 		Variant original_vertex_arrays;
+		HashMap<int, Vector3> pending_vertex_positions;
 	};
 
 	HashMap<ObjectID, DragState> drag_states;
-	bool vertex_mode = false;
+	int selection_mode = 0;
 
-	static Vector<VertexGroup> _get_vertex_groups(const Ref<Mesh> &p_mesh);
-	static Ref<ArrayMesh> _build_mesh_with_vertex_at(const Ref<Mesh> &p_source, const Vector<VertexReference> &p_references, const Vector3 &p_position);
+	static Topology _get_topology(const Ref<Mesh> &p_mesh);
+	static Ref<ArrayMesh> _build_mesh_with_vertex_positions(const Ref<Mesh> &p_source, const Topology &p_topology, const HashMap<int, Vector3> &p_positions);
+	Vector<int> _get_affected_vertices(const Topology &p_topology, int p_id) const;
+	Vector3 _get_element_center(const Topology &p_topology, int p_id) const;
+	int _get_element_count(const Topology &p_topology) const;
 
 protected:
 	Ref<EditorNode3DGizmo> create_gizmo(Node3D *p_spatial) override;
 
 public:
-	void set_vertex_mode(bool p_enabled);
+	void set_selection_mode(int p_mode);
 	bool has_gizmo(Node3D *p_spatial) override;
 	String get_gizmo_name() const override;
 	int get_priority() const override;
