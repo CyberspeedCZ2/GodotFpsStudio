@@ -437,6 +437,11 @@ void MeshInstance3DEditor::_menu_option(int p_option) {
 		case MENU_OPTION_CREATE_COLLISION_SHAPE: {
 			shape_dialog->popup_centered();
 		} break;
+		case MENU_OPTION_CREATE_TRIMESH_STATIC_BODY: {
+			shape_placement->select(SHAPE_PLACEMENT_STATIC_BODY_CHILD);
+			shape_type->select(SHAPE_TYPE_TRIMESH);
+			_create_collision_shape();
+		} break;
 
 		case MENU_OPTION_CREATE_NAVMESH: {
 			navigation_mesh_dialog->popup_centered(Vector2(200, 90));
@@ -803,6 +808,7 @@ MeshInstance3DEditor::MeshInstance3DEditor() {
 	Node3DEditor::get_singleton()->add_control_to_menu_panel(options);
 
 	options->get_popup()->add_item(TTR("Create Collision Shape..."), MENU_OPTION_CREATE_COLLISION_SHAPE);
+	options->get_popup()->add_item(TTR("Create Trimesh Static Body"), MENU_OPTION_CREATE_TRIMESH_STATIC_BODY);
 	options->get_popup()->add_item(TTR("Create Navigation Mesh"), MENU_OPTION_CREATE_NAVMESH);
 	options->get_popup()->add_separator();
 	options->get_popup()->add_item(TTR("Create Outline Mesh..."), MENU_OPTION_CREATE_OUTLINE_MESH);
