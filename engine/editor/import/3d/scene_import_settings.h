@@ -405,6 +405,8 @@ class SceneImportSettingsScreen : public Control {
 	void _settings_tab_changed(int p_tab);
 	void _property_split_dragged(int p_offset);
 	void _update_material_editor();
+	void _clear_mesh_preview_material_overrides();
+	void _apply_import_materials_to_mesh_preview(const Ref<Mesh> &p_mesh);
 	void _material_create_button_pressed();
 	void _material_save_button_pressed();
 	void _material_preview_on_model_toggled(bool p_enabled);

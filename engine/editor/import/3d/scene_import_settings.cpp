@@ -1884,6 +1884,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 		}
 
 		mesh_preview->set_mesh(md.live_preview_mesh.is_valid() ? md.live_preview_mesh : md.mesh);
+		_apply_import_materials_to_mesh_preview(mesh_preview->get_mesh());
 		mesh_preview->show();
 		_reset_animation();
 
@@ -1908,6 +1909,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 				Object::cast_to<Node3D>(scene)->hide();
 			}
 			mesh_preview->set_mesh(material_preview);
+			_clear_mesh_preview_material_overrides();
 			mesh_preview->show();
 		}
 
@@ -3718,6 +3720,7 @@ void SceneImportSettingsScreen::_finish_lod_edit_update() {
 	lod_preview_mesh_cache.clear();
 	stats_selected_mesh.unref();
 	mesh_preview->set_mesh(md.live_preview_mesh);
+	_apply_import_materials_to_mesh_preview(md.live_preview_mesh);
 	_update_mesh_stats();
 	const int max_level = MAX(stats_level_faces.size() - 1, 0);
 	lod_manual_level = MIN(lod_manual_level, max_level);
@@ -3957,6 +3960,7 @@ void SceneImportSettingsScreen::_material_preview_on_model_toggled(bool p_enable
 		}
 		material_preview->set_material(material_map[selected_id].material);
 		mesh_preview->set_mesh(material_preview);
+		_clear_mesh_preview_material_overrides();
 		mesh_preview->show();
 	}
 	_update_material_editor();
@@ -3967,6 +3971,36 @@ void SceneImportSettingsScreen::_material_preview_on_model_toggled(bool p_enable
 void SceneImportSettingsScreen::_material_isolate_toggled(bool p_enabled) {
 	material_isolation_enabled = p_enabled;
 	_apply_material_isolation();
+}
+
+void SceneImportSettingsScreen::_clear_mesh_preview_material_overrides() {
+	for (int surface = 0; surface < mesh_preview->get_surface_override_material_count(); surface++) {
+		mesh_preview->set_surface_override_material(surface, Ref<Material>());
+	}
+}
+
+void SceneImportSettingsScreen::_apply_import_materials_to_mesh_preview(const Ref<Mesh> &p_mesh) {
+	_clear_mesh_preview_material_overrides();
+	if (p_mesh.is_null()) {
+		return;
+	}
+
+	for (int surface = 0; surface < p_mesh->get_surface_count(); surface++) {
+		const Ref<Material> source_material = p_mesh->surface_get_material(surface);
+		if (source_material.is_null()) {
+			continue;
+		}
+
+		const String material_id = _get_material_import_id(source_material);
+		if (!material_map.has(material_id)) {
+			continue;
+		}
+
+		const Ref<Material> preview_material = material_map[material_id].material;
+		if (preview_material.is_valid()) {
+			mesh_preview->set_surface_override_material(surface, preview_material);
+		}
+	}
 }
 
 void SceneImportSettingsScreen::_apply_material_isolation() {
