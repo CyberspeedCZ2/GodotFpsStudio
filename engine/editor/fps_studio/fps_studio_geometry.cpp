@@ -21,7 +21,7 @@ const char *get_shape_name(int p_shape) {
 }
 
 const char *get_mesh_operation_name(MeshOperation p_operation) {
-	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Delete Faces", "Subdivide", "Conform Normals" };
+	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Delete Faces", "Flip Face Normals", "Subdivide", "Conform Normals" };
 	return p_operation >= 0 && p_operation < MESH_OPERATION_MAX ? operation_names[p_operation] : "Mesh Operation";
 }
 
@@ -99,7 +99,7 @@ static int _get_geometry_position_id(const Vector3 &p_position, HashMap<Vector3i
 	return new_position_id;
 }
 
-static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount, bool p_delete_faces, bool &r_surface_empty) {
+static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount, bool p_delete_faces, bool p_flip_normals, bool &r_surface_empty) {
 	r_surface_empty = false;
 	p_surface_tool->deindex();
 	const LocalVector<SurfaceTool::Vertex> &source_vertices = p_surface_tool->get_vertex_array();
@@ -182,6 +182,28 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 			}
 		}
 		r_surface_empty = result_vertices.is_empty();
+		LocalVector<SurfaceTool::Vertex> &surface_vertices = p_surface_tool->get_vertex_array();
+		surface_vertices.clear();
+		for (const SurfaceTool::Vertex &vertex : result_vertices) {
+			surface_vertices.push_back(vertex);
+		}
+		return true;
+	}
+	if (p_flip_normals) {
+		result_vertices.reserve(faces.size() * 3);
+		for (const GeometryExtrusionFace &face : faces) {
+			SurfaceTool::Vertex triangle[3] = { face.vertices[0], face.vertices[1], face.vertices[2] };
+			if (face.selected) {
+				SWAP(triangle[1], triangle[2]);
+				for (SurfaceTool::Vertex &vertex : triangle) {
+					vertex.normal = -vertex.normal;
+					vertex.binormal = -vertex.binormal;
+				}
+			}
+			for (const SurfaceTool::Vertex &vertex : triangle) {
+				result_vertices.push_back(vertex);
+			}
+		}
 		LocalVector<SurfaceTool::Vertex> &surface_vertices = p_surface_tool->get_vertex_array();
 		surface_vertices.clear();
 		for (const SurfaceTool::Vertex &vertex : result_vertices) {
@@ -292,7 +314,7 @@ static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, c
 Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_operation, const Vector<int> &p_selected_faces, real_t p_amount) {
 	ERR_FAIL_COND_V(p_mesh.is_null() || p_mesh->get_surface_count() == 0, Ref<ArrayMesh>());
 	ERR_FAIL_INDEX_V(p_operation, MESH_OPERATION_MAX, Ref<ArrayMesh>());
-	const bool is_face_operation = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_DELETE_FACES;
+	const bool is_face_operation = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_DELETE_FACES || p_operation == MESH_OPERATION_FLIP_FACES;
 	ERR_FAIL_COND_V(is_face_operation && (p_selected_faces.is_empty() || (p_operation == MESH_OPERATION_EXTRUDE_FACES && Math::is_zero_approx(p_amount))), Ref<ArrayMesh>());
 
 	HashSet<int> selected_faces;
@@ -325,7 +347,7 @@ Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_ope
 
 		if (is_face_operation) {
 			if (primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
-				changed_selected_faces |= _modify_selected_geometry_surface(surface_tool, selected_faces, face_offset, p_amount, p_operation == MESH_OPERATION_DELETE_FACES, surface_empty);
+				changed_selected_faces |= _modify_selected_geometry_surface(surface_tool, selected_faces, face_offset, p_amount, p_operation == MESH_OPERATION_DELETE_FACES, p_operation == MESH_OPERATION_FLIP_FACES, surface_empty);
 				face_offset += surface_face_count;
 			}
 		} else if (p_operation <= MESH_OPERATION_MIRROR_Z) {

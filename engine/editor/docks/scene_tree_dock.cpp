@@ -1778,7 +1778,7 @@ bool SceneTreeDock::apply_fps_studio_geometry_operation(int p_operation, Node *p
 	if (!profile_allow_editing || p_operation < 0 || p_operation >= FPSStudioGeometry::MESH_OPERATION_MAX || !editor_selection) {
 		return false;
 	}
-	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES;
+	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES;
 	if (requires_face_selection && (!p_target_node || p_selected_faces.is_empty())) {
 		return false;
 	}
