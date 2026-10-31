@@ -8699,7 +8699,8 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 	SceneTreeDock *scene_tree_dock = SceneTreeDock::get_singleton();
 	Node *target_node = nullptr;
 	Vector<int> selected_faces;
-	if (p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES) {
+	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES;
+	if (requires_face_selection) {
 		target_node = get_single_selected_node();
 		Node3DEditorSelectedItem *selected_item = target_node && editor_selection ? editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node) : nullptr;
 		if (fps_studio_geometry_selection_mode == 3 && selected_item && selected_item->gizmo.is_valid()) {
@@ -11505,7 +11506,7 @@ Node3DEditor::Node3DEditor() {
 	fps_studio_geometry_toolbar_hbox->add_child(fps_studio_geometry_tools_menu);
 	PopupMenu *fps_studio_geometry_tools_popup = fps_studio_geometry_tools_menu->get_popup();
 	for (int operation = 0; operation < FPSStudioGeometry::MESH_OPERATION_MAX; operation++) {
-		if (operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE) {
+		if (operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE) {
 			fps_studio_geometry_tools_popup->add_separator();
 		}
 		fps_studio_geometry_tools_popup->add_item(TTR(FPSStudioGeometry::get_mesh_operation_name(FPSStudioGeometry::MeshOperation(operation))), operation);

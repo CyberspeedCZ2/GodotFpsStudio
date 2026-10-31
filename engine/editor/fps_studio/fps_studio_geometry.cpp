@@ -21,7 +21,7 @@ const char *get_shape_name(int p_shape) {
 }
 
 const char *get_mesh_operation_name(MeshOperation p_operation) {
-	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Subdivide", "Conform Normals" };
+	static const char *operation_names[] = { "Mirror X", "Mirror Y", "Mirror Z", "Extrude Faces", "Delete Faces", "Subdivide", "Conform Normals" };
 	return p_operation >= 0 && p_operation < MESH_OPERATION_MAX ? operation_names[p_operation] : "Mesh Operation";
 }
 
@@ -99,7 +99,8 @@ static int _get_geometry_position_id(const Vector3 &p_position, HashMap<Vector3i
 	return new_position_id;
 }
 
-static bool _extrude_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount) {
+static bool _modify_selected_geometry_surface(Ref<SurfaceTool> p_surface_tool, const HashSet<int> &p_selected_faces, int p_face_offset, real_t p_amount, bool p_delete_faces, bool &r_surface_empty) {
+	r_surface_empty = false;
 	p_surface_tool->deindex();
 	const LocalVector<SurfaceTool::Vertex> &source_vertices = p_surface_tool->get_vertex_array();
 	if (source_vertices.size() % 3 != 0) {
@@ -170,6 +171,25 @@ static bool _extrude_geometry_surface(Ref<SurfaceTool> p_surface_tool, const Has
 		}
 	}
 
+	LocalVector<SurfaceTool::Vertex> result_vertices;
+	if (p_delete_faces) {
+		result_vertices.reserve(faces.size() * 3);
+		for (const GeometryExtrusionFace &face : faces) {
+			if (!face.selected) {
+				for (const SurfaceTool::Vertex &vertex : face.vertices) {
+					result_vertices.push_back(vertex);
+				}
+			}
+		}
+		r_surface_empty = result_vertices.is_empty();
+		LocalVector<SurfaceTool::Vertex> &surface_vertices = p_surface_tool->get_vertex_array();
+		surface_vertices.clear();
+		for (const SurfaceTool::Vertex &vertex : result_vertices) {
+			surface_vertices.push_back(vertex);
+		}
+		return true;
+	}
+
 	HashMap<int, Vector3> selected_normal_sums;
 	for (int face_index = 0; face_index < faces.size(); face_index++) {
 		const GeometryExtrusionFace &face = faces[face_index];
@@ -210,7 +230,6 @@ static bool _extrude_geometry_surface(Ref<SurfaceTool> p_surface_tool, const Has
 		}
 	}
 
-	LocalVector<SurfaceTool::Vertex> result_vertices;
 	result_vertices.reserve(faces.size() * 3 + edges.size() * 6);
 	for (const GeometryExtrusionFace &face : faces) {
 		for (int corner = 0; corner < 3; corner++) {
@@ -273,10 +292,11 @@ static bool _extrude_geometry_surface(Ref<SurfaceTool> p_surface_tool, const Has
 Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_operation, const Vector<int> &p_selected_faces, real_t p_amount) {
 	ERR_FAIL_COND_V(p_mesh.is_null() || p_mesh->get_surface_count() == 0, Ref<ArrayMesh>());
 	ERR_FAIL_INDEX_V(p_operation, MESH_OPERATION_MAX, Ref<ArrayMesh>());
-	ERR_FAIL_COND_V(p_operation == MESH_OPERATION_EXTRUDE_FACES && (p_selected_faces.is_empty() || Math::is_zero_approx(p_amount)), Ref<ArrayMesh>());
+	const bool is_face_operation = p_operation == MESH_OPERATION_EXTRUDE_FACES || p_operation == MESH_OPERATION_DELETE_FACES;
+	ERR_FAIL_COND_V(is_face_operation && (p_selected_faces.is_empty() || (p_operation == MESH_OPERATION_EXTRUDE_FACES && Math::is_zero_approx(p_amount))), Ref<ArrayMesh>());
 
 	HashSet<int> selected_faces;
-	if (p_operation == MESH_OPERATION_EXTRUDE_FACES) {
+	if (is_face_operation) {
 		for (int face_id : p_selected_faces) {
 			selected_faces.insert(face_id);
 		}
@@ -297,14 +317,15 @@ Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_ope
 		const PackedVector3Array surface_vertices = surface_arrays[Mesh::ARRAY_VERTEX];
 		const PackedInt32Array surface_indices = surface_arrays[Mesh::ARRAY_INDEX];
 		const int surface_face_count = primitive_type == Mesh::PRIMITIVE_TRIANGLES ? (surface_indices.is_empty() ? surface_vertices.size() : surface_indices.size()) / 3 : 0;
+		bool surface_empty = false;
 
 		if (primitive_type == Mesh::PRIMITIVE_TRIANGLES && (p_operation == MESH_OPERATION_CONFORM_NORMALS || p_operation == MESH_OPERATION_SUBDIVIDE || p_operation <= MESH_OPERATION_MIRROR_Z)) {
 			_set_smooth_groups_from_normals(surface_tool);
 		}
 
-		if (p_operation == MESH_OPERATION_EXTRUDE_FACES) {
+		if (is_face_operation) {
 			if (primitive_type == Mesh::PRIMITIVE_TRIANGLES) {
-				changed_selected_faces |= _extrude_geometry_surface(surface_tool, selected_faces, face_offset, p_amount);
+				changed_selected_faces |= _modify_selected_geometry_surface(surface_tool, selected_faces, face_offset, p_amount, p_operation == MESH_OPERATION_DELETE_FACES, surface_empty);
 				face_offset += surface_face_count;
 			}
 		} else if (p_operation <= MESH_OPERATION_MIRROR_Z) {
@@ -361,12 +382,17 @@ Ref<ArrayMesh> apply_mesh_operation(const Ref<Mesh> &p_mesh, MeshOperation p_ope
 			surface_tool->generate_normals();
 		}
 
-		const int result_surface = result->get_surface_count();
-		result = surface_tool->commit(result);
-		ERR_FAIL_COND_V(result.is_null(), Ref<ArrayMesh>());
-		result->surface_set_material(result_surface, surface_material);
+		if (!surface_empty) {
+			const int result_surface = result->get_surface_count();
+			result = surface_tool->commit(result);
+			ERR_FAIL_COND_V(result.is_null(), Ref<ArrayMesh>());
+			result->surface_set_material(result_surface, surface_material);
+		}
 	}
-	if (p_operation == MESH_OPERATION_EXTRUDE_FACES && !changed_selected_faces) {
+	if (is_face_operation && !changed_selected_faces) {
+		return Ref<ArrayMesh>();
+	}
+	if (p_operation == MESH_OPERATION_DELETE_FACES && result->get_surface_count() == 0) {
 		return Ref<ArrayMesh>();
 	}
 	return result;
