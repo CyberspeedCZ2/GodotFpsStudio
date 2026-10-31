@@ -1987,6 +1987,7 @@ func _on_export_path_chosen(path: String) -> void:
 			_notify_user("glTF export failed (%d) for %s" % [err, path])
 			return
 		print("Unibuilder: exported " + path)
+		EditorInterface.get_resource_filesystem().scan_sources()
 		return
 	var obj := _load_exporter("export_obj.gd")
 	if obj == null:
@@ -2006,6 +2007,7 @@ func _on_export_path_chosen(path: String) -> void:
 		mf.store_string(obj.to_mtl(node.mesh_data))
 		mf.close()
 	print("Unibuilder: exported %s (+ %s)" % [path, mtl_name])
+	EditorInterface.get_resource_filesystem().scan_sources()
 
 
 func _load_exporter(file: String) -> GDScript:
