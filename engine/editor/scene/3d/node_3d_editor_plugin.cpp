@@ -8699,7 +8699,7 @@ void Node3DEditor::_fps_studio_geometry_operation_requested(int p_operation) {
 	SceneTreeDock *scene_tree_dock = SceneTreeDock::get_singleton();
 	Node *target_node = nullptr;
 	Vector<int> selected_faces;
-	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_INSET_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES;
+	const bool requires_face_selection = p_operation == FPSStudioGeometry::MESH_OPERATION_EXTRUDE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_INSET_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_DELETE_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_FLIP_FACES || p_operation == FPSStudioGeometry::MESH_OPERATION_SUBDIVIDE_FACES;
 	if (requires_face_selection) {
 		target_node = get_single_selected_node();
 		Node3DEditorSelectedItem *selected_item = target_node && editor_selection ? editor_selection->get_node_editor_data<Node3DEditorSelectedItem>(target_node) : nullptr;
