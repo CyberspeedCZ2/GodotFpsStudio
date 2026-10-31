@@ -596,17 +596,34 @@ void SceneImportSettingsScreen::_fill_scene(Node *p_node, TreeItem *p_parent_ite
 		const Ref<Mesh> preview_mesh = mesh_node->get_mesh();
 		for (int surface = 0; surface < preview_mesh->get_surface_count(); surface++) {
 			Ref<Material> source_material = preview_mesh->surface_get_material(surface);
-			if (source_material.is_null()) {
-				continue;
+			String material_id;
+			if (source_material.is_valid()) {
+				material_id = _get_material_import_id(source_material);
+				if (material_map.has(material_id)) {
+					MaterialData &material_data = material_map[material_id];
+					const Ref<Material> preview_material = material_data.material;
+					if (preview_material.is_valid() && preview_material != source_material) {
+						mesh_node->set_surface_override_material(surface, preview_material);
+					}
+
+					material_data.usage_count++;
+					if (material_data.material_node != nullptr) {
+						String display_name = source_material->get_name();
+						if (display_name.is_empty()) {
+							display_name = TTR("<Unnamed Material>");
+						}
+						material_data.material_node->set_text(0, vformat(TTR("%s (%d surfaces)"), display_name, material_data.usage_count));
+						material_data.material_node->set_tooltip_text(0, vformat(TTR("Used on %d mesh surfaces.\nImport ID: %s"), material_data.usage_count, material_id));
+					}
+				}
 			}
-			const String material_id = _get_material_import_id(source_material);
-			if (!material_map.has(material_id)) {
-				continue;
-			}
-			const Ref<Material> preview_material = material_map[material_id].material;
-			if (preview_material.is_valid() && preview_material != source_material) {
-				mesh_node->set_surface_override_material(surface, preview_material);
-			}
+
+			MaterialSurfaceData surface_data;
+			surface_data.mesh_node = mesh_node;
+			surface_data.surface_index = surface;
+			surface_data.material_id = material_id;
+			surface_data.preview_override = mesh_node->get_surface_override_material(surface);
+			material_surface_usages.push_back(surface_data);
 		}
 
 		// Add the collider view.
@@ -1494,6 +1511,7 @@ void SceneImportSettingsScreen::_apply_lod_preview() {
 
 	if (lod_mode != LOD_MODE_MANUAL || scene == nullptr) {
 		_update_preview_lod_threshold();
+		_apply_material_isolation();
 		return;
 	}
 
@@ -1522,6 +1540,7 @@ void SceneImportSettingsScreen::_apply_lod_preview() {
 			mesh_node->set_mesh(preview_mesh);
 		}
 	}
+	_apply_material_isolation();
 }
 
 void SceneImportSettingsScreen::_load_default_subresource_settings(HashMap<StringName, Variant> &settings, const String &p_type, const String &p_import_id, ResourceImporterScene::InternalImportCategory p_category) {
@@ -1588,6 +1607,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	mesh_set.clear();
 	animation_map.clear();
 	material_map.clear();
+	material_surface_usages.clear();
 	unnamed_material_name_map.clear();
 	mesh_map.clear();
 	node_map.clear();
@@ -2424,6 +2444,7 @@ void SceneImportSettingsScreen::_close_screen() {
 	mesh_set.clear();
 	animation_map.clear();
 	material_map.clear();
+	material_surface_usages.clear();
 	unnamed_material_name_map.clear();
 	mesh_map.clear();
 	lod_source_meshes.clear();
@@ -3332,6 +3353,19 @@ void fragment() {
 	material_preview_on_model_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_material_preview_on_model_toggled));
 	material_tab->add_child(material_preview_on_model_toggle);
 
+	material_isolation_material.instantiate();
+	material_isolation_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	material_isolation_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	material_isolation_material->set_depth_draw_mode(BaseMaterial3D::DEPTH_DRAW_DISABLED);
+	material_isolation_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	material_isolation_material->set_albedo(Color(0.0, 0.0, 0.0, 0.0));
+
+	material_isolate_toggle = memnew(CheckButton);
+	material_isolate_toggle->set_text(TTR("Isolate Material"));
+	material_isolate_toggle->set_tooltip_text(TTR("Hide other material surfaces in the full-model preview."));
+	material_isolate_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_material_isolate_toggled));
+	material_tab->add_child(material_isolate_toggle);
+
 	material_create_button = memnew(Button);
 	material_create_button->set_text(TTR("Create editable material files…"));
 	material_create_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_create_button_pressed));
@@ -3805,11 +3839,14 @@ void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
 }
 
 void SceneImportSettingsScreen::_update_material_editor() {
-	if (!material_inspector || !material_create_button || !material_save_button || !material_preview_on_model_toggle) {
+	if (!material_inspector || !material_create_button || !material_save_button || !material_preview_on_model_toggle || !material_isolate_toggle) {
 		return;
 	}
 	const bool has_material = selected_type == "Material" && material_map.has(selected_id);
 	material_preview_on_model_toggle->set_visible(has_material);
+	material_isolate_toggle->set_visible(has_material);
+	material_isolate_toggle->set_pressed_no_signal(material_isolation_enabled);
+	material_isolate_toggle->set_disabled(!material_preview_on_model);
 	material_create_button->hide();
 	material_inspector->edit(nullptr);
 	material_inspector->hide();
@@ -3854,6 +3891,7 @@ void SceneImportSettingsScreen::_material_save_button_pressed() {
 void SceneImportSettingsScreen::_material_preview_on_model_toggled(bool p_enabled) {
 	material_preview_on_model = p_enabled;
 	if (selected_type != "Material" || !material_map.has(selected_id)) {
+		_apply_material_isolation();
 		return;
 	}
 	if (p_enabled) {
@@ -3869,7 +3907,30 @@ void SceneImportSettingsScreen::_material_preview_on_model_toggled(bool p_enable
 		mesh_preview->set_mesh(material_preview);
 		mesh_preview->show();
 	}
+	_update_material_editor();
+	_apply_material_isolation();
 	_update_camera();
+}
+
+void SceneImportSettingsScreen::_material_isolate_toggled(bool p_enabled) {
+	material_isolation_enabled = p_enabled;
+	_apply_material_isolation();
+}
+
+void SceneImportSettingsScreen::_apply_material_isolation() {
+	const bool isolate = material_isolation_enabled && material_preview_on_model && selected_type == "Material" && material_map.has(selected_id);
+	for (const MaterialSurfaceData &surface_data : material_surface_usages) {
+		MeshInstance3D *mesh_node = surface_data.mesh_node;
+		if (mesh_node == nullptr || !mesh_node->get_mesh().is_valid() || surface_data.surface_index < 0 || surface_data.surface_index >= mesh_node->get_mesh()->get_surface_count()) {
+			continue;
+		}
+
+		Ref<Material> preview_material = surface_data.preview_override;
+		if (isolate && surface_data.material_id != selected_id) {
+			preview_material = material_isolation_material;
+		}
+		mesh_node->set_surface_override_material(surface_data.surface_index, preview_material);
+	}
 }
 
 void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {

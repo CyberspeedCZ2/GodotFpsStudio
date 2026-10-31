@@ -89,7 +89,10 @@ class SceneImportSettingsScreen : public Control {
 	Button *material_create_button = nullptr;
 	Button *material_save_button = nullptr;
 	CheckButton *material_preview_on_model_toggle = nullptr;
+	CheckButton *material_isolate_toggle = nullptr;
 	bool material_preview_on_model = true;
+	bool material_isolation_enabled = false;
+	Ref<StandardMaterial3D> material_isolation_material;
 
 	SubViewport *base_viewport = nullptr;
 
@@ -275,6 +278,7 @@ class SceneImportSettingsScreen : public Control {
 	struct MaterialData {
 		bool has_import_id;
 		bool modified = false;
+		int usage_count = 0;
 		Ref<Material> source_material;
 		Ref<Material> material;
 		TreeItem *scene_node = nullptr;
@@ -290,6 +294,14 @@ class SceneImportSettingsScreen : public Control {
 	};
 	HashMap<String, MaterialData> material_map;
 	HashMap<Ref<Material>, String> unnamed_material_name_map;
+
+	struct MaterialSurfaceData {
+		MeshInstance3D *mesh_node = nullptr;
+		int surface_index = -1;
+		String material_id;
+		Ref<Material> preview_override;
+	};
+	Vector<MaterialSurfaceData> material_surface_usages;
 
 	struct MeshData {
 		bool has_import_id;
@@ -384,6 +396,8 @@ class SceneImportSettingsScreen : public Control {
 	void _material_create_button_pressed();
 	void _material_save_button_pressed();
 	void _material_preview_on_model_toggled(bool p_enabled);
+	void _material_isolate_toggled(bool p_enabled);
+	void _apply_material_isolation();
 	void _material_inspector_property_edited(const String &p_name);
 	Error _save_modified_external_materials();
 	void _lod_reset_levels();
