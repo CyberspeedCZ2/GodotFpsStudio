@@ -476,7 +476,9 @@ void NavigationObstacle3D::navmesh_parse_source_geometry(const Ref<NavigationMes
 			circle_vertices_ptrw[i] = obstacle_circle_transform.xform(Vector3(Math::cos(angle) * obstacle_radius, 0.0, Math::sin(angle) * obstacle_radius));
 		}
 
-		p_source_geometry_data->add_projected_obstruction(obstruction_circle_vertices, elevation - obstacle_radius, scaling_max_value * obstacle_radius, obstacle->get_carve_navigation_mesh());
+		// The radius defines the horizontal footprint. Keep the vertical range consistent with
+		// vertex-based obstacles: it starts at the node elevation and uses the configured height.
+		p_source_geometry_data->add_projected_obstruction(obstruction_circle_vertices, elevation, safe_scale.y * obstacle->get_height(), obstacle->get_carve_navigation_mesh());
 	}
 
 	// Obstacles are projected to the xz-plane, so only rotation around the y-axis can be taken into account.
