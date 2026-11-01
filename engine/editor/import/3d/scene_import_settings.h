@@ -209,6 +209,16 @@ class SceneImportSettingsScreen : public Control {
 		String skeleton_path;
 		String bone_name;
 	};
+	enum HitboxPreset {
+		HITBOX_PRESET_HUMANOID_SET,
+		HITBOX_PRESET_HEAD,
+		HITBOX_PRESET_CHEST,
+		HITBOX_PRESET_STOMACH,
+		HITBOX_PRESET_LEFT_ARM,
+		HITBOX_PRESET_RIGHT_ARM,
+		HITBOX_PRESET_LEFT_LEG,
+		HITBOX_PRESET_RIGHT_LEG,
+	};
 	Vector<ModelHitbox> model_hitboxes;
 	int selected_hitbox = -1;
 	bool hitbox_ui_updating = false;
@@ -219,8 +229,8 @@ class SceneImportSettingsScreen : public Control {
 	OptionButton *hitbox_attachment_option = nullptr;
 	Button *hitbox_duplicate_button = nullptr;
 	Button *hitbox_remove_button = nullptr;
-	Ref<Material> hitbox_preview_material;
-	Ref<Material> hitbox_selected_preview_material;
+	Ref<Material> hitbox_preview_materials[8];
+	Ref<Material> hitbox_selected_preview_materials[8];
 	SpinBox *hitbox_minimum_inputs[3] = {};
 	SpinBox *hitbox_maximum_inputs[3] = {};
 	Vector<Node3D *> hitbox_preview_nodes;
@@ -454,6 +464,7 @@ class SceneImportSettingsScreen : public Control {
 	void _select_hitbox(int p_index);
 	void _add_hitbox();
 	void _duplicate_hitbox();
+	void _hitbox_preset_selected(int p_preset);
 	void _remove_hitbox();
 	void _hitbox_tree_selected();
 	void _hitbox_name_changed(const String &p_name);

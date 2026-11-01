@@ -97,6 +97,54 @@ static Ref<Shape3D> create_model_hitbox_shape(const Vector3 &p_minimum, const Ve
 	return shape;
 }
 
+static String normalize_hitbox_bone_name(const String &p_name) {
+	String normalized = p_name.to_lower();
+	normalized = normalized.replace("_", "").replace("-", "").replace(".", "").replace(":", "").replace(" ", "");
+	return normalized;
+}
+
+static int find_hitbox_preset_bone(Skeleton3D *p_skeleton, const Vector<String> &p_aliases) {
+	if (p_skeleton == nullptr) {
+		return -1;
+	}
+	int best_bone = -1;
+	int best_score = -1;
+	for (int bone = 0; bone < p_skeleton->get_bone_count(); bone++) {
+		const String normalized_bone = normalize_hitbox_bone_name(p_skeleton->get_bone_name(bone));
+		for (const String &alias : p_aliases) {
+			const String normalized_alias = normalize_hitbox_bone_name(alias);
+			if (normalized_alias.is_empty()) {
+				continue;
+			}
+			int score = -1;
+			if (normalized_bone == normalized_alias) {
+				score = 1000 + normalized_alias.length();
+			} else if (normalized_bone.ends_with(normalized_alias)) {
+				score = normalized_alias.length();
+			}
+			if (score > best_score) {
+				best_score = score;
+				best_bone = bone;
+			}
+		}
+	}
+	return best_bone;
+}
+
+static Color get_hitbox_hitgroup_color(int p_hitgroup) {
+	static const Color hitgroup_colors[] = {
+		Color(0.30, 0.76, 1.00), // Generic.
+		Color(1.00, 0.24, 0.20), // Head.
+		Color(1.00, 0.53, 0.12), // Chest.
+		Color(1.00, 0.84, 0.18), // Stomach.
+		Color(0.25, 0.86, 0.38), // Left arm.
+		Color(0.12, 0.82, 0.83), // Right arm.
+		Color(0.34, 0.47, 1.00), // Left leg.
+		Color(0.78, 0.36, 1.00), // Right leg.
+	};
+	return hitgroup_colors[CLAMP(p_hitgroup, 0, 7)];
+}
+
 static String get_model_settings_tab_id(int p_tab) {
 	if (p_tab < 0 || p_tab >= MODEL_SETTINGS_TAB_COUNT) {
 		return String(MODEL_SETTINGS_TAB_IDS[0]);
@@ -4160,7 +4208,7 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	scroll->add_child(content);
 
 	Label *hint = memnew(Label);
-	hint->set_text(TTR("Each hitbox is a box attached to the selected bone or model root."));
+	hint->set_text(TTR("Body presets create approximate boxes from model bounds and use matching humanoid bones when available. Adjust each preset to fit the model."));
 	hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	content->add_child(hint);
 
@@ -4178,6 +4226,22 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	add_button->set_flat(true);
 	add_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_add_hitbox));
 	list_toolbar->add_child(add_button);
+	MenuButton *preset_button = memnew(MenuButton);
+	preset_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Skeleton3D"), EditorStringName(EditorIcons)));
+	preset_button->set_tooltip_text(TTR("Add Body-Part Presets"));
+	preset_button->set_flat(true);
+	list_toolbar->add_child(preset_button);
+	PopupMenu *preset_menu = preset_button->get_popup();
+	preset_menu->add_item(TTR("Add Humanoid Set"), HITBOX_PRESET_HUMANOID_SET);
+	preset_menu->add_separator();
+	preset_menu->add_item(TTR("Head"), HITBOX_PRESET_HEAD);
+	preset_menu->add_item(TTR("Chest"), HITBOX_PRESET_CHEST);
+	preset_menu->add_item(TTR("Stomach"), HITBOX_PRESET_STOMACH);
+	preset_menu->add_item(TTR("Left Arm"), HITBOX_PRESET_LEFT_ARM);
+	preset_menu->add_item(TTR("Right Arm"), HITBOX_PRESET_RIGHT_ARM);
+	preset_menu->add_item(TTR("Left Leg"), HITBOX_PRESET_LEFT_LEG);
+	preset_menu->add_item(TTR("Right Leg"), HITBOX_PRESET_RIGHT_LEG);
+	preset_menu->connect(SceneStringName(id_pressed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_preset_selected));
 	hitbox_duplicate_button = memnew(Button);
 	hitbox_duplicate_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Duplicate"), EditorStringName(EditorIcons)));
 	hitbox_duplicate_button->set_tooltip_text(TTR("Duplicate Hitbox"));
@@ -4281,24 +4345,31 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	add_vector_row(TTR("Minimum"), hitbox_minimum_inputs, 0);
 	add_vector_row(TTR("Maximum"), hitbox_maximum_inputs, 1);
 
-	Ref<StandardMaterial3D> normal_material;
-	normal_material.instantiate();
-	normal_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
-	normal_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	normal_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
-	normal_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
-	normal_material->set_render_priority(1);
-	normal_material->set_albedo(Color(0.15, 0.72, 1.0, 0.28));
-	hitbox_preview_material = normal_material;
-	Ref<StandardMaterial3D> selected_material;
-	selected_material.instantiate();
-	selected_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
-	selected_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	selected_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
-	selected_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
-	selected_material->set_render_priority(1);
-	selected_material->set_albedo(Color(1.0, 0.62, 0.12, 0.4));
-	hitbox_selected_preview_material = selected_material;
+	for (int hitgroup = 0; hitgroup < 8; hitgroup++) {
+		Ref<StandardMaterial3D> normal_material;
+		normal_material.instantiate();
+		normal_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		normal_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		normal_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		normal_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		normal_material->set_render_priority(1);
+		Color normal_color = get_hitbox_hitgroup_color(hitgroup);
+		normal_color.a = 0.28;
+		normal_material->set_albedo(normal_color);
+		hitbox_preview_materials[hitgroup] = normal_material;
+
+		Ref<StandardMaterial3D> selected_material;
+		selected_material.instantiate();
+		selected_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		selected_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		selected_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		selected_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		selected_material->set_render_priority(1);
+		Color selected_color = get_hitbox_hitgroup_color(hitgroup).lightened(0.18);
+		selected_color.a = 0.48;
+		selected_material->set_albedo(selected_color);
+		hitbox_selected_preview_materials[hitgroup] = selected_material;
+	}
 
 	_populate_hitbox_tree();
 	_select_hitbox(-1);
@@ -4320,6 +4391,7 @@ void SceneImportSettingsScreen::_populate_hitbox_tree() {
 		TreeItem *item = hitbox_tree->create_item(root);
 		item->set_text(0, hitbox.name);
 		item->set_text(1, vformat("%d: %s", CLAMP(hitbox.hitgroup, 0, 7), hitgroup_names[CLAMP(hitbox.hitgroup, 0, 7)]));
+		item->set_custom_color(1, get_hitbox_hitgroup_color(hitbox.hitgroup));
 		item->set_meta("hitbox_index", i);
 		item->set_selectable(0, true);
 		item->set_selectable(1, false);
@@ -4437,6 +4509,158 @@ void SceneImportSettingsScreen::_duplicate_hitbox() {
 	selected_hitbox = model_hitboxes.size() - 1;
 	_select_hitbox(selected_hitbox);
 	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_hitbox_preset_selected(int p_preset) {
+	if (p_preset < HITBOX_PRESET_HUMANOID_SET || p_preset > HITBOX_PRESET_RIGHT_LEG) {
+		return;
+	}
+
+	static const char *preset_names[] = { "Head", "Chest", "Stomach", "Left Arm", "Right Arm", "Left Leg", "Right Leg" };
+	static const int preset_hitgroups[] = { 1, 2, 3, 4, 5, 6, 7 };
+	static const Vector3 preset_minimum_fractions[] = {
+		Vector3(0.34, 0.82, 0.25),
+		Vector3(0.26, 0.59, 0.25),
+		Vector3(0.31, 0.40, 0.30),
+		Vector3(0.02, 0.38, 0.36),
+		Vector3(0.52, 0.38, 0.36),
+		Vector3(0.35, 0.00, 0.28),
+		Vector3(0.51, 0.00, 0.28),
+	};
+	static const Vector3 preset_maximum_fractions[] = {
+		Vector3(0.66, 1.00, 0.75),
+		Vector3(0.74, 0.84, 0.75),
+		Vector3(0.69, 0.64, 0.70),
+		Vector3(0.48, 0.82, 0.64),
+		Vector3(0.98, 0.82, 0.64),
+		Vector3(0.49, 0.54, 0.72),
+		Vector3(0.65, 0.54, 0.72),
+	};
+	static const char *bone_aliases[][10] = {
+		{ "head", nullptr },
+		{ "chest", "upperchest", "spine3", "spine03", "spine2", nullptr },
+		{ "abdomen", "spine1", "spine02", "spine", "pelvis", "hips", nullptr },
+		{ "leftupperarm", "upperarmleft", "upperarml", "lupperarm", "leftarm", "armleft", "arml", "larm", nullptr },
+		{ "rightupperarm", "upperarmright", "upperarmr", "rupperarm", "rightarm", "armright", "armr", "rarm", nullptr },
+		{ "leftupleg", "uplegleft", "uplegl", "lupleg", "leftthigh", "thighleft", "thighl", "lthigh", "leftleg", "legl" },
+		{ "rightupleg", "uplegright", "uplegr", "rupleg", "rightthigh", "thighright", "thighr", "rthigh", "rightleg", "legr" },
+	};
+	const int first_part = p_preset == HITBOX_PRESET_HUMANOID_SET ? 0 : p_preset - HITBOX_PRESET_HEAD;
+	const int last_part = p_preset == HITBOX_PRESET_HUMANOID_SET ? 6 : first_part;
+	Node3D *scene_root = Object::cast_to<Node3D>(scene);
+	int first_added = -1;
+
+	for (int part = first_part; part <= last_part; part++) {
+		Vector<String> aliases;
+		for (int alias = 0; alias < 10 && bone_aliases[part][alias] != nullptr; alias++) {
+			aliases.push_back(String(bone_aliases[part][alias]));
+		}
+
+		Skeleton3D *matched_skeleton = nullptr;
+		int matched_bone = -1;
+		if (scene_root) {
+			for (Skeleton3D *skeleton : skeletons) {
+				const int candidate_bone = find_hitbox_preset_bone(skeleton, aliases);
+				if (candidate_bone >= 0) {
+					matched_skeleton = skeleton;
+					matched_bone = candidate_bone;
+					break;
+				}
+			}
+		}
+
+		Vector3 minimum_fraction = preset_minimum_fractions[part];
+		Vector3 maximum_fraction = preset_maximum_fractions[part];
+		const bool is_left_side = part == 3 || part == 5;
+		const bool is_right_side = part == 4 || part == 6;
+		if ((is_left_side || is_right_side) && matched_skeleton && matched_bone >= 0 && contents_aabb.size.x > 0.0) {
+			const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
+			const Vector3 bone_position = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin);
+			const real_t side_offset = bone_position.x - contents_aabb.get_center().x;
+			if (Math::abs(side_offset) > contents_aabb.size.x * 0.025) {
+				const int detected_side = side_offset < 0.0 ? -1 : 1;
+				const int preset_side = is_left_side ? -1 : 1;
+				if (detected_side != preset_side) {
+					const real_t old_minimum_x = minimum_fraction.x;
+					minimum_fraction.x = 1.0 - maximum_fraction.x;
+					maximum_fraction.x = 1.0 - old_minimum_x;
+				}
+			}
+		}
+
+		Vector3 minimum = contents_aabb.position + contents_aabb.size * minimum_fraction;
+		Vector3 maximum = contents_aabb.position + contents_aabb.size * maximum_fraction;
+		const Vector3 center = (minimum + maximum) * 0.5;
+		for (int axis = 0; axis < 3; axis++) {
+			if (maximum[axis] - minimum[axis] < 0.02) {
+				minimum[axis] = center[axis] - 0.01;
+				maximum[axis] = center[axis] + 0.01;
+			}
+		}
+
+		ModelHitbox hitbox;
+		const String base_name = TTR(preset_names[part]);
+		hitbox.name = base_name;
+		int name_suffix = 2;
+		while (true) {
+			bool name_in_use = false;
+			for (const ModelHitbox &existing : model_hitboxes) {
+				if (existing.name == hitbox.name) {
+					name_in_use = true;
+					break;
+				}
+			}
+			if (!name_in_use) {
+				break;
+			}
+			hitbox.name = vformat(TTR("%s %d"), base_name, name_suffix++);
+		}
+		hitbox.minimum = minimum;
+		hitbox.maximum = maximum;
+		hitbox.hitgroup = preset_hitgroups[part];
+
+		if (matched_skeleton && matched_bone >= 0 && scene_root) {
+			const Transform3D root_to_bone = matched_skeleton->get_bone_global_rest(matched_bone).affine_inverse() * matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+			Vector3 bone_minimum;
+			Vector3 bone_maximum;
+			bool first_corner = true;
+			for (int x = 0; x < 2; x++) {
+				for (int y = 0; y < 2; y++) {
+					for (int z = 0; z < 2; z++) {
+						const Vector3 root_corner(
+							x == 0 ? minimum.x : maximum.x,
+							y == 0 ? minimum.y : maximum.y,
+							z == 0 ? minimum.z : maximum.z);
+						const Vector3 bone_corner = root_to_bone.xform(root_corner);
+						if (first_corner) {
+							bone_minimum = bone_corner;
+							bone_maximum = bone_corner;
+							first_corner = false;
+						} else {
+							for (int axis = 0; axis < 3; axis++) {
+								bone_minimum[axis] = MIN(bone_minimum[axis], bone_corner[axis]);
+								bone_maximum[axis] = MAX(bone_maximum[axis], bone_corner[axis]);
+							}
+						}
+					}
+				}
+			}
+			hitbox.minimum = bone_minimum;
+			hitbox.maximum = bone_maximum;
+			hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
+			hitbox.bone_name = matched_skeleton->get_bone_name(matched_bone);
+		}
+
+		model_hitboxes.push_back(hitbox);
+		if (first_added < 0) {
+			first_added = model_hitboxes.size() - 1;
+		}
+	}
+
+	if (first_added >= 0) {
+		_select_hitbox(first_added);
+		_save_hitbox_config();
+	}
 }
 
 void SceneImportSettingsScreen::_remove_hitbox() {
@@ -4581,11 +4805,15 @@ void SceneImportSettingsScreen::_clear_hitbox_preview() {
 
 void SceneImportSettingsScreen::_update_hitbox_preview() {
 	_clear_hitbox_preview();
-	if (!scene || !hitbox_preview_material.is_valid() || !hitbox_selected_preview_material.is_valid()) {
+	if (!scene) {
 		return;
 	}
 	for (int i = 0; i < model_hitboxes.size(); i++) {
 		const ModelHitbox &hitbox = model_hitboxes[i];
+		const int hitgroup = CLAMP(hitbox.hitgroup, 0, 7);
+		if (!hitbox_preview_materials[hitgroup].is_valid() || !hitbox_selected_preview_materials[hitgroup].is_valid()) {
+			continue;
+		}
 		Ref<Shape3D> shape = create_model_hitbox_shape(hitbox.minimum, hitbox.maximum);
 		Ref<ArrayMesh> debug_mesh = shape->get_debug_mesh();
 		if (debug_mesh.is_null()) {
@@ -4607,7 +4835,7 @@ void SceneImportSettingsScreen::_update_hitbox_preview() {
 		MeshInstance3D *preview = memnew(MeshInstance3D);
 		preview->set_name(String("HitboxPreview_") + itos(i));
 		preview->set_mesh(debug_mesh);
-		preview->set_material_override(i == selected_hitbox ? hitbox_selected_preview_material : hitbox_preview_material);
+		preview->set_material_override(i == selected_hitbox ? hitbox_selected_preview_materials[hitgroup] : hitbox_preview_materials[hitgroup]);
 		preview->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
 		preview->set_gi_mode(GeometryInstance3D::GI_MODE_DISABLED);
 		preview->set_transform(Transform3D(Basis(), (hitbox.minimum + hitbox.maximum) * 0.5));
