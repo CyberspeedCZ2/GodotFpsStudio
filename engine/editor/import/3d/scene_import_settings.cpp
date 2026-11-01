@@ -3558,8 +3558,10 @@ void fragment() {
 	material_tab->add_child(material_inspector);
 	_update_material_editor();
 
-	settings_tab_navigation = memnew(VBoxContainer);
+	settings_tab_navigation = memnew(Control);
+	settings_tab_navigation->set_custom_minimum_size(Size2(40 * EDSCALE, 0));
 	settings_tab_navigation->set_h_size_flags(Control::SIZE_FILL);
+	settings_tab_navigation->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	Vector<String> settings_tab_names;
 	settings_tab_names.push_back(TTR("LOD"));
 	settings_tab_names.push_back(TTR("Mesh"));
@@ -3569,53 +3571,22 @@ void fragment() {
 	settings_tab_names.push_back(TTR("Details"));
 	settings_tab_names.push_back(TTR("Material"));
 	settings_tab_names.push_back(TTR("Environment"));
-	const real_t settings_tab_button_width = 40 * EDSCALE;
-	Ref<ButtonGroup> settings_tab_button_group;
-	settings_tab_button_group.instantiate();
-	settings_tab_button_group->set_allow_unpress(false);
+	settings_tab_bar = memnew(TabBar);
+	settings_tab_bar->set_tab_alignment(TabBar::ALIGNMENT_CENTER);
+	settings_tab_bar->set_scrolling_enabled(true);
+	settings_tab_bar->set_scroll_to_selected(true);
+	settings_tab_bar->set_rotation(Math::deg_to_rad(90.0));
+	settings_tab_navigation->add_child(settings_tab_bar);
 	for (int i = 0; i < settings_tab_names.size(); i++) {
-		Button *tab_button = memnew(Button);
-		tab_button->set_toggle_mode(true);
-		tab_button->set_flat(false);
-		tab_button->set_button_group(settings_tab_button_group);
-		tab_button->set_accessibility_name(settings_tab_names[i]);
-		tab_button->set_tooltip_text(vformat(TTR("Show %s settings"), settings_tab_names[i]));
-		tab_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		tab_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_button_pressed).bind(i));
-		settings_tab_navigation->add_child(tab_button);
-		settings_tab_buttons.push_back(tab_button);
-		Label *tab_label = memnew(Label);
-		tab_label->set_text(settings_tab_names[i]);
-		tab_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-		tab_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
-		tab_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
-		tab_button->add_child(tab_label);
-		const Ref<Font> tab_font = tab_button->get_theme_font(SNAME("font"));
-		const int tab_font_size = tab_button->get_theme_font_size(SNAME("font_size"));
-		Size2 label_size = tab_label->get_combined_minimum_size();
-		if (tab_font.is_valid()) {
-			tab_label->add_theme_font_override(SNAME("font"), tab_font);
-			tab_label->add_theme_font_size_override(SNAME("font_size"), tab_font_size);
-			label_size.x = tab_font->get_string_size(settings_tab_names[i], HORIZONTAL_ALIGNMENT_LEFT, -1, tab_font_size).x + 4 * EDSCALE;
-			label_size.y = tab_font->get_height(tab_font_size);
-		}
-		const real_t settings_tab_button_height = MAX(44 * EDSCALE, label_size.x + 12 * EDSCALE);
-		tab_button->set_custom_minimum_size(Size2(settings_tab_button_width, settings_tab_button_height));
-		tab_label->set_size(label_size);
-		tab_label->set_position(Size2((settings_tab_button_width - label_size.x) * 0.5, (settings_tab_button_height - label_size.y) * 0.5));
-		tab_label->set_pivot_offset(Size2(label_size.x * 0.5, label_size.y * 0.5));
-		tab_label->set_rotation(Math::deg_to_rad(90.0));
+		settings_tab_bar->add_tab(settings_tab_names[i]);
+		settings_tab_bar->set_tab_tooltip(i, vformat(TTR("Show %s settings"), settings_tab_names[i]));
 	}
+	settings_tab_bar->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_bar_changed));
+	settings_tab_navigation->connect(SceneStringName(resized), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_navigation_resized));
 	VSeparator *settings_navigation_separator = memnew(VSeparator);
 	settings_navigation_separator->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_panel_layout->add_child(settings_navigation_separator);
-	ScrollContainer *settings_navigation_scroll = memnew(ScrollContainer);
-	settings_navigation_scroll->set_custom_minimum_size(Size2(settings_tab_button_width, 0));
-	settings_navigation_scroll->set_h_size_flags(Control::SIZE_FILL);
-	settings_navigation_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	settings_navigation_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
-	settings_navigation_scroll->add_child(settings_tab_navigation);
-	settings_panel_layout->add_child(settings_navigation_scroll);
+	settings_panel_layout->add_child(settings_tab_navigation);
 
 	ScrollContainer *environment_scroll = memnew(ScrollContainer);
 	environment_scroll->set_name(TTR("Environment"));
@@ -4096,8 +4067,8 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 		return;
 	}
 	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "settings_tab", get_model_settings_tab_id(p_tab));
-	for (int i = 0; i < settings_tab_buttons.size(); i++) {
-		settings_tab_buttons[i]->set_pressed_no_signal(i == p_tab);
+	if (settings_tab_bar && settings_tab_bar->get_current_tab() != p_tab) {
+		settings_tab_bar->set_current_tab(p_tab);
 	}
 	if (p_tab == 6) {
 		_update_material_editor();
@@ -4131,10 +4102,24 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 	scene_import_settings_data->notify_property_list_changed();
 }
 
-void SceneImportSettingsScreen::_settings_tab_button_pressed(int p_tab) {
+void SceneImportSettingsScreen::_settings_tab_bar_changed(int p_tab) {
 	if (settings_tabs && p_tab >= 0 && p_tab < MODEL_SETTINGS_TAB_COUNT) {
 		settings_tabs->set_current_tab(p_tab);
 	}
+}
+
+void SceneImportSettingsScreen::_settings_tab_navigation_resized() {
+	if (!settings_tab_navigation || !settings_tab_bar) {
+		return;
+	}
+	const Size2 navigation_size = settings_tab_navigation->get_size();
+	if (navigation_size.x <= 0.0 || navigation_size.y <= 0.0) {
+		return;
+	}
+	const Size2 tab_bar_size(navigation_size.y, navigation_size.x);
+	settings_tab_bar->set_size(tab_bar_size);
+	settings_tab_bar->set_pivot_offset(tab_bar_size * 0.5);
+	settings_tab_bar->set_position(Size2((navigation_size.x - tab_bar_size.x) * 0.5, (navigation_size.y - tab_bar_size.y) * 0.5));
 }
 
 void SceneImportSettingsScreen::_tree_split_dragged(int) {

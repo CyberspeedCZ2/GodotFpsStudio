@@ -86,8 +86,8 @@ class SceneImportSettingsScreen : public Control {
 	Tree *mesh_tree = nullptr;
 	Tree *material_tree = nullptr;
 	HBoxContainer *settings_panel_layout = nullptr;
-	VBoxContainer *settings_tab_navigation = nullptr;
-	Vector<Button *> settings_tab_buttons;
+	Control *settings_tab_navigation = nullptr;
+	TabBar *settings_tab_bar = nullptr;
 
 	EditorInspector *inspector = nullptr;
 	EditorInspector *material_inspector = nullptr;
@@ -421,7 +421,8 @@ class SceneImportSettingsScreen : public Control {
 	void _lod_generate_toggled(bool p_enabled);
 	void _lod_merge_angle_changed(double p_value);
 	void _settings_tab_changed(int p_tab);
-	void _settings_tab_button_pressed(int p_tab);
+	void _settings_tab_bar_changed(int p_tab);
+	void _settings_tab_navigation_resized();
 	void _tree_split_dragged(int p_offset);
 	void _property_split_dragged(int p_offset);
 	void _update_material_editor();
