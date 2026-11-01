@@ -4211,6 +4211,13 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hint->set_text(TTR("Body presets create approximate boxes from model bounds and use matching humanoid bones when available. Adjust each preset to fit the model."));
 	hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	content->add_child(hint);
+	Button *auto_generate_button = memnew(Button);
+	auto_generate_button->set_text(TTR("Auto Generate Hitboxes"));
+	auto_generate_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Skeleton3D"), EditorStringName(EditorIcons)));
+	auto_generate_button->set_tooltip_text(TTR("Generate missing humanoid hitboxes from the model bounds and skeleton"));
+	auto_generate_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	auto_generate_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_auto_generate_hitboxes));
+	content->add_child(auto_generate_button);
 
 	HBoxContainer *list_toolbar = memnew(HBoxContainer);
 	content->add_child(list_toolbar);
@@ -4437,7 +4444,7 @@ void SceneImportSettingsScreen::_populate_hitbox_attachments() {
 	hitbox_ui_updating = false;
 }
 
-void SceneImportSettingsScreen::_select_hitbox(int p_index) {
+void SceneImportSettingsScreen::_select_hitbox(int p_index, bool p_refresh_tree) {
 	selected_hitbox = (p_index >= 0 && p_index < model_hitboxes.size()) ? p_index : -1;
 	if (hitbox_name_input) {
 		hitbox_ui_updating = true;
@@ -4468,7 +4475,9 @@ void SceneImportSettingsScreen::_select_hitbox(int p_index) {
 		hitbox_remove_button->set_disabled(selected_hitbox < 0);
 	}
 	_populate_hitbox_attachments();
-	_populate_hitbox_tree();
+	if (p_refresh_tree) {
+		_populate_hitbox_tree();
+	}
 	_update_hitbox_preview();
 }
 
@@ -4511,7 +4520,15 @@ void SceneImportSettingsScreen::_duplicate_hitbox() {
 	_save_hitbox_config();
 }
 
+void SceneImportSettingsScreen::_auto_generate_hitboxes() {
+	_generate_hitbox_preset(HITBOX_PRESET_HUMANOID_SET, true);
+}
+
 void SceneImportSettingsScreen::_hitbox_preset_selected(int p_preset) {
+	_generate_hitbox_preset(p_preset, false);
+}
+
+void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_only_missing) {
 	if (p_preset < HITBOX_PRESET_HUMANOID_SET || p_preset > HITBOX_PRESET_RIGHT_LEG) {
 		return;
 	}
@@ -4551,6 +4568,19 @@ void SceneImportSettingsScreen::_hitbox_preset_selected(int p_preset) {
 	int first_added = -1;
 
 	for (int part = first_part; part <= last_part; part++) {
+		if (p_only_missing) {
+			bool hitgroup_exists = false;
+			for (const ModelHitbox &existing : model_hitboxes) {
+				if (existing.hitgroup == preset_hitgroups[part]) {
+					hitgroup_exists = true;
+					break;
+				}
+			}
+			if (hitgroup_exists) {
+				continue;
+			}
+		}
+
 		Vector<String> aliases;
 		for (int alias = 0; alias < 10 && bone_aliases[part][alias] != nullptr; alias++) {
 			aliases.push_back(String(bone_aliases[part][alias]));
@@ -4679,7 +4709,10 @@ void SceneImportSettingsScreen::_hitbox_tree_selected() {
 	}
 	TreeItem *item = hitbox_tree->get_selected();
 	if (item) {
-		_select_hitbox((int)item->get_meta("hitbox_index", -1));
+		// The Tree already has the clicked item selected. Rebuilding it here would
+		// delete that item while Tree::select_single_item() is still emitting its
+		// selection signal.
+		_select_hitbox((int)item->get_meta("hitbox_index", -1), false);
 	}
 }
 

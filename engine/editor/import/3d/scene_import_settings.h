@@ -461,10 +461,12 @@ class SceneImportSettingsScreen : public Control {
 	void _build_hitbox_editor(VBoxContainer *p_tab);
 	void _populate_hitbox_tree();
 	void _populate_hitbox_attachments();
-	void _select_hitbox(int p_index);
+	void _select_hitbox(int p_index, bool p_refresh_tree = true);
 	void _add_hitbox();
+	void _auto_generate_hitboxes();
 	void _duplicate_hitbox();
 	void _hitbox_preset_selected(int p_preset);
+	void _generate_hitbox_preset(int p_preset, bool p_only_missing);
 	void _remove_hitbox();
 	void _hitbox_tree_selected();
 	void _hitbox_name_changed(const String &p_name);
