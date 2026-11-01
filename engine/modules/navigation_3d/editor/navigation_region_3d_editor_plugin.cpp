@@ -244,20 +244,18 @@ void NavigationRegion3DEditor::_process_regions_to_bake() {
 		navigation_mesh_agent_height_before_bake = currently_baking_navigation_mesh->get_agent_height();
 		navigation_mesh_agent_max_climb_before_bake = currently_baking_navigation_mesh->get_agent_max_climb();
 
-		if (region_to_bake->is_in_group("fps_navigation_region")) {
-			const float cell_height = currently_baking_navigation_mesh->get_cell_height();
-			if (cell_height > 0.0f) {
-				const float effective_agent_height = Math::ceil(currently_baking_navigation_mesh->get_agent_height() / cell_height) * cell_height;
-				if (!Math::is_equal_approx(currently_baking_navigation_mesh->get_agent_height(), effective_agent_height)) {
-					// Keep older FPS regions consistent with the value Recast actually bakes.
-					currently_baking_navigation_mesh->set_agent_height(effective_agent_height);
-				}
+		const float cell_height = currently_baking_navigation_mesh->get_cell_height();
+		if (cell_height > 0.0f) {
+			const float effective_agent_height = Math::ceil(currently_baking_navigation_mesh->get_agent_height() / cell_height) * cell_height;
+			if (!Math::is_equal_approx(currently_baking_navigation_mesh->get_agent_height(), effective_agent_height)) {
+				// Keep the NavigationMesh resource consistent with the value Recast actually bakes.
+				currently_baking_navigation_mesh->set_agent_height(effective_agent_height);
+			}
 
-				const float effective_agent_max_climb = Math::floor(currently_baking_navigation_mesh->get_agent_max_climb() / cell_height) * cell_height;
-				if (!Math::is_equal_approx(currently_baking_navigation_mesh->get_agent_max_climb(), effective_agent_max_climb)) {
-					// Keep older FPS regions consistent with the value Recast actually bakes.
-					currently_baking_navigation_mesh->set_agent_max_climb(effective_agent_max_climb);
-				}
+			const float effective_agent_max_climb = Math::floor(currently_baking_navigation_mesh->get_agent_max_climb() / cell_height) * cell_height;
+			if (!Math::is_equal_approx(currently_baking_navigation_mesh->get_agent_max_climb(), effective_agent_max_climb)) {
+				// Keep the NavigationMesh resource consistent with the value Recast actually bakes.
+				currently_baking_navigation_mesh->set_agent_max_climb(effective_agent_max_climb);
 			}
 		}
 		currently_baking_region = region_to_bake;
