@@ -41,6 +41,7 @@
 #include "editor/import/3d/scene_import_settings.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
+#include "scene/3d/bone_attachment_3d.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/navigation/navigation_region_3d.h"
 #include "scene/3d/occluder_instance_3d.h"
@@ -53,13 +54,76 @@
 #include "scene/resources/3d/importer_mesh.h"
 #include "scene/resources/3d/mesh_library.h"
 #include "scene/resources/3d/separation_ray_shape_3d.h"
-#include "scene/resources/3d/sphere_shape_3d.h"
 #include "scene/resources/3d/world_boundary_shape_3d.h"
 #include "scene/resources/animation.h"
 #include "scene/resources/bone_map.h"
 #include "scene/resources/packed_scene.h"
 #include "scene/resources/physics_material.h"
 #include "scene/resources/resource_format_text.h"
+
+static Ref<Shape3D> create_fps_studio_hitbox_shape(const Dictionary &p_settings) {
+	Ref<BoxShape3D> shape;
+	shape.instantiate();
+	const Vector3 dimensions = Vector3(p_settings.get("maximum", Vector3(0.5, 0.5, 0.5))) - Vector3(p_settings.get("minimum", Vector3(-0.5, -0.5, -0.5)));
+	shape->set_size(Vector3(MAX(dimensions.x, 0.01), MAX(dimensions.y, 0.01), MAX(dimensions.z, 0.01)));
+	return shape;
+}
+
+static void _generate_fps_studio_hitboxes(Node *p_scene, const Array &p_hitboxes, real_t p_permanent_root_scale) {
+	if (p_scene == nullptr) {
+		return;
+	}
+	for (const Variant &value : p_hitboxes) {
+		if (value.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		Dictionary settings = value;
+		const String hitbox_name = String(settings.get("name", "Hitbox")).validate_node_name();
+		const String skeleton_path = settings.get("skeleton_path", String());
+		const String bone_name = settings.get("bone_name", String());
+		Node *parent = p_scene;
+		if (!skeleton_path.is_empty() && !bone_name.is_empty()) {
+			Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(p_scene->get_node_or_null(NodePath(skeleton_path)));
+			if (skeleton && skeleton->find_bone(bone_name) >= 0) {
+				BoneAttachment3D *attachment = memnew(BoneAttachment3D);
+				attachment->set_name(String("HitboxAttachment_") + hitbox_name);
+				attachment->set_bone_name(bone_name);
+				skeleton->add_child(attachment, true);
+				attachment->set_owner(p_scene);
+				parent = attachment;
+			} else {
+				WARN_PRINT(vformat("FPS Studio hitbox '%s' refers to a skeleton or bone that is not present in the imported scene.", hitbox_name));
+			}
+		}
+
+		Area3D *area = memnew(Area3D);
+		area->set_name(hitbox_name.is_empty() ? "Hitbox" : hitbox_name);
+		area->set_meta("fps_studio_hitbox", true);
+		area->set_collision_layer(1);
+		area->set_collision_mask(1);
+		Vector3 minimum = settings.get("minimum", Vector3(-0.5, -0.5, -0.5));
+		Vector3 maximum = settings.get("maximum", Vector3(0.5, 0.5, 0.5));
+		if (p_permanent_root_scale != 1.0) {
+			minimum *= p_permanent_root_scale;
+			maximum *= p_permanent_root_scale;
+		}
+		settings["minimum"] = minimum;
+		settings["maximum"] = maximum;
+		const Vector3 position = (minimum + maximum) * 0.5;
+		area->set_transform(Transform3D(Basis(), position));
+		parent->add_child(area, true);
+		area->set_owner(p_scene);
+
+		CollisionShape3D *collision_shape = memnew(CollisionShape3D);
+		collision_shape->set_name("CollisionShape3D");
+		collision_shape->set_shape(create_fps_studio_hitbox_shape(settings));
+		area->set_meta("hitgroup", CLAMP((int)settings.get("hitgroup", 0), 0, 7));
+		area->set_meta("hitbox_minimum", minimum);
+		area->set_meta("hitbox_maximum", maximum);
+		area->add_child(collision_shape, true);
+		collision_shape->set_owner(p_scene);
+	}
+}
 
 void EditorSceneFormatImporter::get_extensions(List<String> *r_extensions) const {
 	Vector<String> arr;
@@ -2712,6 +2776,7 @@ void ResourceImporterScene::get_import_options(const String &p_path, List<Import
 	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "materials/extract", PROPERTY_HINT_ENUM, "Keep Internal,Extract Once,Extract and Overwrite"), 0));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "materials/extract_format", PROPERTY_HINT_ENUM, "Text (*.tres),Binary (*.res),Material (*.material)"), 0));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::STRING, "materials/extract_path", PROPERTY_HINT_DIR, ""), ""));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::ARRAY, "fps_studio/hitboxes", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), Array()));
 
 	r_options->push_back(ImportOption(PropertyInfo(Variant::DICTIONARY, "_subresources", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR), Dictionary()));
 
@@ -3521,6 +3586,10 @@ Error ResourceImporterScene::import(ResourceUID::ID p_source_id, const String &p
 
 	for (int i = 0; i < post_importer_plugins.size(); i++) {
 		post_importer_plugins.write[i]->post_process(scene, p_options);
+	}
+
+	if (_scene_import_type == "PackedScene" && p_options.has("fps_studio/hitboxes")) {
+		_generate_fps_studio_hitboxes(scene, p_options["fps_studio/hitboxes"], apply_root ? root_scale : 1.0);
 	}
 
 	progress.step(TTR("Saving..."), 104);

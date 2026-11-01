@@ -46,6 +46,7 @@
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
+#include "scene/3d/bone_attachment_3d.h"
 #include "scene/3d/multimesh_instance_3d.h"
 #include "scene/3d/world_environment.h"
 #include "scene/animation/animation_player.h"
@@ -60,6 +61,7 @@
 #include "scene/main/timer.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/3d/importer_mesh.h"
+#include "scene/resources/3d/box_shape_3d.h"
 #include "scene/resources/material.h"
 #include "scene/resources/sky.h"
 #include "scene/resources/shader.h"
@@ -86,6 +88,14 @@ static constexpr int MODEL_SETTINGS_TAB_COUNT = sizeof(MODEL_SETTINGS_TAB_IDS) /
 // Orthographic zoom limits (fraction of the fitted content size).
 static constexpr real_t ZOOM_MIN = 0.05;
 static constexpr real_t ZOOM_MAX = 20.0;
+
+static Ref<Shape3D> create_model_hitbox_shape(const Vector3 &p_minimum, const Vector3 &p_maximum) {
+	Ref<BoxShape3D> shape;
+	shape.instantiate();
+	const Vector3 dimensions = p_maximum - p_minimum;
+	shape->set_size(Vector3(MAX(dimensions.x, 0.01), MAX(dimensions.y, 0.01), MAX(dimensions.z, 0.01)));
+	return shape;
+}
 
 static String get_model_settings_tab_id(int p_tab) {
 	if (p_tab < 0 || p_tab >= MODEL_SETTINGS_TAB_COUNT) {
@@ -1709,6 +1719,8 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	}
 	if (scene) {
 		_save_lod_config();
+		_save_hitbox_config();
+		_clear_hitbox_preview();
 		_cleanup();
 		memdelete(scene);
 		scene = nullptr;
@@ -1840,6 +1852,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 			base_subresource_settings["meshes"] = imported_meshes;
 		}
 	}
+	_load_hitbox_config();
 
 	// Regardless of p_scene_import_type, use PackedScene for pre_import because we want to see the full thing.
 	_resource_importer_scene->set_scene_import_type("PackedScene");
@@ -1862,6 +1875,8 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	_update_scene();
 
 	base_viewport->add_child(scene);
+	_populate_hitbox_attachments();
+	_update_hitbox_preview();
 
 	inspector->edit(nullptr);
 
@@ -2491,6 +2506,18 @@ Error SceneImportSettingsScreen::_re_import() {
 		main_settings[entry.key] = entry.value;
 	}
 	main_settings.erase("_subresources");
+	Array import_hitboxes;
+	for (const ModelHitbox &hitbox : model_hitboxes) {
+		Dictionary item;
+		item["name"] = hitbox.name;
+		item["minimum"] = hitbox.minimum;
+		item["maximum"] = hitbox.maximum;
+		item["hitgroup"] = hitbox.hitgroup;
+		item["skeleton_path"] = hitbox.skeleton_path;
+		item["bone_name"] = hitbox.bone_name;
+		import_hitboxes.push_back(item);
+	}
+	main_settings["fps_studio/hitboxes"] = import_hitboxes;
 	Dictionary nodes;
 	Dictionary materials;
 	Dictionary meshes;
@@ -2565,10 +2592,12 @@ void SceneImportSettingsScreen::_update_empty_state() {
 
 void SceneImportSettingsScreen::_close_screen() {
 	_save_lod_config();
+	_save_hitbox_config();
 	if (lod_edit_timer) {
 		lod_edit_timer->stop();
 	}
 	if (scene) {
+		_clear_hitbox_preview();
 		_cleanup();
 		memdelete(scene);
 		scene = nullptr;
@@ -2675,6 +2704,7 @@ void SceneImportSettingsScreen::_reimport_button_pressed() {
 		lod_edit_timer->stop();
 	}
 	_save_lod_config();
+	_save_hitbox_config();
 	const String path = base_path;
 	const String import_type = current_import_type;
 	const String old_type = selected_type;
@@ -3498,10 +3528,7 @@ void fragment() {
 		tab->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 		settings_tabs->add_child(tab);
 		if (tab_index == 3) {
-			Label *hitboxes_hint = memnew(Label);
-			hitboxes_hint->set_text(TTR("Hitbox editing tools will appear here."));
-			hitboxes_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-			tab->add_child(hitboxes_hint);
+			_build_hitbox_editor(tab);
 		} else {
 			Label *hint = memnew(Label);
 			hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
@@ -3572,7 +3599,8 @@ void fragment() {
 	settings_tab_names.push_back(TTR("Material"));
 	settings_tab_names.push_back(TTR("Environment"));
 	settings_tab_bar = memnew(TabBar);
-	settings_tab_bar->set_tab_alignment(TabBar::ALIGNMENT_CENTER);
+	// The first tab should begin at the top edge after the bar is rotated.
+	settings_tab_bar->set_tab_alignment(TabBar::ALIGNMENT_LEFT);
 	settings_tab_bar->set_scrolling_enabled(true);
 	settings_tab_bar->set_scroll_to_selected(true);
 	settings_tab_bar->set_rotation(Math::deg_to_rad(90.0));
@@ -4120,6 +4148,413 @@ void SceneImportSettingsScreen::_settings_tab_navigation_resized() {
 	settings_tab_bar->set_size(tab_bar_size);
 	settings_tab_bar->set_pivot_offset(tab_bar_size * 0.5);
 	settings_tab_bar->set_position(Size2((navigation_size.x - tab_bar_size.x) * 0.5, (navigation_size.y - tab_bar_size.y) * 0.5));
+}
+
+void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
+	ScrollContainer *scroll = memnew(ScrollContainer);
+	scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	p_tab->add_child(scroll);
+	VBoxContainer *content = memnew(VBoxContainer);
+	content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	scroll->add_child(content);
+
+	Label *hint = memnew(Label);
+	hint->set_text(TTR("Hitboxes are boxes defined by Minimum and Maximum corners in the selected bone's local space. Hitgroups classify damage areas."));
+	hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	content->add_child(hint);
+
+	HBoxContainer *buttons = memnew(HBoxContainer);
+	content->add_child(buttons);
+	Button *add_button = memnew(Button);
+	add_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Add"), EditorStringName(EditorIcons)));
+	add_button->set_tooltip_text(TTR("Add Hitbox"));
+	add_button->set_flat(true);
+	add_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_add_hitbox));
+	buttons->add_child(add_button);
+	Button *remove_button = memnew(Button);
+	remove_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
+	remove_button->set_tooltip_text(TTR("Remove Hitbox"));
+	remove_button->set_flat(true);
+	remove_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_remove_hitbox));
+	buttons->add_child(remove_button);
+
+	hitbox_tree = memnew(Tree);
+	hitbox_tree->set_columns(1);
+	hitbox_tree->set_hide_root(true);
+	hitbox_tree->set_custom_minimum_size(Size2(0, 150 * EDSCALE));
+	hitbox_tree->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	hitbox_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	hitbox_tree->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_tree_selected));
+	content->add_child(hitbox_tree);
+
+	HBoxContainer *name_row = memnew(HBoxContainer);
+	content->add_child(name_row);
+	Label *name_label = memnew(Label);
+	name_label->set_text(TTR("Name"));
+	name_label->set_custom_minimum_size(Size2(90 * EDSCALE, 0));
+	name_row->add_child(name_label);
+	hitbox_name_input = memnew(LineEdit);
+	hitbox_name_input->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	hitbox_name_input->connect(SceneStringName(text_changed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_name_changed));
+	name_row->add_child(hitbox_name_input);
+
+	HBoxContainer *group_row = memnew(HBoxContainer);
+	content->add_child(group_row);
+	Label *group_label = memnew(Label);
+	group_label->set_text(TTR("Hitgroup"));
+	group_label->set_custom_minimum_size(Size2(90 * EDSCALE, 0));
+	group_row->add_child(group_label);
+	hitbox_group_option = memnew(OptionButton);
+	hitbox_group_option->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	const String hitgroup_names[] = { TTR("Generic"), TTR("Head"), TTR("Chest"), TTR("Stomach"), TTR("Left Arm"), TTR("Right Arm"), TTR("Left Leg"), TTR("Right Leg") };
+	for (int i = 0; i < 8; i++) {
+		hitbox_group_option->add_item(vformat("%d — %s", i, hitgroup_names[i]), i);
+	}
+	hitbox_group_option->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_group_changed));
+	group_row->add_child(hitbox_group_option);
+
+	HBoxContainer *attachment_row = memnew(HBoxContainer);
+	content->add_child(attachment_row);
+	Label *attachment_label = memnew(Label);
+	attachment_label->set_text(TTR("Bone"));
+	attachment_label->set_custom_minimum_size(Size2(90 * EDSCALE, 0));
+	attachment_row->add_child(attachment_label);
+	hitbox_attachment_option = memnew(OptionButton);
+	hitbox_attachment_option->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	hitbox_attachment_option->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_attachment_changed));
+	attachment_row->add_child(hitbox_attachment_option);
+
+	const String axis_names[3] = { TTR("X"), TTR("Y"), TTR("Z") };
+	auto add_vector_row = [&](const String &p_title, SpinBox **r_inputs, int p_field) {
+		HBoxContainer *row = memnew(HBoxContainer);
+		content->add_child(row);
+		Label *label = memnew(Label);
+		label->set_text(p_title);
+		label->set_custom_minimum_size(Size2(90 * EDSCALE, 0));
+		row->add_child(label);
+		for (int axis = 0; axis < 3; axis++) {
+			HBoxContainer *axis_row = memnew(HBoxContainer);
+			axis_row->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+			Label *axis_label = memnew(Label);
+			axis_label->set_text(axis_names[axis]);
+			axis_row->add_child(axis_label);
+			SpinBox *input = memnew(SpinBox);
+			input->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+			input->set_min(-10000.0);
+			input->set_max(10000.0);
+			input->set_step(0.01);
+			input->set_allow_greater(true);
+			input->set_allow_lesser(true);
+			input->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_transform_changed).bind(p_field, axis));
+			axis_row->add_child(input);
+			row->add_child(axis_row);
+			r_inputs[axis] = input;
+		}
+	};
+	add_vector_row(TTR("Minimum"), hitbox_minimum_inputs, 0);
+	add_vector_row(TTR("Maximum"), hitbox_maximum_inputs, 1);
+
+	Ref<StandardMaterial3D> normal_material;
+	normal_material.instantiate();
+	normal_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	normal_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	normal_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	normal_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+	normal_material->set_render_priority(1);
+	normal_material->set_albedo(Color(0.15, 0.72, 1.0, 0.28));
+	hitbox_preview_material = normal_material;
+	Ref<StandardMaterial3D> selected_material;
+	selected_material.instantiate();
+	selected_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	selected_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	selected_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	selected_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+	selected_material->set_render_priority(1);
+	selected_material->set_albedo(Color(1.0, 0.62, 0.12, 0.4));
+	hitbox_selected_preview_material = selected_material;
+
+	_populate_hitbox_tree();
+	_select_hitbox(-1);
+}
+
+void SceneImportSettingsScreen::_populate_hitbox_tree() {
+	if (!hitbox_tree) {
+		return;
+	}
+	const String hitgroup_names[] = { TTR("Generic"), TTR("Head"), TTR("Chest"), TTR("Stomach"), TTR("Left Arm"), TTR("Right Arm"), TTR("Left Leg"), TTR("Right Leg") };
+	hitbox_ui_updating = true;
+	hitbox_tree->clear();
+	TreeItem *root = hitbox_tree->create_item();
+	for (int i = 0; i < model_hitboxes.size(); i++) {
+		const ModelHitbox &hitbox = model_hitboxes[i];
+		TreeItem *item = hitbox_tree->create_item(root);
+		item->set_text(0, vformat(TTR("%s — %s"), hitbox.name, hitgroup_names[CLAMP(hitbox.hitgroup, 0, 7)]));
+		item->set_meta("hitbox_index", i);
+		item->set_selectable(0, true);
+		if (i == selected_hitbox) {
+			item->select(0);
+		}
+	}
+	hitbox_ui_updating = false;
+}
+
+void SceneImportSettingsScreen::_populate_hitbox_attachments() {
+	if (!hitbox_attachment_option) {
+		return;
+	}
+	hitbox_ui_updating = true;
+	hitbox_attachment_option->clear();
+	hitbox_attachment_option->add_item(TTR("Model Root"));
+	hitbox_attachment_option->set_item_metadata(0, Dictionary());
+	int selected = 0;
+	if (selected_hitbox >= 0 && selected_hitbox < model_hitboxes.size()) {
+		const ModelHitbox &hitbox = model_hitboxes[selected_hitbox];
+		for (Skeleton3D *skeleton : skeletons) {
+			if (skeleton == nullptr) {
+				continue;
+			}
+			const String skeleton_path = scene ? String(scene->get_path_to(skeleton)) : String();
+			for (int bone = 0; bone < skeleton->get_bone_count(); bone++) {
+				const String bone_name = skeleton->get_bone_name(bone);
+				Dictionary attachment;
+				attachment["skeleton_path"] = skeleton_path;
+				attachment["bone_name"] = bone_name;
+				const int item_index = hitbox_attachment_option->get_item_count();
+				hitbox_attachment_option->add_item(vformat(TTR("%s / %s"), skeleton->get_name(), bone_name));
+				hitbox_attachment_option->set_item_metadata(item_index, attachment);
+				if (skeleton_path == hitbox.skeleton_path && bone_name == hitbox.bone_name) {
+					selected = item_index;
+				}
+			}
+		}
+	}
+	hitbox_attachment_option->select(selected);
+	hitbox_attachment_option->set_disabled(selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size());
+	hitbox_ui_updating = false;
+}
+
+void SceneImportSettingsScreen::_select_hitbox(int p_index) {
+	selected_hitbox = (p_index >= 0 && p_index < model_hitboxes.size()) ? p_index : -1;
+	if (hitbox_name_input) {
+		hitbox_ui_updating = true;
+		const bool valid = selected_hitbox >= 0;
+		hitbox_name_input->set_text(valid ? model_hitboxes[selected_hitbox].name : String());
+		hitbox_name_input->set_editable(valid);
+		hitbox_group_option->set_disabled(!valid);
+		for (int axis = 0; axis < 3; axis++) {
+			hitbox_minimum_inputs[axis]->set_editable(valid);
+			hitbox_maximum_inputs[axis]->set_editable(valid);
+			if (valid) {
+				hitbox_minimum_inputs[axis]->set_value_no_signal(model_hitboxes[selected_hitbox].minimum[axis]);
+				hitbox_maximum_inputs[axis]->set_value_no_signal(model_hitboxes[selected_hitbox].maximum[axis]);
+			} else {
+				hitbox_minimum_inputs[axis]->set_value_no_signal(-0.5);
+				hitbox_maximum_inputs[axis]->set_value_no_signal(0.5);
+			}
+		}
+		if (valid) {
+			hitbox_group_option->select(model_hitboxes[selected_hitbox].hitgroup);
+		}
+		hitbox_ui_updating = false;
+	}
+	_populate_hitbox_attachments();
+	_populate_hitbox_tree();
+	_update_hitbox_preview();
+}
+
+void SceneImportSettingsScreen::_add_hitbox() {
+	ModelHitbox hitbox;
+	hitbox.name = vformat(TTR("Hitbox %d"), model_hitboxes.size() + 1);
+	if (scene) {
+		const Vector3 half_size = Vector3(MAX(contents_aabb.size.x * 0.4, 0.05), MAX(contents_aabb.size.y * 0.4, 0.05), MAX(contents_aabb.size.z * 0.4, 0.05));
+		hitbox.minimum = contents_aabb.get_center() - half_size;
+		hitbox.maximum = contents_aabb.get_center() + half_size;
+	}
+	model_hitboxes.push_back(hitbox);
+	selected_hitbox = model_hitboxes.size() - 1;
+	_select_hitbox(selected_hitbox);
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_remove_hitbox() {
+	if (selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
+		return;
+	}
+	model_hitboxes.remove_at(selected_hitbox);
+	selected_hitbox = MIN(selected_hitbox, model_hitboxes.size() - 1);
+	_select_hitbox(selected_hitbox);
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_hitbox_tree_selected() {
+	if (hitbox_ui_updating || !hitbox_tree) {
+		return;
+	}
+	TreeItem *item = hitbox_tree->get_selected();
+	if (item) {
+		_select_hitbox((int)item->get_meta("hitbox_index", -1));
+	}
+}
+
+void SceneImportSettingsScreen::_hitbox_name_changed(const String &p_name) {
+	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
+		return;
+	}
+	model_hitboxes.write[selected_hitbox].name = p_name;
+	_populate_hitbox_tree();
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_hitbox_group_changed(int p_group) {
+	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
+		return;
+	}
+	model_hitboxes.write[selected_hitbox].hitgroup = CLAMP(p_group, 0, 7);
+	_populate_hitbox_tree();
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_hitbox_attachment_changed(int p_attachment) {
+	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size() || !hitbox_attachment_option || p_attachment < 0) {
+		return;
+	}
+	Dictionary attachment = hitbox_attachment_option->get_item_metadata(p_attachment);
+	ModelHitbox &hitbox = model_hitboxes.write[selected_hitbox];
+	hitbox.skeleton_path = attachment.get("skeleton_path", String());
+	hitbox.bone_name = attachment.get("bone_name", String());
+	_update_hitbox_preview();
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_hitbox_transform_changed(double p_value, int p_field, int p_axis) {
+	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size() || p_axis < 0 || p_axis > 2) {
+		return;
+	}
+	ModelHitbox &hitbox = model_hitboxes.write[selected_hitbox];
+	if (p_field == 0) {
+		hitbox.minimum[p_axis] = p_value;
+		if (hitbox.minimum[p_axis] > hitbox.maximum[p_axis] - 0.01) {
+			hitbox.maximum[p_axis] = hitbox.minimum[p_axis] + 0.01;
+			hitbox_maximum_inputs[p_axis]->set_value_no_signal(hitbox.maximum[p_axis]);
+		}
+	} else if (p_field == 1) {
+		hitbox.maximum[p_axis] = p_value;
+		if (hitbox.maximum[p_axis] < hitbox.minimum[p_axis] + 0.01) {
+			hitbox.minimum[p_axis] = hitbox.maximum[p_axis] - 0.01;
+			hitbox_minimum_inputs[p_axis]->set_value_no_signal(hitbox.minimum[p_axis]);
+		}
+	}
+	_update_hitbox_preview();
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_save_hitbox_config() {
+	if (base_path.is_empty()) {
+		return;
+	}
+	Array saved_hitboxes;
+	for (const ModelHitbox &hitbox : model_hitboxes) {
+		Dictionary item;
+		item["name"] = hitbox.name;
+		item["minimum"] = hitbox.minimum;
+		item["maximum"] = hitbox.maximum;
+		item["hitgroup"] = hitbox.hitgroup;
+		item["skeleton_path"] = hitbox.skeleton_path;
+		item["bone_name"] = hitbox.bone_name;
+		saved_hitboxes.push_back(item);
+	}
+	Ref<ConfigFile> config;
+	config.instantiate();
+	config->set_value("hitboxes", "version", 1);
+	config->set_value("hitboxes", "items", saved_hitboxes);
+	if (config->save(base_path + ".hitboxcfg") != OK) {
+		ERR_PRINT("Unable to save model hitbox settings: " + base_path + ".hitboxcfg");
+	}
+}
+
+void SceneImportSettingsScreen::_load_hitbox_config() {
+	model_hitboxes.clear();
+	selected_hitbox = -1;
+	if (base_path.is_empty()) {
+		return;
+	}
+	Array saved_hitboxes;
+	Ref<ConfigFile> config;
+	config.instantiate();
+	if (config->load(base_path + ".hitboxcfg") == OK) {
+		saved_hitboxes = config->get_value("hitboxes", "items", Array());
+	} else if (defaults.has("fps_studio/hitboxes")) {
+		saved_hitboxes = defaults["fps_studio/hitboxes"];
+	}
+	for (const Variant &value : saved_hitboxes) {
+		if (value.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		Dictionary item = value;
+		ModelHitbox hitbox;
+		hitbox.name = item.get("name", vformat(TTR("Hitbox %d"), model_hitboxes.size() + 1));
+		hitbox.minimum = item.get("minimum", Vector3(-0.5, -0.5, -0.5));
+		hitbox.maximum = item.get("maximum", Vector3(0.5, 0.5, 0.5));
+		hitbox.hitgroup = CLAMP((int)item.get("hitgroup", 0), 0, 7);
+		hitbox.skeleton_path = item.get("skeleton_path", String());
+		hitbox.bone_name = item.get("bone_name", String());
+		model_hitboxes.push_back(hitbox);
+	}
+	selected_hitbox = model_hitboxes.is_empty() ? -1 : 0;
+	_populate_hitbox_tree();
+	_select_hitbox(selected_hitbox);
+}
+
+void SceneImportSettingsScreen::_clear_hitbox_preview() {
+	for (int i = hitbox_preview_nodes.size() - 1; i >= 0; i--) {
+		Node3D *node = hitbox_preview_nodes[i];
+		if (node && node->get_parent()) {
+			node->get_parent()->remove_child(node);
+			memdelete(node);
+		}
+	}
+	hitbox_preview_nodes.clear();
+}
+
+void SceneImportSettingsScreen::_update_hitbox_preview() {
+	_clear_hitbox_preview();
+	if (!scene || !hitbox_preview_material.is_valid() || !hitbox_selected_preview_material.is_valid()) {
+		return;
+	}
+	for (int i = 0; i < model_hitboxes.size(); i++) {
+		const ModelHitbox &hitbox = model_hitboxes[i];
+		Ref<Shape3D> shape = create_model_hitbox_shape(hitbox.minimum, hitbox.maximum);
+		Ref<ArrayMesh> debug_mesh = shape->get_debug_mesh();
+		if (debug_mesh.is_null()) {
+			continue;
+		}
+		Node *parent = scene;
+		if (!hitbox.skeleton_path.is_empty() && !hitbox.bone_name.is_empty()) {
+			Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(scene->get_node_or_null(NodePath(hitbox.skeleton_path)));
+			if (skeleton && skeleton->find_bone(hitbox.bone_name) >= 0) {
+				BoneAttachment3D *attachment = memnew(BoneAttachment3D);
+				attachment->set_name(String("HitboxPreviewAttachment_") + itos(i));
+				attachment->set_bone_name(hitbox.bone_name);
+				skeleton->add_child(attachment, true);
+				attachment->set_owner(scene);
+				hitbox_preview_nodes.push_back(attachment);
+				parent = attachment;
+			}
+		}
+		MeshInstance3D *preview = memnew(MeshInstance3D);
+		preview->set_name(String("HitboxPreview_") + itos(i));
+		preview->set_mesh(debug_mesh);
+		preview->set_material_override(i == selected_hitbox ? hitbox_selected_preview_material : hitbox_preview_material);
+		preview->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		preview->set_gi_mode(GeometryInstance3D::GI_MODE_DISABLED);
+		preview->set_transform(Transform3D(Basis(), (hitbox.minimum + hitbox.maximum) * 0.5));
+		parent->add_child(preview, true);
+		preview->set_owner(scene);
+		if (parent == scene) {
+			hitbox_preview_nodes.push_back(preview);
+		}
+	}
 }
 
 void SceneImportSettingsScreen::_tree_split_dragged(int) {

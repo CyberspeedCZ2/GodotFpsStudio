@@ -38,6 +38,7 @@
 #include "scene/gui/control.h"
 #include "scene/gui/dialogs.h"
 #include "scene/gui/label.h"
+#include "scene/gui/line_edit.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/panel_container.h"
@@ -54,6 +55,7 @@ class Button;
 class CheckButton;
 class ImporterMesh;
 class Label;
+class Material;
 class ShaderMaterial;
 class SceneImportSettingsData;
 class Timer;
@@ -199,6 +201,26 @@ class SceneImportSettingsScreen : public Control {
 	Label *lod_preview_label = nullptr;
 	TabContainer *settings_tabs = nullptr;
 	Label *settings_tab_hints[6] = {};
+	struct ModelHitbox {
+		String name = "Hitbox";
+		Vector3 minimum = Vector3(-0.5, -0.5, -0.5);
+		Vector3 maximum = Vector3(0.5, 0.5, 0.5);
+		int hitgroup = 0;
+		String skeleton_path;
+		String bone_name;
+	};
+	Vector<ModelHitbox> model_hitboxes;
+	int selected_hitbox = -1;
+	bool hitbox_ui_updating = false;
+	Tree *hitbox_tree = nullptr;
+	LineEdit *hitbox_name_input = nullptr;
+	OptionButton *hitbox_group_option = nullptr;
+	OptionButton *hitbox_attachment_option = nullptr;
+	Ref<Material> hitbox_preview_material;
+	Ref<Material> hitbox_selected_preview_material;
+	SpinBox *hitbox_minimum_inputs[3] = {};
+	SpinBox *hitbox_maximum_inputs[3] = {};
+	Vector<Node3D *> hitbox_preview_nodes;
 	bool lod_settings_pending = false;
 	int lod_selected_level = 0;
 	Label *lod_status_label = nullptr;
@@ -423,6 +445,21 @@ class SceneImportSettingsScreen : public Control {
 	void _settings_tab_changed(int p_tab);
 	void _settings_tab_bar_changed(int p_tab);
 	void _settings_tab_navigation_resized();
+	void _build_hitbox_editor(VBoxContainer *p_tab);
+	void _populate_hitbox_tree();
+	void _populate_hitbox_attachments();
+	void _select_hitbox(int p_index);
+	void _add_hitbox();
+	void _remove_hitbox();
+	void _hitbox_tree_selected();
+	void _hitbox_name_changed(const String &p_name);
+	void _hitbox_group_changed(int p_group);
+	void _hitbox_attachment_changed(int p_attachment);
+	void _hitbox_transform_changed(double p_value, int p_field, int p_axis);
+	void _save_hitbox_config();
+	void _load_hitbox_config();
+	void _update_hitbox_preview();
+	void _clear_hitbox_preview();
 	void _tree_split_dragged(int p_offset);
 	void _property_split_dragged(int p_offset);
 	void _update_material_editor();

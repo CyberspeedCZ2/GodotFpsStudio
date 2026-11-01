@@ -22,7 +22,7 @@
 - Content Browser a FPS Studio nástroje jsou součástí enginu a dostupné v libovolném Godot projektu.
 - UniBuilder je vestavěný do aplikace; uživatelé jej nemusí instalovat jako projektový doplněk.
 - Level nástroje zahrnují tvorbu FPS uzlů, editaci NPC tras a waypoint akcí, práci s NavMesh a spuštění hry v Level viewportu nebo samostatném okně.
-- Model workspace obsahuje náhled LOD a ukládá rozpracovaná nastavení do souboru `.lodcfg`. Podrobnosti jsou v `docs/model_editor_lod.md`.
+- Model workspace obsahuje náhled LOD a ukládá rozpracovaná nastavení do `.lodcfg`. Hitboxy ukládá vedle zdrojového modelu jako `.hitboxcfg`; při Apply Changes přidá do importované PackedScene kostmi propojené boxové `Area3D` s metadaty hitgroup. Podrobnosti jsou v `docs/model_editor_lod.md`.
 - Bake NavigationMesh zarovnává výšku agenta a maximální stoupání k voxelovým krokům. Kruhový NavigationObstacle3D používá poloměr pro půdorys a nastavenou výšku směrem vzhůru od pozice uzlu.
 
 ## Známá omezení a otevřené zprávy
