@@ -103,13 +103,22 @@ static String normalize_hitbox_bone_name(const String &p_name) {
 	return normalized;
 }
 
-static int find_hitbox_preset_bone(Skeleton3D *p_skeleton, const Vector<String> &p_aliases) {
+static int find_hitbox_preset_bone(Skeleton3D *p_skeleton, const Vector<String> &p_aliases, int p_parent_bone = -1) {
 	if (p_skeleton == nullptr) {
 		return -1;
 	}
 	int best_bone = -1;
 	int best_score = -1;
 	for (int bone = 0; bone < p_skeleton->get_bone_count(); bone++) {
+		if (p_parent_bone >= 0) {
+			int ancestor = p_skeleton->get_bone_parent(bone);
+			while (ancestor >= 0 && ancestor != p_parent_bone) {
+				ancestor = p_skeleton->get_bone_parent(ancestor);
+			}
+			if (ancestor != p_parent_bone) {
+				continue;
+			}
+		}
 		const String normalized_bone = normalize_hitbox_bone_name(p_skeleton->get_bone_name(bone));
 		for (const String &alias : p_aliases) {
 			const String normalized_alias = normalize_hitbox_bone_name(alias);
@@ -4571,9 +4580,9 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		{ "leftforearm", "forearmleft", "forearml", "lforearm", "leftlowerarm", "lowerarmleft", "lowerarml", "llowerarm", nullptr },
 		{ "rightforearm", "forearmright", "forearmr", "rforearm", "rightlowerarm", "lowerarmright", "lowerarmr", "rlowerarm", nullptr },
 	};
-	static const char *lower_leg_bone_aliases[][10] = {
-		{ "leftlowerleg", "lowerlegleft", "lowerlegl", "llowerleg", "leftcalf", "calfleft", "calfl", "lcalf", "leftshin", "shinl" },
-		{ "rightlowerleg", "lowerlegright", "lowerlegr", "rlowerleg", "rightcalf", "calfright", "calfr", "rcalf", "rightshin", "shinr" },
+	static const char *lower_leg_bone_aliases[][14] = {
+		{ "leftlowerleg", "lowerlegleft", "lowerlegl", "llowerleg", "leftcalf", "calfleft", "calfl", "lcalf", "leftshin", "shinl", "leftleg", "legleft", "legl", "lleg" },
+		{ "rightlowerleg", "lowerlegright", "lowerlegr", "rlowerleg", "rightcalf", "calfright", "calfr", "rcalf", "rightshin", "shinr", "rightleg", "legright", "legr", "rleg" },
 	};
 	const String segment_names[4][2] = {
 		{ TTR("Left Upper Arm"), TTR("Left Forearm") },
@@ -4772,8 +4781,11 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		Vector3 segment_joint = Vector3();
 		int lower_bone = -1;
 		if (matched_skeleton && matched_bone >= 0 && is_limb_part) {
-			const Vector<String> lower_aliases = is_arm_part ? make_aliases(forearm_bone_aliases[side], 9) : make_aliases(lower_leg_bone_aliases[side], 10);
-			lower_bone = find_hitbox_preset_bone(matched_skeleton, lower_aliases);
+			const Vector<String> lower_aliases = is_arm_part ? make_aliases(forearm_bone_aliases[side], 9) : make_aliases(lower_leg_bone_aliases[side], 14);
+			// The lower segment must be a descendant of the upper segment. This
+			// prevents a partial rig's fallback alias from binding both boxes to
+			// the same bone (which makes the lower box drift during animation).
+			lower_bone = find_hitbox_preset_bone(matched_skeleton, lower_aliases, matched_bone);
 			if (lower_bone >= 0) {
 				const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
 				segment_joint = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(lower_bone).origin);
