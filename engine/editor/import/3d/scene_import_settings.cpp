@@ -103,8 +103,11 @@ static String normalize_hitbox_bone_name(const String &p_name) {
 	return normalized;
 }
 
-static int find_hitbox_preset_bone(Skeleton3D *p_skeleton, const Vector<String> &p_aliases, int p_parent_bone = -1) {
+static int find_hitbox_preset_bone(Skeleton3D *p_skeleton, const Vector<String> &p_aliases, int p_parent_bone = -1, int *r_score = nullptr) {
 	if (p_skeleton == nullptr) {
+		if (r_score) {
+			*r_score = -1;
+		}
 		return -1;
 	}
 	int best_bone = -1;
@@ -120,24 +123,39 @@ static int find_hitbox_preset_bone(Skeleton3D *p_skeleton, const Vector<String> 
 			}
 		}
 		const String normalized_bone = normalize_hitbox_bone_name(p_skeleton->get_bone_name(bone));
+		const bool is_control_bone = normalized_bone.begins_with("ctrl") || normalized_bone.begins_with("control");
+		const bool is_mixamo_bone = normalized_bone.begins_with("mixamorig") || normalized_bone.begins_with("mixamo");
 		for (const String &alias : p_aliases) {
 			const String normalized_alias = normalize_hitbox_bone_name(alias);
 			if (normalized_alias.is_empty()) {
 				continue;
 			}
-			int score = -1;
+			int match_score = -1;
 			if (normalized_bone == normalized_alias) {
-				score = 1000 + normalized_alias.length();
+				match_score = 1000 + normalized_alias.length();
 			} else if (normalized_bone.ends_with(normalized_alias)) {
-				score = normalized_alias.length();
+				match_score = normalized_alias.length();
 			}
+			// Mixamo animations drive the deform skeleton. Always prefer those
+			// bones over a parallel Ctrl rig, even when the Ctrl name is an exact
+			// match and the Mixamo name needs a suffix match.
+			const int rig_priority = is_mixamo_bone ? 3 : (is_control_bone ? 1 : 2);
+			const int score = match_score < 0 ? -1 : rig_priority * 10000 + match_score;
 			if (score > best_score) {
 				best_score = score;
 				best_bone = bone;
 			}
 		}
 	}
+	if (r_score) {
+		*r_score = best_score;
+	}
 	return best_bone;
+}
+
+static bool is_hitbox_digit_bone_name(const String &p_name) {
+	const String normalized = normalize_hitbox_bone_name(p_name);
+	return normalized.contains("thumb") || normalized.contains("finger") || normalized.contains("index") || normalized.contains("middle") || normalized.contains("ring") || normalized.contains("pinky") || normalized.contains("pinkie") || normalized.contains("little") || normalized.contains("toe");
 }
 
 static Color get_hitbox_hitgroup_color(int p_hitgroup) {
@@ -1932,7 +1950,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	_update_scene();
 
 	base_viewport->add_child(scene);
-	if (_repair_legacy_leg_hitbox_attachments()) {
+	if (_repair_hitbox_attachments()) {
 		_select_hitbox(selected_hitbox);
 		_save_hitbox_config();
 	}
@@ -4719,13 +4737,15 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 
 		Skeleton3D *matched_skeleton = nullptr;
 		int matched_bone = -1;
+		int matched_score = -1;
 		if (scene_root) {
 			for (Skeleton3D *skeleton : skeletons) {
-				const int candidate_bone = find_hitbox_preset_bone(skeleton, aliases);
-				if (candidate_bone >= 0) {
+				int candidate_score = -1;
+				const int candidate_bone = find_hitbox_preset_bone(skeleton, aliases, -1, &candidate_score);
+				if (candidate_bone >= 0 && candidate_score > matched_score) {
 					matched_skeleton = skeleton;
 					matched_bone = candidate_bone;
-					break;
+					matched_score = candidate_score;
 				}
 			}
 		}
@@ -4836,8 +4856,8 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 			}
 
 			// For rigged models, derive each segment from its own joint chain.
-			// The first box ends at the elbow/knee; the second follows all bones
-			// beneath the forearm/calf, including fingers or feet.
+			// The lower box follows the wrist/hand or ankle/foot root, while
+			// excluding fingers and toes so they cannot pull the box off the limb.
 			if (is_limb_part && matched_skeleton && matched_bone >= 0 && lower_bone >= 0 && !migrate_legacy_hitbox) {
 				Vector3 points_minimum;
 				Vector3 points_maximum;
@@ -4853,6 +4873,9 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 							ancestor = matched_skeleton->get_bone_parent(ancestor);
 						}
 						if (ancestor == lower_bone) {
+							if (is_hitbox_digit_bone_name(matched_skeleton->get_bone_name(bone))) {
+								continue;
+							}
 							include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(bone).origin), points_minimum, points_maximum, first_point);
 						}
 					}
@@ -5023,19 +5046,34 @@ void SceneImportSettingsScreen::_load_hitbox_config() {
 	_select_hitbox(selected_hitbox);
 }
 
-bool SceneImportSettingsScreen::_repair_legacy_leg_hitbox_attachments() {
+bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 	Node3D *scene_root = Object::cast_to<Node3D>(scene);
 	if (!scene_root) {
 		return false;
 	}
 
-	static const String segment_names[2][2] = {
-		{ TTR("Left Thigh"), TTR("Left Lower Leg") },
-		{ TTR("Right Thigh"), TTR("Right Lower Leg") },
+	static const char *preset_names[] = { "Head", "Chest", "Stomach", "Left Upper Arm", "Left Forearm", "Right Upper Arm", "Right Forearm", "Left Thigh", "Left Lower Leg", "Right Thigh", "Right Lower Leg" };
+	static const int preset_hitgroups[] = { 1, 2, 3, 4, 4, 5, 5, 6, 6, 7, 7 };
+	static const int parent_slots[] = { -1, -1, -1, -1, 3, -1, 5, -1, 7, -1, 9 };
+	static const char *preset_aliases[][15] = {
+		{ "head", nullptr },
+		{ "chest", "upperchest", "spine3", "spine03", "spine2", nullptr },
+		{ "abdomen", "spine1", "spine02", "spine", "pelvis", "hips", nullptr },
+		{ "leftupperarm", "upperarmleft", "upperarml", "lupperarm", "leftarm", "armleft", "arml", "larm", nullptr },
+		{ "leftforearm", "forearmleft", "forearml", "lforearm", "leftlowerarm", "lowerarmleft", "lowerarml", "llowerarm", nullptr },
+		{ "rightupperarm", "upperarmright", "upperarmr", "rupperarm", "rightarm", "armright", "armr", "rarm", nullptr },
+		{ "rightforearm", "forearmright", "forearmr", "rforearm", "rightlowerarm", "lowerarmright", "lowerarmr", "rlowerarm", nullptr },
+		{ "leftupleg", "uplegleft", "uplegl", "lupleg", "leftthigh", "thighleft", "thighl", "lthigh", "leftleg", "legl", nullptr },
+		{ "leftlowerleg", "lowerlegleft", "lowerlegl", "llowerleg", "leftcalf", "calfleft", "calfl", "lcalf", "leftshin", "shinl", "leftleg", "legleft", "legl", "lleg", nullptr },
+		{ "rightupleg", "uplegright", "uplegr", "rupleg", "rightthigh", "thighright", "thighr", "rthigh", "rightleg", "legr", nullptr },
+		{ "rightlowerleg", "lowerlegright", "lowerlegr", "rlowerleg", "rightcalf", "calfright", "calfr", "rcalf", "rightshin", "shinr", "rightleg", "legright", "legr", "rleg", nullptr },
 	};
-	static const char *lower_leg_aliases[2][14] = {
-		{ "leftlowerleg", "lowerlegleft", "lowerlegl", "llowerleg", "leftcalf", "calfleft", "calfl", "lcalf", "leftshin", "shinl", "leftleg", "legleft", "legl", "lleg" },
-		{ "rightlowerleg", "lowerlegright", "lowerlegr", "rlowerleg", "rightcalf", "calfright", "calfr", "rcalf", "rightshin", "shinr", "rightleg", "legright", "legr", "rleg" },
+	auto make_aliases = [](const char *const *p_aliases, int p_max_count) {
+		Vector<String> aliases;
+		for (int i = 0; i < p_max_count && p_aliases[i] != nullptr; i++) {
+			aliases.push_back(String(p_aliases[i]));
+		}
+		return aliases;
 	};
 	auto transform_bounds = [](const Vector3 &p_minimum, const Vector3 &p_maximum, const Transform3D &p_transform, Vector3 &r_minimum, Vector3 &r_maximum) {
 		bool first_corner = true;
@@ -5060,54 +5098,64 @@ bool SceneImportSettingsScreen::_repair_legacy_leg_hitbox_attachments() {
 	};
 
 	bool changed = false;
-	for (int side = 0; side < 2; side++) {
-		int upper_index = -1;
-		int lower_index = -1;
-		for (int i = 0; i < model_hitboxes.size(); i++) {
-			const ModelHitbox &hitbox = model_hitboxes[i];
-			if (hitbox.hitgroup != 6 + side) {
+	for (ModelHitbox &hitbox : model_hitboxes) {
+		int slot = -1;
+		for (int candidate = 0; candidate < 11; candidate++) {
+			if (hitbox.hitgroup == preset_hitgroups[candidate] && hitbox.name == TTR(preset_names[candidate])) {
+				slot = candidate;
+				break;
+			}
+		}
+		if (slot < 0) {
+			continue; // Keep custom hitboxes and names untouched.
+		}
+
+		const Vector<String> aliases = make_aliases(preset_aliases[slot], 15);
+		Skeleton3D *target_skeleton = nullptr;
+		int target_bone = -1;
+		int target_score = -1;
+		for (Skeleton3D *candidate_skeleton : skeletons) {
+			if (!candidate_skeleton) {
 				continue;
 			}
-			if (hitbox.name == segment_names[side][0]) {
-				upper_index = i;
-			} else if (hitbox.name == segment_names[side][1]) {
-				lower_index = i;
+			int parent_bone = -1;
+			if (parent_slots[slot] >= 0) {
+				const Vector<String> parent_aliases = make_aliases(preset_aliases[parent_slots[slot]], 15);
+				parent_bone = find_hitbox_preset_bone(candidate_skeleton, parent_aliases);
+				if (parent_bone < 0) {
+					continue;
+				}
+			}
+			int candidate_score = -1;
+			const int candidate_bone = find_hitbox_preset_bone(candidate_skeleton, aliases, parent_bone, &candidate_score);
+			if (candidate_bone >= 0 && candidate_score > target_score) {
+				target_skeleton = candidate_skeleton;
+				target_bone = candidate_bone;
+				target_score = candidate_score;
 			}
 		}
-		if (upper_index < 0 || lower_index < 0) {
+		if (!target_skeleton || target_bone < 0) {
 			continue;
 		}
 
-		ModelHitbox &upper = model_hitboxes.write[upper_index];
-		ModelHitbox &lower = model_hitboxes.write[lower_index];
-		if (upper.skeleton_path.is_empty() || upper.skeleton_path != lower.skeleton_path || upper.bone_name.is_empty() || lower.bone_name != upper.bone_name) {
-			continue;
-		}
-		Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(scene_root->get_node_or_null(NodePath(upper.skeleton_path)));
-		if (!skeleton) {
-			continue;
-		}
-		const int upper_bone = skeleton->find_bone(upper.bone_name);
-		if (upper_bone < 0) {
+		Skeleton3D *old_skeleton = hitbox.skeleton_path.is_empty() ? nullptr : Object::cast_to<Skeleton3D>(scene_root->get_node_or_null(NodePath(hitbox.skeleton_path)));
+		const int old_bone = old_skeleton ? old_skeleton->find_bone(hitbox.bone_name) : -1;
+		const String target_skeleton_path = String(scene->get_path_to(target_skeleton));
+		const String target_bone_name = target_skeleton->get_bone_name(target_bone);
+		if (old_skeleton == target_skeleton && old_bone == target_bone && hitbox.skeleton_path == target_skeleton_path) {
 			continue;
 		}
 
-		Vector<String> aliases;
-		for (int alias = 0; alias < 14; alias++) {
-			aliases.push_back(String(lower_leg_aliases[side][alias]));
+		Vector3 root_minimum = hitbox.minimum;
+		Vector3 root_maximum = hitbox.maximum;
+		if (old_skeleton && old_bone >= 0) {
+			const Transform3D old_bone_to_root = scene_root->get_global_transform().affine_inverse() * old_skeleton->get_global_transform() * old_skeleton->get_bone_global_rest(old_bone);
+			transform_bounds(hitbox.minimum, hitbox.maximum, old_bone_to_root, root_minimum, root_maximum);
 		}
-		const int lower_bone = find_hitbox_preset_bone(skeleton, aliases, upper_bone);
-		if (lower_bone < 0 || lower_bone == upper_bone) {
-			continue;
-		}
-
-		const Transform3D old_bone_to_root = scene_root->get_global_transform().affine_inverse() * skeleton->get_global_transform() * skeleton->get_bone_global_rest(upper_bone);
-		Vector3 root_minimum;
-		Vector3 root_maximum;
-		transform_bounds(lower.minimum, lower.maximum, old_bone_to_root, root_minimum, root_maximum);
-		const Transform3D root_to_new_bone = skeleton->get_bone_global_rest(lower_bone).affine_inverse() * skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
-		transform_bounds(root_minimum, root_maximum, root_to_new_bone, lower.minimum, lower.maximum);
-		lower.bone_name = skeleton->get_bone_name(lower_bone);
+		const Transform3D root_to_new_bone = target_skeleton->get_bone_global_rest(target_bone).affine_inverse() * target_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+		transform_bounds(root_minimum, root_maximum, root_to_new_bone, hitbox.minimum, hitbox.maximum);
+		hitbox.skeleton_path = target_skeleton_path;
+		hitbox.bone_name = target_bone_name;
 		changed = true;
 	}
 	return changed;
