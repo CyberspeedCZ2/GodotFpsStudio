@@ -3559,8 +3559,7 @@ void fragment() {
 	_update_material_editor();
 
 	settings_tab_navigation = memnew(VBoxContainer);
-	settings_tab_navigation->set_custom_minimum_size(Size2(116 * EDSCALE, 0));
-	settings_tab_navigation->set_v_size_flags(Control::SIZE_FILL);
+	settings_tab_navigation->set_h_size_flags(Control::SIZE_FILL);
 	Vector<String> settings_tab_names;
 	settings_tab_names.push_back(TTR("LOD"));
 	settings_tab_names.push_back(TTR("Mesh"));
@@ -3572,18 +3571,33 @@ void fragment() {
 	settings_tab_names.push_back(TTR("Environment"));
 	for (int i = 0; i < settings_tab_names.size(); i++) {
 		Button *tab_button = memnew(Button);
-		tab_button->set_text(settings_tab_names[i]);
 		tab_button->set_toggle_mode(true);
 		tab_button->set_flat(true);
+		tab_button->set_custom_minimum_size(Size2(116 * EDSCALE, 84 * EDSCALE));
 		tab_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 		tab_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_button_pressed).bind(i));
+		Label *tab_label = memnew(Label);
+		tab_label->set_text(settings_tab_names[i]);
+		tab_label->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+		tab_label->set_pivot_offset(Size2(58 * EDSCALE, 42 * EDSCALE));
+		tab_label->set_rotation(Math::deg_to_rad(45.0));
+		tab_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		tab_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+		tab_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+		tab_button->add_child(tab_label);
 		settings_tab_navigation->add_child(tab_button);
 		settings_tab_buttons.push_back(tab_button);
 	}
 	VSeparator *settings_navigation_separator = memnew(VSeparator);
 	settings_navigation_separator->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_panel_layout->add_child(settings_navigation_separator);
-	settings_panel_layout->add_child(settings_tab_navigation);
+	ScrollContainer *settings_navigation_scroll = memnew(ScrollContainer);
+	settings_navigation_scroll->set_custom_minimum_size(Size2(116 * EDSCALE, 0));
+	settings_navigation_scroll->set_h_size_flags(Control::SIZE_FILL);
+	settings_navigation_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_navigation_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
+	settings_navigation_scroll->add_child(settings_tab_navigation);
+	settings_panel_layout->add_child(settings_navigation_scroll);
 
 	ScrollContainer *environment_scroll = memnew(ScrollContainer);
 	environment_scroll->set_name(TTR("Environment"));
