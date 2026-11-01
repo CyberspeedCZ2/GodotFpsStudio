@@ -3590,8 +3590,16 @@ void fragment() {
 		tab_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
 		tab_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 		tab_button->add_child(tab_label);
-		const Size2 label_size = tab_label->get_combined_minimum_size();
-		const real_t settings_tab_button_height = MAX(44 * EDSCALE, label_size.x + 8 * EDSCALE);
+		const Ref<Font> tab_font = tab_button->get_theme_font(SNAME("font"));
+		const int tab_font_size = tab_button->get_theme_font_size(SNAME("font_size"));
+		Size2 label_size = tab_label->get_combined_minimum_size();
+		if (tab_font.is_valid()) {
+			tab_label->add_theme_font_override(SNAME("font"), tab_font);
+			tab_label->add_theme_font_size_override(SNAME("font_size"), tab_font_size);
+			label_size.x = tab_font->get_string_size(settings_tab_names[i], HORIZONTAL_ALIGNMENT_LEFT, -1, tab_font_size).x + 4 * EDSCALE;
+			label_size.y = tab_font->get_height(tab_font_size);
+		}
+		const real_t settings_tab_button_height = MAX(44 * EDSCALE, label_size.x + 12 * EDSCALE);
 		tab_button->set_custom_minimum_size(Size2(settings_tab_button_width, settings_tab_button_height));
 		tab_label->set_size(label_size);
 		tab_label->set_position(Size2((settings_tab_button_width - label_size.x) * 0.5, (settings_tab_button_height - label_size.y) * 0.5));
