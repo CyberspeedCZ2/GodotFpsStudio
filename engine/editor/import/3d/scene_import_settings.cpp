@@ -4571,33 +4571,138 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		{ "leftforearm", "forearmleft", "forearml", "lforearm", "leftlowerarm", "lowerarmleft", "lowerarml", "llowerarm", nullptr },
 		{ "rightforearm", "forearmright", "forearmr", "rforearm", "rightlowerarm", "lowerarmright", "lowerarmr", "rlowerarm", nullptr },
 	};
-	static const char *hand_bone_aliases[][9] = {
-		{ "lefthand", "handleft", "handl", "lhand", "leftwrist", "wristleft", "wristl", "lwrist", nullptr },
-		{ "righthand", "handright", "handr", "rhand", "rightwrist", "wristright", "wristr", "rwrist", nullptr },
+	static const char *lower_leg_bone_aliases[][10] = {
+		{ "leftlowerleg", "lowerlegleft", "lowerlegl", "llowerleg", "leftcalf", "calfleft", "calfl", "lcalf", "leftshin", "shinl" },
+		{ "rightlowerleg", "lowerlegright", "lowerlegr", "rlowerleg", "rightcalf", "calfright", "calfr", "rcalf", "rightshin", "shinr" },
+	};
+	const String segment_names[4][2] = {
+		{ TTR("Left Upper Arm"), TTR("Left Forearm") },
+		{ TTR("Right Upper Arm"), TTR("Right Forearm") },
+		{ TTR("Left Thigh"), TTR("Left Lower Leg") },
+		{ TTR("Right Thigh"), TTR("Right Lower Leg") },
 	};
 	const int first_part = p_preset == HITBOX_PRESET_HUMANOID_SET ? 0 : p_preset - HITBOX_PRESET_HEAD;
 	const int last_part = p_preset == HITBOX_PRESET_HUMANOID_SET ? 6 : first_part;
 	Node3D *scene_root = Object::cast_to<Node3D>(scene);
 	int first_added = -1;
-
-	for (int part = first_part; part <= last_part; part++) {
-		if (p_only_missing) {
-			bool hitgroup_exists = false;
+	auto make_aliases = [](const char *const *p_aliases, int p_max_count) {
+		Vector<String> aliases;
+		for (int i = 0; i < p_max_count && p_aliases[i] != nullptr; i++) {
+			aliases.push_back(String(p_aliases[i]));
+		}
+		return aliases;
+	};
+	auto include_point = [](const Vector3 &p_point, Vector3 &r_minimum, Vector3 &r_maximum, bool &r_first) {
+		if (r_first) {
+			r_minimum = p_point;
+			r_maximum = p_point;
+			r_first = false;
+			return;
+		}
+		for (int axis = 0; axis < 3; axis++) {
+			r_minimum[axis] = MIN(r_minimum[axis], p_point[axis]);
+			r_maximum[axis] = MAX(r_maximum[axis], p_point[axis]);
+		}
+	};
+	auto transform_bounds = [](const Vector3 &p_minimum, const Vector3 &p_maximum, const Transform3D &p_transform, Vector3 &r_minimum, Vector3 &r_maximum) {
+		bool first_corner = true;
+		for (int x = 0; x < 2; x++) {
+			for (int y = 0; y < 2; y++) {
+				for (int z = 0; z < 2; z++) {
+					const Vector3 corner(x == 0 ? p_minimum.x : p_maximum.x, y == 0 ? p_minimum.y : p_maximum.y, z == 0 ? p_minimum.z : p_maximum.z);
+					const Vector3 transformed_corner = p_transform.xform(corner);
+					if (first_corner) {
+						r_minimum = transformed_corner;
+						r_maximum = transformed_corner;
+						first_corner = false;
+					} else {
+						for (int axis = 0; axis < 3; axis++) {
+							r_minimum[axis] = MIN(r_minimum[axis], transformed_corner[axis]);
+							r_maximum[axis] = MAX(r_maximum[axis], transformed_corner[axis]);
+						}
+					}
+				}
+			}
+		}
+	};
+	auto unique_hitbox_name = [&](const String &p_base_name) {
+		String name = p_base_name;
+		int suffix = 2;
+		while (true) {
+			bool in_use = false;
 			for (const ModelHitbox &existing : model_hitboxes) {
-				if (existing.hitgroup == preset_hitgroups[part]) {
-					hitgroup_exists = true;
+				if (existing.name == name) {
+					in_use = true;
 					break;
 				}
 			}
-			if (hitgroup_exists) {
-				continue;
+			if (!in_use) {
+				return name;
+			}
+			name = vformat(TTR("%s %d"), p_base_name, suffix++);
+		}
+	};
+	auto convert_root_bounds_to_bone = [&](const Vector3 &p_root_minimum, const Vector3 &p_root_maximum, Skeleton3D *p_skeleton, int p_bone, Vector3 &r_minimum, Vector3 &r_maximum) {
+		if (!scene_root || !p_skeleton || p_bone < 0) {
+			r_minimum = p_root_minimum;
+			r_maximum = p_root_maximum;
+			return;
+		}
+		const Transform3D root_to_bone = p_skeleton->get_bone_global_rest(p_bone).affine_inverse() * p_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+		transform_bounds(p_root_minimum, p_root_maximum, root_to_bone, r_minimum, r_maximum);
+	};
+
+	for (int part = first_part; part <= last_part; part++) {
+		const bool is_arm_part = part == 3 || part == 4;
+		const bool is_leg_part = part == 5 || part == 6;
+		const bool is_limb_part = is_arm_part || is_leg_part;
+		const int side = part == 3 || part == 5 ? 0 : 1;
+		Vector<String> limb_names;
+		if (is_limb_part) {
+			limb_names.push_back(segment_names[part - 3][0]);
+			limb_names.push_back(segment_names[part - 3][1]);
+		}
+		bool migrate_legacy_hitbox = false;
+		int legacy_hitbox_index = -1;
+		Vector3 legacy_root_minimum;
+		Vector3 legacy_root_maximum;
+		if (p_only_missing) {
+			int group_count = 0;
+			bool segment_exists = false;
+			for (int i = 0; i < model_hitboxes.size(); i++) {
+				const ModelHitbox &existing = model_hitboxes[i];
+				if (existing.hitgroup == preset_hitgroups[part]) {
+					group_count++;
+					if (is_limb_part && (existing.name == limb_names[0] || existing.name == limb_names[1])) {
+						segment_exists = true;
+					}
+					if (existing.name == TTR(preset_names[part])) {
+						legacy_hitbox_index = i;
+					}
+				}
+			}
+			if (group_count > 0) {
+				// Earlier versions generated one default-named box for each limb.
+				// Split that box on the next auto-generation while retaining its
+				// edited bounds. Leave custom and already-segmented hitboxes intact.
+				migrate_legacy_hitbox = is_limb_part && group_count == 1 && !segment_exists && legacy_hitbox_index >= 0;
+				if (!migrate_legacy_hitbox) {
+					continue;
+				}
+				const ModelHitbox &legacy = model_hitboxes[legacy_hitbox_index];
+				Transform3D old_bone_to_root;
+				if (scene_root && !legacy.skeleton_path.is_empty() && !legacy.bone_name.is_empty()) {
+					Skeleton3D *old_skeleton = Object::cast_to<Skeleton3D>(scene_root->get_node_or_null(NodePath(legacy.skeleton_path)));
+					const int old_bone = old_skeleton ? old_skeleton->find_bone(legacy.bone_name) : -1;
+					if (old_skeleton && old_bone >= 0) {
+						old_bone_to_root = scene_root->get_global_transform().affine_inverse() * old_skeleton->get_global_transform() * old_skeleton->get_bone_global_rest(old_bone);
+					}
+				}
+				transform_bounds(legacy.minimum, legacy.maximum, old_bone_to_root, legacy_root_minimum, legacy_root_maximum);
 			}
 		}
 
-		Vector<String> aliases;
-		for (int alias = 0; alias < 10 && bone_aliases[part][alias] != nullptr; alias++) {
-			aliases.push_back(String(bone_aliases[part][alias]));
-		}
+		Vector<String> aliases = make_aliases(bone_aliases[part], 10);
 
 		Skeleton3D *matched_skeleton = nullptr;
 		int matched_bone = -1;
@@ -4616,7 +4721,6 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		Vector3 maximum_fraction = preset_maximum_fractions[part];
 		const bool is_left_side = part == 3 || part == 5;
 		const bool is_right_side = part == 4 || part == 6;
-		const bool is_arm_part = part == 3 || part == 4;
 		if ((is_left_side || is_right_side) && matched_skeleton && matched_bone >= 0 && contents_aabb.size.x > 0.0) {
 			const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
 			const Vector3 bone_position = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin);
@@ -4632,140 +4736,136 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 			}
 		}
 
-		Vector3 arm_bone_minimum;
-		Vector3 arm_bone_maximum;
-		bool has_arm_chain_bounds = false;
-		if (is_arm_part && matched_skeleton && matched_bone >= 0 && scene_root) {
-			const int side = part == 3 ? 0 : 1;
-			Vector<String> forearm_aliases;
-			for (int alias = 0; alias < 9 && forearm_bone_aliases[side][alias] != nullptr; alias++) {
-				forearm_aliases.push_back(String(forearm_bone_aliases[side][alias]));
-			}
-			Vector<String> hand_aliases;
-			for (int alias = 0; alias < 9 && hand_bone_aliases[side][alias] != nullptr; alias++) {
-				hand_aliases.push_back(String(hand_bone_aliases[side][alias]));
-			}
-			const int forearm_bone = find_hitbox_preset_bone(matched_skeleton, forearm_aliases);
-			const int hand_bone = find_hitbox_preset_bone(matched_skeleton, hand_aliases);
-			const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
-			const Transform3D root_to_upper_arm = matched_skeleton->get_bone_global_rest(matched_bone).affine_inverse() *
-				matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
-			Vector<int> chain_bones;
-			chain_bones.push_back(matched_bone);
-			if (forearm_bone >= 0) {
-				chain_bones.push_back(forearm_bone);
-			}
-			if (hand_bone >= 0) {
-				chain_bones.push_back(hand_bone);
-				// Include the full finger chains, not only their roots, so the box
-				// reaches the fingertips and captures the hand's actual span.
-				for (int bone = 0; bone < matched_skeleton->get_bone_count(); bone++) {
-					int ancestor = matched_skeleton->get_bone_parent(bone);
-					while (ancestor >= 0 && ancestor != hand_bone) {
-						ancestor = matched_skeleton->get_bone_parent(ancestor);
-					}
-					if (ancestor == hand_bone) {
-						chain_bones.push_back(bone);
-					}
-				}
-			}
-			bool first_arm_point = true;
-			for (int bone : chain_bones) {
-				const Vector3 root_point = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(bone).origin);
-				const Vector3 arm_point = root_to_upper_arm.xform(root_point);
-				if (first_arm_point) {
-					arm_bone_minimum = arm_point;
-					arm_bone_maximum = arm_point;
-					first_arm_point = false;
-				} else {
-					for (int axis = 0; axis < 3; axis++) {
-						arm_bone_minimum[axis] = MIN(arm_bone_minimum[axis], arm_point[axis]);
-						arm_bone_maximum[axis] = MAX(arm_bone_maximum[axis], arm_point[axis]);
-					}
-				}
-			}
-			if (!first_arm_point && chain_bones.size() > 1) {
-				const real_t padding = MAX(contents_aabb.size.y * 0.025, 0.025);
-				for (int axis = 0; axis < 3; axis++) {
-					arm_bone_minimum[axis] -= padding;
-					arm_bone_maximum[axis] += padding;
-				}
-				has_arm_chain_bounds = true;
-			}
-		}
-
-		Vector3 minimum = contents_aabb.position + contents_aabb.size * minimum_fraction;
-		Vector3 maximum = contents_aabb.position + contents_aabb.size * maximum_fraction;
-		const Vector3 center = (minimum + maximum) * 0.5;
+		Vector3 fallback_minimum = contents_aabb.position + contents_aabb.size * minimum_fraction;
+		Vector3 fallback_maximum = contents_aabb.position + contents_aabb.size * maximum_fraction;
+		const Vector3 fallback_center = (fallback_minimum + fallback_maximum) * 0.5;
 		for (int axis = 0; axis < 3; axis++) {
-			if (maximum[axis] - minimum[axis] < 0.02) {
-				minimum[axis] = center[axis] - 0.01;
-				maximum[axis] = center[axis] + 0.01;
+			if (fallback_maximum[axis] - fallback_minimum[axis] < 0.02) {
+				fallback_minimum[axis] = fallback_center[axis] - 0.01;
+				fallback_maximum[axis] = fallback_center[axis] + 0.01;
 			}
 		}
 
-		ModelHitbox hitbox;
-		const String base_name = TTR(preset_names[part]);
-		hitbox.name = base_name;
-		int name_suffix = 2;
-		while (true) {
-			bool name_in_use = false;
-			for (const ModelHitbox &existing : model_hitboxes) {
-				if (existing.name == hitbox.name) {
-					name_in_use = true;
-					break;
+		if (migrate_legacy_hitbox) {
+			model_hitboxes.remove_at(legacy_hitbox_index);
+			if (selected_hitbox == legacy_hitbox_index) {
+				selected_hitbox = -1;
+			} else if (selected_hitbox > legacy_hitbox_index) {
+				selected_hitbox--;
+			}
+			if (first_added > legacy_hitbox_index) {
+				first_added--;
+			}
+		}
+
+		Vector3 split_minimum = migrate_legacy_hitbox ? legacy_root_minimum : fallback_minimum;
+		Vector3 split_maximum = migrate_legacy_hitbox ? legacy_root_maximum : fallback_maximum;
+		int split_axis = 1;
+		real_t split_direction = 1.0;
+		if (is_arm_part) {
+			split_axis = split_maximum.x - split_minimum.x >= split_maximum.z - split_minimum.z ? 0 : 2;
+			split_direction = is_left_side ? -1.0 : 1.0;
+		} else if (is_leg_part) {
+			split_axis = 1;
+			split_direction = 1.0; // Thigh is the upper section of the leg.
+		}
+		Vector3 segment_joint = Vector3();
+		int lower_bone = -1;
+		if (matched_skeleton && matched_bone >= 0 && is_limb_part) {
+			const Vector<String> lower_aliases = is_arm_part ? make_aliases(forearm_bone_aliases[side], 9) : make_aliases(lower_leg_bone_aliases[side], 10);
+			lower_bone = find_hitbox_preset_bone(matched_skeleton, lower_aliases);
+			if (lower_bone >= 0) {
+				const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
+				segment_joint = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(lower_bone).origin);
+				const Vector3 upper_joint = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin);
+				Vector3 direction = segment_joint - upper_joint;
+				if (is_arm_part) {
+					const real_t horizontal_length = MAX(Math::abs(direction.x), Math::abs(direction.z));
+					split_axis = Math::abs(direction.x) >= Math::abs(direction.z) ? 0 : 2;
+					if (horizontal_length < 0.001) {
+						split_axis = split_maximum.x - split_minimum.x >= split_maximum.z - split_minimum.z ? 0 : 2;
+					}
+				} else {
+					split_axis = 1;
 				}
+				split_direction = direction[split_axis] < 0.0 ? -1.0 : 1.0;
 			}
-			if (!name_in_use) {
-				break;
-			}
-			hitbox.name = vformat(TTR("%s %d"), base_name, name_suffix++);
 		}
-		hitbox.minimum = minimum;
-		hitbox.maximum = maximum;
-		hitbox.hitgroup = preset_hitgroups[part];
+		const real_t split_extent = split_maximum[split_axis] - split_minimum[split_axis];
+		real_t split_value = (split_minimum[split_axis] + split_maximum[split_axis]) * 0.5;
+		if (migrate_legacy_hitbox && lower_bone >= 0) {
+			const real_t joint_fraction = (segment_joint[split_axis] - split_minimum[split_axis]) / MAX(split_extent, 0.001);
+			if (joint_fraction > 0.2 && joint_fraction < 0.8) {
+				split_value = segment_joint[split_axis];
+			}
+		}
+		Vector3 segment_minimum[2] = { split_minimum, split_minimum };
+		Vector3 segment_maximum[2] = { split_maximum, split_maximum };
+		const real_t overlap = MAX(contents_aabb.size.y * 0.0125, 0.01);
+		if (split_direction >= 0.0) {
+			segment_maximum[0][split_axis] = MIN(split_maximum[split_axis], split_value + overlap);
+			segment_minimum[1][split_axis] = MAX(split_minimum[split_axis], split_value - overlap);
+		} else {
+			segment_minimum[0][split_axis] = MAX(split_minimum[split_axis], split_value - overlap);
+			segment_maximum[1][split_axis] = MIN(split_maximum[split_axis], split_value + overlap);
+		}
 
-		if (matched_skeleton && matched_bone >= 0 && scene_root) {
-			if (has_arm_chain_bounds) {
-				hitbox.minimum = arm_bone_minimum;
-				hitbox.maximum = arm_bone_maximum;
-			} else {
-				const Transform3D root_to_bone = matched_skeleton->get_bone_global_rest(matched_bone).affine_inverse() *
-					matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
-				Vector3 bone_minimum;
-				Vector3 bone_maximum;
-				bool first_corner = true;
-				for (int x = 0; x < 2; x++) {
-					for (int y = 0; y < 2; y++) {
-						for (int z = 0; z < 2; z++) {
-							const Vector3 root_corner(
-								x == 0 ? minimum.x : maximum.x,
-								y == 0 ? minimum.y : maximum.y,
-								z == 0 ? minimum.z : maximum.z);
-							const Vector3 bone_corner = root_to_bone.xform(root_corner);
-							if (first_corner) {
-								bone_minimum = bone_corner;
-								bone_maximum = bone_corner;
-								first_corner = false;
-							} else {
-								for (int axis = 0; axis < 3; axis++) {
-									bone_minimum[axis] = MIN(bone_minimum[axis], bone_corner[axis]);
-									bone_maximum[axis] = MAX(bone_maximum[axis], bone_corner[axis]);
-								}
-							}
+		const int segment_count = is_limb_part ? 2 : 1;
+		for (int segment = 0; segment < segment_count; segment++) {
+			Vector3 root_minimum = is_limb_part ? segment_minimum[segment] : fallback_minimum;
+			Vector3 root_maximum = is_limb_part ? segment_maximum[segment] : fallback_maximum;
+			int attachment_bone = matched_bone;
+			if (is_limb_part && segment == 1 && lower_bone >= 0) {
+				attachment_bone = lower_bone;
+			}
+
+			// For rigged models, derive each segment from its own joint chain.
+			// The first box ends at the elbow/knee; the second follows all bones
+			// beneath the forearm/calf, including fingers or feet.
+			if (is_limb_part && matched_skeleton && matched_bone >= 0 && lower_bone >= 0 && !migrate_legacy_hitbox) {
+				Vector3 points_minimum;
+				Vector3 points_maximum;
+				bool first_point = true;
+				const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
+				if (segment == 0) {
+					include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin), points_minimum, points_maximum, first_point);
+					include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(lower_bone).origin), points_minimum, points_maximum, first_point);
+				} else {
+					for (int bone = 0; bone < matched_skeleton->get_bone_count(); bone++) {
+						int ancestor = bone;
+						while (ancestor >= 0 && ancestor != lower_bone) {
+							ancestor = matched_skeleton->get_bone_parent(ancestor);
+						}
+						if (ancestor == lower_bone) {
+							include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(bone).origin), points_minimum, points_maximum, first_point);
 						}
 					}
 				}
-				hitbox.minimum = bone_minimum;
-				hitbox.maximum = bone_maximum;
+				if (!first_point) {
+					const real_t padding = MAX(contents_aabb.size.y * 0.025, 0.025);
+					for (int axis = 0; axis < 3; axis++) {
+						root_minimum[axis] = points_minimum[axis] - padding;
+						root_maximum[axis] = points_maximum[axis] + padding;
+					}
+				}
 			}
-			hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
-			hitbox.bone_name = matched_skeleton->get_bone_name(matched_bone);
-		}
 
-		model_hitboxes.push_back(hitbox);
-		if (first_added < 0) {
-			first_added = model_hitboxes.size() - 1;
+			ModelHitbox hitbox;
+			hitbox.name = unique_hitbox_name(is_limb_part ? limb_names[segment] : TTR(preset_names[part]));
+			hitbox.hitgroup = preset_hitgroups[part];
+			if (matched_skeleton && matched_bone >= 0 && scene_root) {
+				convert_root_bounds_to_bone(root_minimum, root_maximum, matched_skeleton, attachment_bone, hitbox.minimum, hitbox.maximum);
+				hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
+				hitbox.bone_name = matched_skeleton->get_bone_name(attachment_bone >= 0 ? attachment_bone : matched_bone);
+			} else {
+				hitbox.minimum = root_minimum;
+				hitbox.maximum = root_maximum;
+			}
+
+			model_hitboxes.push_back(hitbox);
+			if (first_added < 0) {
+				first_added = model_hitboxes.size() - 1;
+			}
 		}
 	}
 
