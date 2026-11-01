@@ -36,12 +36,10 @@
 #include "core/io/resource_saver.h"
 #include "core/math/projection.h"
 #include "core/object/callable_mp.h"
-#include "core/object/script_language.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
-#include "editor/fps_studio/fps_level_scene_template.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/3d/skeleton_3d_editor_plugin.h"
@@ -63,6 +61,7 @@
 #include "scene/main/viewport.h"
 #include "scene/resources/3d/importer_mesh.h"
 #include "scene/resources/material.h"
+#include "scene/resources/sky.h"
 #include "scene/resources/shader.h"
 #include "scene/resources/surface_tool.h"
 #include "scene/resources/style_box_flat.h"
@@ -83,6 +82,110 @@ static const String MODEL_SETTINGS_PANEL_WIDTH_SETTING = "interface/fps_studio/m
 // Orthographic zoom limits (fraction of the fitted content size).
 static constexpr real_t ZOOM_MIN = 0.05;
 static constexpr real_t ZOOM_MAX = 20.0;
+
+static Ref<ShaderMaterial> create_model_view_sky_material() {
+	Ref<Shader> sky_shader;
+	sky_shader.instantiate();
+	sky_shader->set_code(R"shader(
+shader_type sky;
+render_mode use_debanding;
+
+uniform vec3 sky_top_color : source_color = vec3(0.30, 0.42, 0.58);
+uniform vec3 sky_horizon_color : source_color = vec3(0.43, 0.51, 0.61);
+uniform vec3 ground_color : source_color = vec3(0.43, 0.51, 0.61);
+uniform vec3 sun_color : source_color = vec3(1.0, 0.96, 0.88);
+uniform bool clouds_enabled = true;
+uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.5;
+uniform float cloud_scale : hint_range(0.2, 5.0) = 1.5;
+uniform float cloud_speed : hint_range(0.0, 0.1) = 0.01;
+uniform vec3 cloud_color : source_color = vec3(1.0, 1.0, 1.0);
+uniform vec3 cloud_shadow_color : source_color = vec3(0.55, 0.60, 0.70);
+
+vec2 hash2(vec2 p) {
+	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+	return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+}
+
+float gradient_noise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(
+		mix(dot(hash2(i), f), dot(hash2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+		mix(dot(hash2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)), dot(hash2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x),
+		u.y);
+}
+
+float cloud_noise(vec2 p) {
+	float value = 0.0;
+	float weight = 0.5;
+	mat2 rotation = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
+	for (int octave = 0; octave < 4; octave++) {
+		value += weight * gradient_noise(p);
+		p = rotation * p * 2.05 + vec2(13.5, 27.2);
+		weight *= 0.5;
+	}
+	return clamp(value * 0.5 + 0.5, 0.0, 1.0);
+}
+
+void sky() {
+	float up = EYEDIR.y;
+	vec3 color = up < 0.0 ? mix(ground_color, sky_horizon_color, clamp((up + 0.12) * 5.0, 0.0, 1.0)) : mix(sky_horizon_color, sky_top_color, pow(clamp(up * 1.35, 0.0, 1.0), 0.7));
+	float sun_dot = 0.0;
+	if (LIGHT0_ENABLED) {
+		sun_dot = dot(EYEDIR, LIGHT0_DIRECTION);
+		if (sun_dot > 0.0 && LIGHT0_DIRECTION.y > -0.06) {
+			float disk = smoothstep(0.99955, 0.99985, sun_dot);
+			float horizon_fade = clamp((LIGHT0_DIRECTION.y + 0.05) * 8.0, 0.0, 1.0);
+			float glow = pow(max(sun_dot, 0.0), 24.0) * 0.12 * horizon_fade;
+			color += sun_color * (disk * 3.0 + glow);
+		}
+	}
+
+	if (clouds_enabled && up > 0.01 && cloud_coverage > 0.0) {
+		vec2 uv = (EYEDIR.xz / max(up + 0.12, 0.14)) * cloud_scale;
+		vec2 wind = vec2(TIME * cloud_speed, TIME * cloud_speed * 0.35);
+		float noise_value = cloud_noise(uv + wind);
+		float threshold = 1.0 - cloud_coverage;
+		float alpha = smoothstep(threshold, threshold + 0.12, noise_value) * smoothstep(0.01, 0.16, up);
+		float shade = smoothstep(threshold - 0.05, threshold + 0.22, noise_value);
+		float illumination = LIGHT0_ENABLED ? clamp(sun_dot * 0.35 + 0.65, 0.0, 1.0) : 0.7;
+		vec3 cloud_surface = mix(cloud_shadow_color, cloud_color * (0.85 + 0.15 * illumination), shade);
+		color = mix(color, cloud_surface, alpha);
+	}
+	COLOR = color;
+}
+)shader");
+
+	Ref<ShaderMaterial> sky_material;
+	sky_material.instantiate();
+	sky_material->set_shader(sky_shader);
+	return sky_material;
+}
+
+static Ref<Environment> create_model_view_environment(const Ref<ShaderMaterial> &p_sky_material) {
+	Ref<Sky> sky;
+	sky.instantiate();
+	sky->set_material(p_sky_material);
+	sky->set_process_mode(Sky::PROCESS_MODE_REALTIME);
+
+	Ref<Environment> preview_environment;
+	preview_environment.instantiate();
+	preview_environment->set_background(Environment::BG_SKY);
+	preview_environment->set_sky(sky);
+	preview_environment->set_ambient_source(Environment::AMBIENT_SOURCE_SKY);
+	preview_environment->set_ambient_light_energy(1.35);
+	preview_environment->set_reflection_source(Environment::REFLECTION_SOURCE_SKY);
+	preview_environment->set_fog_enabled(true);
+	preview_environment->set_fog_mode(Environment::FOG_MODE_DEPTH);
+	preview_environment->set_fog_light_color(Color(0.43, 0.51, 0.61));
+	preview_environment->set_fog_light_energy(1.0);
+	preview_environment->set_fog_sky_affect(0.0);
+	preview_environment->set_fog_depth_begin(60.0);
+	preview_environment->set_fog_depth_end(600.0);
+	preview_environment->set_fog_depth_curve(1.2);
+	return preview_environment;
+}
 
 // Converts an index/vertex count to the number of rendered faces using the
 // same rules as the renderer's _indices_to_primitives().
@@ -1605,7 +1708,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	base_path = p_path;
 	current_import_type = p_scene_import_type;
 	lod_settings_pending = false;
-	_setup_model_preview_lighting();
+	_setup_model_preview_environment();
 
 	mesh_set.clear();
 	animation_map.clear();
@@ -2633,6 +2736,13 @@ void SceneImportSettingsScreen::_notification(int p_what) {
 			// can come back to it. Cleanup happens in open_settings() and
 			// _close_screen().
 			_update_empty_state();
+			if (preview_sun_animation_timer != nullptr) {
+				if (is_visible_in_tree() && preview_sun_animation_enabled) {
+					preview_sun_animation_timer->start();
+				} else {
+					preview_sun_animation_timer->stop();
+				}
+			}
 		} break;
 	}
 }
@@ -3188,15 +3298,24 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 		camera->set_attributes(camera_attributes);
 	}
 
-	// Share the same sky, ambient fill and sun used by newly created FPS Levels.
-	environment = create_fps_level_environment();
-	// Leave the sky FOV at 0 so it follows the perspective camera FOV below.
+	// Model View owns its complete preview environment. It never inherits the
+	// open Level's sky, lights, or day/night cycle.
+	preview_sky_material = create_model_view_sky_material();
+	environment = create_model_view_environment(preview_sky_material);
 	camera->set_environment(environment);
 	preview_world_environment_node = memnew(WorldEnvironment);
 	preview_world_environment_node->set_environment(environment);
 	base_viewport->add_child(preview_world_environment_node);
 
-	light1 = create_fps_level_sun();
+	light1 = memnew(DirectionalLight3D);
+	light1->set_color(Color(1.0, 1.0, 1.0));
+	light1->set_param(Light3D::PARAM_ENERGY, 1.2);
+	light1->set_shadow(true);
+	light1->set_shadow_mode(DirectionalLight3D::SHADOW_PARALLEL_4_SPLITS);
+	light1->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, 100.0);
+	light1->set_param(Light3D::PARAM_SHADOW_OPACITY, 0.55);
+	light1->set_param(Light3D::PARAM_SHADOW_BLUR, 2.0);
+	light1->set_sky_mode(DirectionalLight3D::SKY_MODE_LIGHT_AND_SKY);
 	// Keep the sun in preview-world space. Camera orbiting changes the view,
 	// not the light direction or the model's shadow.
 	base_viewport->add_child(light1);
@@ -3245,7 +3364,7 @@ void fragment() {
 	preview_floor_material.instantiate();
 	preview_floor_material->set_shader(preview_floor_shader);
 	preview_floor_material->set_shader_parameter("floor_color", Color(0.16, 0.18, 0.21));
-	preview_floor_material->set_shader_parameter("horizon_color", get_fps_level_horizon_color());
+	preview_floor_material->set_shader_parameter("horizon_color", Color(0.43, 0.51, 0.61));
 	preview_floor_mesh.instantiate();
 	preview_floor_mesh->set_size(Size2(preview_floor_size, preview_floor_size));
 	preview_floor_mesh->set_material(preview_floor_material);
@@ -3374,52 +3493,6 @@ void fragment() {
 	material_isolate_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_material_isolate_toggled));
 	material_tab->add_child(material_isolate_toggle);
 
-	preview_day_night_label = memnew(Label);
-	preview_day_night_label->set_text(TTR("DayNightCycle: 12:00"));
-	material_tab->add_child(preview_day_night_label);
-
-	preview_day_night_slider = memnew(HSlider);
-	preview_day_night_slider->set_min(0.0);
-	preview_day_night_slider->set_max(24.0);
-	preview_day_night_slider->set_step(0.05);
-	preview_day_night_slider->set_tooltip_text(TTR("Set the preview time of day. This changes only the Model View lighting."));
-	preview_day_night_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_day_night_time_changed));
-	material_tab->add_child(preview_day_night_slider);
-
-	preview_sun_animation_toggle = memnew(CheckButton);
-	preview_sun_animation_toggle->set_text(TTR("Animate Sun"));
-	preview_sun_animation_toggle->set_tooltip_text(TTR("Animate the preview's DayNightCycle. This changes only the Model View lighting."));
-	preview_sun_animation_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_animation_toggled));
-	material_tab->add_child(preview_sun_animation_toggle);
-
-	preview_sun_cycle_duration_label = memnew(Label);
-	material_tab->add_child(preview_sun_cycle_duration_label);
-	preview_sun_cycle_duration_slider = memnew(HSlider);
-	preview_sun_cycle_duration_slider->set_min(10.0);
-	preview_sun_cycle_duration_slider->set_max(600.0);
-	preview_sun_cycle_duration_slider->set_step(5.0);
-	preview_sun_cycle_duration_slider->set_tooltip_text(TTR("Set the duration of one full day and night in the preview."));
-	preview_sun_cycle_duration_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_cycle_duration_changed));
-	material_tab->add_child(preview_sun_cycle_duration_slider);
-
-	preview_sun_rotation_label = memnew(Label);
-	material_tab->add_child(preview_sun_rotation_label);
-	preview_sun_rotation_slider = memnew(HSlider);
-	preview_sun_rotation_slider->set_min(-180.0);
-	preview_sun_rotation_slider->set_max(180.0);
-	preview_sun_rotation_slider->set_step(1.0);
-	preview_sun_rotation_slider->set_tooltip_text(TTR("Rotate the sun around the model horizontally. This changes only the Model View lighting."));
-	preview_sun_rotation_slider->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_rotation_changed));
-	material_tab->add_child(preview_sun_rotation_slider);
-
-	preview_day_night_label->hide();
-	preview_day_night_slider->hide();
-	preview_sun_animation_toggle->hide();
-	preview_sun_cycle_duration_label->hide();
-	preview_sun_cycle_duration_slider->hide();
-	preview_sun_rotation_label->hide();
-	preview_sun_rotation_slider->hide();
-
 	material_create_button = memnew(Button);
 	material_create_button->set_text(TTR("Create editable material files…"));
 	material_create_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_material_create_button_pressed));
@@ -3438,6 +3511,65 @@ void fragment() {
 	material_inspector->connect(SNAME("property_edited"), callable_mp(this, &SceneImportSettingsScreen::_material_inspector_property_edited));
 	material_tab->add_child(material_inspector);
 	_update_material_editor();
+
+	ScrollContainer *environment_scroll = memnew(ScrollContainer);
+	environment_scroll->set_name(TTR("Environment"));
+	environment_scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	environment_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_tabs->add_child(environment_scroll);
+	settings_tabs->move_child(environment_scroll, settings_tabs->get_child_count() - 2);
+	VBoxContainer *environment_tab = memnew(VBoxContainer);
+	environment_tab->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	environment_tab->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	environment_scroll->add_child(environment_tab);
+
+	Label *environment_hint = memnew(Label);
+	environment_hint->set_text(TTR("These settings affect only the Model View preview."));
+	environment_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	environment_tab->add_child(environment_hint);
+
+	Label *sun_section_label = memnew(Label);
+	sun_section_label->set_text(TTR("Sun"));
+	environment_tab->add_child(sun_section_label);
+	auto add_environment_slider = [&](Label *&r_label, HSlider *&r_slider, const String &p_title, double p_min, double p_max, double p_step, const String &p_tooltip, const Callable &p_callback) {
+		r_label = memnew(Label);
+		r_label->set_text(p_title);
+		environment_tab->add_child(r_label);
+		r_slider = memnew(HSlider);
+		r_slider->set_min(p_min);
+		r_slider->set_max(p_max);
+		r_slider->set_step(p_step);
+		r_slider->set_tooltip_text(p_tooltip);
+		r_slider->connect(SceneStringName(value_changed), p_callback);
+		environment_tab->add_child(r_slider);
+	};
+
+	add_environment_slider(preview_time_of_day_label, preview_time_of_day_slider, TTR("Time of Day: 12:00"), 0.0, 24.0, 0.05, TTR("Set the sun position along its daily path."), callable_mp(this, &SceneImportSettingsScreen::_preview_time_of_day_changed));
+	add_environment_slider(preview_sun_azimuth_label, preview_sun_azimuth_slider, TTR("Sun Azimuth: 0 deg"), -180.0, 180.0, 1.0, TTR("Rotate the sun direction around the model horizontally."), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_azimuth_changed));
+	add_environment_slider(preview_sun_path_tilt_label, preview_sun_path_tilt_slider, TTR("Sun Path Tilt: 35 deg"), 0.0, 80.0, 1.0, TTR("Set the tilt of the sun's daily path above the horizon."), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_path_tilt_changed));
+	add_environment_slider(preview_sun_energy_label, preview_sun_energy_slider, TTR("Sun Energy: 1.20"), 0.0, 5.0, 0.05, TTR("Set the maximum direct light energy at midday."), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_energy_changed));
+
+	preview_sun_animation_toggle = memnew(CheckButton);
+	preview_sun_animation_toggle->set_text(TTR("Animate Sun"));
+	preview_sun_animation_toggle->set_tooltip_text(TTR("Run the Model View's day/night cycle."));
+	preview_sun_animation_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_animation_toggled));
+	environment_tab->add_child(preview_sun_animation_toggle);
+	add_environment_slider(preview_sun_cycle_duration_label, preview_sun_cycle_duration_slider, TTR("Cycle Duration: 60 s"), 10.0, 600.0, 5.0, TTR("Set the duration of a complete day and night in the preview."), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_cycle_duration_changed));
+
+	Label *clouds_section_label = memnew(Label);
+	clouds_section_label->set_text(TTR("Clouds"));
+	environment_tab->add_child(clouds_section_label);
+	preview_clouds_toggle = memnew(CheckButton);
+	preview_clouds_toggle->set_text(TTR("Show Clouds"));
+	preview_clouds_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_preview_clouds_toggled));
+	environment_tab->add_child(preview_clouds_toggle);
+	add_environment_slider(preview_cloud_coverage_label, preview_cloud_coverage_slider, TTR("Cloud Coverage: 50%"), 0.0, 1.0, 0.01, TTR("Set how much of the preview sky is covered by clouds."), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_coverage_changed));
+	add_environment_slider(preview_cloud_scale_label, preview_cloud_scale_slider, TTR("Cloud Scale: 1.50"), 0.2, 5.0, 0.1, TTR("Set the size of the procedural clouds."), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_scale_changed));
+	add_environment_slider(preview_cloud_speed_label, preview_cloud_speed_slider, TTR("Cloud Speed: 0.010"), 0.0, 0.1, 0.001, TTR("Set the speed of the procedural cloud movement."), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_speed_changed));
+	preview_sun_animation_timer = memnew(Timer);
+	preview_sun_animation_timer->set_wait_time(0.1);
+	preview_sun_animation_timer->connect(SNAME("timeout"), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_animation_step));
+	add_child(preview_sun_animation_timer);
 
 	scene_import_settings_data = memnew(SceneImportSettingsData);
 	settings_tabs->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_changed));
@@ -3850,11 +3982,14 @@ void SceneImportSettingsScreen::_lod_generate_toggled(bool p_enabled) {
 }
 
 void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
-	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 5) {
+	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 6) {
+		return;
+	}
+	if (p_tab == 6) {
+		_update_material_editor();
 		return;
 	}
 	if (p_tab == 5) {
-		_update_material_editor();
 		return;
 	}
 	if (p_tab == 0) {
@@ -4019,231 +4154,213 @@ void SceneImportSettingsScreen::_apply_material_isolation() {
 	}
 }
 
-void SceneImportSettingsScreen::_setup_model_preview_lighting() {
-	if (!base_viewport || !camera || !light1 || !preview_world_environment_node) {
+void SceneImportSettingsScreen::_setup_model_preview_environment() {
+	if (!base_viewport || !camera || !light1 || !preview_world_environment_node || preview_sky_material.is_null()) {
 		return;
 	}
 
-	if (preview_day_night_cycle != nullptr) {
-		base_viewport->remove_child(preview_day_night_cycle);
-		memdelete(preview_day_night_cycle);
-		preview_day_night_cycle = nullptr;
-	}
-	if (preview_moon_light != nullptr) {
-		base_viewport->remove_child(preview_moon_light);
-		memdelete(preview_moon_light);
-		preview_moon_light = nullptr;
-	}
-
-	environment = create_fps_level_environment();
-	DirectionalLight3D *default_sun = create_fps_level_sun();
-	light1->set_transform(default_sun->get_transform());
-	light1->set_color(default_sun->get_color());
-	light1->set_param(Light3D::PARAM_ENERGY, default_sun->get_param(Light3D::PARAM_ENERGY));
-	light1->set_param(Light3D::PARAM_INDIRECT_ENERGY, default_sun->get_param(Light3D::PARAM_INDIRECT_ENERGY));
-	light1->set_shadow(default_sun->has_shadow());
-	light1->set_shadow_mode(default_sun->get_shadow_mode());
-	light1->set_sky_mode(default_sun->get_sky_mode());
-	memdelete(default_sun);
-
-	Node *source_cycle = nullptr;
-	DirectionalLight3D *source_sun = nullptr;
-	WorldEnvironment *source_world_environment = nullptr;
-	float source_time_of_day = 12.0f;
-	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
-	if (edited_scene != nullptr) {
-		TypedArray<Node> world_environments = edited_scene->find_children("*", "WorldEnvironment", true, false);
-		if (!world_environments.is_empty()) {
-			Object *world_environment_object = world_environments[0];
-			source_world_environment = Object::cast_to<WorldEnvironment>(world_environment_object);
-		}
-
-		TypedArray<Node> directional_lights = edited_scene->find_children("*", "DirectionalLight3D", true, false);
-		if (!directional_lights.is_empty()) {
-			Object *directional_light_object = directional_lights[0];
-			source_sun = Object::cast_to<DirectionalLight3D>(directional_light_object);
-		}
-
-		TypedArray<Node> scene_nodes = edited_scene->find_children("*", "Node3D", true, false);
-		for (int i = 0; i < scene_nodes.size(); i++) {
-			Object *candidate_object = scene_nodes[i];
-			Node *candidate = Object::cast_to<Node>(candidate_object);
-			bool has_time_of_day = false;
-			Variant time_value = candidate->get("time_of_day", &has_time_of_day);
-			if (has_time_of_day) {
-				source_cycle = candidate;
-				source_time_of_day = time_value;
-				break;
-			}
-		}
-		if (source_cycle != nullptr) {
-			bool has_sun_reference = false;
-			Object *sun_reference = source_cycle->get("sun_light", &has_sun_reference);
-			if (has_sun_reference) {
-				source_sun = Object::cast_to<DirectionalLight3D>(sun_reference);
-			}
-			bool has_environment_reference = false;
-			Object *environment_reference = source_cycle->get("world_environment", &has_environment_reference);
-			if (has_environment_reference) {
-				source_world_environment = Object::cast_to<WorldEnvironment>(environment_reference);
-			}
-		}
-	}
-
-	if (source_world_environment != nullptr && source_world_environment->get_environment().is_valid()) {
-		Ref<Resource> duplicated_environment = source_world_environment->get_environment()->duplicate(true);
-		Ref<Environment> source_environment_copy = duplicated_environment;
-		if (source_environment_copy.is_valid()) {
-			environment = source_environment_copy;
-		}
-	}
+	environment = create_model_view_environment(preview_sky_material);
 	preview_world_environment_node->set_environment(environment);
 	camera->set_environment(environment);
 
-	if (source_sun != nullptr) {
-		light1->set_transform(source_sun->get_global_transform());
-		light1->set_color(source_sun->get_color());
-		light1->set_param(Light3D::PARAM_ENERGY, source_sun->get_param(Light3D::PARAM_ENERGY));
-		light1->set_param(Light3D::PARAM_INDIRECT_ENERGY, source_sun->get_param(Light3D::PARAM_INDIRECT_ENERGY));
-		light1->set_param(Light3D::PARAM_SPECULAR, source_sun->get_param(Light3D::PARAM_SPECULAR));
-		light1->set_param(Light3D::PARAM_SHADOW_BIAS, source_sun->get_param(Light3D::PARAM_SHADOW_BIAS));
-		light1->set_param(Light3D::PARAM_SHADOW_BLUR, source_sun->get_param(Light3D::PARAM_SHADOW_BLUR));
-		light1->set_param(Light3D::PARAM_SHADOW_MAX_DISTANCE, source_sun->get_param(Light3D::PARAM_SHADOW_MAX_DISTANCE));
-		light1->set_shadow(source_sun->has_shadow());
-		light1->set_shadow_mode(source_sun->get_shadow_mode());
-		light1->set_sky_mode(source_sun->get_sky_mode());
-	}
+	preview_time_of_day = Math::fposmod((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "day_night_time", 12.0), 24.0f);
+	const float cycle_duration_seconds = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_cycle_duration_seconds", 60.0), 10.0f, 600.0f);
+	const float sun_azimuth_degrees = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_rotation_degrees", 0.0), -180.0f, 180.0f);
+	const float sun_path_tilt = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_path_tilt_degrees", 35.0), 0.0f, 80.0f);
+	const float sun_energy = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_energy", 1.2), 0.0f, 5.0f);
+	preview_sun_animation_enabled = EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_animation_enabled", false);
+	const bool clouds_enabled = EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "clouds_enabled", true);
+	const float cloud_coverage = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "cloud_coverage", 0.5), 0.0f, 1.0f);
+	const float cloud_scale = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "cloud_scale", 1.5), 0.2f, 5.0f);
+	const float cloud_speed = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "cloud_speed", 0.01), 0.0f, 0.1f);
+	preview_sun_cycle_duration_seconds = cycle_duration_seconds;
 
-	if (source_cycle != nullptr) {
-		Ref<Script> cycle_script = source_cycle->get_script();
-		if (cycle_script.is_valid()) {
-			preview_moon_light = memnew(DirectionalLight3D);
-			preview_moon_light->set_name("PreviewMoonLight");
-			preview_moon_light->set_color(Color(0.68, 0.80, 0.98));
-			preview_moon_light->set_param(Light3D::PARAM_ENERGY, 0.0);
-			preview_moon_light->set_param(Light3D::PARAM_SHADOW_BIAS, 0.05);
-			preview_moon_light->set_param(Light3D::PARAM_SHADOW_BLUR, 2.5);
-			preview_moon_light->set_shadow(true);
-			preview_moon_light->hide();
-			base_viewport->add_child(preview_moon_light);
+	preview_time_of_day_slider->set_value_no_signal(preview_time_of_day);
+	preview_sun_cycle_duration_slider->set_value_no_signal(cycle_duration_seconds);
+	preview_sun_azimuth_slider->set_value_no_signal(sun_azimuth_degrees);
+	preview_sun_path_tilt_slider->set_value_no_signal(sun_path_tilt);
+	preview_sun_energy_slider->set_value_no_signal(sun_energy);
+	preview_sun_animation_toggle->set_pressed_no_signal(preview_sun_animation_enabled);
+	preview_clouds_toggle->set_pressed_no_signal(clouds_enabled);
+	preview_cloud_coverage_slider->set_value_no_signal(cloud_coverage);
+	preview_cloud_scale_slider->set_value_no_signal(cloud_scale);
+	preview_cloud_speed_slider->set_value_no_signal(cloud_speed);
 
-			preview_day_night_cycle = memnew(Node3D);
-			preview_day_night_cycle->set_name("PreviewDayNightCycle");
-			preview_day_night_cycle->set_script(cycle_script);
-			preview_day_night_cycle->set("sun_light", light1);
-			preview_day_night_cycle->set("moon_light", preview_moon_light);
-			preview_day_night_cycle->set("world_environment", preview_world_environment_node);
-			for (const StringName &property : { SNAME("latitude_tilt"), SNAME("azimuth_offset"), SNAME("sun_max_energy"), SNAME("moon_max_energy"), SNAME("moon_light_color") }) {
-				bool has_property = false;
-				Variant value = source_cycle->get(property, &has_property);
-				if (has_property) {
-					preview_day_night_cycle->set(property, value);
-				}
-			}
-			bool has_azimuth_offset = false;
-			preview_day_night_base_azimuth_offset = preview_day_night_cycle->get("azimuth_offset", &has_azimuth_offset);
-			if (!has_azimuth_offset) {
-				preview_day_night_base_azimuth_offset = 0.0f;
-			}
-			bool has_moon_color = false;
-			Color moon_color = preview_day_night_cycle->get("moon_light_color", &has_moon_color);
-			if (has_moon_color) {
-				preview_moon_light->set_color(moon_color);
-			}
-			preview_day_night_cycle->set("cycle_active", false);
-			preview_day_night_cycle->set("editor_preview_cycle", false);
-			preview_day_night_cycle->set("time_scale", 1.0f);
-			preview_day_night_cycle->connect(SNAME("time_changed"), callable_mp(this, &SceneImportSettingsScreen::_preview_day_night_cycle_time_changed));
-			base_viewport->add_child(preview_day_night_cycle);
+	_update_preview_time_of_day_label(preview_time_of_day);
+	_update_preview_sun_cycle_duration_label(cycle_duration_seconds);
+	_update_preview_sun_azimuth_label(sun_azimuth_degrees);
+	_update_preview_sun_path_tilt_label(sun_path_tilt);
+	_update_preview_sun_energy_label(sun_energy);
+	_update_preview_cloud_coverage_label(cloud_coverage);
+	_update_preview_cloud_scale_label(cloud_scale);
+	_update_preview_cloud_speed_label(cloud_speed);
+	_update_model_preview_environment();
 
-			const float preview_time = Math::fposmod((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "day_night_time", source_time_of_day), 24.0f);
-			const float cycle_duration_seconds = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_cycle_duration_seconds", 60.0), 10.0f, 600.0f);
-			const float sun_rotation_degrees = CLAMP((float)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_rotation_degrees", 0.0), -180.0f, 180.0f);
-			const bool animate_sun = EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "sun_animation_enabled", false);
-			preview_day_night_cycle->set("azimuth_offset", preview_day_night_base_azimuth_offset + sun_rotation_degrees);
-			preview_day_night_cycle->set("day_duration_minutes", cycle_duration_seconds / 60.0f);
-			preview_day_night_cycle->set("time_of_day", preview_time);
-			preview_day_night_cycle->set("editor_preview_cycle", animate_sun);
-			preview_day_night_slider->set_value_no_signal(preview_time);
-			_update_preview_day_night_label(preview_time);
-			preview_sun_animation_toggle->set_pressed_no_signal(animate_sun);
-			preview_sun_cycle_duration_slider->set_value_no_signal(cycle_duration_seconds);
-			_update_preview_sun_cycle_duration_label(cycle_duration_seconds);
-			preview_sun_rotation_slider->set_value_no_signal(sun_rotation_degrees);
-			_update_preview_sun_rotation_label(sun_rotation_degrees);
-			preview_day_night_label->show();
-			preview_day_night_slider->show();
-			preview_sun_animation_toggle->show();
-			preview_sun_cycle_duration_label->show();
-			preview_sun_cycle_duration_slider->show();
-			preview_sun_rotation_label->show();
-			preview_sun_rotation_slider->show();
-			return;
+	if (preview_sun_animation_timer != nullptr) {
+		preview_sun_animation_timer->set_wait_time(0.1);
+		if (preview_sun_animation_enabled && is_visible_in_tree()) {
+			preview_sun_animation_timer->start();
+		} else {
+			preview_sun_animation_timer->stop();
 		}
 	}
-
-	preview_day_night_label->hide();
-	preview_day_night_slider->hide();
-	preview_sun_animation_toggle->hide();
-	preview_sun_cycle_duration_label->hide();
-	preview_sun_cycle_duration_slider->hide();
-	preview_sun_rotation_label->hide();
-	preview_sun_rotation_slider->hide();
 }
 
-void SceneImportSettingsScreen::_preview_day_night_time_changed(double p_value) {
-	if (preview_day_night_cycle == nullptr) {
+void SceneImportSettingsScreen::_update_model_preview_environment() {
+	if (!light1 || !environment.is_valid() || preview_sky_material.is_null()) {
 		return;
 	}
-	const float time_of_day = Math::fposmod((float)p_value, 24.0f);
-	preview_day_night_cycle->set("time_of_day", time_of_day);
-	preview_day_night_slider->set_value_no_signal(time_of_day);
-	_update_preview_day_night_label(time_of_day);
-	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", time_of_day);
+	const float time_of_day = preview_time_of_day;
+	const float azimuth_degrees = preview_sun_azimuth_slider != nullptr ? preview_sun_azimuth_slider->get_value() : 0.0f;
+	const float path_tilt_degrees = preview_sun_path_tilt_slider != nullptr ? preview_sun_path_tilt_slider->get_value() : 35.0f;
+	const float sun_max_energy = preview_sun_energy_slider != nullptr ? preview_sun_energy_slider->get_value() : 1.2f;
+	const float cloud_coverage = preview_cloud_coverage_slider != nullptr ? preview_cloud_coverage_slider->get_value() : 0.5f;
+	const float cloud_scale = preview_cloud_scale_slider != nullptr ? preview_cloud_scale_slider->get_value() : 1.5f;
+	const float cloud_speed = preview_cloud_speed_slider != nullptr ? preview_cloud_speed_slider->get_value() : 0.01f;
+	const bool clouds_enabled = preview_clouds_toggle != nullptr && preview_clouds_toggle->is_pressed();
+
+	const float theta = ((time_of_day - 6.0f) / 24.0f) * Math::TAU;
+	const float path_tilt = Math::deg_to_rad(path_tilt_degrees);
+	Vector3 sun_direction(Math::cos(theta), Math::sin(theta) * Math::cos(path_tilt), Math::sin(theta) * Math::sin(path_tilt));
+	sun_direction = sun_direction.rotated(Vector3::UP, Math::deg_to_rad(azimuth_degrees)).normalized();
+	const Vector3 light_target = -sun_direction;
+	const Vector3 light_up = Math::abs(sun_direction.y) < 0.98f ? Vector3::UP : Vector3::FORWARD;
+	light1->look_at_from_position(Vector3(), light_target, light_up);
+
+	const float daylight_amount = CLAMP((sun_direction.y + 0.02f) / 0.14f, 0.0f, 1.0f);
+	const float daylight = daylight_amount * daylight_amount * (3.0f - 2.0f * daylight_amount);
+	const float dawn = (1.0f - CLAMP(Math::abs(time_of_day - 6.5f) / 1.8f, 0.0f, 1.0f));
+	const float dusk = (1.0f - CLAMP(Math::abs(time_of_day - 18.5f) / 1.8f, 0.0f, 1.0f));
+	const float twilight = MAX(dawn, dusk);
+	const Color night_top(0.025, 0.045, 0.075);
+	const Color day_top(0.30, 0.42, 0.58);
+	const Color night_horizon(0.07, 0.095, 0.14);
+	const Color day_horizon(0.43, 0.51, 0.61);
+	const Color twilight_horizon(0.72, 0.43, 0.34);
+	const Color night_ground(0.06, 0.075, 0.10);
+	const Color day_ground(0.43, 0.51, 0.61);
+	const Color sky_top = night_top.lerp(day_top, daylight);
+	const Color sky_horizon = night_horizon.lerp(day_horizon, daylight).lerp(twilight_horizon, twilight * 0.55f);
+	const Color ground_color = night_ground.lerp(day_ground, daylight);
+	const Color sun_color = Color(1.0, 0.68, 0.42).lerp(Color(1.0, 0.96, 0.88), daylight);
+	light1->set_color(sun_color);
+	light1->set_param(Light3D::PARAM_ENERGY, sun_max_energy * daylight);
+	light1->set_visible(sun_direction.y > -0.06f);
+	preview_sky_material->set_shader_parameter("sky_top_color", sky_top);
+	preview_sky_material->set_shader_parameter("sky_horizon_color", sky_horizon);
+	preview_sky_material->set_shader_parameter("ground_color", ground_color);
+	preview_sky_material->set_shader_parameter("sun_color", sun_color);
+	preview_sky_material->set_shader_parameter("clouds_enabled", clouds_enabled);
+	preview_sky_material->set_shader_parameter("cloud_coverage", cloud_coverage);
+	preview_sky_material->set_shader_parameter("cloud_scale", cloud_scale);
+	preview_sky_material->set_shader_parameter("cloud_speed", cloud_speed);
+	const float ambient_energy = Math::lerp(0.2f, 1.35f, daylight);
+	environment->set_ambient_light_color(Color(0.72, 0.78, 0.9).lerp(Color(1.0, 1.0, 1.0), daylight));
+	environment->set_ambient_light_energy(ambient_energy);
+	environment->set_fog_light_color(sky_horizon);
+	if (preview_floor_material.is_valid()) {
+		preview_floor_material->set_shader_parameter("horizon_color", sky_horizon);
+	}
 }
 
-void SceneImportSettingsScreen::_preview_day_night_cycle_time_changed(double p_value, const String &) {
-	preview_day_night_slider->set_value_no_signal(p_value);
-	_update_preview_day_night_label(p_value);
+void SceneImportSettingsScreen::_preview_time_of_day_changed(double p_value) {
+	preview_time_of_day = Math::fposmod((float)p_value, 24.0f);
+	preview_time_of_day_slider->set_value_no_signal(preview_time_of_day);
+	_update_preview_time_of_day_label(preview_time_of_day);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", preview_time_of_day);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_preview_sun_animation_step() {
+	if (!preview_sun_animation_enabled || preview_sun_animation_timer == nullptr) {
+		return;
+	}
+	preview_time_of_day = Math::fposmod(preview_time_of_day + 24.0f * (float)preview_sun_animation_timer->get_wait_time() / preview_sun_cycle_duration_seconds, 24.0f);
+	preview_time_of_day_slider->set_value_no_signal(preview_time_of_day);
+	_update_preview_time_of_day_label(preview_time_of_day);
+	_update_model_preview_environment();
+	preview_sun_animation_metadata_elapsed += (float)preview_sun_animation_timer->get_wait_time();
+	if (preview_sun_animation_metadata_elapsed >= 1.0f) {
+		preview_sun_animation_metadata_elapsed = 0.0f;
+		EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", preview_time_of_day);
+	}
 }
 
 void SceneImportSettingsScreen::_preview_sun_animation_toggled(bool p_enabled) {
-	if (preview_day_night_cycle == nullptr) {
-		return;
-	}
-	preview_day_night_cycle->set("editor_preview_cycle", p_enabled);
+	preview_sun_animation_enabled = p_enabled;
 	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_animation_enabled", p_enabled);
+	if (preview_sun_animation_timer != nullptr) {
+		if (p_enabled && is_visible_in_tree()) {
+			preview_sun_animation_timer->start();
+		} else {
+			preview_sun_animation_timer->stop();
+		}
+	}
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", preview_time_of_day);
 }
 
 void SceneImportSettingsScreen::_preview_sun_cycle_duration_changed(double p_value) {
-	if (preview_day_night_cycle == nullptr) {
-		return;
-	}
-	const float duration_seconds = CLAMP((float)p_value, 10.0f, 600.0f);
-	preview_day_night_cycle->set("day_duration_minutes", duration_seconds / 60.0f);
-	preview_sun_cycle_duration_slider->set_value_no_signal(duration_seconds);
-	_update_preview_sun_cycle_duration_label(duration_seconds);
-	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_cycle_duration_seconds", duration_seconds);
+	preview_sun_cycle_duration_seconds = CLAMP((float)p_value, 10.0f, 600.0f);
+	preview_sun_cycle_duration_slider->set_value_no_signal(preview_sun_cycle_duration_seconds);
+	_update_preview_sun_cycle_duration_label(preview_sun_cycle_duration_seconds);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_cycle_duration_seconds", preview_sun_cycle_duration_seconds);
 }
 
-void SceneImportSettingsScreen::_preview_sun_rotation_changed(double p_value) {
-	if (preview_day_night_cycle == nullptr) {
-		return;
-	}
-	const float rotation_degrees = CLAMP((float)p_value, -180.0f, 180.0f);
-	preview_day_night_cycle->set("azimuth_offset", preview_day_night_base_azimuth_offset + rotation_degrees);
-	bool has_time_of_day = false;
-	const float time_of_day = preview_day_night_cycle->get("time_of_day", &has_time_of_day);
-	if (has_time_of_day) {
-		preview_day_night_cycle->set("time_of_day", time_of_day);
-	}
-	preview_sun_rotation_slider->set_value_no_signal(rotation_degrees);
-	_update_preview_sun_rotation_label(rotation_degrees);
-	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_rotation_degrees", rotation_degrees);
+void SceneImportSettingsScreen::_preview_sun_azimuth_changed(double p_value) {
+	const float azimuth_degrees = CLAMP((float)p_value, -180.0f, 180.0f);
+	preview_sun_azimuth_slider->set_value_no_signal(azimuth_degrees);
+	_update_preview_sun_azimuth_label(azimuth_degrees);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_rotation_degrees", azimuth_degrees);
+	_update_model_preview_environment();
 }
 
-void SceneImportSettingsScreen::_update_preview_day_night_label(double p_value) {
-	if (!preview_day_night_label) {
+void SceneImportSettingsScreen::_preview_sun_path_tilt_changed(double p_value) {
+	const float path_tilt_degrees = CLAMP((float)p_value, 0.0f, 80.0f);
+	preview_sun_path_tilt_slider->set_value_no_signal(path_tilt_degrees);
+	_update_preview_sun_path_tilt_label(path_tilt_degrees);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_path_tilt_degrees", path_tilt_degrees);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_preview_sun_energy_changed(double p_value) {
+	const float sun_energy = CLAMP((float)p_value, 0.0f, 5.0f);
+	preview_sun_energy_slider->set_value_no_signal(sun_energy);
+	_update_preview_sun_energy_label(sun_energy);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "sun_energy", sun_energy);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_preview_clouds_toggled(bool p_enabled) {
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "clouds_enabled", p_enabled);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_preview_cloud_coverage_changed(double p_value) {
+	const float coverage = CLAMP((float)p_value, 0.0f, 1.0f);
+	preview_cloud_coverage_slider->set_value_no_signal(coverage);
+	_update_preview_cloud_coverage_label(coverage);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "cloud_coverage", coverage);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_preview_cloud_scale_changed(double p_value) {
+	const float scale = CLAMP((float)p_value, 0.2f, 5.0f);
+	preview_cloud_scale_slider->set_value_no_signal(scale);
+	_update_preview_cloud_scale_label(scale);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "cloud_scale", scale);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_preview_cloud_speed_changed(double p_value) {
+	const float speed = CLAMP((float)p_value, 0.0f, 0.1f);
+	preview_cloud_speed_slider->set_value_no_signal(speed);
+	_update_preview_cloud_speed_label(speed);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "cloud_speed", speed);
+	_update_model_preview_environment();
+}
+
+void SceneImportSettingsScreen::_update_preview_time_of_day_label(double p_value) {
+	if (!preview_time_of_day_label) {
 		return;
 	}
 	const float time_of_day = Math::fposmod((float)p_value, 24.0f);
@@ -4254,7 +4371,7 @@ void SceneImportSettingsScreen::_update_preview_day_night_label(double p_value) 
 		minute = 0;
 		display_hour = (display_hour + 1) % 24;
 	}
-	preview_day_night_label->set_text(vformat(TTR("DayNightCycle: %02d:%02d"), display_hour, minute));
+	preview_time_of_day_label->set_text(vformat(TTR("Time of Day: %02d:%02d"), display_hour, minute));
 }
 
 void SceneImportSettingsScreen::_update_preview_sun_cycle_duration_label(double p_value) {
@@ -4264,11 +4381,40 @@ void SceneImportSettingsScreen::_update_preview_sun_cycle_duration_label(double 
 	preview_sun_cycle_duration_label->set_text(vformat(TTR("Cycle Duration: %d s"), (int64_t)Math::round(p_value)));
 }
 
-void SceneImportSettingsScreen::_update_preview_sun_rotation_label(double p_value) {
-	if (!preview_sun_rotation_label) {
-		return;
+void SceneImportSettingsScreen::_update_preview_sun_azimuth_label(double p_value) {
+	if (preview_sun_azimuth_label) {
+		preview_sun_azimuth_label->set_text(vformat(TTR("Sun Azimuth: %d deg"), (int64_t)Math::round(p_value)));
 	}
-	preview_sun_rotation_label->set_text(vformat(TTR("Sun Rotation: %d deg"), (int64_t)Math::round(p_value)));
+}
+
+void SceneImportSettingsScreen::_update_preview_sun_path_tilt_label(double p_value) {
+	if (preview_sun_path_tilt_label) {
+		preview_sun_path_tilt_label->set_text(vformat(TTR("Sun Path Tilt: %d deg"), (int64_t)Math::round(p_value)));
+	}
+}
+
+void SceneImportSettingsScreen::_update_preview_sun_energy_label(double p_value) {
+	if (preview_sun_energy_label) {
+		preview_sun_energy_label->set_text(vformat(TTR("Sun Energy: %s"), String::num(p_value, 2)));
+	}
+}
+
+void SceneImportSettingsScreen::_update_preview_cloud_coverage_label(double p_value) {
+	if (preview_cloud_coverage_label) {
+		preview_cloud_coverage_label->set_text(vformat(TTR("Cloud Coverage: %d percent"), (int64_t)Math::round(p_value * 100.0)));
+	}
+}
+
+void SceneImportSettingsScreen::_update_preview_cloud_scale_label(double p_value) {
+	if (preview_cloud_scale_label) {
+		preview_cloud_scale_label->set_text(vformat(TTR("Cloud Scale: %s"), String::num(p_value, 2)));
+	}
+}
+
+void SceneImportSettingsScreen::_update_preview_cloud_speed_label(double p_value) {
+	if (preview_cloud_speed_label) {
+		preview_cloud_speed_label->set_text(vformat(TTR("Cloud Speed: %s"), String::num(p_value, 3)));
+	}
 }
 
 void SceneImportSettingsScreen::_material_inspector_property_edited(const String &) {

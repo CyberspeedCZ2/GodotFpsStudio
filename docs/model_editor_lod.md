@@ -6,9 +6,9 @@ Tento dokument popisuje aktuální chování pracovního prostoru Model v Godot 
 
 - Vlevo je strom scény a seznamy meshů a materiálů. Výběr meshe omezuje statistiky i LOD úpravy na tento mesh.
 - Uprostřed je 3D náhled. Ovládací prvky náhledu umožňují model orámovat, přepínat drátěný režim, zapínat automatický výběr LOD nebo ručně prohlížet dostupné úrovně.
-- Pod modelem je barevně tlumená perspektivní mřížka a měkký stín. Mřížka se s dálkou ztrácí do barevného obzoru hloubkovou mlhou, která začíná přibližně 60 m od kamery. Náhled sdílí pevné slunce, procedurální oblohu, ambientní osvětlení a odrazy s novým FPS Level. Otáčení kamery nemění polohu světla ani stínu. Pomocná podlaha patří pouze náhledu a nepřidává se do importovaného modelu.
+- Pod modelem je barevně tlumená perspektivní mřížka a měkký stín. Mřížka se s dálkou ztrácí do barevného obzoru hloubkovou mlhou, která začíná přibližně 60 m od kamery. Model View má vlastní procedurální oblohu s mraky, slunce, ambientní osvětlení i odrazy; nastavení otevřené Level scény se do náhledu nepřenášejí. Otáčení kamery nemění polohu světla ani stínu. Pomocná podlaha patří pouze náhledu a nepřidává se do importovaného modelu.
 - Přes náhled se zobrazují statistiky právě vykreslovaného LOD: počet trojúhelníků a vrcholů. Podle dostupných údajů může být zobrazen také počet původních polygonů.
-- Vpravo jsou oddělené karty LOD, Mesh, Physics, Lighting a Details.
+- Vpravo jsou karty LOD, Mesh, Physics, Lighting, Details, Environment a Material. Environment řídí pouze vzhled náhledu Model View: čas a směr slunce, sklon jeho denní dráhy, intenzitu světla, animaci den/noc a zapnutí, hustotu, velikost i rychlost mraků. Hodnoty se ukládají jako metadata projektu editoru a nijak nemění Level ani importovaný model.
 - Kamera se při prvním otevření přizpůsobí mezím modelu. Výpočet používá poloměr obalující koule, takže samotné otáčení modelu nemění vzdálenost kamery. Tlačítko Frame znovu vystředí a přiblíží aktuální obsah; zoom a posun zůstávají ručním ovládáním.
 
 ## Nastavení LOD
