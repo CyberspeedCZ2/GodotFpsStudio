@@ -6,6 +6,7 @@
 - Základem je kompletní zdrojový fork Godotu 4.7.2.
 - Vývojový build cílí na macOS Apple Silicon. Hry mohou cílit na další platformy, ale exportní šablony nejsou součástí běžného editorového buildu.
 - Repo obsahuje zdrojový kód editoru a enginu, nikoli aktuální samostatný FPS herní projekt.
+- Herní projekt je samostatný repozitář `/Users/davidsoudil/Projects/Godot/project-hl-2-inspiration` na GitHubu `CyberspeedCZ2/project-hl-2-inspiration`. Jeho scény a herní obsah nepatří do tohoto repozitáře.
 
 ## Pokyny pro práci
 
@@ -36,3 +37,4 @@
 - `engine/editor/import/3d/scene_import_settings.cpp` — náhled a nastavení importu modelů včetně LOD.
 - `engine/modules/navigation_3d/` a `engine/scene/3d/navigation/` — NavigationMesh a NavigationObstacle3D.
 - `tools/build_macos.sh` — build, balení aplikace a podpis.
+- Aktuální dokumentace: `README.md`, `docs/architecture.md` a `docs/model_editor_lod.md`.
