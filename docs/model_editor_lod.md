@@ -42,10 +42,10 @@ Per-mesh konfigurace vyžaduje stabilní import ID v původním souboru. Pokud j
 
 ## Build
 
-macOS arm64 build projektu se vytváří skriptem:
+macOS arm64 aplikaci sestaví a nainstaluje skript:
 
 ```sh
 ./tools/build_macos.sh
 ```
 
-V rámci této změny build doběhl úspěšně a výsledná aplikace prošla ověřením ad-hoc podpisu. Editor nebyl při této dokumentační změně spuštěn.
+Výsledkem je `Godot FPS Studio.app` v kořeni repozitáře. Build skript nevytváří ZIP archiv.

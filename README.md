@@ -1,42 +1,41 @@
 # Godot FPS Studio
 
-Samostatná aplikace postavená ze zdrojového forku Godotu 4.7.2-stable. Zachovává Godot logo a značku v hlavičce, ale aplikace, titulky oken a systémová složka nastavení používají název Godot FPS Studio. Editor je součástí upraveného enginu a funguje nad libovolným Godot projektem.
+Godot FPS Studio is a source fork of Godot 4.7.2 with a native editor workspace for FPS level and asset authoring. It is built from the complete Godot engine source and currently targets a macOS Apple Silicon editor build.
 
-## Struktura
+## Repository contents
 
-```text
-godot-fps-fork/
-├── engine/                         # upravený zdrojový kód Godotu 4.7.2
-│   └── editor/fps_studio/          # vlastní vrstva pracovního prostředí, postupně vyčleňovaná
-├── templates/fps_vertical_slice/   # volitelná šablona hry, bez editorových pluginů
-├── docs/architecture.md            # hranice modulů a další etapy
-└── tools/build_macos.sh            # sestavení a balení aplikace pro Apple Silicon
-```
+- `engine/` — Godot engine source, including FPS Studio editor changes and upstream modules.
+- `engine/editor/fps_studio/` — FPS Studio workspace code and the bundled UniBuilder source.
+- `docs/` — current architecture and feature documentation.
+- `tools/build_macos.sh` — builds and installs the macOS arm64 application.
+- `tools/pack_fps_studio_unibuilder.gd` — packs UniBuilder resources into the editor bundle.
 
-## První změny editoru
+This repository does not currently include a standalone game sample or a reusable FPS project template. The build script can package the editor without either.
 
-- Projekt Manager i editor mají název **Godot FPS Studio**; Godot logo zůstává.
-- Nastavení enginu používá vlastní systémovou složku `godotfpsstudio`, oddělenou od běžné instalace Godotu.
-- Výchozí pracovní plocha je přestavěná pro tvorbu levelů: velký viewport uprostřed, **World Outliner** vpravo nahoře, **Details** vpravo dole a **Content Browser** ve spodní části viewportu. Hlavní pracovní záložky jsou Level, Code a Assets; spuštěná hra se při volbě **Run in Level View** zobrazí přímo přes 3D viewport Level. Vedle tlačítka spuštění lze zvolit **Run in Separate Window**. Nabídka Editor se jmenuje FPS Studio.
-- Při prvním otevření projektu fork jednorázově převede staré rozložení editoru na FPS pracovní plochu a pak už respektuje uložené uživatelské rozložení.
-- Vestavěný souborový panel je pojmenovaný **Content Browser** přímo ve zdrojovém kódu enginu. Zobrazuje se s každým projektem a není závislý na ukázkové hře.
-- Content Browser má typové filtry pro scény, skripty, 3D zdroje, materiály, textury a zvuk. Nabídka **FPS +** založí GDScript výchozí bod pro hráčský controller, zbraň, interakce nebo Action Director.
-- FPS šablona je samostatná herní ukázka. Nepřidává editorové pluginy do nastavení projektu.
+## Current editor
 
-Tohle je první kompletní průchod novou pracovní plochou inspirovanou UE5. Content Browser zatím vychází z vestavěného souborového panelu Godotu. Základní Play in Editor režim teď používá Level viewport; další kroky jsou Hammer-style level nástroje, Action Director timeline v GDScriptu a God Mode.
+The editor is built into the engine, so its workspace and tools are available when opening any Godot project. The custom UI is still hosted by Godot's `EditorNode`; FPS Studio is not a separately rewritten editor.
 
-Aplikace je samostatně pojmenovaná a balená, ale její editorové UI zatím stále běží uvnitř Godot `EditorNode`. Nejde tedy ještě o editor přepsaný od nuly. Vlastní vrstvu pracovního prostředí začíná oddělovat `engine/editor/fps_studio/FPSStudioWorkspace`; další části rozhraní se mají přesouvat postupně, při zachování potřebných engine služeb.
+The workspace includes Level, Model, Code, and Assets screens, a Content Browser, Level viewport authoring tools, NPC route editing, NavigationMesh tools, and model import settings with LOD preview and configuration. Play can run in the Level viewport or in a separate window.
 
-## Sestavení na macOS Apple Silicon
+UniBuilder is bundled with the editor as a built-in resource pack. It does not need to be installed as a project add-on.
 
-Před sestavením je potřeba alespoň 25 GiB volného místa. Sestavení využívá Xcode, Python 3.9+ a SCons 4.4+. Čisté sestavení potřebuje Vulkan SDK/MoltenVK; stávající místní SCons build cache umožňuje znovu sestavit upravené zdroje bez nové instalace SDK. Skript nic neinstaluje.
+## Build on macOS Apple Silicon
 
-Engine binárky a výchozí Intel exporty nyní cílí na macOS 12+, aby odpovídaly MoltenVK 1.4.2 z Vulkan SDK 1.4.363.0. Aplikace FPS Studio vyžaduje podle metadat balíčku macOS 13+ na Apple Silicon a macOS 12+ na Intelu; výchozí Apple Silicon exporty her také zůstávají na macOS 13+.
+Requirements:
+
+- macOS on Apple Silicon
+- Xcode command-line tools
+- Python 3.9 or newer
+- SCons 4.4 or newer
+- Vulkan SDK with MoltenVK for a clean build
+
+An already configured local SCons build can be rebuilt without installing the Vulkan SDK again. Keep the existing build cache if you rely on that setup.
+
+Run:
 
 ```sh
 ./tools/build_macos.sh
 ```
 
-Výsledkem je ověřený archiv `Godot FPS Studio macOS arm64.zip` s podepsanou lokálním ad-hoc podpisem aplikací `Godot FPS Studio.app`. Spuštění aplikace bez argumentů zobrazí Projekt Manager; po otevření nebo vytvoření projektu se načte upravený editor s Content Browser panelem. Šablonu hry lze importovat z `templates/fps_vertical_slice/project.godot`.
-
-Hry budou cílit na Windows, macOS a Linux. Exportní šablony pro tyto systémy zatím nejsou sestavené.
+The script installs the signed application at `Godot FPS Studio.app` in the repository root. It does not create a ZIP archive. The app bundle and compiler outputs are local build artifacts and are ignored by Git.
