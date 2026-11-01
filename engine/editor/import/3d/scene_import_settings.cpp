@@ -4160,33 +4160,56 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	scroll->add_child(content);
 
 	Label *hint = memnew(Label);
-	hint->set_text(TTR("Hitboxes are boxes defined by Minimum and Maximum corners in the selected bone's local space. Hitgroups classify damage areas."));
+	hint->set_text(TTR("Each hitbox is a box attached to the selected bone or model root."));
 	hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	content->add_child(hint);
 
-	HBoxContainer *buttons = memnew(HBoxContainer);
-	content->add_child(buttons);
+	HBoxContainer *list_toolbar = memnew(HBoxContainer);
+	content->add_child(list_toolbar);
+	Label *list_title = memnew(Label);
+	list_title->set_text(TTR("Hitbox List"));
+	list_title->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	list_toolbar->add_child(list_title);
+	hitbox_count_label = memnew(Label);
+	list_toolbar->add_child(hitbox_count_label);
 	Button *add_button = memnew(Button);
 	add_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Add"), EditorStringName(EditorIcons)));
 	add_button->set_tooltip_text(TTR("Add Hitbox"));
 	add_button->set_flat(true);
 	add_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_add_hitbox));
-	buttons->add_child(add_button);
-	Button *remove_button = memnew(Button);
-	remove_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
-	remove_button->set_tooltip_text(TTR("Remove Hitbox"));
-	remove_button->set_flat(true);
-	remove_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_remove_hitbox));
-	buttons->add_child(remove_button);
+	list_toolbar->add_child(add_button);
+	hitbox_duplicate_button = memnew(Button);
+	hitbox_duplicate_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Duplicate"), EditorStringName(EditorIcons)));
+	hitbox_duplicate_button->set_tooltip_text(TTR("Duplicate Hitbox"));
+	hitbox_duplicate_button->set_flat(true);
+	hitbox_duplicate_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_duplicate_hitbox));
+	list_toolbar->add_child(hitbox_duplicate_button);
+	hitbox_remove_button = memnew(Button);
+	hitbox_remove_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Remove"), EditorStringName(EditorIcons)));
+	hitbox_remove_button->set_tooltip_text(TTR("Remove Hitbox"));
+	hitbox_remove_button->set_flat(true);
+	hitbox_remove_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_remove_hitbox));
+	list_toolbar->add_child(hitbox_remove_button);
 
 	hitbox_tree = memnew(Tree);
-	hitbox_tree->set_columns(1);
+	hitbox_tree->set_columns(2);
 	hitbox_tree->set_hide_root(true);
+	hitbox_tree->set_column_titles_visible(true);
+	hitbox_tree->set_column_title(0, TTR("Name"));
+	hitbox_tree->set_column_title(1, TTR("Hitgroup"));
+	hitbox_tree->set_column_expand(0, true);
+	hitbox_tree->set_column_custom_minimum_width(0, 120 * EDSCALE);
+	hitbox_tree->set_column_expand(1, false);
+	hitbox_tree->set_column_custom_minimum_width(1, 105 * EDSCALE);
 	hitbox_tree->set_custom_minimum_size(Size2(0, 150 * EDSCALE));
 	hitbox_tree->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	hitbox_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	hitbox_tree->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_tree_selected));
 	content->add_child(hitbox_tree);
+
+	Label *selected_hitbox_label = memnew(Label);
+	selected_hitbox_label->set_text(TTR("Selected Hitbox"));
+	content->add_child(selected_hitbox_label);
 
 	HBoxContainer *name_row = memnew(HBoxContainer);
 	content->add_child(name_row);
@@ -4209,7 +4232,7 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hitbox_group_option->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	const String hitgroup_names[] = { TTR("Generic"), TTR("Head"), TTR("Chest"), TTR("Stomach"), TTR("Left Arm"), TTR("Right Arm"), TTR("Left Leg"), TTR("Right Leg") };
 	for (int i = 0; i < 8; i++) {
-		hitbox_group_option->add_item(vformat("%d — %s", i, hitgroup_names[i]), i);
+		hitbox_group_option->add_item(vformat("%d: %s", i, hitgroup_names[i]), i);
 	}
 	hitbox_group_option->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_group_changed));
 	group_row->add_child(hitbox_group_option);
@@ -4225,6 +4248,9 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hitbox_attachment_option->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_attachment_changed));
 	attachment_row->add_child(hitbox_attachment_option);
 
+	Label *bounds_label = memnew(Label);
+	bounds_label->set_text(TTR("Bounds"));
+	content->add_child(bounds_label);
 	const String axis_names[3] = { TTR("X"), TTR("Y"), TTR("Z") };
 	auto add_vector_row = [&](const String &p_title, SpinBox **r_inputs, int p_field) {
 		HBoxContainer *row = memnew(HBoxContainer);
@@ -4285,13 +4311,18 @@ void SceneImportSettingsScreen::_populate_hitbox_tree() {
 	const String hitgroup_names[] = { TTR("Generic"), TTR("Head"), TTR("Chest"), TTR("Stomach"), TTR("Left Arm"), TTR("Right Arm"), TTR("Left Leg"), TTR("Right Leg") };
 	hitbox_ui_updating = true;
 	hitbox_tree->clear();
+	if (hitbox_count_label) {
+		hitbox_count_label->set_text(vformat(TTR("%d hitboxes"), model_hitboxes.size()));
+	}
 	TreeItem *root = hitbox_tree->create_item();
 	for (int i = 0; i < model_hitboxes.size(); i++) {
 		const ModelHitbox &hitbox = model_hitboxes[i];
 		TreeItem *item = hitbox_tree->create_item(root);
-		item->set_text(0, vformat(TTR("%s — %s"), hitbox.name, hitgroup_names[CLAMP(hitbox.hitgroup, 0, 7)]));
+		item->set_text(0, hitbox.name);
+		item->set_text(1, vformat("%d: %s", CLAMP(hitbox.hitgroup, 0, 7), hitgroup_names[CLAMP(hitbox.hitgroup, 0, 7)]));
 		item->set_meta("hitbox_index", i);
 		item->set_selectable(0, true);
+		item->set_selectable(1, false);
 		if (i == selected_hitbox) {
 			item->select(0);
 		}
@@ -4358,6 +4389,12 @@ void SceneImportSettingsScreen::_select_hitbox(int p_index) {
 		}
 		hitbox_ui_updating = false;
 	}
+	if (hitbox_duplicate_button) {
+		hitbox_duplicate_button->set_disabled(selected_hitbox < 0);
+	}
+	if (hitbox_remove_button) {
+		hitbox_remove_button->set_disabled(selected_hitbox < 0);
+	}
 	_populate_hitbox_attachments();
 	_populate_hitbox_tree();
 	_update_hitbox_preview();
@@ -4372,6 +4409,31 @@ void SceneImportSettingsScreen::_add_hitbox() {
 		hitbox.maximum = contents_aabb.get_center() + half_size;
 	}
 	model_hitboxes.push_back(hitbox);
+	selected_hitbox = model_hitboxes.size() - 1;
+	_select_hitbox(selected_hitbox);
+	_save_hitbox_config();
+}
+
+void SceneImportSettingsScreen::_duplicate_hitbox() {
+	if (selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
+		return;
+	}
+	ModelHitbox duplicate = model_hitboxes[selected_hitbox];
+	const String base_name = duplicate.name + TTR(" Copy");
+	duplicate.name = base_name;
+	int copy_number = 2;
+	bool name_in_use = true;
+	while (name_in_use) {
+		name_in_use = false;
+		for (const ModelHitbox &existing : model_hitboxes) {
+			if (existing.name == duplicate.name) {
+				duplicate.name = vformat(TTR("%s %d"), base_name, copy_number++);
+				name_in_use = true;
+				break;
+			}
+		}
+	}
+	model_hitboxes.push_back(duplicate);
 	selected_hitbox = model_hitboxes.size() - 1;
 	_select_hitbox(selected_hitbox);
 	_save_hitbox_config();

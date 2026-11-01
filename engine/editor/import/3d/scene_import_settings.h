@@ -213,9 +213,12 @@ class SceneImportSettingsScreen : public Control {
 	int selected_hitbox = -1;
 	bool hitbox_ui_updating = false;
 	Tree *hitbox_tree = nullptr;
+	Label *hitbox_count_label = nullptr;
 	LineEdit *hitbox_name_input = nullptr;
 	OptionButton *hitbox_group_option = nullptr;
 	OptionButton *hitbox_attachment_option = nullptr;
+	Button *hitbox_duplicate_button = nullptr;
+	Button *hitbox_remove_button = nullptr;
 	Ref<Material> hitbox_preview_material;
 	Ref<Material> hitbox_selected_preview_material;
 	SpinBox *hitbox_minimum_inputs[3] = {};
@@ -450,6 +453,7 @@ class SceneImportSettingsScreen : public Control {
 	void _populate_hitbox_attachments();
 	void _select_hitbox(int p_index);
 	void _add_hitbox();
+	void _duplicate_hitbox();
 	void _remove_hitbox();
 	void _hitbox_tree_selected();
 	void _hitbox_name_changed(const String &p_name);
