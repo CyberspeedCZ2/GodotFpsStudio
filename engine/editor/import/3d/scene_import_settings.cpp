@@ -1932,6 +1932,10 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	_update_scene();
 
 	base_viewport->add_child(scene);
+	if (_repair_legacy_leg_hitbox_attachments()) {
+		_select_hitbox(selected_hitbox);
+		_save_hitbox_config();
+	}
 	_populate_hitbox_attachments();
 	_update_hitbox_preview();
 
@@ -5017,6 +5021,96 @@ void SceneImportSettingsScreen::_load_hitbox_config() {
 	selected_hitbox = model_hitboxes.is_empty() ? -1 : 0;
 	_populate_hitbox_tree();
 	_select_hitbox(selected_hitbox);
+}
+
+bool SceneImportSettingsScreen::_repair_legacy_leg_hitbox_attachments() {
+	Node3D *scene_root = Object::cast_to<Node3D>(scene);
+	if (!scene_root) {
+		return false;
+	}
+
+	static const String segment_names[2][2] = {
+		{ TTR("Left Thigh"), TTR("Left Lower Leg") },
+		{ TTR("Right Thigh"), TTR("Right Lower Leg") },
+	};
+	static const char *lower_leg_aliases[2][14] = {
+		{ "leftlowerleg", "lowerlegleft", "lowerlegl", "llowerleg", "leftcalf", "calfleft", "calfl", "lcalf", "leftshin", "shinl", "leftleg", "legleft", "legl", "lleg" },
+		{ "rightlowerleg", "lowerlegright", "lowerlegr", "rlowerleg", "rightcalf", "calfright", "calfr", "rcalf", "rightshin", "shinr", "rightleg", "legright", "legr", "rleg" },
+	};
+	auto transform_bounds = [](const Vector3 &p_minimum, const Vector3 &p_maximum, const Transform3D &p_transform, Vector3 &r_minimum, Vector3 &r_maximum) {
+		bool first_corner = true;
+		for (int x = 0; x < 2; x++) {
+			for (int y = 0; y < 2; y++) {
+				for (int z = 0; z < 2; z++) {
+					const Vector3 corner(x == 0 ? p_minimum.x : p_maximum.x, y == 0 ? p_minimum.y : p_maximum.y, z == 0 ? p_minimum.z : p_maximum.z);
+					const Vector3 transformed_corner = p_transform.xform(corner);
+					if (first_corner) {
+						r_minimum = transformed_corner;
+						r_maximum = transformed_corner;
+						first_corner = false;
+					} else {
+						for (int axis = 0; axis < 3; axis++) {
+							r_minimum[axis] = MIN(r_minimum[axis], transformed_corner[axis]);
+							r_maximum[axis] = MAX(r_maximum[axis], transformed_corner[axis]);
+						}
+					}
+				}
+			}
+		}
+	};
+
+	bool changed = false;
+	for (int side = 0; side < 2; side++) {
+		int upper_index = -1;
+		int lower_index = -1;
+		for (int i = 0; i < model_hitboxes.size(); i++) {
+			const ModelHitbox &hitbox = model_hitboxes[i];
+			if (hitbox.hitgroup != 6 + side) {
+				continue;
+			}
+			if (hitbox.name == segment_names[side][0]) {
+				upper_index = i;
+			} else if (hitbox.name == segment_names[side][1]) {
+				lower_index = i;
+			}
+		}
+		if (upper_index < 0 || lower_index < 0) {
+			continue;
+		}
+
+		ModelHitbox &upper = model_hitboxes.write[upper_index];
+		ModelHitbox &lower = model_hitboxes.write[lower_index];
+		if (upper.skeleton_path.is_empty() || upper.skeleton_path != lower.skeleton_path || upper.bone_name.is_empty() || lower.bone_name != upper.bone_name) {
+			continue;
+		}
+		Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(scene_root->get_node_or_null(NodePath(upper.skeleton_path)));
+		if (!skeleton) {
+			continue;
+		}
+		const int upper_bone = skeleton->find_bone(upper.bone_name);
+		if (upper_bone < 0) {
+			continue;
+		}
+
+		Vector<String> aliases;
+		for (int alias = 0; alias < 14; alias++) {
+			aliases.push_back(String(lower_leg_aliases[side][alias]));
+		}
+		const int lower_bone = find_hitbox_preset_bone(skeleton, aliases, upper_bone);
+		if (lower_bone < 0 || lower_bone == upper_bone) {
+			continue;
+		}
+
+		const Transform3D old_bone_to_root = scene_root->get_global_transform().affine_inverse() * skeleton->get_global_transform() * skeleton->get_bone_global_rest(upper_bone);
+		Vector3 root_minimum;
+		Vector3 root_maximum;
+		transform_bounds(lower.minimum, lower.maximum, old_bone_to_root, root_minimum, root_maximum);
+		const Transform3D root_to_new_bone = skeleton->get_bone_global_rest(lower_bone).affine_inverse() * skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+		transform_bounds(root_minimum, root_maximum, root_to_new_bone, lower.minimum, lower.maximum);
+		lower.bone_name = skeleton->get_bone_name(lower_bone);
+		changed = true;
+	}
+	return changed;
 }
 
 void SceneImportSettingsScreen::_clear_hitbox_preview() {

@@ -475,6 +475,7 @@ class SceneImportSettingsScreen : public Control {
 	void _hitbox_transform_changed(double p_value, int p_field, int p_axis);
 	void _save_hitbox_config();
 	void _load_hitbox_config();
+	bool _repair_legacy_leg_hitbox_attachments();
 	void _update_hitbox_preview();
 	void _clear_hitbox_preview();
 	void _tree_split_dragged(int p_offset);
