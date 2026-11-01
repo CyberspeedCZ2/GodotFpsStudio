@@ -360,6 +360,15 @@ toggle_mode = true
 button_pressed = true
 text = "Grid"
 
+[node name="Hitboxes" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show imported hitboxes in the Level viewport"
+focus_mode = 0
+toggle_mode = true
+button_pressed = true
+text = "Hitboxes"
+
 [node name="Surface" type="Button" parent="."]
 unique_name_in_owner = true
 layout_mode = 2

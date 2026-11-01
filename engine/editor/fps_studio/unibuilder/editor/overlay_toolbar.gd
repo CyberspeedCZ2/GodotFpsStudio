@@ -22,6 +22,8 @@ signal material_toggled(enabled: bool)
 signal action_requested(id: String)
 ## Any grid setting changed: step, plane, or visibility.
 signal grid_changed
+## Toggle the imported FPS Studio hitbox overlay in the Level viewport.
+signal hitboxes_toggled(enabled: bool)
 ## Align Grid button: move the grid plane onto the current element selection.
 signal grid_align_requested
 ## Reset button: return the grid plane offset to zero. Same as the 0 hotkey.
@@ -79,6 +81,8 @@ var snap_enabled := true
 ## One value drives both the snap increment and the grid density.
 var snap_step := 1.0
 var grid_visible := true
+## Imported FPS Studio hitboxes are visible in the Level viewport by default.
+var hitboxes_visible := true
 var grid_axis := 1
 ## When true, the viewport overlay shows the selection's world-space size.
 var dims_visible := false
@@ -123,6 +127,7 @@ var _sel_action_buttons: Array[Button] = []
 var _step_spin: SpinBox
 var _plane_option: OptionButton
 var _grid_button: Button
+var _hitboxes_button: Button
 var _surface_button: Button
 var _snap_button: Button
 var _repeat_button: Button
@@ -365,6 +370,13 @@ func _setup() -> void:
 		grid_visible = on
 		grid_changed.emit())
 
+	_hitboxes_button = %Hitboxes
+	_iconify(_hitboxes_button, "shape_cube", _hitboxes_button.text)
+	dim_toggle(_hitboxes_button)
+	_hitboxes_button.toggled.connect(func(on: bool) -> void:
+		hitboxes_visible = on
+		hitboxes_toggled.emit(on))
+
 	_surface_button = %Surface
 	_iconify(_surface_button, "surface_draw", _surface_button.text)
 	dim_toggle(_surface_button)
@@ -586,6 +598,8 @@ func apply_state(state: Dictionary) -> void:
 	_plane_option.selected = grid_axis
 	grid_visible = _stored_bool(state, "grid_visible", grid_visible)
 	_grid_button.set_pressed_no_signal(grid_visible)
+	hitboxes_visible = _stored_bool(state, "hitboxes_visible", hitboxes_visible)
+	_hitboxes_button.set_pressed_no_signal(hitboxes_visible)
 	dims_visible = _stored_bool(state, "dims", dims_visible)
 	_tools_popup.set_item_checked(_tools_popup.get_item_index(3), dims_visible)
 	snap_each = _stored_bool(state, "snap_each", snap_each)
@@ -612,6 +626,7 @@ func get_state() -> Dictionary:
 		"step": snap_step,
 		"axis": grid_axis,
 		"grid_visible": grid_visible == true,
+		"hitboxes_visible": hitboxes_visible == true,
 		"dims": dims_visible == true,
 		"snap_each": snap_each == true,
 		"snap_absolute": snap_absolute == true,

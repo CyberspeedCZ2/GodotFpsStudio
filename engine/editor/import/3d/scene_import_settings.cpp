@@ -4274,7 +4274,10 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hitbox_tree->set_column_custom_minimum_width(1, 105 * EDSCALE);
 	hitbox_tree->set_custom_minimum_size(Size2(0, 150 * EDSCALE));
 	hitbox_tree->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	hitbox_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	// Keep the list at its natural full height so every hitbox is visible at
+	// once. The surrounding ScrollContainer remains available for the inspector
+	// fields below the list when the panel is short.
+	hitbox_tree->set_v_size_flags(Control::SIZE_FILL);
 	hitbox_tree->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_tree_selected));
 	content->add_child(hitbox_tree);
 
@@ -4406,6 +4409,8 @@ void SceneImportSettingsScreen::_populate_hitbox_tree() {
 			item->select(0);
 		}
 	}
+	const real_t tree_row_height = (hitbox_tree->get_theme_default_font_size() + 10) * EDSCALE;
+	hitbox_tree->set_custom_minimum_size(Size2(0, MAX(150 * EDSCALE, (model_hitboxes.size() + 1) * tree_row_height + 8 * EDSCALE)));
 	hitbox_ui_updating = false;
 }
 
@@ -4562,6 +4567,14 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		{ "leftupleg", "uplegleft", "uplegl", "lupleg", "leftthigh", "thighleft", "thighl", "lthigh", "leftleg", "legl" },
 		{ "rightupleg", "uplegright", "uplegr", "rupleg", "rightthigh", "thighright", "thighr", "rthigh", "rightleg", "legr" },
 	};
+	static const char *forearm_bone_aliases[][9] = {
+		{ "leftforearm", "forearmleft", "forearml", "lforearm", "leftlowerarm", "lowerarmleft", "lowerarml", "llowerarm", nullptr },
+		{ "rightforearm", "forearmright", "forearmr", "rforearm", "rightlowerarm", "lowerarmright", "lowerarmr", "rlowerarm", nullptr },
+	};
+	static const char *hand_bone_aliases[][9] = {
+		{ "lefthand", "handleft", "handl", "lhand", "leftwrist", "wristleft", "wristl", "lwrist", nullptr },
+		{ "righthand", "handright", "handr", "rhand", "rightwrist", "wristright", "wristr", "rwrist", nullptr },
+	};
 	const int first_part = p_preset == HITBOX_PRESET_HUMANOID_SET ? 0 : p_preset - HITBOX_PRESET_HEAD;
 	const int last_part = p_preset == HITBOX_PRESET_HUMANOID_SET ? 6 : first_part;
 	Node3D *scene_root = Object::cast_to<Node3D>(scene);
@@ -4603,6 +4616,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		Vector3 maximum_fraction = preset_maximum_fractions[part];
 		const bool is_left_side = part == 3 || part == 5;
 		const bool is_right_side = part == 4 || part == 6;
+		const bool is_arm_part = part == 3 || part == 4;
 		if ((is_left_side || is_right_side) && matched_skeleton && matched_bone >= 0 && contents_aabb.size.x > 0.0) {
 			const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
 			const Vector3 bone_position = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin);
@@ -4615,6 +4629,68 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 					minimum_fraction.x = 1.0 - maximum_fraction.x;
 					maximum_fraction.x = 1.0 - old_minimum_x;
 				}
+			}
+		}
+
+		Vector3 arm_bone_minimum;
+		Vector3 arm_bone_maximum;
+		bool has_arm_chain_bounds = false;
+		if (is_arm_part && matched_skeleton && matched_bone >= 0 && scene_root) {
+			const int side = part == 3 ? 0 : 1;
+			Vector<String> forearm_aliases;
+			for (int alias = 0; alias < 9 && forearm_bone_aliases[side][alias] != nullptr; alias++) {
+				forearm_aliases.push_back(String(forearm_bone_aliases[side][alias]));
+			}
+			Vector<String> hand_aliases;
+			for (int alias = 0; alias < 9 && hand_bone_aliases[side][alias] != nullptr; alias++) {
+				hand_aliases.push_back(String(hand_bone_aliases[side][alias]));
+			}
+			const int forearm_bone = find_hitbox_preset_bone(matched_skeleton, forearm_aliases);
+			const int hand_bone = find_hitbox_preset_bone(matched_skeleton, hand_aliases);
+			const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
+			const Transform3D root_to_upper_arm = matched_skeleton->get_bone_global_rest(matched_bone).affine_inverse() *
+				matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+			Vector<int> chain_bones;
+			chain_bones.push_back(matched_bone);
+			if (forearm_bone >= 0) {
+				chain_bones.push_back(forearm_bone);
+			}
+			if (hand_bone >= 0) {
+				chain_bones.push_back(hand_bone);
+				// Include the full finger chains, not only their roots, so the box
+				// reaches the fingertips and captures the hand's actual span.
+				for (int bone = 0; bone < matched_skeleton->get_bone_count(); bone++) {
+					int ancestor = matched_skeleton->get_bone_parent(bone);
+					while (ancestor >= 0 && ancestor != hand_bone) {
+						ancestor = matched_skeleton->get_bone_parent(ancestor);
+					}
+					if (ancestor == hand_bone) {
+						chain_bones.push_back(bone);
+					}
+				}
+			}
+			bool first_arm_point = true;
+			for (int bone : chain_bones) {
+				const Vector3 root_point = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(bone).origin);
+				const Vector3 arm_point = root_to_upper_arm.xform(root_point);
+				if (first_arm_point) {
+					arm_bone_minimum = arm_point;
+					arm_bone_maximum = arm_point;
+					first_arm_point = false;
+				} else {
+					for (int axis = 0; axis < 3; axis++) {
+						arm_bone_minimum[axis] = MIN(arm_bone_minimum[axis], arm_point[axis]);
+						arm_bone_maximum[axis] = MAX(arm_bone_maximum[axis], arm_point[axis]);
+					}
+				}
+			}
+			if (!first_arm_point && chain_bones.size() > 1) {
+				const real_t padding = MAX(contents_aabb.size.y * 0.025, 0.025);
+				for (int axis = 0; axis < 3; axis++) {
+					arm_bone_minimum[axis] -= padding;
+					arm_bone_maximum[axis] += padding;
+				}
+				has_arm_chain_bounds = true;
 			}
 		}
 
@@ -4650,33 +4726,39 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		hitbox.hitgroup = preset_hitgroups[part];
 
 		if (matched_skeleton && matched_bone >= 0 && scene_root) {
-			const Transform3D root_to_bone = matched_skeleton->get_bone_global_rest(matched_bone).affine_inverse() * matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
-			Vector3 bone_minimum;
-			Vector3 bone_maximum;
-			bool first_corner = true;
-			for (int x = 0; x < 2; x++) {
-				for (int y = 0; y < 2; y++) {
-					for (int z = 0; z < 2; z++) {
-						const Vector3 root_corner(
-							x == 0 ? minimum.x : maximum.x,
-							y == 0 ? minimum.y : maximum.y,
-							z == 0 ? minimum.z : maximum.z);
-						const Vector3 bone_corner = root_to_bone.xform(root_corner);
-						if (first_corner) {
-							bone_minimum = bone_corner;
-							bone_maximum = bone_corner;
-							first_corner = false;
-						} else {
-							for (int axis = 0; axis < 3; axis++) {
-								bone_minimum[axis] = MIN(bone_minimum[axis], bone_corner[axis]);
-								bone_maximum[axis] = MAX(bone_maximum[axis], bone_corner[axis]);
+			if (has_arm_chain_bounds) {
+				hitbox.minimum = arm_bone_minimum;
+				hitbox.maximum = arm_bone_maximum;
+			} else {
+				const Transform3D root_to_bone = matched_skeleton->get_bone_global_rest(matched_bone).affine_inverse() *
+					matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+				Vector3 bone_minimum;
+				Vector3 bone_maximum;
+				bool first_corner = true;
+				for (int x = 0; x < 2; x++) {
+					for (int y = 0; y < 2; y++) {
+						for (int z = 0; z < 2; z++) {
+							const Vector3 root_corner(
+								x == 0 ? minimum.x : maximum.x,
+								y == 0 ? minimum.y : maximum.y,
+								z == 0 ? minimum.z : maximum.z);
+							const Vector3 bone_corner = root_to_bone.xform(root_corner);
+							if (first_corner) {
+								bone_minimum = bone_corner;
+								bone_maximum = bone_corner;
+								first_corner = false;
+							} else {
+								for (int axis = 0; axis < 3; axis++) {
+									bone_minimum[axis] = MIN(bone_minimum[axis], bone_corner[axis]);
+									bone_maximum[axis] = MAX(bone_maximum[axis], bone_corner[axis]);
+								}
 							}
 						}
 					}
 				}
+				hitbox.minimum = bone_minimum;
+				hitbox.maximum = bone_maximum;
 			}
-			hitbox.minimum = bone_minimum;
-			hitbox.maximum = bone_maximum;
 			hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
 			hitbox.bone_name = matched_skeleton->get_bone_name(matched_bone);
 		}

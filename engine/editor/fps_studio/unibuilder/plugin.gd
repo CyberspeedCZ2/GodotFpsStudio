@@ -39,6 +39,19 @@ var action_options := {}
 var shape_overlay: Control
 var _fps_context_menu_sources: Array[Node] = []
 var _overlay_camera: Camera3D
+var _hitbox_overlay_root: Node
+var _hitbox_overlay_nodes: Array[Area3D] = []
+var _hitbox_overlay_rescan_at := 0
+const HITBOX_OVERLAY_COLORS := [
+	Color(0.30, 0.76, 1.00, 0.95), # Generic.
+	Color(1.00, 0.24, 0.20, 0.95), # Head.
+	Color(1.00, 0.53, 0.12, 0.95), # Chest.
+	Color(1.00, 0.84, 0.18, 0.95), # Stomach.
+	Color(0.25, 0.86, 0.38, 0.95), # Left arm.
+	Color(0.12, 0.82, 0.83, 0.95), # Right arm.
+	Color(0.34, 0.47, 1.00, 0.95), # Left leg.
+	Color(0.78, 0.36, 1.00, 0.95), # Right leg.
+]
 ## Grid plane offset along its normal axis, in world units (nudged with ,/.).
 var grid_offset := 0.0
 
@@ -111,6 +124,7 @@ func _enter_tree() -> void:
 	toolbar.material_toggled.connect(_on_material_toggled)
 	toolbar.action_requested.connect(run_action)
 	toolbar.grid_changed.connect(_on_grid_changed)
+	toolbar.hitboxes_toggled.connect(_on_hitboxes_toggled)
 	toolbar.grid_align_requested.connect(_on_grid_align)
 	toolbar.grid_reset_requested.connect(reset_grid_offset)
 	toolbar.shape_requested.connect(_on_shape_requested)
@@ -182,6 +196,7 @@ func _enter_tree() -> void:
 	_update_grid()
 
 	_refresh_existing_gizmos.call_deferred()
+	update_overlays()
 
 	if UBEdition.DEMO:
 		_start_demo_nags()
@@ -536,6 +551,7 @@ func _over_floating_panel() -> bool:
 func _forward_3d_draw_over_viewport(viewport_control: Control) -> void:
 	_ensure_drop_target(viewport_control)
 	_ensure_floating_panels(viewport_control)
+	_draw_hitbox_overlay(viewport_control)
 	if input == null:
 		return
 	if input.marquee:
@@ -575,6 +591,59 @@ func _forward_3d_draw_over_viewport(viewport_control: Control) -> void:
 	_draw_preselect(viewport_control)
 	if toolbar != null and toolbar.dims_visible:
 		_draw_dimensions(viewport_control)
+
+
+func _draw_hitbox_overlay(overlay: Control) -> void:
+	if toolbar == null or not toolbar.hitboxes_visible:
+		return
+	var viewport := overlay.get_viewport()
+	var camera: Camera3D = viewport.get_camera_3d() if viewport != null else null
+	if camera == null:
+		return
+	_refresh_hitbox_overlay_cache()
+	for area in _hitbox_overlay_nodes:
+		if not is_instance_valid(area) or not area.is_inside_tree():
+			continue
+		var collision := area.get_node_or_null("CollisionShape3D") as CollisionShape3D
+		if collision == null or not (collision.shape is BoxShape3D):
+			continue
+		var half_size: Vector3 = (collision.shape as BoxShape3D).size * 0.5
+		var color_index := clampi(int(area.get_meta("hitgroup", 0)), 0, HITBOX_OVERLAY_COLORS.size() - 1)
+		var color: Color = HITBOX_OVERLAY_COLORS[color_index]
+		var projected: Array[Vector2] = []
+		var visible: Array[bool] = []
+		for corner_index in 8:
+			var local_corner := Vector3(
+				half_size.x if (corner_index & 1) != 0 else -half_size.x,
+				half_size.y if (corner_index & 2) != 0 else -half_size.y,
+				half_size.z if (corner_index & 4) != 0 else -half_size.z)
+			var world_corner: Vector3 = area.global_transform * (collision.transform * local_corner)
+			visible.append(not camera.is_position_behind(world_corner))
+			projected.append(camera.unproject_position(world_corner))
+		for corner_index in 8:
+			for axis in 3:
+				var other_index := corner_index ^ (1 << axis)
+				if other_index <= corner_index or not visible[corner_index] or not visible[other_index]:
+					continue
+				overlay.draw_line(projected[corner_index], projected[other_index], color, 2.0 * EditorInterface.get_editor_scale(), true)
+
+
+func _refresh_hitbox_overlay_cache() -> void:
+	var root := EditorInterface.get_edited_scene_root()
+	var now := Time.get_ticks_msec()
+	if root == _hitbox_overlay_root and now < _hitbox_overlay_rescan_at:
+		return
+	_hitbox_overlay_root = root
+	_hitbox_overlay_rescan_at = now + 500
+	_hitbox_overlay_nodes.clear()
+	if root == null:
+		return
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		if node is Area3D and node.has_meta("fps_studio_hitbox") and bool(node.get_meta("fps_studio_hitbox")):
+			_hitbox_overlay_nodes.append(node as Area3D)
+		stack.append_array(node.get_children())
 
 
 func _has_preselect() -> bool:
@@ -2340,6 +2409,11 @@ func _on_grid_changed() -> void:
 	_save_grid_settings()
 
 
+func _on_hitboxes_toggled(_enabled: bool) -> void:
+	update_overlays()
+	_queue_save_settings()
+
+
 func _on_scene_changed(_root: Node) -> void:
 
 	_commit_adjust()
@@ -2351,6 +2425,9 @@ func _on_scene_changed(_root: Node) -> void:
 
 	UBTopology.clear_cache()
 	UBRayAccel.clear_cache()
+	_hitbox_overlay_root = null
+	_hitbox_overlay_nodes.clear()
+	_hitbox_overlay_rescan_at = 0
 
 	_flush_parked_commits()
 	var current := EditorInterface.get_edited_scene_root()
@@ -2360,6 +2437,7 @@ func _on_scene_changed(_root: Node) -> void:
 	_unsaved_on_return = _unsaved_on_return.filter(
 		func(r) -> bool: return is_instance_valid(r))
 	_update_grid()
+	update_overlays()
 
 
 func adjust_grid_step(factor: float) -> void:
