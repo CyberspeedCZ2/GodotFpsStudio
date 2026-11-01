@@ -3569,18 +3569,24 @@ void fragment() {
 	settings_tab_names.push_back(TTR("Details"));
 	settings_tab_names.push_back(TTR("Material"));
 	settings_tab_names.push_back(TTR("Environment"));
+	Ref<ButtonGroup> settings_tab_button_group;
+	settings_tab_button_group.instantiate();
+	settings_tab_button_group->set_allow_unpress(false);
 	for (int i = 0; i < settings_tab_names.size(); i++) {
 		Button *tab_button = memnew(Button);
 		tab_button->set_toggle_mode(true);
-		tab_button->set_flat(true);
-		tab_button->set_custom_minimum_size(Size2(116 * EDSCALE, 84 * EDSCALE));
+		tab_button->set_flat(false);
+		tab_button->set_button_group(settings_tab_button_group);
+		tab_button->set_accessibility_name(settings_tab_names[i]);
+		tab_button->set_tooltip_text(vformat(TTR("Show %s settings"), settings_tab_names[i]));
+		tab_button->set_custom_minimum_size(Size2(116 * EDSCALE, 116 * EDSCALE));
 		tab_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 		tab_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_button_pressed).bind(i));
 		Label *tab_label = memnew(Label);
 		tab_label->set_text(settings_tab_names[i]);
 		tab_label->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
-		tab_label->set_pivot_offset(Size2(58 * EDSCALE, 42 * EDSCALE));
-		tab_label->set_rotation(Math::deg_to_rad(45.0));
+		tab_label->set_pivot_offset(Size2(58 * EDSCALE, 58 * EDSCALE));
+		tab_label->set_rotation(Math::deg_to_rad(90.0));
 		tab_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 		tab_label->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
 		tab_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
