@@ -417,6 +417,7 @@ class SceneImportSettingsScreen : public Control {
 	void _lod_generate_toggled(bool p_enabled);
 	void _lod_merge_angle_changed(double p_value);
 	void _settings_tab_changed(int p_tab);
+	void _tree_split_dragged(int p_offset);
 	void _property_split_dragged(int p_offset);
 	void _update_material_editor();
 	void _clear_mesh_preview_material_overrides();

@@ -78,6 +78,8 @@ static constexpr real_t REFERENCE_VIEWPORT_WIDTH = 1920.0;
 static constexpr real_t REFERENCE_ASPECT = 16.0 / 9.0;
 static constexpr real_t MODEL_SETTINGS_PANEL_MIN_WIDTH = 320.0;
 static constexpr real_t MODEL_SETTINGS_PANEL_DEFAULT_WIDTH = 400.0;
+static constexpr real_t MODEL_CONTENT_PANEL_DEFAULT_WIDTH = 300.0;
+static const String MODEL_CONTENT_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/content_width";
 static const String MODEL_SETTINGS_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/inspector_width";
 // Orthographic zoom limits (fraction of the fitted content size).
 static constexpr real_t ZOOM_MIN = 0.05;
@@ -3067,6 +3069,7 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	tree_split = memnew(HSplitContainer);
 	main_vb->add_child(tree_split);
 	tree_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	tree_split->connect(SNAME("dragged"), callable_mp(this, &SceneImportSettingsScreen::_tree_split_dragged));
 
 	data_mode = memnew(TabContainer);
 	tree_split->add_child(data_mode);
@@ -3573,6 +3576,8 @@ void fragment() {
 
 	scene_import_settings_data = memnew(SceneImportSettingsData);
 	settings_tabs->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_changed));
+	const int saved_settings_tab = CLAMP((int)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "settings_tab", 0), 0, 6);
+	settings_tabs->set_current_tab(saved_settings_tab);
 
 	// Bottom action bar replacing the modal dialog's OK/Cancel buttons.
 	HBoxContainer *confirm_hb = memnew(HBoxContainer);
@@ -3645,6 +3650,9 @@ void fragment() {
 
 	// Restore the user's panel width, or use a 400 px default while enforcing
 	// the inspector's 320 px minimum. Widths are stored before editor scaling.
+	const real_t content_minimum_width = data_mode->get_combined_minimum_size().x;
+	const real_t saved_content_width = MAX((real_t)EDITOR_DEF(MODEL_CONTENT_PANEL_WIDTH_SETTING, MODEL_CONTENT_PANEL_DEFAULT_WIDTH) * EDSCALE, content_minimum_width);
+	tree_split->set_split_offset(Math::round(saved_content_width - content_minimum_width));
 	const real_t panel_minimum_width = settings_tabs->get_combined_minimum_size().x;
 	const real_t saved_panel_width = MAX((real_t)EDITOR_DEF(MODEL_SETTINGS_PANEL_WIDTH_SETTING, MODEL_SETTINGS_PANEL_DEFAULT_WIDTH), MODEL_SETTINGS_PANEL_MIN_WIDTH) * EDSCALE;
 	const real_t desired_panel_width = MAX(panel_minimum_width, saved_panel_width);
@@ -3985,6 +3993,7 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 6) {
 		return;
 	}
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "settings_tab", p_tab);
 	if (p_tab == 6) {
 		_update_material_editor();
 		return;
@@ -4017,6 +4026,14 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 		hint->set_visible(!message.is_empty());
 	}
 	scene_import_settings_data->notify_property_list_changed();
+}
+
+void SceneImportSettingsScreen::_tree_split_dragged(int) {
+	if (!data_mode) {
+		return;
+	}
+	const real_t content_width = data_mode->get_size().x / EDSCALE;
+	EditorSettings::get_singleton()->set_setting(MODEL_CONTENT_PANEL_WIDTH_SETTING, Math::round(content_width));
 }
 
 void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
