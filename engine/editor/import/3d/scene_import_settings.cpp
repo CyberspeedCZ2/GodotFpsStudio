@@ -76,14 +76,42 @@ static constexpr real_t FRAME_MARGIN = 1.15;
 static constexpr real_t PREVIEW_FOV_DEGREES = 75.0;
 static constexpr real_t REFERENCE_VIEWPORT_WIDTH = 1920.0;
 static constexpr real_t REFERENCE_ASPECT = 16.0 / 9.0;
-static constexpr real_t MODEL_SETTINGS_PANEL_MIN_WIDTH = 320.0;
-static constexpr real_t MODEL_SETTINGS_PANEL_DEFAULT_WIDTH = 400.0;
+static constexpr real_t MODEL_SETTINGS_PANEL_MIN_WIDTH = 420.0;
+static constexpr real_t MODEL_SETTINGS_PANEL_DEFAULT_WIDTH = 480.0;
 static constexpr real_t MODEL_CONTENT_PANEL_DEFAULT_WIDTH = 300.0;
 static const String MODEL_CONTENT_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/content_width";
 static const String MODEL_SETTINGS_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/inspector_width";
+static const char *MODEL_SETTINGS_TAB_IDS[] = { "lod", "mesh", "physics", "hitboxes", "lighting", "details", "material", "environment" };
+static constexpr int MODEL_SETTINGS_TAB_COUNT = sizeof(MODEL_SETTINGS_TAB_IDS) / sizeof(MODEL_SETTINGS_TAB_IDS[0]);
 // Orthographic zoom limits (fraction of the fitted content size).
 static constexpr real_t ZOOM_MIN = 0.05;
 static constexpr real_t ZOOM_MAX = 20.0;
+
+static String get_model_settings_tab_id(int p_tab) {
+	if (p_tab < 0 || p_tab >= MODEL_SETTINGS_TAB_COUNT) {
+		return String(MODEL_SETTINGS_TAB_IDS[0]);
+	}
+	return String(MODEL_SETTINGS_TAB_IDS[p_tab]);
+}
+
+static int get_model_settings_tab_index(const Variant &p_saved_tab) {
+	if (p_saved_tab.get_type() == Variant::STRING) {
+		const String saved_id = p_saved_tab;
+		for (int i = 0; i < MODEL_SETTINGS_TAB_COUNT; i++) {
+			if (saved_id == MODEL_SETTINGS_TAB_IDS[i]) {
+				return i;
+			}
+		}
+	} else if (p_saved_tab.get_type() == Variant::INT) {
+		// Migrate the previous horizontal-tab order, which did not include Hitboxes.
+		static const int legacy_tab_indices[] = { 0, 1, 2, 4, 5, 6, 7 };
+		const int legacy_tab = (int)p_saved_tab;
+		if (legacy_tab >= 0 && legacy_tab < (int)(sizeof(legacy_tab_indices) / sizeof(legacy_tab_indices[0]))) {
+			return legacy_tab_indices[legacy_tab];
+		}
+	}
+	return 0;
+}
 
 static Ref<ShaderMaterial> create_model_view_sky_material() {
 	Ref<Shader> sky_shader;
@@ -2041,7 +2069,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	selected_type = p_type;
 	selected_id = p_id;
 	if (selected_type == "Material" && settings_tabs) {
-		settings_tabs->set_current_tab(5);
+		settings_tabs->set_current_tab(6);
 	}
 	_update_material_editor();
 	lod_selected_level = 0;
@@ -2085,7 +2113,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	}
 	_update_lod_settings_panel();
 	if (settings_tabs) {
-		const int tab = p_type == "Mesh" ? 0 : (p_type == "Material" ? 5 : 4);
+		const int tab = p_type == "Mesh" ? 1 : (p_type == "Material" ? 6 : 5);
 		settings_tabs->set_current_tab(tab);
 		_settings_tab_changed(tab);
 	}
@@ -3445,10 +3473,15 @@ void fragment() {
 	inspector->set_theme_type_variation(SNAME("EditorInspectorForeground"));
 
 	settings_tabs = memnew(TabContainer);
-	settings_tabs->set_custom_minimum_size(Size2(320 * EDSCALE, 0));
-	settings_tabs->set_h_size_flags(Control::SIZE_FILL);
+	settings_tabs->set_custom_minimum_size(Size2(300 * EDSCALE, 0));
+	settings_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	property_split->add_child(settings_tabs);
+	settings_tabs->set_tabs_visible(false);
+	settings_panel_layout = memnew(HBoxContainer);
+	settings_panel_layout->set_h_size_flags(Control::SIZE_FILL);
+	settings_panel_layout->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	property_split->add_child(settings_panel_layout);
+	settings_panel_layout->add_child(settings_tabs);
 	property_split->connect(SNAME("dragged"), callable_mp(this, &SceneImportSettingsScreen::_property_split_dragged));
 	_build_lod_settings_panel();
 	ScrollContainer *lod_panel_scroll = memnew(ScrollContainer);
@@ -3458,18 +3491,28 @@ void fragment() {
 	lod_panel_scroll->add_child(lod_settings_panel);
 	settings_tabs->add_child(lod_panel_scroll);
 	int tab_index = 1;
-	for (const String &tab_name : { TTR("Mesh"), TTR("Physics"), TTR("Lighting"), TTR("Details") }) {
+	for (const String &tab_name : { TTR("Mesh"), TTR("Physics"), TTR("Hitboxes"), TTR("Lighting"), TTR("Details") }) {
 		VBoxContainer *tab = memnew(VBoxContainer);
 		tab->set_name(tab_name);
+		tab->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		tab->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 		settings_tabs->add_child(tab);
-		Label *hint = memnew(Label);
-		hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-		hint->hide();
-		tab->add_child(hint);
-		settings_tab_hints[tab_index++] = hint;
+		if (tab_index == 3) {
+			Label *hitboxes_hint = memnew(Label);
+			hitboxes_hint->set_text(TTR("Hitbox editing tools will appear here."));
+			hitboxes_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+			tab->add_child(hitboxes_hint);
+		} else {
+			Label *hint = memnew(Label);
+			hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+			hint->hide();
+			tab->add_child(hint);
+			settings_tab_hints[tab_index] = hint;
+		}
+		tab_index++;
 	}
 	inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	settings_tabs->get_tab_control(4)->add_child(inspector);
+	settings_tabs->get_tab_control(5)->add_child(inspector);
 
 	VBoxContainer *material_tab = memnew(VBoxContainer);
 	material_tab->set_name(TTR("Material"));
@@ -3515,12 +3558,38 @@ void fragment() {
 	material_tab->add_child(material_inspector);
 	_update_material_editor();
 
+	settings_tab_navigation = memnew(VBoxContainer);
+	settings_tab_navigation->set_custom_minimum_size(Size2(116 * EDSCALE, 0));
+	settings_tab_navigation->set_v_size_flags(Control::SIZE_FILL);
+	Vector<String> settings_tab_names;
+	settings_tab_names.push_back(TTR("LOD"));
+	settings_tab_names.push_back(TTR("Mesh"));
+	settings_tab_names.push_back(TTR("Physics"));
+	settings_tab_names.push_back(TTR("Hitboxes"));
+	settings_tab_names.push_back(TTR("Lighting"));
+	settings_tab_names.push_back(TTR("Details"));
+	settings_tab_names.push_back(TTR("Material"));
+	settings_tab_names.push_back(TTR("Environment"));
+	for (int i = 0; i < settings_tab_names.size(); i++) {
+		Button *tab_button = memnew(Button);
+		tab_button->set_text(settings_tab_names[i]);
+		tab_button->set_toggle_mode(true);
+		tab_button->set_flat(true);
+		tab_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		tab_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_button_pressed).bind(i));
+		settings_tab_navigation->add_child(tab_button);
+		settings_tab_buttons.push_back(tab_button);
+	}
+	VSeparator *settings_navigation_separator = memnew(VSeparator);
+	settings_navigation_separator->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_panel_layout->add_child(settings_navigation_separator);
+	settings_panel_layout->add_child(settings_tab_navigation);
+
 	ScrollContainer *environment_scroll = memnew(ScrollContainer);
 	environment_scroll->set_name(TTR("Environment"));
 	environment_scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	environment_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->add_child(environment_scroll);
-	settings_tabs->move_child(environment_scroll, settings_tabs->get_child_count() - 2);
 	VBoxContainer *environment_tab = memnew(VBoxContainer);
 	environment_tab->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	environment_tab->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -3576,8 +3645,9 @@ void fragment() {
 
 	scene_import_settings_data = memnew(SceneImportSettingsData);
 	settings_tabs->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_changed));
-	const int saved_settings_tab = CLAMP((int)EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "settings_tab", 0), 0, 6);
+	const int saved_settings_tab = CLAMP(get_model_settings_tab_index(EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "settings_tab", 0)), 0, MODEL_SETTINGS_TAB_COUNT - 1);
 	settings_tabs->set_current_tab(saved_settings_tab);
+	_settings_tab_changed(saved_settings_tab);
 
 	// Bottom action bar replacing the modal dialog's OK/Cancel buttons.
 	HBoxContainer *confirm_hb = memnew(HBoxContainer);
@@ -3653,7 +3723,7 @@ void fragment() {
 	const real_t content_minimum_width = data_mode->get_combined_minimum_size().x;
 	const real_t saved_content_width = MAX((real_t)EDITOR_DEF(MODEL_CONTENT_PANEL_WIDTH_SETTING, MODEL_CONTENT_PANEL_DEFAULT_WIDTH) * EDSCALE, content_minimum_width);
 	tree_split->set_split_offset(Math::round(saved_content_width - content_minimum_width));
-	const real_t panel_minimum_width = settings_tabs->get_combined_minimum_size().x;
+	const real_t panel_minimum_width = settings_panel_layout->get_combined_minimum_size().x;
 	const real_t saved_panel_width = MAX((real_t)EDITOR_DEF(MODEL_SETTINGS_PANEL_WIDTH_SETTING, MODEL_SETTINGS_PANEL_DEFAULT_WIDTH), MODEL_SETTINGS_PANEL_MIN_WIDTH) * EDSCALE;
 	const real_t desired_panel_width = MAX(panel_minimum_width, saved_panel_width);
 	property_split->set_split_offset(Math::round(panel_minimum_width - desired_panel_width));
@@ -3990,18 +4060,18 @@ void SceneImportSettingsScreen::_lod_generate_toggled(bool p_enabled) {
 }
 
 void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
-	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab > 6) {
+	if (!settings_tabs || !scene_import_settings_data || p_tab < 0 || p_tab >= MODEL_SETTINGS_TAB_COUNT) {
 		return;
 	}
-	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "settings_tab", p_tab);
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "settings_tab", get_model_settings_tab_id(p_tab));
+	for (int i = 0; i < settings_tab_buttons.size(); i++) {
+		settings_tab_buttons[i]->set_pressed_no_signal(i == p_tab);
+	}
 	if (p_tab == 6) {
 		_update_material_editor();
 		return;
 	}
-	if (p_tab == 5) {
-		return;
-	}
-	if (p_tab == 0) {
+	if (p_tab == 0 || p_tab == 3 || p_tab == 7) {
 		return;
 	}
 	Control *container = settings_tabs->get_tab_control(p_tab);
@@ -4011,7 +4081,8 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 	if (inspector->get_parent() != container) {
 		inspector->reparent(container);
 	}
-	scene_import_settings_data->section_filter = p_tab;
+	const int inspector_section = p_tab == 4 ? 3 : (p_tab == 5 ? 4 : p_tab);
+	scene_import_settings_data->section_filter = inspector_section;
 	Label *hint = settings_tab_hints[p_tab];
 	if (hint) {
 		String message;
@@ -4019,13 +4090,19 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 			message = TTR("Select a mesh resource in the scene tree or Meshes tab.");
 		} else if (p_tab == 2 && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH_3D_NODE) {
 			message = TTR("Select a mesh instance node in the Scene tree to configure collision and physics.");
-		} else if (p_tab == 3 && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH_3D_NODE) {
+		} else if (p_tab == 4 && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH && scene_import_settings_data->category != ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_MESH_3D_NODE) {
 			message = TTR("Select a mesh or mesh instance to configure shadows and lightmap options.");
 		}
 		hint->set_text(message);
 		hint->set_visible(!message.is_empty());
 	}
 	scene_import_settings_data->notify_property_list_changed();
+}
+
+void SceneImportSettingsScreen::_settings_tab_button_pressed(int p_tab) {
+	if (settings_tabs && p_tab >= 0 && p_tab < MODEL_SETTINGS_TAB_COUNT) {
+		settings_tabs->set_current_tab(p_tab);
+	}
 }
 
 void SceneImportSettingsScreen::_tree_split_dragged(int) {
@@ -4040,7 +4117,7 @@ void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
 	if (!settings_tabs) {
 		return;
 	}
-	const real_t minimum_width = settings_tabs->get_combined_minimum_size().x;
+	const real_t minimum_width = settings_panel_layout->get_combined_minimum_size().x;
 	const real_t panel_width = MAX(minimum_width, minimum_width - p_offset) / EDSCALE;
 	EditorSettings::get_singleton()->set_setting(MODEL_SETTINGS_PANEL_WIDTH_SETTING, Math::round(panel_width));
 }

@@ -58,6 +58,7 @@ class ShaderMaterial;
 class SceneImportSettingsData;
 class Timer;
 class SpinBox;
+class HBoxContainer;
 class VBoxContainer;
 class WorldEnvironment;
 
@@ -84,6 +85,9 @@ class SceneImportSettingsScreen : public Control {
 	Tree *scene_tree = nullptr;
 	Tree *mesh_tree = nullptr;
 	Tree *material_tree = nullptr;
+	HBoxContainer *settings_panel_layout = nullptr;
+	VBoxContainer *settings_tab_navigation = nullptr;
+	Vector<Button *> settings_tab_buttons;
 
 	EditorInspector *inspector = nullptr;
 	EditorInspector *material_inspector = nullptr;
@@ -194,7 +198,7 @@ class SceneImportSettingsScreen : public Control {
 	HSlider *lod_preview_slider = nullptr;
 	Label *lod_preview_label = nullptr;
 	TabContainer *settings_tabs = nullptr;
-	Label *settings_tab_hints[5] = {};
+	Label *settings_tab_hints[6] = {};
 	bool lod_settings_pending = false;
 	int lod_selected_level = 0;
 	Label *lod_status_label = nullptr;
@@ -417,6 +421,7 @@ class SceneImportSettingsScreen : public Control {
 	void _lod_generate_toggled(bool p_enabled);
 	void _lod_merge_angle_changed(double p_value);
 	void _settings_tab_changed(int p_tab);
+	void _settings_tab_button_pressed(int p_tab);
 	void _tree_split_dragged(int p_offset);
 	void _property_split_dragged(int p_offset);
 	void _update_material_editor();
