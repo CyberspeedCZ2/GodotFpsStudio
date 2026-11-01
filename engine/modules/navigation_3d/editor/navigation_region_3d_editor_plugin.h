@@ -68,13 +68,14 @@ class NavigationRegion3DEditor : public Control {
 	Vector<Vector3> navigation_mesh_vertices_before_bake;
 	Vector<Vector<int>> navigation_mesh_polygons_before_bake;
 	float navigation_mesh_agent_height_before_bake = 0.0f;
+	float navigation_mesh_agent_max_climb_before_bake = 0.0f;
 
 	bool bake_in_process = false;
 
 	void _bake_pressed();
 	void _clear_pressed();
 	void _on_region_bake_finished();
-	void _set_baked_navigation_mesh_data(const Ref<NavigationMesh> &p_navigation_mesh, const Vector<Vector3> &p_vertices, const Array &p_polygons, float p_agent_height);
+	void _set_baked_navigation_mesh_data(const Ref<NavigationMesh> &p_navigation_mesh, const Vector<Vector3> &p_vertices, const Array &p_polygons, float p_agent_height, float p_agent_max_climb);
 
 	static Array _navigation_mesh_polygons_to_array(const Vector<Vector<int>> &p_polygons);
 

@@ -174,7 +174,7 @@ Array NavigationRegion3DEditor::_navigation_mesh_polygons_to_array(const Vector<
 	return polygon_array;
 }
 
-void NavigationRegion3DEditor::_set_baked_navigation_mesh_data(const Ref<NavigationMesh> &p_navigation_mesh, const Vector<Vector3> &p_vertices, const Array &p_polygons, float p_agent_height) {
+void NavigationRegion3DEditor::_set_baked_navigation_mesh_data(const Ref<NavigationMesh> &p_navigation_mesh, const Vector<Vector3> &p_vertices, const Array &p_polygons, float p_agent_height, float p_agent_max_climb) {
 	ERR_FAIL_COND(p_navigation_mesh.is_null());
 
 	Vector<Vector<int>> polygon_data;
@@ -184,6 +184,7 @@ void NavigationRegion3DEditor::_set_baked_navigation_mesh_data(const Ref<Navigat
 	}
 
 	p_navigation_mesh->set_agent_height(p_agent_height);
+	p_navigation_mesh->set_agent_max_climb(p_agent_max_climb);
 	p_navigation_mesh->set_data(p_vertices, polygon_data);
 	p_navigation_mesh->notify_property_list_changed();
 #ifdef TOOLS_ENABLED
@@ -197,14 +198,15 @@ void NavigationRegion3DEditor::_on_region_bake_finished() {
 		const Vector<Vector3> baked_vertices = currently_baking_navigation_mesh->get_vertices();
 		const Vector<Vector<int>> baked_polygons = currently_baking_navigation_mesh->get_polygons();
 		const float baked_agent_height = currently_baking_navigation_mesh->get_agent_height();
+		const float baked_agent_max_climb = currently_baking_navigation_mesh->get_agent_max_climb();
 
-		if (baked_vertices != navigation_mesh_vertices_before_bake || baked_polygons != navigation_mesh_polygons_before_bake || !Math::is_equal_approx(baked_agent_height, navigation_mesh_agent_height_before_bake)) {
+		if (baked_vertices != navigation_mesh_vertices_before_bake || baked_polygons != navigation_mesh_polygons_before_bake || !Math::is_equal_approx(baked_agent_height, navigation_mesh_agent_height_before_bake) || !Math::is_equal_approx(baked_agent_max_climb, navigation_mesh_agent_max_climb_before_bake)) {
 			EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 			const int history_id = undo_redo->get_history_id_for_object(currently_baking_region);
 			undo_redo->create_action(TTR("Bake NavigationMesh"), UndoRedo::MERGE_DISABLE, currently_baking_region);
 			UndoRedo *scene_undo_redo = undo_redo->get_history_undo_redo(history_id);
-			scene_undo_redo->add_do_method(callable_mp(this, &NavigationRegion3DEditor::_set_baked_navigation_mesh_data).bind(currently_baking_navigation_mesh, baked_vertices, _navigation_mesh_polygons_to_array(baked_polygons), baked_agent_height));
-			scene_undo_redo->add_undo_method(callable_mp(this, &NavigationRegion3DEditor::_set_baked_navigation_mesh_data).bind(currently_baking_navigation_mesh, navigation_mesh_vertices_before_bake, _navigation_mesh_polygons_to_array(navigation_mesh_polygons_before_bake), navigation_mesh_agent_height_before_bake));
+			scene_undo_redo->add_do_method(callable_mp(this, &NavigationRegion3DEditor::_set_baked_navigation_mesh_data).bind(currently_baking_navigation_mesh, baked_vertices, _navigation_mesh_polygons_to_array(baked_polygons), baked_agent_height, baked_agent_max_climb));
+			scene_undo_redo->add_undo_method(callable_mp(this, &NavigationRegion3DEditor::_set_baked_navigation_mesh_data).bind(currently_baking_navigation_mesh, navigation_mesh_vertices_before_bake, _navigation_mesh_polygons_to_array(navigation_mesh_polygons_before_bake), navigation_mesh_agent_height_before_bake, navigation_mesh_agent_max_climb_before_bake));
 			scene_undo_redo->add_do_reference(currently_baking_navigation_mesh.ptr());
 			scene_undo_redo->add_undo_reference(currently_baking_navigation_mesh.ptr());
 			undo_redo->commit_action();
@@ -240,6 +242,7 @@ void NavigationRegion3DEditor::_process_regions_to_bake() {
 		navigation_mesh_vertices_before_bake = currently_baking_navigation_mesh->get_vertices();
 		navigation_mesh_polygons_before_bake = currently_baking_navigation_mesh->get_polygons();
 		navigation_mesh_agent_height_before_bake = currently_baking_navigation_mesh->get_agent_height();
+		navigation_mesh_agent_max_climb_before_bake = currently_baking_navigation_mesh->get_agent_max_climb();
 
 		if (region_to_bake->is_in_group("fps_navigation_region")) {
 			const float cell_height = currently_baking_navigation_mesh->get_cell_height();
@@ -248,6 +251,12 @@ void NavigationRegion3DEditor::_process_regions_to_bake() {
 				if (!Math::is_equal_approx(currently_baking_navigation_mesh->get_agent_height(), effective_agent_height)) {
 					// Keep older FPS regions consistent with the value Recast actually bakes.
 					currently_baking_navigation_mesh->set_agent_height(effective_agent_height);
+				}
+
+				const float effective_agent_max_climb = Math::floor(currently_baking_navigation_mesh->get_agent_max_climb() / cell_height) * cell_height;
+				if (!Math::is_equal_approx(currently_baking_navigation_mesh->get_agent_max_climb(), effective_agent_max_climb)) {
+					// Keep older FPS regions consistent with the value Recast actually bakes.
+					currently_baking_navigation_mesh->set_agent_max_climb(effective_agent_max_climb);
 				}
 			}
 		}
