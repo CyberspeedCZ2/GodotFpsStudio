@@ -71,7 +71,10 @@ void CollisionObject3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
 	CollisionObject3D *co = Object::cast_to<CollisionObject3D>(p_gizmo->get_node_3d());
 
 	p_gizmo->clear();
-	if (Object::cast_to<Area3D>(co)) {
+	Area3D *area = Object::cast_to<Area3D>(co);
+	const bool is_fps_studio_hitbox = area && area->has_meta("fps_studio_hitbox") &&
+			bool(area->get_meta("fps_studio_hitbox"));
+	if (area && !is_fps_studio_hitbox) {
 		// Use a dedicated, high-contrast editor icon at the same billboard scale as
 		// built-in node gizmos (e.g. Camera3D). Its material ignores scene depth.
 		p_gizmo->add_unscaled_billboard(get_material("area_icon", p_gizmo), 0.05);
