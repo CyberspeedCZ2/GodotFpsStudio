@@ -133,6 +133,10 @@ class SceneImportSettingsScreen : public Control {
 	Ref<Environment> environment;
 	bool first_aabb = false;
 	AABB contents_aabb;
+	Node3D *helper_preview_root = nullptr;
+	AABB helper_preview_aabb;
+	bool has_helper_preview_aabb = false;
+	bool show_helper_nodes = false;
 
 	// Skeleton gizmo extents are kept separate from `contents_aabb` so debug
 	// bone lines never shrink the framed model; used only as a fallback when
@@ -143,6 +147,7 @@ class SceneImportSettingsScreen : public Control {
 	Button *frame_button = nullptr;
 	Button *wireframe_toggle = nullptr;
 	Button *skeleton_visibility_toggle = nullptr;
+	Button *helper_visibility_toggle = nullptr;
 
 	Label *file_label = nullptr;
 	PanelContainer *empty_hint_panel = nullptr;
@@ -421,6 +426,8 @@ class SceneImportSettingsScreen : public Control {
 
 	void _update_view_gizmos();
 	void _update_camera();
+	void _update_helper_preview();
+	void _clear_helper_preview();
 	void _update_preview_floor(const AABB &p_bounds);
 	void _update_preview_lod_threshold();
 	void _gather_mesh_stats();
@@ -430,6 +437,7 @@ class SceneImportSettingsScreen : public Control {
 	Ref<Mesh> _get_lod_preview_mesh(const Ref<Mesh> &p_mesh, int p_level);
 	void _lod_bias_changed(double p_value);
 	void _wireframe_toggled(bool p_enabled);
+	void _helper_visibility_toggled(bool p_enabled);
 	void _generate_preview_lods(Node *p_node);
 	Ref<ImporterMesh> _duplicate_importer_mesh(const Ref<ImporterMesh> &p_source) const;
 	void _schedule_lod_edit_update();

@@ -47,6 +47,7 @@
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
 #include "scene/3d/bone_attachment_3d.h"
+#include "scene/3d/label_3d.h"
 #include "scene/3d/multimesh_instance_3d.h"
 #include "scene/3d/world_environment.h"
 #include "scene/animation/animation_player.h"
@@ -62,6 +63,7 @@
 #include "scene/main/viewport.h"
 #include "scene/resources/3d/importer_mesh.h"
 #include "scene/resources/3d/box_shape_3d.h"
+#include "scene/resources/3d/primitive_meshes.h"
 #include "scene/resources/material.h"
 #include "scene/resources/sky.h"
 #include "scene/resources/shader.h"
@@ -1034,6 +1036,112 @@ void SceneImportSettingsScreen::_update_view_gizmos() {
 	generate_collider = false;
 }
 
+void SceneImportSettingsScreen::_clear_helper_preview() {
+	if (helper_preview_root != nullptr) {
+		Node *parent = helper_preview_root->get_parent();
+		if (parent != nullptr) {
+			parent->remove_child(helper_preview_root);
+		}
+		memdelete(helper_preview_root);
+		helper_preview_root = nullptr;
+	}
+	helper_preview_aabb = AABB();
+	has_helper_preview_aabb = false;
+}
+
+void SceneImportSettingsScreen::_update_helper_preview() {
+	_clear_helper_preview();
+	Node3D *scene_node = Object::cast_to<Node3D>(scene);
+	if (scene_node == nullptr) {
+		if (helper_visibility_toggle != nullptr) {
+			helper_visibility_toggle->set_disabled(true);
+		}
+		return;
+	}
+
+	Ref<SphereMesh> marker_mesh;
+	marker_mesh.instantiate();
+	marker_mesh->set_radius(0.035);
+	marker_mesh->set_height(0.07);
+
+	Ref<StandardMaterial3D> marker_material;
+	marker_material.instantiate();
+	marker_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	marker_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+	marker_material->set_flag(BaseMaterial3D::FLAG_DISABLE_DEPTH_TEST, true);
+	marker_material->set_albedo(Color(1.0, 0.66, 0.12));
+
+	helper_preview_root = memnew(Node3D);
+	helper_preview_root->set_name("ModelViewHelperNodePreview");
+	scene_node->add_child(helper_preview_root, true);
+	const Transform3D scene_inverse = scene_node->get_global_transform().affine_inverse();
+	const String helper_tooltip = TTR("Transform-only helper outside the visible mesh bounds. "
+			"Enable Helpers to see its origin. In Details, Skip Import omits it on reimport; "
+			"Node Type changes its imported node class.");
+
+	for (const KeyValue<String, NodeData> &entry : node_map) {
+		Node *node = entry.value.node;
+		if (node == nullptr || node == scene || node->get_class() != "Node3D" ||
+				node->get_child_count() != 0) {
+			continue;
+		}
+		Node3D *helper = Object::cast_to<Node3D>(node);
+		if (helper == nullptr) {
+			continue;
+		}
+		const Vector3 helper_position = scene_inverse.xform(helper->get_global_transform().origin);
+		if (contents_aabb.has_point(helper_position)) {
+			continue;
+		}
+
+		MeshInstance3D *marker = memnew(MeshInstance3D);
+		marker->set_name(String("HelperMarker_") + String(helper->get_name()).validate_node_name());
+		marker->set_mesh(marker_mesh);
+		marker->set_material_override(marker_material);
+		marker->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		marker->set_gi_mode(GeometryInstance3D::GI_MODE_DISABLED);
+		marker->set_position(helper_position);
+		helper_preview_root->add_child(marker, true);
+
+		Label3D *label = memnew(Label3D);
+		label->set_name(String("HelperLabel_") + String(helper->get_name()).validate_node_name());
+		label->set_text(vformat("%s  (%.2f, %.2f, %.2f)", helper->get_name(),
+				helper_position.x, helper_position.y, helper_position.z));
+		label->set_position(helper_position + Vector3(0.0, 0.09, 0.0));
+		label->set_billboard_mode(BaseMaterial3D::BILLBOARD_ENABLED);
+		label->set_draw_flag(Label3D::FLAG_DISABLE_DEPTH_TEST, true);
+		label->set_font_size(32);
+		label->set_pixel_size(0.01);
+		label->set_modulate(Color(1.0, 0.78, 0.34));
+		label->set_outline_size(5);
+		label->set_outline_modulate(Color(0.07, 0.08, 0.1, 1.0));
+		helper_preview_root->add_child(label, true);
+
+		const real_t marker_radius = 0.045;
+		const AABB marker_bounds(
+				helper_position - Vector3(marker_radius, marker_radius, marker_radius),
+				Vector3(marker_radius * 2.0, marker_radius * 2.0, marker_radius * 2.0));
+		if (has_helper_preview_aabb) {
+			helper_preview_aabb.merge_with(marker_bounds);
+		} else {
+			helper_preview_aabb = marker_bounds;
+			has_helper_preview_aabb = true;
+		}
+
+		if (entry.value.scene_node != nullptr) {
+			entry.value.scene_node->set_tooltip_text(0, entry.value.scene_node->get_tooltip_text(0) + "\n\n" + helper_tooltip);
+		}
+	}
+
+	helper_preview_root->set_visible(show_helper_nodes);
+	if (helper_visibility_toggle != nullptr) {
+		helper_visibility_toggle->set_disabled(!has_helper_preview_aabb);
+		if (!has_helper_preview_aabb) {
+			helper_visibility_toggle->set_pressed_no_signal(false);
+		}
+	}
+}
+
 void SceneImportSettingsScreen::_update_camera() {
 	if (!camera || !base_viewport || !mesh_preview) {
 		return;
@@ -1073,6 +1181,11 @@ void SceneImportSettingsScreen::_update_camera() {
 			zoom = md.cam_zoom;
 			pan = md.cam_pan;
 		}
+	}
+	const bool using_scene_preview = selected_type == "Node" || selected_type == "Animation" ||
+			selected_type.is_empty() || (selected_type == "Material" && material_preview_on_model);
+	if (using_scene_preview && show_helper_nodes && has_helper_preview_aabb) {
+		camera_aabb.merge_with(helper_preview_aabb);
 	}
 
 	// The workspace can resize before a model is loaded. Never pass zero or
@@ -1657,6 +1770,15 @@ void SceneImportSettingsScreen::_wireframe_toggled(bool p_enabled) {
 	_update_mesh_stats();
 }
 
+void SceneImportSettingsScreen::_helper_visibility_toggled(bool p_enabled) {
+	show_helper_nodes = p_enabled;
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "show_helper_nodes", p_enabled);
+	if (helper_preview_root != nullptr) {
+		helper_preview_root->set_visible(p_enabled);
+	}
+	_reset_camera();
+}
+
 void SceneImportSettingsScreen::_lod_bias_changed(double p_value) {
 	lod_bias = CLAMP((float)p_value, 0.25f, 4.0f);
 	// Coarser levels switch in sooner as the screen-space threshold grows.
@@ -1796,6 +1918,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	if (scene) {
 		_save_lod_config();
 		_save_hitbox_config();
+		_clear_helper_preview();
 		_clear_hitbox_preview();
 		_cleanup();
 		memdelete(scene);
@@ -1929,6 +2052,8 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 		}
 	}
 	_load_hitbox_config();
+	show_helper_nodes = EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "show_helper_nodes", false);
+	helper_visibility_toggle->set_pressed_no_signal(show_helper_nodes);
 
 	// Regardless of p_scene_import_type, use PackedScene for pre_import because we want to see the full thing.
 	_resource_importer_scene->set_scene_import_type("PackedScene");
@@ -1967,6 +2092,7 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 		contents_aabb = has_skeleton_aabb ? skeleton_aabb : AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
 		first_aabb = false;
 	}
+	_update_helper_preview();
 
 	const HashMap<StringName, Variant> &main_settings = scene_import_settings_data->current;
 	if (main_settings.has("nodes/import_as_skeleton_bones")) {
@@ -2677,6 +2803,7 @@ void SceneImportSettingsScreen::_close_screen() {
 		lod_edit_timer->stop();
 	}
 	if (scene) {
+		_clear_helper_preview();
 		_clear_hitbox_preview();
 		_cleanup();
 		memdelete(scene);
@@ -3371,6 +3498,16 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	skeleton_visibility_toggle->set_tooltip_text(TTR("Toggle Skeleton Preview"));
 	skeleton_visibility_toggle->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_update_skeleton_preview_visibility));
 	hb_tools->add_child(skeleton_visibility_toggle);
+
+	helper_visibility_toggle = memnew(Button);
+	helper_visibility_toggle->set_text(TTR("Helpers"));
+	helper_visibility_toggle->set_theme_type_variation("PreviewLightButton");
+	helper_visibility_toggle->set_toggle_mode(true);
+	helper_visibility_toggle->set_focus_mode(Control::FOCUS_NONE);
+	helper_visibility_toggle->set_tooltip_text(TTR("Show transform-only helper nodes outside the mesh bounds. "
+			"Select a helper in the Scene tree to skip it or change its Node Type in Details."));
+	helper_visibility_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_helper_visibility_toggled));
+	hb_tools->add_child(helper_visibility_toggle);
 
 	// LOD selection is placed below the preview, leaving the toolbar for camera tools.
 	HBoxContainer *lod_preview_bar = memnew(HBoxContainer);
