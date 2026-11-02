@@ -3851,18 +3851,15 @@ void fragment() {
 	material_tab->add_child(material_inspector);
 	_update_material_editor();
 
-	settings_tab_navigation = memnew(Control);
+	Panel *settings_tab_navigation_panel = memnew(Panel);
+	settings_tab_navigation = settings_tab_navigation_panel;
 	settings_tab_navigation->set_custom_minimum_size(Size2(40 * EDSCALE, 0));
 	settings_tab_navigation->set_h_size_flags(Control::SIZE_FILL);
 	settings_tab_navigation->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	Panel *settings_navigation_background = memnew(Panel);
-	settings_navigation_background->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
-	settings_navigation_background->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
 	Ref<StyleBoxFlat> settings_navigation_background_style;
 	settings_navigation_background_style.instantiate();
 	settings_navigation_background_style->set_bg_color(model_view_surface.lightened(0.05));
-	settings_navigation_background->add_theme_style_override(SceneStringName(panel), settings_navigation_background_style);
-	settings_tab_navigation->add_child(settings_navigation_background);
+	settings_tab_navigation->add_theme_style_override(SceneStringName(panel), settings_navigation_background_style);
 	Vector<String> settings_tab_names;
 	settings_tab_names.push_back(TTR("LOD"));
 	settings_tab_names.push_back(TTR("Mesh"));
