@@ -211,6 +211,7 @@ class SceneImportSettingsScreen : public Control {
 		Vector3 minimum = Vector3(-0.5, -0.5, -0.5);
 		Vector3 maximum = Vector3(0.5, 0.5, 0.5);
 		int hitgroup = 0;
+		real_t damage = 15.0;
 		String skeleton_path;
 		String bone_name;
 	};
@@ -226,12 +227,13 @@ class SceneImportSettingsScreen : public Control {
 	};
 	Vector<ModelHitbox> model_hitboxes;
 	int selected_hitbox = -1;
-	int hitbox_config_version = 2;
+	int hitbox_config_version = 3;
 	bool hitbox_ui_updating = false;
 	Tree *hitbox_tree = nullptr;
 	Label *hitbox_count_label = nullptr;
 	LineEdit *hitbox_name_input = nullptr;
 	OptionButton *hitbox_group_option = nullptr;
+	SpinBox *hitbox_damage_input = nullptr;
 	OptionButton *hitbox_attachment_option = nullptr;
 	Button *hitbox_duplicate_button = nullptr;
 	Button *hitbox_remove_button = nullptr;
@@ -480,6 +482,7 @@ class SceneImportSettingsScreen : public Control {
 	void _hitbox_tree_selected();
 	void _hitbox_name_changed(const String &p_name);
 	void _hitbox_group_changed(int p_group);
+	void _hitbox_damage_changed(double p_value);
 	void _hitbox_attachment_changed(int p_attachment);
 	void _hitbox_transform_changed(double p_value, int p_field, int p_axis);
 	void _save_hitbox_config();

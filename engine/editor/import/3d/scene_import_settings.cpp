@@ -84,7 +84,8 @@ static constexpr real_t REFERENCE_ASPECT = 16.0 / 9.0;
 static constexpr real_t MODEL_SETTINGS_PANEL_MIN_WIDTH = 420.0;
 static constexpr real_t MODEL_SETTINGS_PANEL_DEFAULT_WIDTH = 480.0;
 static constexpr real_t MODEL_CONTENT_PANEL_DEFAULT_WIDTH = 300.0;
-static constexpr int MODEL_HITBOX_CONFIG_VERSION = 2;
+static constexpr int MODEL_HITBOX_CONFIG_VERSION = 3;
+static constexpr int MODEL_HITBOX_ATTACHMENT_VERSION = 2;
 static const String MODEL_CONTENT_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/content_width";
 static const String MODEL_SETTINGS_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/inspector_width";
 static const char *MODEL_SETTINGS_TAB_IDS[] = { "lod", "mesh", "physics", "hitboxes", "lighting", "details", "material", "environment" };
@@ -99,6 +100,21 @@ static Ref<Shape3D> create_model_hitbox_shape(const Vector3 &p_minimum, const Ve
 	const Vector3 dimensions = p_maximum - p_minimum;
 	shape->set_size(Vector3(MAX(dimensions.x, 0.01), MAX(dimensions.y, 0.01), MAX(dimensions.z, 0.01)));
 	return shape;
+}
+
+static real_t get_default_hitbox_damage(int p_hitgroup) {
+	// Lethal head hits, stronger torso hits, and reduced limb damage are useful
+	// starter values for a 100 HP NPC. Each value remains editable per hitbox.
+	switch (CLAMP(p_hitgroup, 0, 7)) {
+		case 1: // Head.
+			return 100.0;
+		case 2: // Chest.
+			return 40.0;
+		case 3: // Stomach.
+			return 30.0;
+		default: // Generic and limbs.
+			return 15.0;
+	}
 }
 
 static String normalize_hitbox_bone_name(const String &p_name) {
@@ -2720,6 +2736,7 @@ Error SceneImportSettingsScreen::_re_import() {
 		item["minimum"] = hitbox.minimum;
 		item["maximum"] = hitbox.maximum;
 		item["hitgroup"] = hitbox.hitgroup;
+		item["damage"] = hitbox.damage;
 		item["skeleton_path"] = hitbox.skeleton_path;
 		item["bone_name"] = hitbox.bone_name;
 		import_hitboxes.push_back(item);
@@ -4553,6 +4570,22 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hitbox_group_option->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_hitbox_group_changed));
 	group_row->add_child(hitbox_group_option);
 
+	HBoxContainer *damage_row = memnew(HBoxContainer);
+	content->add_child(damage_row);
+	Label *damage_label = memnew(Label);
+	damage_label->set_text(TTR("Damage (HP)"));
+	damage_label->set_custom_minimum_size(Size2(90 * EDSCALE, 0));
+	damage_row->add_child(damage_label);
+	hitbox_damage_input = memnew(SpinBox);
+	hitbox_damage_input->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	hitbox_damage_input->set_min(0.0);
+	hitbox_damage_input->set_max(10000.0);
+	hitbox_damage_input->set_step(1.0);
+	hitbox_damage_input->set_suffix(" HP");
+	hitbox_damage_input->set_tooltip_text(TTR("Fixed health damage dealt when this hitbox is hit. It can be overridden for a placed model in the Level Inspector."));
+	hitbox_damage_input->connect(SceneStringName(value_changed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_damage_changed));
+	damage_row->add_child(hitbox_damage_input);
+
 	HBoxContainer *attachment_row = memnew(HBoxContainer);
 	content->add_child(attachment_row);
 	Label *attachment_label = memnew(Label);
@@ -4712,6 +4745,11 @@ void SceneImportSettingsScreen::_select_hitbox(int p_index, bool p_refresh_tree)
 		}
 		if (valid) {
 			hitbox_group_option->select(model_hitboxes[selected_hitbox].hitgroup);
+			hitbox_damage_input->set_value_no_signal(model_hitboxes[selected_hitbox].damage);
+		}
+		hitbox_damage_input->set_editable(valid);
+		if (!valid) {
+			hitbox_damage_input->set_value_no_signal(15.0);
 		}
 		hitbox_ui_updating = false;
 	}
@@ -5103,6 +5141,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 			ModelHitbox hitbox;
 			hitbox.name = unique_hitbox_name(is_limb_part ? limb_names[segment] : TTR(preset_names[part]));
 			hitbox.hitgroup = preset_hitgroups[part];
+			hitbox.damage = get_default_hitbox_damage(hitbox.hitgroup);
 			if (matched_skeleton && matched_bone >= 0 && scene_root) {
 				convert_root_bounds_to_bone(root_minimum, root_maximum, matched_skeleton, attachment_bone, hitbox.minimum, hitbox.maximum);
 				hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
@@ -5166,6 +5205,14 @@ void SceneImportSettingsScreen::_hitbox_group_changed(int p_group) {
 	_save_hitbox_config();
 }
 
+void SceneImportSettingsScreen::_hitbox_damage_changed(double p_value) {
+	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
+		return;
+	}
+	model_hitboxes.write[selected_hitbox].damage = CLAMP((real_t)p_value, 0.0, 10000.0);
+	_save_hitbox_config();
+}
+
 void SceneImportSettingsScreen::_hitbox_attachment_changed(int p_attachment) {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size() || !hitbox_attachment_option || p_attachment < 0) {
 		return;
@@ -5211,6 +5258,7 @@ void SceneImportSettingsScreen::_save_hitbox_config() {
 		item["minimum"] = hitbox.minimum;
 		item["maximum"] = hitbox.maximum;
 		item["hitgroup"] = hitbox.hitgroup;
+		item["damage"] = hitbox.damage;
 		item["skeleton_path"] = hitbox.skeleton_path;
 		item["bone_name"] = hitbox.bone_name;
 		saved_hitboxes.push_back(item);
@@ -5251,6 +5299,7 @@ void SceneImportSettingsScreen::_load_hitbox_config() {
 		hitbox.minimum = item.get("minimum", Vector3(-0.5, -0.5, -0.5));
 		hitbox.maximum = item.get("maximum", Vector3(0.5, 0.5, 0.5));
 		hitbox.hitgroup = CLAMP((int)item.get("hitgroup", 0), 0, 7);
+		hitbox.damage = CLAMP((real_t)item.get("damage", get_default_hitbox_damage(hitbox.hitgroup)), 0.0, 10000.0);
 		hitbox.skeleton_path = item.get("skeleton_path", String());
 		hitbox.bone_name = item.get("bone_name", String());
 		model_hitboxes.push_back(hitbox);
@@ -5262,7 +5311,7 @@ void SceneImportSettingsScreen::_load_hitbox_config() {
 
 bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 	Node3D *scene_root = Object::cast_to<Node3D>(scene);
-	if (!scene_root || hitbox_config_version >= MODEL_HITBOX_CONFIG_VERSION) {
+	if (!scene_root || hitbox_config_version >= MODEL_HITBOX_ATTACHMENT_VERSION) {
 		return false;
 	}
 

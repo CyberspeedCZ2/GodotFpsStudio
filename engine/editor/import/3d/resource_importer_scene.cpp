@@ -69,6 +69,19 @@ static Ref<Shape3D> create_fps_studio_hitbox_shape(const Dictionary &p_settings)
 	return shape;
 }
 
+static real_t get_fps_studio_hitbox_default_damage(int p_hitgroup) {
+	switch (CLAMP(p_hitgroup, 0, 7)) {
+		case 1:
+			return 100.0;
+		case 2:
+			return 40.0;
+		case 3:
+			return 30.0;
+		default:
+			return 15.0;
+	}
+}
+
 static void _generate_fps_studio_hitboxes(Node *p_scene, const Array &p_hitboxes, real_t p_permanent_root_scale) {
 	if (p_scene == nullptr) {
 		return;
@@ -99,8 +112,10 @@ static void _generate_fps_studio_hitboxes(Node *p_scene, const Array &p_hitboxes
 		Area3D *area = memnew(Area3D);
 		area->set_name(hitbox_name.is_empty() ? "Hitbox" : hitbox_name);
 		area->set_meta("fps_studio_hitbox", true);
-		area->set_collision_layer(1);
-		area->set_collision_mask(1);
+		// Reserve layer 20 for FPS hurtboxes so hitscan can query these areas
+		// separately from NPC body shapes and unrelated trigger areas.
+		area->set_collision_layer(1 << 19);
+		area->set_collision_mask(0);
 		Vector3 minimum = settings.get("minimum", Vector3(-0.5, -0.5, -0.5));
 		Vector3 maximum = settings.get("maximum", Vector3(0.5, 0.5, 0.5));
 		if (p_permanent_root_scale != 1.0) {
@@ -117,7 +132,10 @@ static void _generate_fps_studio_hitboxes(Node *p_scene, const Array &p_hitboxes
 		CollisionShape3D *collision_shape = memnew(CollisionShape3D);
 		collision_shape->set_name("CollisionShape3D");
 		collision_shape->set_shape(create_fps_studio_hitbox_shape(settings));
-		area->set_meta("hitgroup", CLAMP((int)settings.get("hitgroup", 0), 0, 7));
+		const int hitgroup = CLAMP((int)settings.get("hitgroup", 0), 0, 7);
+		const real_t damage = CLAMP((real_t)settings.get("damage", get_fps_studio_hitbox_default_damage(hitgroup)), 0.0, 10000.0);
+		area->set_meta("hitgroup", hitgroup);
+		area->set_meta("damage", damage);
 		area->set_meta("hitbox_minimum", minimum);
 		area->set_meta("hitbox_maximum", maximum);
 		area->add_child(collision_shape, true);
