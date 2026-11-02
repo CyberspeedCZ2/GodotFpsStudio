@@ -3856,9 +3856,10 @@ void fragment() {
 	settings_tab_navigation->set_custom_minimum_size(Size2(40 * EDSCALE, 0));
 	settings_tab_navigation->set_h_size_flags(Control::SIZE_FILL);
 	settings_tab_navigation->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	const Color settings_navigation_background_color = model_view_surface.lightened(0.05);
 	Ref<StyleBoxFlat> settings_navigation_background_style;
 	settings_navigation_background_style.instantiate();
-	settings_navigation_background_style->set_bg_color(model_view_surface.lightened(0.05));
+	settings_navigation_background_style->set_bg_color(settings_navigation_background_color);
 	settings_tab_navigation->add_theme_style_override(SceneStringName(panel), settings_navigation_background_style);
 	Vector<String> settings_tab_names;
 	settings_tab_names.push_back(TTR("LOD"));
@@ -3880,6 +3881,12 @@ void fragment() {
 	settings_tab_selected->set_border_width(SIDE_TOP, 3 * EDSCALE);
 	settings_tab_selected->set_border_color(model_view_accent);
 	settings_tab_bar->add_theme_style_override(SNAME("tab_selected"), settings_tab_selected);
+	Ref<StyleBoxFlat> settings_tab_unselected = editor_theme->get_stylebox(SNAME("tab_unselected"), SNAME("TabBar"))->duplicate();
+	settings_tab_unselected->set_bg_color(model_view_surface.lightened(0.09));
+	settings_tab_bar->add_theme_style_override(SNAME("tab_unselected"), settings_tab_unselected);
+	Ref<StyleBoxFlat> settings_tab_hovered = editor_theme->get_stylebox(SNAME("tab_hovered"), SNAME("TabBar"))->duplicate();
+	settings_tab_hovered->set_bg_color(model_view_surface.lightened(0.12));
+	settings_tab_bar->add_theme_style_override(SNAME("tab_hovered"), settings_tab_hovered);
 	settings_tab_bar->add_theme_color_override(SNAME("font_selected_color"), model_view_accent);
 	settings_tab_bar->add_theme_color_override(SNAME("font_hovered_color"), model_view_accent.lightened(0.12));
 	settings_tab_navigation->add_child(settings_tab_bar);
