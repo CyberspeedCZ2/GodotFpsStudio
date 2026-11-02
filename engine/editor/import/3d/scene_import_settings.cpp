@@ -236,31 +236,50 @@ uniform float cloud_speed : hint_range(0.0, 0.1) = 0.01;
 uniform vec3 cloud_color : source_color = vec3(1.0, 1.0, 1.0);
 uniform vec3 cloud_shadow_color : source_color = vec3(0.55, 0.60, 0.70);
 
-vec2 hash2(vec2 p) {
-	p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-	return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+const int CLOUD_MARCH_STEPS = 8;
+const float CLOUD_BASE_HEIGHT = 120.0;
+const float CLOUD_LAYER_THICKNESS = 55.0;
+
+float hash3(vec3 p) {
+	return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
 }
 
-float gradient_noise(vec2 p) {
-	vec2 i = floor(p);
-	vec2 f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(
-		mix(dot(hash2(i), f), dot(hash2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
-		mix(dot(hash2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)), dot(hash2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x),
-		u.y);
+float cloud_noise(vec3 p) {
+	vec3 cell = floor(p);
+	vec3 local = fract(p);
+	vec3 blend = local * local * (3.0 - 2.0 * local);
+	float n000 = hash3(cell + vec3(0.0, 0.0, 0.0));
+	float n100 = hash3(cell + vec3(1.0, 0.0, 0.0));
+	float n010 = hash3(cell + vec3(0.0, 1.0, 0.0));
+	float n110 = hash3(cell + vec3(1.0, 1.0, 0.0));
+	float n001 = hash3(cell + vec3(0.0, 0.0, 1.0));
+	float n101 = hash3(cell + vec3(1.0, 0.0, 1.0));
+	float n011 = hash3(cell + vec3(0.0, 1.0, 1.0));
+	float n111 = hash3(cell + vec3(1.0, 1.0, 1.0));
+	float lower = mix(mix(n000, n100, blend.x), mix(n010, n110, blend.x), blend.y);
+	float upper = mix(mix(n001, n101, blend.x), mix(n011, n111, blend.x), blend.y);
+	return mix(lower, upper, blend.z);
 }
 
-float cloud_noise(vec2 p) {
+float cloud_fbm(vec3 p) {
 	float value = 0.0;
 	float weight = 0.5;
-	mat2 rotation = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8));
-	for (int octave = 0; octave < 4; octave++) {
-		value += weight * gradient_noise(p);
-		p = rotation * p * 2.05 + vec2(13.5, 27.2);
+	for (int octave = 0; octave < 3; octave++) {
+		value += weight * cloud_noise(p);
+		p = p * 2.03 + vec3(13.5, 27.2, 9.2);
 		weight *= 0.5;
 	}
-	return clamp(value * 0.5 + 0.5, 0.0, 1.0);
+	return value / 0.875;
+}
+
+float cloud_density(vec3 world_position, float layer_height, vec2 wind) {
+	vec3 p = vec3(world_position.xz * (0.0012 * cloud_scale) + wind, layer_height * 0.85);
+	float shape = cloud_fbm(p);
+	float detail = cloud_noise(p * 3.1 + vec3(5.2, 11.7, 2.8));
+	float threshold = mix(0.72, 0.31, cloud_coverage);
+	float cloud_shape = smoothstep(threshold, threshold + 0.16, shape + (detail - 0.5) * 0.12);
+	float height_profile = smoothstep(0.0, 0.16, layer_height) * (1.0 - smoothstep(0.68, 1.0, layer_height));
+	return cloud_shape * height_profile;
 }
 
 void sky() {
@@ -278,15 +297,34 @@ void sky() {
 	}
 
 	if (clouds_enabled && up > 0.01 && cloud_coverage > 0.0) {
-		vec2 uv = (EYEDIR.xz / max(up + 0.12, 0.14)) * cloud_scale;
+		vec3 ray_direction = normalize(EYEDIR);
+		float ray_up = max(ray_direction.y, 0.015);
+		float start_distance = CLOUD_BASE_HEIGHT / ray_up;
+		float step_distance = CLOUD_LAYER_THICKNESS / (float(CLOUD_MARCH_STEPS) * ray_up);
 		vec2 wind = vec2(TIME * cloud_speed, TIME * cloud_speed * 0.35);
-		float noise_value = cloud_noise(uv + wind);
-		float threshold = 1.0 - cloud_coverage;
-		float alpha = smoothstep(threshold, threshold + 0.12, noise_value) * smoothstep(0.01, 0.16, up);
-		float shade = smoothstep(threshold - 0.05, threshold + 0.22, noise_value);
-		float illumination = LIGHT0_ENABLED ? clamp(sun_dot * 0.35 + 0.65, 0.0, 1.0) : 0.7;
-		vec3 cloud_surface = mix(cloud_shadow_color, cloud_color * (0.85 + 0.15 * illumination), shade);
-		color = mix(color, cloud_surface, alpha);
+		float transmittance = 1.0;
+		vec3 cloud_light = vec3(0.0);
+		float horizon_fade = smoothstep(0.01, 0.18, up);
+
+		for (int step_index = 0; step_index < CLOUD_MARCH_STEPS; step_index++) {
+			float layer_height = (float(step_index) + 0.5) / float(CLOUD_MARCH_STEPS);
+			float distance_along_ray = start_distance + (float(step_index) + 0.5) * step_distance;
+			vec3 sample_position = ray_direction * distance_along_ray;
+			float density = cloud_density(sample_position, layer_height, wind);
+			float sample_opacity = 1.0 - exp(-density * step_distance * 0.018);
+
+			float top_light = smoothstep(0.18, 0.82, layer_height);
+			float sun_illumination = LIGHT0_ENABLED ? clamp(0.72 + sun_dot * 0.32, 0.35, 1.08) : 0.72;
+			vec3 sample_color = mix(cloud_shadow_color, cloud_color * sun_illumination, top_light);
+			cloud_light += transmittance * sample_opacity * sample_color;
+			transmittance *= 1.0 - sample_opacity;
+			if (transmittance < 0.02) {
+				break;
+			}
+		}
+
+		float cloud_opacity = (1.0 - transmittance) * horizon_fade;
+		color = mix(color, cloud_light / max(1.0 - transmittance, 0.001), cloud_opacity);
 	}
 	COLOR = color;
 }
