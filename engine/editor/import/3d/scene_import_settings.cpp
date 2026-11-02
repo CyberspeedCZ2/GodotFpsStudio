@@ -3366,8 +3366,10 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	Color tree_selected_bg = model_view_accent;
 	tree_selected_bg.a = 0.2;
 	tree_selected->set_bg_color(tree_selected_bg);
+	tree_selected->set_border_width_all(0);
 	tree_selected->set_border_width(SIDE_LEFT, 2 * EDSCALE);
 	tree_selected->set_border_color(model_view_accent);
+	tree_selected->set_corner_radius_all(0);
 	scene_tree->add_theme_style_override(SNAME("selected"), tree_selected);
 	scene_tree->add_theme_style_override(SNAME("selected_focus"), tree_selected);
 	scene_tree->add_theme_color_override(SNAME("font_selected_color"), editor_theme->get_color(SNAME("font_color"), EditorStringName(Editor)));
@@ -3538,16 +3540,9 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 			"Select a helper in the Scene tree to skip it or change its Node Type in Details."));
 	helper_visibility_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_helper_visibility_toggled));
 	hb_tools->add_child(helper_visibility_toggle);
-	Ref<StyleBoxFlat> preview_toggle_pressed = editor_theme->get_stylebox(SceneStringName(pressed), SNAME("Button"))->duplicate();
-	Color preview_toggle_bg = model_view_accent;
-	preview_toggle_bg.a = 0.16;
-	preview_toggle_pressed->set_bg_color(preview_toggle_bg);
-	preview_toggle_pressed->set_border_width(SIDE_BOTTOM, 2 * EDSCALE);
-	preview_toggle_pressed->set_border_color(model_view_accent);
 	for (Button *button : { frame_button, wireframe_toggle, skeleton_visibility_toggle, helper_visibility_toggle }) {
-		button->add_theme_style_override(SceneStringName(pressed), preview_toggle_pressed);
-		button->add_theme_style_override("hover_pressed", preview_toggle_pressed);
 		button->add_theme_color_override(SNAME("font_pressed_color"), model_view_accent.lightened(0.18));
+		button->add_theme_color_override(SNAME("font_hover_pressed_color"), model_view_accent.lightened(0.18));
 	}
 
 	// LOD selection is placed below the preview, leaving the toolbar for camera tools.
