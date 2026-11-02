@@ -81,6 +81,7 @@ static constexpr real_t REFERENCE_ASPECT = 16.0 / 9.0;
 static constexpr real_t MODEL_SETTINGS_PANEL_MIN_WIDTH = 420.0;
 static constexpr real_t MODEL_SETTINGS_PANEL_DEFAULT_WIDTH = 480.0;
 static constexpr real_t MODEL_CONTENT_PANEL_DEFAULT_WIDTH = 300.0;
+static constexpr int MODEL_HITBOX_CONFIG_VERSION = 2;
 static const String MODEL_CONTENT_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/content_width";
 static const String MODEL_SETTINGS_PANEL_WIDTH_SETTING = "interface/fps_studio/model_view/inspector_width";
 static const char *MODEL_SETTINGS_TAB_IDS[] = { "lod", "mesh", "physics", "hitboxes", "lighting", "details", "material", "environment" };
@@ -5006,7 +5007,7 @@ void SceneImportSettingsScreen::_save_hitbox_config() {
 	}
 	Ref<ConfigFile> config;
 	config.instantiate();
-	config->set_value("hitboxes", "version", 1);
+	config->set_value("hitboxes", "version", MODEL_HITBOX_CONFIG_VERSION);
 	config->set_value("hitboxes", "items", saved_hitboxes);
 	if (config->save(base_path + ".hitboxcfg") != OK) {
 		ERR_PRINT("Unable to save model hitbox settings: " + base_path + ".hitboxcfg");
@@ -5016,6 +5017,7 @@ void SceneImportSettingsScreen::_save_hitbox_config() {
 void SceneImportSettingsScreen::_load_hitbox_config() {
 	model_hitboxes.clear();
 	selected_hitbox = -1;
+	hitbox_config_version = MODEL_HITBOX_CONFIG_VERSION;
 	if (base_path.is_empty()) {
 		return;
 	}
@@ -5023,8 +5025,10 @@ void SceneImportSettingsScreen::_load_hitbox_config() {
 	Ref<ConfigFile> config;
 	config.instantiate();
 	if (config->load(base_path + ".hitboxcfg") == OK) {
+		hitbox_config_version = MAX(0, (int)config->get_value("hitboxes", "version", 1));
 		saved_hitboxes = config->get_value("hitboxes", "items", Array());
 	} else if (defaults.has("fps_studio/hitboxes")) {
+		hitbox_config_version = 1;
 		saved_hitboxes = defaults["fps_studio/hitboxes"];
 	}
 	for (const Variant &value : saved_hitboxes) {
@@ -5048,7 +5052,7 @@ void SceneImportSettingsScreen::_load_hitbox_config() {
 
 bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 	Node3D *scene_root = Object::cast_to<Node3D>(scene);
-	if (!scene_root) {
+	if (!scene_root || hitbox_config_version >= MODEL_HITBOX_CONFIG_VERSION) {
 		return false;
 	}
 
@@ -5097,7 +5101,6 @@ bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 		}
 	};
 
-	bool changed = false;
 	for (ModelHitbox &hitbox : model_hitboxes) {
 		int slot = -1;
 		for (int candidate = 0; candidate < 11; candidate++) {
@@ -5108,6 +5111,18 @@ bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 		}
 		if (slot < 0) {
 			continue; // Keep custom hitboxes and names untouched.
+		}
+		// Version 1 could select a parallel control rig instead of the deform
+		// skeleton. Only control-rig attachments are eligible for migration; an
+		// empty attachment means Model Root, and any other valid bone is preserved.
+		Skeleton3D *old_skeleton = hitbox.skeleton_path.is_empty() ? nullptr : Object::cast_to<Skeleton3D>(scene_root->get_node_or_null(NodePath(hitbox.skeleton_path)));
+		const int old_bone = old_skeleton ? old_skeleton->find_bone(hitbox.bone_name) : -1;
+		if (!old_skeleton || old_bone < 0) {
+			continue;
+		}
+		const String old_bone_normalized = normalize_hitbox_bone_name(old_skeleton->get_bone_name(old_bone));
+		if (!old_bone_normalized.begins_with("ctrl") && !old_bone_normalized.begins_with("control")) {
+			continue;
 		}
 
 		const Vector<String> aliases = make_aliases(preset_aliases[slot], 15);
@@ -5137,9 +5152,10 @@ bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 		if (!target_skeleton || target_bone < 0) {
 			continue;
 		}
-
-		Skeleton3D *old_skeleton = hitbox.skeleton_path.is_empty() ? nullptr : Object::cast_to<Skeleton3D>(scene_root->get_node_or_null(NodePath(hitbox.skeleton_path)));
-		const int old_bone = old_skeleton ? old_skeleton->find_bone(hitbox.bone_name) : -1;
+		const String target_bone_normalized = normalize_hitbox_bone_name(target_skeleton->get_bone_name(target_bone));
+		if (!target_bone_normalized.begins_with("mixamorig") && !target_bone_normalized.begins_with("mixamo")) {
+			continue;
+		}
 		const String target_skeleton_path = String(scene->get_path_to(target_skeleton));
 		const String target_bone_name = target_skeleton->get_bone_name(target_bone);
 		if (old_skeleton == target_skeleton && old_bone == target_bone && hitbox.skeleton_path == target_skeleton_path) {
@@ -5156,9 +5172,10 @@ bool SceneImportSettingsScreen::_repair_hitbox_attachments() {
 		transform_bounds(root_minimum, root_maximum, root_to_new_bone, hitbox.minimum, hitbox.maximum);
 		hitbox.skeleton_path = target_skeleton_path;
 		hitbox.bone_name = target_bone_name;
-		changed = true;
 	}
-	return changed;
+	// Persist the migration marker even if no automatic attachment needed repair.
+	hitbox_config_version = MODEL_HITBOX_CONFIG_VERSION;
+	return true;
 }
 
 void SceneImportSettingsScreen::_clear_hitbox_preview() {

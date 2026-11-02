@@ -221,6 +221,7 @@ class SceneImportSettingsScreen : public Control {
 	};
 	Vector<ModelHitbox> model_hitboxes;
 	int selected_hitbox = -1;
+	int hitbox_config_version = 2;
 	bool hitbox_ui_updating = false;
 	Tree *hitbox_tree = nullptr;
 	Label *hitbox_count_label = nullptr;
