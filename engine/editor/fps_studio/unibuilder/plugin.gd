@@ -42,6 +42,7 @@ var _overlay_camera: Camera3D
 var _hitbox_overlay_root: Node
 var _hitbox_overlay_nodes: Array[Area3D] = []
 var _hitbox_overlay_rescan_at := 0
+var _hitbox_gizmo_visibility_applied: Dictionary = {}
 const HITBOX_OVERLAY_COLORS := [
 	Color(0.30, 0.76, 1.00, 0.95), # Generic.
 	Color(1.00, 0.24, 0.20, 0.95), # Head.
@@ -196,6 +197,7 @@ func _enter_tree() -> void:
 	_update_grid()
 
 	_refresh_existing_gizmos.call_deferred()
+	_refresh_hitbox_overlay_cache.call_deferred()
 	update_overlays()
 
 	if UBEdition.DEMO:
@@ -594,13 +596,15 @@ func _forward_3d_draw_over_viewport(viewport_control: Control) -> void:
 
 
 func _draw_hitbox_overlay(overlay: Control) -> void:
-	if toolbar == null or not toolbar.hitboxes_visible:
+	if toolbar == null:
+		return
+	_refresh_hitbox_overlay_cache()
+	if not toolbar.hitboxes_visible:
 		return
 	var viewport := overlay.get_viewport()
 	var camera: Camera3D = viewport.get_camera_3d() if viewport != null else null
 	if camera == null:
 		return
-	_refresh_hitbox_overlay_cache()
 	for area in _hitbox_overlay_nodes:
 		if not is_instance_valid(area) or not area.is_inside_tree():
 			continue
@@ -642,7 +646,14 @@ func _refresh_hitbox_overlay_cache() -> void:
 	while not stack.is_empty():
 		var node: Node = stack.pop_back()
 		if node is Area3D and node.has_meta("fps_studio_hitbox") and bool(node.get_meta("fps_studio_hitbox")):
-			_hitbox_overlay_nodes.append(node as Area3D)
+			var area := node as Area3D
+			_hitbox_overlay_nodes.append(area)
+			var instance_id := area.get_instance_id()
+			if not _hitbox_gizmo_visibility_applied.has(instance_id) or bool(_hitbox_gizmo_visibility_applied[instance_id]) != toolbar.hitboxes_visible:
+				_hitbox_gizmo_visibility_applied[instance_id] = toolbar.hitboxes_visible
+				var collision := area.get_node_or_null("CollisionShape3D") as CollisionShape3D
+				if collision != null:
+					collision.update_gizmos()
 		stack.append_array(node.get_children())
 
 
@@ -2410,8 +2421,11 @@ func _on_grid_changed() -> void:
 
 
 func _on_hitboxes_toggled(_enabled: bool) -> void:
+	_save_grid_settings()
+	_hitbox_gizmo_visibility_applied.clear()
+	_hitbox_overlay_rescan_at = -1
+	_refresh_hitbox_overlay_cache()
 	update_overlays()
-	_queue_save_settings()
 
 
 func _on_scene_changed(_root: Node) -> void:
@@ -2428,6 +2442,7 @@ func _on_scene_changed(_root: Node) -> void:
 	_hitbox_overlay_root = null
 	_hitbox_overlay_nodes.clear()
 	_hitbox_overlay_rescan_at = 0
+	_hitbox_gizmo_visibility_applied.clear()
 
 	_flush_parked_commits()
 	var current := EditorInterface.get_edited_scene_root()

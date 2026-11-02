@@ -48,6 +48,19 @@
 #include "scene/resources/3d/sphere_shape_3d.h"
 #include "scene/resources/3d/world_boundary_shape_3d.h"
 
+static bool is_fps_studio_hitbox_hidden(const CollisionShape3D *p_shape) {
+	const Node *parent = p_shape->get_parent();
+	if (parent == nullptr || !parent->has_meta("fps_studio_hitbox") || !bool(parent->get_meta("fps_studio_hitbox"))) {
+		return false;
+	}
+	EditorSettings *editor_settings = EditorSettings::get_singleton();
+	if (editor_settings == nullptr) {
+		return false;
+	}
+	const Dictionary toolbar_state = editor_settings->get_project_metadata("unibuilder", "grid", Dictionary());
+	return !bool(toolbar_state.get("hitboxes_visible", true));
+}
+
 CollisionShape3DGizmoPlugin::CollisionShape3DGizmoPlugin() {
 	helper.instantiate();
 
@@ -305,6 +318,9 @@ void CollisionShape3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
 	CollisionShape3D *cs = Object::cast_to<CollisionShape3D>(p_gizmo->get_node_3d());
 
 	p_gizmo->clear();
+	if (is_fps_studio_hitbox_hidden(cs)) {
+		return;
+	}
 
 	Ref<Shape3D> s = cs->get_shape();
 	if (s.is_null()) {
