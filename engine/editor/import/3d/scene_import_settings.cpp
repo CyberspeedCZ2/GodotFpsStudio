@@ -3304,6 +3304,9 @@ void SceneImportSettingsScreen::_save_dir_confirm() {
 SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	singleton = this;
 	_resource_importer_scene = memnew(ResourceImporterScene("PackedScene"));
+	const Ref<Theme> editor_theme = EditorNode::get_singleton()->get_editor_theme();
+	const Color model_view_accent = editor_theme->get_color(SNAME("accent_color"), EditorStringName(Editor));
+	const Color model_view_surface = editor_theme->get_color(SNAME("base_color"), EditorStringName(Editor));
 
 	VBoxContainer *main_vb = memnew(VBoxContainer);
 	add_child(main_vb);
@@ -3329,6 +3332,8 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	file_label = memnew(Label);
 	file_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	file_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	file_label->add_theme_color_override(SceneStringName(font_color), model_view_accent);
+	file_label->add_theme_font_override(SceneStringName(font), editor_theme->get_font(SNAME("bold"), EditorStringName(EditorFonts)));
 	menu_hb->add_child(file_label);
 
 	tree_split = memnew(HSplitContainer);
@@ -3340,6 +3345,12 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	tree_split->add_child(data_mode);
 	data_mode->set_custom_minimum_size(Size2(300 * EDSCALE, 0));
 	data_mode->set_theme_type_variation("TabContainerOdd");
+	Ref<StyleBoxFlat> data_tab_selected = editor_theme->get_stylebox(SNAME("tab_selected"), SNAME("TabContainerOdd"))->duplicate();
+	data_tab_selected->set_border_width(SIDE_BOTTOM, 2 * EDSCALE);
+	data_tab_selected->set_border_color(model_view_accent);
+	data_mode->add_theme_style_override(SNAME("tab_selected"), data_tab_selected);
+	data_mode->add_theme_color_override(SNAME("font_selected_color"), model_view_accent);
+	data_mode->add_theme_color_override(SNAME("font_hovered_color"), model_view_accent.lightened(0.12));
 
 	property_split = memnew(HSplitContainer);
 	tree_split->add_child(property_split);
@@ -3348,20 +3359,38 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	scene_tree = memnew(Tree);
 	scene_tree->set_name(TTR("Scene"));
 	scene_tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
+	scene_tree->set_theme_type_variation("TreeSecondary");
 	data_mode->add_child(scene_tree);
+	Ref<StyleBoxFlat> tree_selected = editor_theme->get_stylebox(SNAME("selected"), SNAME("Tree"))->duplicate();
+	Color tree_selected_bg = model_view_accent;
+	tree_selected_bg.a = 0.2;
+	tree_selected->set_bg_color(tree_selected_bg);
+	tree_selected->set_border_width(SIDE_LEFT, 2 * EDSCALE);
+	tree_selected->set_border_color(model_view_accent);
+	scene_tree->add_theme_style_override(SNAME("selected"), tree_selected);
+	scene_tree->add_theme_style_override(SNAME("selected_focus"), tree_selected);
+	scene_tree->add_theme_color_override(SNAME("font_selected_color"), editor_theme->get_color(SNAME("font_color"), EditorStringName(Editor)));
 	scene_tree->connect("cell_selected", callable_mp(this, &SceneImportSettingsScreen::_scene_tree_selected));
 
 	mesh_tree = memnew(Tree);
 	mesh_tree->set_name(TTR("Meshes"));
 	mesh_tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
+	mesh_tree->set_theme_type_variation("TreeSecondary");
 	data_mode->add_child(mesh_tree);
+	mesh_tree->add_theme_style_override(SNAME("selected"), tree_selected);
+	mesh_tree->add_theme_style_override(SNAME("selected_focus"), tree_selected);
+	mesh_tree->add_theme_color_override(SNAME("font_selected_color"), editor_theme->get_color(SNAME("font_color"), EditorStringName(Editor)));
 	mesh_tree->set_hide_root(true);
 	mesh_tree->connect("cell_selected", callable_mp(this, &SceneImportSettingsScreen::_mesh_tree_selected));
 
 	material_tree = memnew(Tree);
 	material_tree->set_name(TTR("Materials"));
 	material_tree->set_auto_translate_mode(AUTO_TRANSLATE_MODE_DISABLED);
+	material_tree->set_theme_type_variation("TreeSecondary");
 	data_mode->add_child(material_tree);
+	material_tree->add_theme_style_override(SNAME("selected"), tree_selected);
+	material_tree->add_theme_style_override(SNAME("selected_focus"), tree_selected);
+	material_tree->add_theme_color_override(SNAME("font_selected_color"), editor_theme->get_color(SNAME("font_color"), EditorStringName(Editor)));
 	material_tree->connect("cell_selected", callable_mp(this, &SceneImportSettingsScreen::_material_tree_selected));
 
 	material_tree->set_hide_root(true);
@@ -3508,6 +3537,17 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 			"Select a helper in the Scene tree to skip it or change its Node Type in Details."));
 	helper_visibility_toggle->connect(SceneStringName(toggled), callable_mp(this, &SceneImportSettingsScreen::_helper_visibility_toggled));
 	hb_tools->add_child(helper_visibility_toggle);
+	Ref<StyleBoxFlat> preview_toggle_pressed = editor_theme->get_stylebox(SceneStringName(pressed), SNAME("Button"))->duplicate();
+	Color preview_toggle_bg = model_view_accent;
+	preview_toggle_bg.a = 0.16;
+	preview_toggle_pressed->set_bg_color(preview_toggle_bg);
+	preview_toggle_pressed->set_border_width(SIDE_BOTTOM, 2 * EDSCALE);
+	preview_toggle_pressed->set_border_color(model_view_accent);
+	for (Button *button : { frame_button, wireframe_toggle, skeleton_visibility_toggle, helper_visibility_toggle }) {
+		button->add_theme_style_override(SceneStringName(pressed), preview_toggle_pressed);
+		button->add_theme_style_override("hover_pressed", preview_toggle_pressed);
+		button->add_theme_color_override(SNAME("font_pressed_color"), model_view_accent.lightened(0.18));
+	}
 
 	// LOD selection is placed below the preview, leaving the toolbar for camera tools.
 	HBoxContainer *lod_preview_bar = memnew(HBoxContainer);
@@ -3556,6 +3596,8 @@ SceneImportSettingsScreen::SceneImportSettingsScreen() {
 	stats_bg->set_bg_color(Color(0, 0, 0, 0.55));
 	stats_bg->set_content_margin_individual(8.0 * EDSCALE, 4.0 * EDSCALE, 8.0 * EDSCALE, 4.0 * EDSCALE);
 	mesh_stats_panel->add_theme_style_override(SceneStringName(panel), stats_bg);
+	stats_bg->set_border_width(SIDE_LEFT, 2 * EDSCALE);
+	stats_bg->set_border_color(model_view_accent);
 
 	mesh_stats_label = memnew(Label);
 	mesh_stats_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_LEFT);
@@ -3724,6 +3766,12 @@ void fragment() {
 	settings_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->set_tabs_visible(false);
+	Ref<StyleBoxFlat> settings_surface_style = editor_theme->get_stylebox(SceneStringName(panel), SNAME("TabContainer"))->duplicate();
+	Color settings_surface_color = model_view_surface.lerp(model_view_accent, 0.025);
+	settings_surface_style->set_bg_color(settings_surface_color);
+	settings_surface_style->set_border_width(SIDE_LEFT, 1 * EDSCALE);
+	settings_surface_style->set_border_color(Color(model_view_accent, 0.35));
+	settings_tabs->add_theme_style_override(SceneStringName(panel), settings_surface_style);
 	settings_panel_layout = memnew(HBoxContainer);
 	settings_panel_layout->set_h_size_flags(Control::SIZE_FILL);
 	settings_panel_layout->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -3821,6 +3869,13 @@ void fragment() {
 	settings_tab_bar->set_scrolling_enabled(true);
 	settings_tab_bar->set_scroll_to_selected(true);
 	settings_tab_bar->set_rotation(Math::deg_to_rad(90.0));
+	Ref<StyleBoxFlat> settings_tab_selected = editor_theme->get_stylebox(SNAME("tab_selected"), SNAME("TabBar"))->duplicate();
+	settings_tab_selected->set_bg_color(model_view_surface.lerp(model_view_accent, 0.16));
+	settings_tab_selected->set_border_width(SIDE_TOP, 3 * EDSCALE);
+	settings_tab_selected->set_border_color(model_view_accent);
+	settings_tab_bar->add_theme_style_override(SNAME("tab_selected"), settings_tab_selected);
+	settings_tab_bar->add_theme_color_override(SNAME("font_selected_color"), model_view_accent);
+	settings_tab_bar->add_theme_color_override(SNAME("font_hovered_color"), model_view_accent.lightened(0.12));
 	settings_tab_navigation->add_child(settings_tab_bar);
 	for (int i = 0; i < settings_tab_names.size(); i++) {
 		settings_tab_bar->add_tab(settings_tab_names[i]);
