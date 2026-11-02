@@ -48,21 +48,40 @@
 #include "scene/resources/3d/sphere_shape_3d.h"
 #include "scene/resources/3d/world_boundary_shape_3d.h"
 
-static bool is_fps_studio_hitbox_hidden(const CollisionShape3D *p_shape) {
-	const Node *parent = p_shape->get_parent();
+static Node *get_fps_studio_hitbox_node(const CollisionShape3D *p_shape) {
+	Node *parent = p_shape->get_parent();
 	if (parent == nullptr || !parent->has_meta("fps_studio_hitbox") || !bool(parent->get_meta("fps_studio_hitbox"))) {
-		return false;
+		return nullptr;
 	}
+	return parent;
+}
+
+static bool is_fps_studio_hitbox_hidden(const Node *p_hitbox_node) {
 	EditorSettings *editor_settings = EditorSettings::get_singleton();
-	if (editor_settings == nullptr) {
+	if (p_hitbox_node == nullptr || editor_settings == nullptr) {
 		return false;
 	}
 	const Dictionary toolbar_state = editor_settings->get_project_metadata("unibuilder", "grid", Dictionary());
 	return !bool(toolbar_state.get("hitboxes_visible", true));
 }
 
+static Color get_fps_studio_hitbox_color(int p_hitgroup) {
+	static const Color hitgroup_colors[] = {
+		Color(0.30, 0.76, 1.00), // Generic.
+		Color(1.00, 0.24, 0.20), // Head.
+		Color(1.00, 0.53, 0.12), // Chest.
+		Color(1.00, 0.84, 0.18), // Stomach.
+		Color(0.25, 0.86, 0.38), // Left arm.
+		Color(0.12, 0.82, 0.83), // Right arm.
+		Color(0.34, 0.47, 1.00), // Left leg.
+		Color(0.78, 0.36, 1.00), // Right leg.
+	};
+	return hitgroup_colors[CLAMP(p_hitgroup, 0, 7)];
+}
+
 CollisionShape3DGizmoPlugin::CollisionShape3DGizmoPlugin() {
 	helper.instantiate();
+	create_fps_hitbox_materials();
 
 	show_only_when_selected = EDITOR_GET("editors/3d_gizmos/gizmo_settings/show_collision_shapes_only_when_selected");
 
@@ -73,6 +92,87 @@ CollisionShape3DGizmoPlugin::CollisionShape3DGizmoPlugin() {
 	create_collision_material("shape_material_arraymesh_disabled", 0.015625);
 
 	create_handle_material("handles");
+}
+
+void CollisionShape3DGizmoPlugin::create_fps_hitbox_materials() {
+	for (int hitgroup = 0; hitgroup < 8; hitgroup++) {
+		const Color color = get_fps_studio_hitbox_color(hitgroup);
+		Color selected_color = color.lightened(0.18);
+
+		Ref<StandardMaterial3D> fill;
+		fill.instantiate();
+		fill->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		fill->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		fill->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		fill->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		fill->set_render_priority(1);
+		fill->set_albedo(Color(color, 0.28));
+		fps_hitbox_fill_materials[hitgroup] = fill;
+
+		Ref<StandardMaterial3D> selected_fill;
+		selected_fill.instantiate();
+		selected_fill->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		selected_fill->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		selected_fill->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		selected_fill->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		selected_fill->set_render_priority(1);
+		selected_fill->set_albedo(Color(selected_color, 0.48));
+		fps_hitbox_selected_fill_materials[hitgroup] = selected_fill;
+
+		Ref<StandardMaterial3D> outline;
+		outline.instantiate();
+		outline->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		outline->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		outline->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		outline->set_albedo(Color(color, 0.95));
+		fps_hitbox_outline_materials[hitgroup] = outline;
+
+		Ref<StandardMaterial3D> selected_outline;
+		selected_outline.instantiate();
+		selected_outline->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		selected_outline->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		selected_outline->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		selected_outline->set_albedo(Color(selected_color, 1.0));
+		fps_hitbox_selected_outline_materials[hitgroup] = selected_outline;
+	}
+}
+
+void CollisionShape3DGizmoPlugin::draw_fps_hitbox(EditorNode3DGizmo *p_gizmo, CollisionShape3D *p_shape, Node *p_hitbox_node) {
+	Ref<BoxShape3D> box_shape = p_shape->get_shape();
+	if (box_shape.is_null()) {
+		return;
+	}
+
+	const int hitgroup = CLAMP((int)p_hitbox_node->get_meta("hitgroup", 0), 0, 7);
+	const bool selected = p_gizmo->is_selected();
+	Ref<ArrayMesh> debug_mesh = box_shape->get_debug_mesh();
+	if (debug_mesh.is_valid()) {
+		p_gizmo->add_mesh(debug_mesh, selected ? fps_hitbox_selected_fill_materials[hitgroup] : fps_hitbox_fill_materials[hitgroup]);
+	}
+
+	const Vector3 half_size = box_shape->get_size() * 0.5;
+	Vector<Vector3> corners;
+	corners.resize(8);
+	for (int corner_index = 0; corner_index < 8; corner_index++) {
+		corners.write[corner_index] = Vector3(
+				(corner_index & 1) != 0 ? half_size.x : -half_size.x,
+				(corner_index & 2) != 0 ? half_size.y : -half_size.y,
+				(corner_index & 4) != 0 ? half_size.z : -half_size.z);
+	}
+
+	Vector<Vector3> edges;
+	for (int corner_index = 0; corner_index < 8; corner_index++) {
+		for (int axis = 0; axis < 3; axis++) {
+			const int other_index = corner_index ^ (1 << axis);
+			if (other_index > corner_index) {
+				edges.push_back(corners[corner_index]);
+				edges.push_back(corners[other_index]);
+			}
+		}
+	}
+	const Ref<Material> outline_material = selected ? fps_hitbox_selected_outline_materials[hitgroup] : fps_hitbox_outline_materials[hitgroup];
+	p_gizmo->add_lines(edges, outline_material);
+	p_gizmo->add_collision_segments(edges);
 }
 
 void CollisionShape3DGizmoPlugin::create_collision_material(const String &p_name, float p_alpha) {
@@ -318,7 +418,12 @@ void CollisionShape3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
 	CollisionShape3D *cs = Object::cast_to<CollisionShape3D>(p_gizmo->get_node_3d());
 
 	p_gizmo->clear();
-	if (is_fps_studio_hitbox_hidden(cs)) {
+	Node *fps_hitbox_node = get_fps_studio_hitbox_node(cs);
+	if (is_fps_studio_hitbox_hidden(fps_hitbox_node)) {
+		return;
+	}
+	if (fps_hitbox_node != nullptr) {
+		draw_fps_hitbox(p_gizmo, cs, fps_hitbox_node);
 		return;
 	}
 

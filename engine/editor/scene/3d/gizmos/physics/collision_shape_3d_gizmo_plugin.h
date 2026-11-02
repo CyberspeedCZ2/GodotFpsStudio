@@ -33,6 +33,9 @@
 #include "editor/scene/3d/node_3d_editor_gizmos.h"
 
 class Gizmo3DHelper;
+class CollisionShape3D;
+class Node;
+class StandardMaterial3D;
 
 class CollisionShape3DGizmoPlugin : public EditorNode3DGizmoPlugin {
 	GDCLASS(CollisionShape3DGizmoPlugin, EditorNode3DGizmoPlugin);
@@ -40,8 +43,15 @@ class CollisionShape3DGizmoPlugin : public EditorNode3DGizmoPlugin {
 	void create_collision_material(const String &p_name, float p_alpha);
 
 	Ref<Gizmo3DHelper> helper;
+	Ref<StandardMaterial3D> fps_hitbox_fill_materials[8];
+	Ref<StandardMaterial3D> fps_hitbox_selected_fill_materials[8];
+	Ref<StandardMaterial3D> fps_hitbox_outline_materials[8];
+	Ref<StandardMaterial3D> fps_hitbox_selected_outline_materials[8];
 
 	inline static bool show_only_when_selected = false;
+
+	void create_fps_hitbox_materials();
+	void draw_fps_hitbox(EditorNode3DGizmo *p_gizmo, CollisionShape3D *p_shape, Node *p_hitbox_node);
 
 public:
 	bool has_gizmo(Node3D *p_spatial) override;

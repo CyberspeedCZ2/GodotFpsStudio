@@ -39,20 +39,9 @@ var action_options := {}
 var shape_overlay: Control
 var _fps_context_menu_sources: Array[Node] = []
 var _overlay_camera: Camera3D
-var _hitbox_overlay_root: Node
-var _hitbox_overlay_nodes: Array[Area3D] = []
-var _hitbox_overlay_rescan_at := 0
+var _hitbox_gizmo_root: Node
+var _hitbox_gizmo_rescan_at := 0
 var _hitbox_gizmo_visibility_applied: Dictionary = {}
-const HITBOX_OVERLAY_COLORS := [
-	Color(0.30, 0.76, 1.00, 0.95), # Generic.
-	Color(1.00, 0.24, 0.20, 0.95), # Head.
-	Color(1.00, 0.53, 0.12, 0.95), # Chest.
-	Color(1.00, 0.84, 0.18, 0.95), # Stomach.
-	Color(0.25, 0.86, 0.38, 0.95), # Left arm.
-	Color(0.12, 0.82, 0.83, 0.95), # Right arm.
-	Color(0.34, 0.47, 1.00, 0.95), # Left leg.
-	Color(0.78, 0.36, 1.00, 0.95), # Right leg.
-]
 ## Grid plane offset along its normal axis, in world units (nudged with ,/.).
 var grid_offset := 0.0
 
@@ -197,7 +186,7 @@ func _enter_tree() -> void:
 	_update_grid()
 
 	_refresh_existing_gizmos.call_deferred()
-	_refresh_hitbox_overlay_cache.call_deferred()
+	_refresh_hitbox_gizmo_cache.call_deferred()
 	update_overlays()
 
 	if UBEdition.DEMO:
@@ -553,7 +542,6 @@ func _over_floating_panel() -> bool:
 func _forward_3d_draw_over_viewport(viewport_control: Control) -> void:
 	_ensure_drop_target(viewport_control)
 	_ensure_floating_panels(viewport_control)
-	_draw_hitbox_overlay(viewport_control)
 	if input == null:
 		return
 	if input.marquee:
@@ -595,51 +583,13 @@ func _forward_3d_draw_over_viewport(viewport_control: Control) -> void:
 		_draw_dimensions(viewport_control)
 
 
-func _draw_hitbox_overlay(overlay: Control) -> void:
-	if toolbar == null:
-		return
-	_refresh_hitbox_overlay_cache()
-	if not toolbar.hitboxes_visible:
-		return
-	var viewport := overlay.get_viewport()
-	var camera: Camera3D = viewport.get_camera_3d() if viewport != null else null
-	if camera == null:
-		return
-	for area in _hitbox_overlay_nodes:
-		if not is_instance_valid(area) or not area.is_inside_tree():
-			continue
-		var collision := area.get_node_or_null("CollisionShape3D") as CollisionShape3D
-		if collision == null or not (collision.shape is BoxShape3D):
-			continue
-		var half_size: Vector3 = (collision.shape as BoxShape3D).size * 0.5
-		var color_index := clampi(int(area.get_meta("hitgroup", 0)), 0, HITBOX_OVERLAY_COLORS.size() - 1)
-		var color: Color = HITBOX_OVERLAY_COLORS[color_index]
-		var projected: Array[Vector2] = []
-		var visible: Array[bool] = []
-		for corner_index in 8:
-			var local_corner := Vector3(
-				half_size.x if (corner_index & 1) != 0 else -half_size.x,
-				half_size.y if (corner_index & 2) != 0 else -half_size.y,
-				half_size.z if (corner_index & 4) != 0 else -half_size.z)
-			var world_corner: Vector3 = area.global_transform * (collision.transform * local_corner)
-			visible.append(not camera.is_position_behind(world_corner))
-			projected.append(camera.unproject_position(world_corner))
-		for corner_index in 8:
-			for axis in 3:
-				var other_index := corner_index ^ (1 << axis)
-				if other_index <= corner_index or not visible[corner_index] or not visible[other_index]:
-					continue
-				overlay.draw_line(projected[corner_index], projected[other_index], color, 2.0 * EditorInterface.get_editor_scale(), true)
-
-
-func _refresh_hitbox_overlay_cache() -> void:
+func _refresh_hitbox_gizmo_cache() -> void:
 	var root := EditorInterface.get_edited_scene_root()
 	var now := Time.get_ticks_msec()
-	if root == _hitbox_overlay_root and now < _hitbox_overlay_rescan_at:
+	if root == _hitbox_gizmo_root and now < _hitbox_gizmo_rescan_at:
 		return
-	_hitbox_overlay_root = root
-	_hitbox_overlay_rescan_at = now + 500
-	_hitbox_overlay_nodes.clear()
+	_hitbox_gizmo_root = root
+	_hitbox_gizmo_rescan_at = now + 500
 	if root == null:
 		return
 	var stack: Array[Node] = [root]
@@ -647,7 +597,6 @@ func _refresh_hitbox_overlay_cache() -> void:
 		var node: Node = stack.pop_back()
 		if node is Area3D and node.has_meta("fps_studio_hitbox") and bool(node.get_meta("fps_studio_hitbox")):
 			var area := node as Area3D
-			_hitbox_overlay_nodes.append(area)
 			var instance_id := area.get_instance_id()
 			if not _hitbox_gizmo_visibility_applied.has(instance_id) or bool(_hitbox_gizmo_visibility_applied[instance_id]) != toolbar.hitboxes_visible:
 				_hitbox_gizmo_visibility_applied[instance_id] = toolbar.hitboxes_visible
@@ -2423,8 +2372,8 @@ func _on_grid_changed() -> void:
 func _on_hitboxes_toggled(_enabled: bool) -> void:
 	_save_grid_settings()
 	_hitbox_gizmo_visibility_applied.clear()
-	_hitbox_overlay_rescan_at = -1
-	_refresh_hitbox_overlay_cache()
+	_hitbox_gizmo_rescan_at = -1
+	_refresh_hitbox_gizmo_cache()
 	update_overlays()
 
 
@@ -2439,9 +2388,8 @@ func _on_scene_changed(_root: Node) -> void:
 
 	UBTopology.clear_cache()
 	UBRayAccel.clear_cache()
-	_hitbox_overlay_root = null
-	_hitbox_overlay_nodes.clear()
-	_hitbox_overlay_rescan_at = 0
+	_hitbox_gizmo_root = null
+	_hitbox_gizmo_rescan_at = 0
 	_hitbox_gizmo_visibility_applied.clear()
 
 	_flush_parked_commits()
