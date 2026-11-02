@@ -372,6 +372,7 @@ func _setup() -> void:
 
 	_hitboxes_button = %Hitboxes
 	_iconify(_hitboxes_button, "shape_cube", _hitboxes_button.text)
+	_hitboxes_button.text = "Hitboxes"
 	dim_toggle(_hitboxes_button)
 	_hitboxes_button.toggled.connect(func(on: bool) -> void:
 		hitboxes_visible = on
