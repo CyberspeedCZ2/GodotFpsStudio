@@ -8264,6 +8264,7 @@ Dictionary Node3DEditor::get_state() const {
 		pd["sun_color"] = sun_color->get_pick_color();
 		pd["sun_energy"] = sun_energy->get_value();
 
+		pd["preview_state_version"] = 1;
 		pd["sun_enabled"] = sun_button->is_pressed();
 		pd["environ_enabled"] = environ_button->is_pressed();
 
@@ -8423,8 +8424,15 @@ void Node3DEditor::set_state(const Dictionary &p_state) {
 		sun_color->set_pick_color(pd["sun_color"]);
 		sun_energy->set_value_no_signal(pd["sun_energy"]);
 
-		sun_button->set_pressed(pd["sun_enabled"]);
-		environ_button->set_pressed(pd["environ_enabled"]);
+		// Older editor states enabled the preview sun and environment by
+		// default. Reset those once so an unlit scene opens as it runs.
+		if (int(pd.get("preview_state_version", 0)) > 0) {
+			sun_button->set_pressed(pd["sun_enabled"]);
+			environ_button->set_pressed(pd["environ_enabled"]);
+		} else {
+			sun_button->set_pressed(false);
+			environ_button->set_pressed(false);
+		}
 
 		sun_environ_updating = false;
 
@@ -8432,8 +8440,8 @@ void Node3DEditor::set_state(const Dictionary &p_state) {
 		_update_preview_environment();
 	} else {
 		_load_default_preview_settings();
-		sun_button->set_pressed(true);
-		environ_button->set_pressed(true);
+		sun_button->set_pressed(false);
+		environ_button->set_pressed(false);
 		_preview_settings_changed();
 		_update_preview_environment();
 	}
@@ -11263,8 +11271,8 @@ Node3DEditor::Node3DEditor() {
 	sun_button->set_accessibility_name(TTRC("Toggle preview sunlight."));
 	sun_button->set_theme_type_variation(SceneStringName(FlatButton));
 	sun_button->connect(SceneStringName(pressed), callable_mp(this, &Node3DEditor::_update_preview_environment), CONNECT_DEFERRED);
-	// Preview is enabled by default - ensure this applies on editor startup when there is no state yet.
-	sun_button->set_pressed(true);
+	// Keep viewport preview lighting off by default so empty scenes are dark.
+	sun_button->set_pressed(false);
 
 	main_menu_hbox->add_child(sun_button);
 
@@ -11274,8 +11282,8 @@ Node3DEditor::Node3DEditor() {
 	environ_button->set_accessibility_name(TTRC("Toggle preview environment."));
 	environ_button->set_theme_type_variation(SceneStringName(FlatButton));
 	environ_button->connect(SceneStringName(pressed), callable_mp(this, &Node3DEditor::_update_preview_environment), CONNECT_DEFERRED);
-	// Preview is enabled by default - ensure this applies on editor startup when there is no state yet.
-	environ_button->set_pressed(true);
+	// Keep viewport preview lighting off by default so empty scenes are dark.
+	environ_button->set_pressed(false);
 
 	main_menu_hbox->add_child(environ_button);
 
