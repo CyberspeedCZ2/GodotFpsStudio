@@ -257,6 +257,7 @@
 #include "scene/3d/node_3d.h"
 #include "scene/3d/occluder_instance_3d.h"
 #include "scene/3d/path_3d.h"
+#include "scene/3d/post_process_volume_3d.h"
 #include "scene/3d/reflection_probe.h"
 #include "scene/3d/remote_transform_3d.h"
 #include "scene/3d/retarget_modifier_3d.h"
@@ -750,6 +751,7 @@ void register_scene_types() {
 	GDREGISTER_CLASS(VisibleOnScreenNotifier3D);
 	GDREGISTER_CLASS(VisibleOnScreenEnabler3D);
 	GDREGISTER_CLASS(WorldEnvironment);
+	GDREGISTER_CLASS(PostProcessVolume3D);
 	GDREGISTER_CLASS(FogVolume);
 	GDREGISTER_CLASS(FogMaterial);
 	GDREGISTER_CLASS(RemoteTransform3D);
