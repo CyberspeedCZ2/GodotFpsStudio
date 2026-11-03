@@ -142,7 +142,6 @@ static Ref<Environment> _create_volume_environment() {
 } // namespace
 
 PostProcessVolume3D::PostProcessVolume3D() {
-	environment = _create_volume_environment();
 	set_notify_transform(true);
 }
 
@@ -160,6 +159,9 @@ StringName PostProcessVolume3D::_get_volume_group() const {
 void PostProcessVolume3D::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_WORLD: {
+			if (environment.is_null()) {
+				set_environment(Ref<Environment>());
+			}
 			if (!Engine::get_singleton()->is_editor_hint()) {
 			active_volume_group = _get_volume_group();
 			if (active_volume_group != StringName()) {
@@ -382,6 +384,9 @@ void PostProcessVolume3D::set_environment(const Ref<Environment> &p_environment)
 	if (environment == new_environment) {
 		return;
 	}
+	if (new_environment->get_path().is_empty()) {
+		new_environment->set_local_to_scene(true);
+	}
 	environment = new_environment;
 	environment_dirty = true;
 	update_configuration_warnings();
@@ -471,7 +476,7 @@ void PostProcessVolume3D::_bind_methods() {
 
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "box_size"), "set_box_size", "get_box_size");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "environment_overrides", PROPERTY_HINT_FLAGS, "Background,Ambient Light,Reflected Light,Tonemap,SSR,SSAO,SSIL,SDFGI,Glow,Fog,Volumetric Fog,Adjustments"), "set_environment_overrides", "get_environment_overrides");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "environment", PROPERTY_HINT_RESOURCE_TYPE, "Environment"), "set_environment", "get_environment");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "environment", PROPERTY_HINT_RESOURCE_TYPE, "Environment", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT), "set_environment", "get_environment");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "blend_radius", PROPERTY_HINT_RANGE, "0,100,0.1,or_greater,suffix:m"), "set_blend_radius", "get_blend_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "blend_weight", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_blend_weight", "get_blend_weight");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "priority", PROPERTY_HINT_RANGE, "-1000,1000,1,or_less,or_greater"), "set_priority", "get_priority");
