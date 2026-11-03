@@ -6,12 +6,11 @@
 
 1. Create a `PostProcessVolume3D` node in the level.
 2. Set `Box Size` and move the node so the box covers the intended area.
-3. Create or assign an `Environment` resource.
-4. Choose the sections to apply under `Environment Overrides`.
-5. Set `Blend Radius` to control how far the effect fades in and out. A value of `0` switches at the box boundary. The transition uses a smooth curve.
-6. Use `Blend Weight` to reduce the effect strength, `Priority` to order overlapping volumes, or disable the volume with `Enabled`.
+3. `Environment` is created automatically for each volume. Expand that resource in the Inspector to edit its settings, then choose the sections to apply under `Environment Overrides`. Each checked section applies the corresponding settings from this resource.
+4. Set `Blend Radius` to control how far the effect fades in and out. A value of `0` switches at the box boundary. The transition uses a smooth curve.
+5. Use `Blend Weight` to reduce the effect strength, `Priority` to order overlapping volumes, or disable the volume with `Enabled`.
 
-The volume reads `Environment` values from the assigned resource. Numeric and color values blend continuously; enum, boolean, and resource values switch at the halfway point. Higher priority volumes are applied after lower priority volumes. The active camera's explicit Environment is used as the base when present; otherwise the current World3D Environment is used.
+The volume reads `Environment` values from its embedded resource. Numeric and color values blend continuously; enum, boolean, and resource values switch at the halfway point. Higher priority volumes are applied after lower priority volumes. The active camera's explicit Environment is used as the base when present; otherwise the current World3D Environment is used.
 
 ## What the volume affects
 

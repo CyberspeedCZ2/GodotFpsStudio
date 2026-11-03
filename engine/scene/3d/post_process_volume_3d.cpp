@@ -132,9 +132,17 @@ static void _append_observed_environment(Vector<Ref<Environment>> &r_environment
 	r_environments.push_back(p_environment);
 }
 
+static Ref<Environment> _create_volume_environment() {
+	Ref<Environment> new_environment;
+	new_environment.instantiate();
+	new_environment->set_local_to_scene(true);
+	return new_environment;
+}
+
 } // namespace
 
 PostProcessVolume3D::PostProcessVolume3D() {
+	environment = _create_volume_environment();
 	set_notify_transform(true);
 }
 
@@ -370,10 +378,11 @@ Vector3 PostProcessVolume3D::get_box_size() const {
 }
 
 void PostProcessVolume3D::set_environment(const Ref<Environment> &p_environment) {
-	if (environment == p_environment) {
+	const Ref<Environment> new_environment = p_environment.is_valid() ? p_environment : _create_volume_environment();
+	if (environment == new_environment) {
 		return;
 	}
-	environment = p_environment;
+	environment = new_environment;
 	environment_dirty = true;
 	update_configuration_warnings();
 }
@@ -437,9 +446,6 @@ bool PostProcessVolume3D::is_enabled() const {
 
 PackedStringArray PostProcessVolume3D::get_configuration_warnings() const {
 	PackedStringArray warnings;
-	if (enabled && environment.is_null()) {
-		warnings.push_back(RTR("Assign an Environment resource for this volume to have a visual effect."));
-	}
 	if (enabled && environment_overrides == 0) {
 		warnings.push_back(RTR("Choose at least one Environment Overrides category."));
 	}
@@ -464,8 +470,8 @@ void PostProcessVolume3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_configuration_warnings"), &PostProcessVolume3D::get_configuration_warnings);
 
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "box_size"), "set_box_size", "get_box_size");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "environment", PROPERTY_HINT_RESOURCE_TYPE, "Environment"), "set_environment", "get_environment");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "environment_overrides", PROPERTY_HINT_FLAGS, "Background,Ambient Light,Reflected Light,Tonemap,SSR,SSAO,SSIL,SDFGI,Glow,Fog,Volumetric Fog,Adjustments"), "set_environment_overrides", "get_environment_overrides");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "environment", PROPERTY_HINT_RESOURCE_TYPE, "Environment"), "set_environment", "get_environment");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "blend_radius", PROPERTY_HINT_RANGE, "0,100,0.1,or_greater,suffix:m"), "set_blend_radius", "get_blend_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "blend_weight", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_blend_weight", "get_blend_weight");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "priority", PROPERTY_HINT_RANGE, "-1000,1000,1,or_less,or_greater"), "set_priority", "get_priority");
