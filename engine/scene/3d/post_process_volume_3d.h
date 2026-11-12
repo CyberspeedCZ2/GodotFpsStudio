@@ -64,6 +64,7 @@ private:
 	Vector3 box_size = Vector3(10.0, 4.0, 10.0);
 	Ref<Environment> environment;
 	int environment_overrides = 0;
+	bool override_entire_environment = true;
 	float blend_radius = 2.0;
 	float blend_weight = 1.0;
 	int priority = 0;
@@ -98,6 +99,8 @@ public:
 
 	void set_environment_overrides(int p_overrides);
 	int get_environment_overrides() const;
+	void set_override_entire_environment(bool p_enabled);
+	bool is_override_entire_environment() const;
 
 	void set_blend_radius(float p_radius);
 	float get_blend_radius() const;

@@ -190,7 +190,7 @@ void PostProcessVolume3D::_notification(int p_what) {
 }
 
 float PostProcessVolume3D::_get_weight_at_position(const Vector3 &p_world_position) const {
-	if (!enabled || environment.is_null() || environment_overrides == 0 || blend_weight <= 0.0f) {
+	if (!enabled || environment.is_null() || (!override_entire_environment && environment_overrides == 0) || blend_weight <= 0.0f) {
 		return 0.0f;
 	}
 
@@ -310,7 +310,8 @@ void PostProcessVolume3D::_update_camera_environment() {
 			}
 		}
 		PostProcessVolume3D *volume = weighted_volumes[i].volume;
-		signature += ":" + itos(volume->get_instance_id()) + "," + itos(volume->get_environment_overrides()) + "," + itos(volume->get_priority()) + "," + String::num(weighted_volumes[i].weight, 4);
+		const int overrides = volume->is_override_entire_environment() ? OVERRIDE_ALL : volume->get_environment_overrides();
+		signature += ":" + itos(volume->get_instance_id()) + "," + itos(overrides) + "," + itos(volume->get_priority()) + "," + String::num(weighted_volumes[i].weight, 4);
 		if (volume->get_environment().is_valid()) {
 			signature += "," + itos(volume->get_environment()->get_instance_id());
 		}
@@ -335,7 +336,8 @@ void PostProcessVolume3D::_update_camera_environment() {
 
 	for (int i = 0; i < weighted_volumes.size(); i++) {
 		const WeightedVolume &weighted = weighted_volumes[i];
-		_blend_environment(output_environment, weighted.volume->get_environment(), output_environment, weighted.volume->get_environment_overrides(), weighted.weight);
+		const int overrides = weighted.volume->is_override_entire_environment() ? OVERRIDE_ALL : weighted.volume->get_environment_overrides();
+		_blend_environment(output_environment, weighted.volume->get_environment(), output_environment, overrides, weighted.weight);
 	}
 
 	camera->set_environment(output_environment);
@@ -410,6 +412,19 @@ int PostProcessVolume3D::get_environment_overrides() const {
 	return environment_overrides;
 }
 
+void PostProcessVolume3D::set_override_entire_environment(bool p_enabled) {
+	if (override_entire_environment == p_enabled) {
+		return;
+	}
+	override_entire_environment = p_enabled;
+	environment_dirty = true;
+	update_configuration_warnings();
+}
+
+bool PostProcessVolume3D::is_override_entire_environment() const {
+	return override_entire_environment;
+}
+
 void PostProcessVolume3D::set_blend_radius(float p_radius) {
 	blend_radius = MAX(p_radius, 0.0f);
 	update_gizmos();
@@ -451,7 +466,7 @@ bool PostProcessVolume3D::is_enabled() const {
 
 PackedStringArray PostProcessVolume3D::get_configuration_warnings() const {
 	PackedStringArray warnings;
-	if (enabled && environment_overrides == 0) {
+	if (enabled && !override_entire_environment && environment_overrides == 0) {
 		warnings.push_back(RTR("Choose at least one Environment Overrides category."));
 	}
 	return warnings;
@@ -464,6 +479,8 @@ void PostProcessVolume3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_environment"), &PostProcessVolume3D::get_environment);
 	ClassDB::bind_method(D_METHOD("set_environment_overrides", "overrides"), &PostProcessVolume3D::set_environment_overrides);
 	ClassDB::bind_method(D_METHOD("get_environment_overrides"), &PostProcessVolume3D::get_environment_overrides);
+	ClassDB::bind_method(D_METHOD("set_override_entire_environment", "enabled"), &PostProcessVolume3D::set_override_entire_environment);
+	ClassDB::bind_method(D_METHOD("is_override_entire_environment"), &PostProcessVolume3D::is_override_entire_environment);
 	ClassDB::bind_method(D_METHOD("set_blend_radius", "radius"), &PostProcessVolume3D::set_blend_radius);
 	ClassDB::bind_method(D_METHOD("get_blend_radius"), &PostProcessVolume3D::get_blend_radius);
 	ClassDB::bind_method(D_METHOD("set_blend_weight", "weight"), &PostProcessVolume3D::set_blend_weight);
@@ -475,6 +492,7 @@ void PostProcessVolume3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_configuration_warnings"), &PostProcessVolume3D::get_configuration_warnings);
 
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "box_size"), "set_box_size", "get_box_size");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "override_entire_environment"), "set_override_entire_environment", "is_override_entire_environment");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "environment_overrides", PROPERTY_HINT_FLAGS, "Background,Ambient Light,Reflected Light,Tonemap,SSR,SSAO,SSIL,SDFGI,Glow,Fog,Volumetric Fog,Adjustments"), "set_environment_overrides", "get_environment_overrides");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "environment", PROPERTY_HINT_RESOURCE_TYPE, "Environment", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT), "set_environment", "get_environment");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "blend_radius", PROPERTY_HINT_RANGE, "0,100,0.1,or_greater,suffix:m"), "set_blend_radius", "get_blend_radius");
