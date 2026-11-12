@@ -87,6 +87,20 @@ static MeshInstance3D *create_particle_preview_grid() {
 	return grid_instance;
 }
 
+static Ref<QuadMesh> create_particle_quad() {
+	Ref<QuadMesh> particle_mesh;
+	particle_mesh.instantiate();
+	particle_mesh->set_size(Vector2(0.12, 0.12));
+
+	Ref<StandardMaterial3D> particle_material;
+	particle_material.instantiate();
+	particle_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	particle_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	particle_material->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+	particle_mesh->set_material(particle_material);
+	return particle_mesh;
+}
+
 Node *FPSStudioParticleEditorPlugin::_get_active_scene_root() const {
 	EditorData &editor_data = EditorNode::get_editor_data();
 	const int scene_index = editor_data.get_edited_scene();
@@ -254,8 +268,7 @@ void FPSStudioParticleEditorPlugin::_apply_preview_defaults() {
 		return;
 	}
 	if (preview_quad.is_null()) {
-		preview_quad.instantiate();
-		preview_quad->set_size(Vector2(0.12, 0.12));
+		preview_quad = create_particle_quad();
 	}
 	if (GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(preview_emitter)) {
 		if (gpu_emitter->get_process_material().is_null()) {
@@ -407,36 +420,73 @@ void FPSStudioParticleEditorPlugin::_on_grid_toggled(bool p_enabled) {
 
 void FPSStudioParticleEditorPlugin::_on_add_emitter_pressed(int p_id) {
 	Node *scene_root = _get_active_scene_root();
-	if (!scene_root) {
+	if (!scene_root || p_id < 0 || p_id > 4) {
 		return;
 	}
 
 	Node3D *emitter = nullptr;
-	if (p_id == 0) {
-		GPUParticles3D *gpu_emitter = memnew(GPUParticles3D);
-		gpu_emitter->set_name("GPUParticles3D");
-		gpu_emitter->set_amount(32);
-		gpu_emitter->set_lifetime(2.0);
-		Ref<ParticleProcessMaterial> process_material;
-		process_material.instantiate();
-		gpu_emitter->set_process_material(process_material);
-		Ref<QuadMesh> particle_mesh;
-		particle_mesh.instantiate();
-		particle_mesh->set_size(Vector2(0.12, 0.12));
-		gpu_emitter->set_draw_pass_mesh(0, particle_mesh);
-		emitter = gpu_emitter;
-	} else if (p_id == 1) {
+	Ref<QuadMesh> particle_mesh = create_particle_quad();
+	if (p_id == 1) {
 		CPUParticles3D *cpu_emitter = memnew(CPUParticles3D);
 		cpu_emitter->set_name("CPUParticles3D");
 		cpu_emitter->set_amount(32);
 		cpu_emitter->set_lifetime(2.0);
-		Ref<QuadMesh> particle_mesh;
-		particle_mesh.instantiate();
-		particle_mesh->set_size(Vector2(0.12, 0.12));
 		cpu_emitter->set_mesh(particle_mesh);
 		emitter = cpu_emitter;
 	} else {
-		return;
+		GPUParticles3D *gpu_emitter = memnew(GPUParticles3D);
+		String emitter_name = "GPUParticles3D";
+		int emitter_amount = 32;
+		double emitter_lifetime = 2.0;
+		if (p_id == 2) {
+			emitter_name = "BurstParticles";
+			emitter_amount = 64;
+			emitter_lifetime = 1.25;
+		} else if (p_id == 3) {
+			emitter_name = "FountainParticles";
+		} else if (p_id == 4) {
+			emitter_name = "SmokeParticles";
+			emitter_amount = 48;
+			emitter_lifetime = 4.0;
+		}
+		gpu_emitter->set_name(emitter_name);
+		gpu_emitter->set_amount(emitter_amount);
+		gpu_emitter->set_lifetime(emitter_lifetime);
+
+		Ref<ParticleProcessMaterial> process_material;
+		process_material.instantiate();
+		if (p_id >= 2) {
+			process_material->set_direction(Vector3(0.0, 1.0, 0.0));
+			process_material->set_param_min(ParticleProcessMaterial::PARAM_SCALE, 0.5);
+			process_material->set_param_max(ParticleProcessMaterial::PARAM_SCALE, 1.0);
+			if (p_id == 2) {
+				gpu_emitter->set_one_shot(true);
+				gpu_emitter->set_explosiveness_ratio(1.0);
+				process_material->set_spread(180.0);
+				process_material->set_param_min(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 3.0);
+				process_material->set_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 7.0);
+				process_material->set_gravity(Vector3(0.0, -3.0, 0.0));
+				process_material->set_color(Color(1.0, 0.38, 0.08, 1.0));
+			} else if (p_id == 3) {
+				process_material->set_spread(18.0);
+				process_material->set_param_min(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 2.8);
+				process_material->set_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 4.8);
+				process_material->set_gravity(Vector3(0.0, -3.0, 0.0));
+				process_material->set_color(Color(0.2, 0.7, 1.0, 1.0));
+			} else {
+				process_material->set_spread(12.0);
+				process_material->set_param_min(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 0.4);
+				process_material->set_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY, 0.9);
+				process_material->set_param_min(ParticleProcessMaterial::PARAM_SCALE, 1.0);
+				process_material->set_param_max(ParticleProcessMaterial::PARAM_SCALE, 2.5);
+				process_material->set_gravity(Vector3(0.0, 0.6, 0.0));
+				process_material->set_color(Color(0.72, 0.76, 0.82, 0.5));
+			}
+		}
+		gpu_emitter->set_process_material(process_material);
+		gpu_emitter->set_draw_pass_mesh(0, particle_mesh);
+		gpu_emitter->set_emitting(true);
+		emitter = gpu_emitter;
 	}
 
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
@@ -590,6 +640,10 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_button->set_tooltip_text(TTR("Add a GPU or CPU particle emitter to the open scene."));
 	add_emitter_button->get_popup()->add_item(TTR("GPU Particles 3D"), 0);
 	add_emitter_button->get_popup()->add_item(TTR("CPU Particles 3D"), 1);
+	add_emitter_button->get_popup()->add_separator(TTR("GPU Presets"));
+	add_emitter_button->get_popup()->add_item(TTR("Burst"), 2);
+	add_emitter_button->get_popup()->add_item(TTR("Fountain"), 3);
+	add_emitter_button->get_popup()->add_item(TTR("Smoke"), 4);
 	add_emitter_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_pressed));
 	emitters_header->add_child(add_emitter_button);
 	emitter_tree = memnew(Tree);

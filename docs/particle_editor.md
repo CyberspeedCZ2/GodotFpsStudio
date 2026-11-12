@@ -4,7 +4,7 @@ Particle je samostatná obrazovka FPS Studia pro tvorbu a náhled nativních 3D 
 
 ## Pracovní postup
 
-1. V pracovní ploše **Particle** zvol **Add** a vytvoř GPU nebo CPU emitter přímo v aktivní scéně. Nový uzel se přidá přes Undo/Redo, vybere se a ihned otevře v náhledu. Případně můžeš vybrat existující `GPUParticles3D` nebo `CPUParticles3D` v aktivní scéně.
+1. V pracovní ploše **Particle** zvol **Add** a vytvoř GPU nebo CPU emitter přímo v aktivní scéně. V nabídce jsou také GPU předvolby **Burst**, **Fountain** a **Smoke**. Nový uzel se přidá přes Undo/Redo, vybere se a ihned otevře v náhledu. Případně můžeš vybrat existující `GPUParticles3D` nebo `CPUParticles3D` v aktivní scéně.
 2. V seznamu **Emitters** můžeš přepínat mezi 3D particle uzly ve scéně.
 3. V inspektoru **Emitter** upravuješ vlastnosti uzlu. U GPU uzlů je dostupný také materiál v inspektoru **Process Material**.
 4. Simulaci můžeš spustit, pozastavit, restartovat, změnit její rychlost a posunout časovou osu. **Loop** je ve výchozím stavu zapnutý; po vypnutí se přehrávání zastaví na konci životnosti emitteru. V náhledu lze tažením levým nebo pravým tlačítkem otáčet kameru, kolečkem přibližovat a tlačítkem **Reset View** vrátit kameru do výchozího pohledu. Mřížku lze přepnout přes **Grid**.
