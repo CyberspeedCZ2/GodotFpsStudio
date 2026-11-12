@@ -391,6 +391,20 @@ void FPSStudioParticleEditorPlugin::_on_loop_toggled(bool p_enabled) {
 	preview_loop = p_enabled;
 }
 
+void FPSStudioParticleEditorPlugin::_on_reset_view_pressed() {
+	preview_camera_yaw = 0.0;
+	preview_camera_pitch = 0.245;
+	preview_camera_distance = 6.18;
+	preview_camera_target = Vector3(0.0, 0.5, 0.0);
+	_update_preview_camera();
+}
+
+void FPSStudioParticleEditorPlugin::_on_grid_toggled(bool p_enabled) {
+	if (preview_grid) {
+		preview_grid->set_visible(p_enabled);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_on_add_emitter_pressed(int p_id) {
 	Node *scene_root = _get_active_scene_root();
 	if (!scene_root) {
@@ -594,10 +608,24 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	main_split->add_child(preview_settings_split);
 	preview_settings_split->add_child(preview_panel);
 
+	HBoxContainer *preview_toolbar = memnew(HBoxContainer);
+	preview_panel->add_child(preview_toolbar);
 	selection_label = memnew(Label);
 	selection_label->set_text(TTR("Select a GPUParticles3D or CPUParticles3D node to preview it here."));
 	selection_label->set_clip_text(true);
-	preview_panel->add_child(selection_label);
+	selection_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	preview_toolbar->add_child(selection_label);
+	Button *reset_view_button = memnew(Button);
+	reset_view_button->set_text(TTR("Reset View"));
+	reset_view_button->set_tooltip_text(TTR("Reset the particle preview camera."));
+	reset_view_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_reset_view_pressed));
+	preview_toolbar->add_child(reset_view_button);
+	CheckButton *grid_toggle = memnew(CheckButton);
+	grid_toggle->set_text(TTR("Grid"));
+	grid_toggle->set_pressed(true);
+	grid_toggle->set_tooltip_text(TTR("Show or hide the preview grid."));
+	grid_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_grid_toggled));
+	preview_toolbar->add_child(grid_toggle);
 
 	preview_container = memnew(SubViewportContainer);
 	preview_container->set_stretch(true);
@@ -632,7 +660,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	key_light->set_rotation(Vector3(Math::deg_to_rad(-40.0), Math::deg_to_rad(-25.0), 0.0));
 	key_light->set_param(Light3D::PARAM_ENERGY, 1.4);
 	preview_root->add_child(key_light);
-	preview_root->add_child(create_particle_preview_grid());
+	preview_grid = create_particle_preview_grid();
+	preview_root->add_child(preview_grid);
 
 	preview_camera = memnew(Camera3D);
 	preview_root->add_child(preview_camera);
@@ -700,6 +729,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	process_material_inspector->set_name(TTR("Process Material"));
 	process_material_inspector->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	process_material_inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	process_material_inspector->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_property_edited));
 	settings_tabs->add_child(process_material_inspector);
 	process_material_inspector->hide();
 

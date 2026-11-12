@@ -7,9 +7,9 @@ Particle je samostatná obrazovka FPS Studia pro tvorbu a náhled nativních 3D 
 1. V pracovní ploše **Particle** zvol **Add** a vytvoř GPU nebo CPU emitter přímo v aktivní scéně. Nový uzel se přidá přes Undo/Redo, vybere se a ihned otevře v náhledu. Případně můžeš vybrat existující `GPUParticles3D` nebo `CPUParticles3D` v aktivní scéně.
 2. V seznamu **Emitters** můžeš přepínat mezi 3D particle uzly ve scéně.
 3. V inspektoru **Emitter** upravuješ vlastnosti uzlu. U GPU uzlů je dostupný také materiál v inspektoru **Process Material**.
-4. Simulaci můžeš spustit, pozastavit, restartovat, změnit její rychlost a posunout časovou osu. **Loop** je ve výchozím stavu zapnutý; po vypnutí se přehrávání zastaví na konci životnosti emitteru. V náhledu lze tažením levým nebo pravým tlačítkem otáčet kameru a kolečkem přibližovat.
+4. Simulaci můžeš spustit, pozastavit, restartovat, změnit její rychlost a posunout časovou osu. **Loop** je ve výchozím stavu zapnutý; po vypnutí se přehrávání zastaví na konci životnosti emitteru. V náhledu lze tažením levým nebo pravým tlačítkem otáčet kameru, kolečkem přibližovat a tlačítkem **Reset View** vrátit kameru do výchozího pohledu. Mřížku lze přepnout přes **Grid**.
 
-Náhled simuluje kopii vybraného emitteru a jeho potomků ve vlastním `SubViewport` s odděleným prostředím, světlem a kamerou. Pokud emitter nemá mesh nebo GPU process material, náhled doplní výchozí hodnoty pouze do této kopie; scéna se tím nemění. Úpravy vlastností používají vestavěné inspektory Godotu a jeho Undo/Redo.
+Náhled simuluje kopii vybraného emitteru a jeho potomků ve vlastním `SubViewport` s odděleným prostředím, světlem a kamerou. Změny vlastností emitteru i Process Material se promítají do náhledu. Pokud emitter nemá mesh nebo GPU process material, náhled doplní výchozí hodnoty pouze do této kopie; scéna se tím nemění. Úpravy vlastností používají vestavěné inspektory Godotu a jeho Undo/Redo.
 
 ## Aktuální rozsah
 

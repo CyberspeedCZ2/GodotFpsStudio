@@ -20,6 +20,7 @@ class HSlider;
 class InputEvent;
 class Label;
 class MenuButton;
+class MeshInstance3D;
 class Node;
 class Node3D;
 class QuadMesh;
@@ -39,6 +40,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	SubViewportContainer *preview_container = nullptr;
 	Node3D *preview_root = nullptr;
 	Camera3D *preview_camera = nullptr;
+	MeshInstance3D *preview_grid = nullptr;
 	Node *preview_emitter = nullptr;
 	Ref<QuadMesh> preview_quad;
 	EditorInspector *emitter_inspector = nullptr;
@@ -75,6 +77,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _set_preview_playing(bool p_playing);
 	void _on_preview_gui_input(const Ref<InputEvent> &p_event);
 	void _update_preview_camera();
+	void _on_reset_view_pressed();
+	void _on_grid_toggled(bool p_enabled);
 	void _on_play_toggled(bool p_pressed);
 	void _on_restart_pressed();
 	void _on_timeline_changed(double p_value);
