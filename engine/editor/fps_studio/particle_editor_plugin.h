@@ -53,7 +53,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Node *_get_edited_emitter() const;
 	void _collect_emitters(Node *p_node, Vector<Node *> &r_emitters) const;
 	void _update_emitter_tree();
-	void _set_edited_emitter(Node *p_node);
+	void _set_edited_emitter(Node *p_node, bool p_update_tree = true);
 	void _rebuild_preview();
 	void _clear_preview_scripts(Node *p_node);
 	void _apply_preview_defaults();

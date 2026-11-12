@@ -91,7 +91,7 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node) {
+void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_update_tree) {
 	if (p_node && !Object::cast_to<GPUParticles3D>(p_node) && !Object::cast_to<CPUParticles3D>(p_node)) {
 		p_node = nullptr;
 	}
@@ -128,7 +128,9 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node) {
 	if (restart_button) {
 		restart_button->set_disabled(p_node == nullptr);
 	}
-	_update_emitter_tree();
+	if (p_update_tree) {
+		_update_emitter_tree();
+	}
 	_rebuild_preview();
 }
 
@@ -300,7 +302,7 @@ void FPSStudioParticleEditorPlugin::_on_emitter_selected() {
 	if (!item || !scene_root) {
 		return;
 	}
-	_set_edited_emitter(scene_root->get_node_or_null(item->get_metadata(0)));
+	_set_edited_emitter(scene_root->get_node_or_null(item->get_metadata(0)), false);
 }
 
 void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_property) {
@@ -415,7 +417,6 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitters_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
 	emitters_panel->add_child(emitters_title);
 	emitter_tree = memnew(Tree);
-	emitter_tree->set_columns(1);
 	emitter_tree->set_hide_root(true);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	emitter_tree->set_h_size_flags(Control::SIZE_EXPAND_FILL);
