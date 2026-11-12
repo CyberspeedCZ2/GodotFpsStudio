@@ -19,6 +19,7 @@ class EditorInspector;
 class HSlider;
 class InputEvent;
 class Label;
+class MenuButton;
 class Node;
 class Node3D;
 class QuadMesh;
@@ -33,6 +34,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 
 	Control *screen = nullptr;
 	Tree *emitter_tree = nullptr;
+	MenuButton *add_emitter_button = nullptr;
 	SubViewport *preview_viewport = nullptr;
 	SubViewportContainer *preview_container = nullptr;
 	Node3D *preview_root = nullptr;
@@ -78,6 +80,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_timeline_changed(double p_value);
 	void _on_speed_changed(double p_value);
 	void _on_loop_toggled(bool p_enabled);
+	void _on_add_emitter_pressed(int p_id);
 	void _on_emitter_selected();
 	void _on_emitter_property_edited(const String &p_property);
 	void _update_time_label();

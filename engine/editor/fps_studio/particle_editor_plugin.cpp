@@ -13,6 +13,7 @@
 #include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
+#include "editor/editor_undo_redo_manager.h"
 #include "editor/editor_string_names.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/themes/editor_scale.h"
@@ -26,6 +27,8 @@
 #include "scene/gui/button.h"
 #include "scene/gui/check_button.h"
 #include "scene/gui/label.h"
+#include "scene/gui/menu_button.h"
+#include "scene/gui/popup_menu.h"
 #include "scene/gui/slider.h"
 #include "scene/gui/spin_box.h"
 #include "scene/gui/split_container.h"
@@ -131,6 +134,9 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	}
 	if (selected_item) {
 		selected_item->select(0);
+	}
+	if (add_emitter_button) {
+		add_emitter_button->set_disabled(!scene_root);
 	}
 	if (!scene_root) {
 		root_item->set_text(0, TTR("No scene is open"));
@@ -385,6 +391,54 @@ void FPSStudioParticleEditorPlugin::_on_loop_toggled(bool p_enabled) {
 	preview_loop = p_enabled;
 }
 
+void FPSStudioParticleEditorPlugin::_on_add_emitter_pressed(int p_id) {
+	Node *scene_root = _get_active_scene_root();
+	if (!scene_root) {
+		return;
+	}
+
+	Node3D *emitter = nullptr;
+	if (p_id == 0) {
+		GPUParticles3D *gpu_emitter = memnew(GPUParticles3D);
+		gpu_emitter->set_name("GPUParticles3D");
+		gpu_emitter->set_amount(32);
+		gpu_emitter->set_lifetime(2.0);
+		Ref<ParticleProcessMaterial> process_material;
+		process_material.instantiate();
+		gpu_emitter->set_process_material(process_material);
+		Ref<QuadMesh> particle_mesh;
+		particle_mesh.instantiate();
+		particle_mesh->set_size(Vector2(0.12, 0.12));
+		gpu_emitter->set_draw_pass_mesh(0, particle_mesh);
+		emitter = gpu_emitter;
+	} else if (p_id == 1) {
+		CPUParticles3D *cpu_emitter = memnew(CPUParticles3D);
+		cpu_emitter->set_name("CPUParticles3D");
+		cpu_emitter->set_amount(32);
+		cpu_emitter->set_lifetime(2.0);
+		Ref<QuadMesh> particle_mesh;
+		particle_mesh.instantiate();
+		particle_mesh->set_size(Vector2(0.12, 0.12));
+		cpu_emitter->set_mesh(particle_mesh);
+		emitter = cpu_emitter;
+	} else {
+		return;
+	}
+
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(vformat(TTR("Create %s"), emitter->get_class()));
+	undo_redo->add_do_method(scene_root, "add_child", emitter, true);
+	undo_redo->add_do_method(emitter, "set_owner", scene_root);
+	undo_redo->add_do_reference(emitter);
+	undo_redo->add_undo_method(scene_root, "remove_child", emitter);
+	undo_redo->commit_action();
+
+	EditorSelection *editor_selection = EditorNode::get_singleton()->get_editor_selection();
+	editor_selection->clear();
+	editor_selection->add_node(emitter);
+	_set_edited_emitter(emitter);
+}
+
 void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventMouseButton> mouse_button = p_event;
 	if (mouse_button.is_valid()) {
@@ -510,10 +564,20 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	VBoxContainer *emitters_panel = memnew(VBoxContainer);
 	emitters_panel->set_custom_minimum_size(Size2(210, 0) * EDSCALE);
 	main_split->add_child(emitters_panel);
+	HBoxContainer *emitters_header = memnew(HBoxContainer);
+	emitters_panel->add_child(emitters_header);
 	Label *emitters_title = memnew(Label);
 	emitters_title->set_text(TTR("Emitters"));
 	emitters_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
-	emitters_panel->add_child(emitters_title);
+	emitters_title->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	emitters_header->add_child(emitters_title);
+	add_emitter_button = memnew(MenuButton);
+	add_emitter_button->set_text(TTR("Add"));
+	add_emitter_button->set_tooltip_text(TTR("Add a GPU or CPU particle emitter to the open scene."));
+	add_emitter_button->get_popup()->add_item(TTR("GPU Particles 3D"), 0);
+	add_emitter_button->get_popup()->add_item(TTR("CPU Particles 3D"), 1);
+	add_emitter_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_pressed));
+	emitters_header->add_child(add_emitter_button);
 	emitter_tree = memnew(Tree);
 	emitter_tree->set_hide_root(true);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
