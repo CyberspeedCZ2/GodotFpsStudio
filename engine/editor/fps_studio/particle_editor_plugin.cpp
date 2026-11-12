@@ -23,6 +23,7 @@
 #include "scene/3d/world_environment.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
+#include "scene/gui/check_button.h"
 #include "scene/gui/label.h"
 #include "scene/gui/slider.h"
 #include "scene/gui/spin_box.h"
@@ -333,6 +334,10 @@ void FPSStudioParticleEditorPlugin::_on_speed_changed(double p_value) {
 	}
 }
 
+void FPSStudioParticleEditorPlugin::_on_loop_toggled(bool p_enabled) {
+	preview_loop = p_enabled;
+}
+
 void FPSStudioParticleEditorPlugin::_update_time_label() {
 	if (time_label) {
 		time_label->set_text(vformat("%s / %s s", String::num(preview_time, 2), String::num(preview_duration, 2)));
@@ -343,8 +348,13 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_PROCESS && preview_playing && preview_emitter && screen->is_visible_in_tree()) {
 		preview_time += get_process_delta_time() * preview_speed;
 		if (preview_time >= preview_duration) {
-			preview_time = preview_duration;
-			_set_preview_playing(false);
+			if (preview_loop) {
+				preview_time = Math::fmod(preview_time, preview_duration);
+				preview_emitter->call("restart", true);
+			} else {
+				preview_time = preview_duration;
+				_set_preview_playing(false);
+			}
 		}
 		if (timeline) {
 			timeline->set_value_no_signal(preview_time);
@@ -509,10 +519,15 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	speed_spin->set_max(4.0);
 	speed_spin->set_step(0.05);
 	speed_spin->set_value(1.0);
-	speed_spin->set_suffix("×");
+	speed_spin->set_suffix("x");
 	speed_spin->set_custom_minimum_size(Size2(88, 0) * EDSCALE);
 	speed_spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_speed_changed));
 	transport->add_child(speed_spin);
+	CheckButton *loop_check = memnew(CheckButton);
+	loop_check->set_text(TTR("Loop"));
+	loop_check->set_pressed(preview_loop);
+	loop_check->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
+	transport->add_child(loop_check);
 
 	TabContainer *settings_tabs = memnew(TabContainer);
 	settings_tabs->set_custom_minimum_size(Size2(340, 0) * EDSCALE);

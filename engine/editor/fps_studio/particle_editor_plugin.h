@@ -13,6 +13,7 @@
 #include "editor/plugins/editor_plugin.h"
 
 class Button;
+class CheckButton;
 class EditorInspector;
 class HSlider;
 class Label;
@@ -44,6 +45,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 
 	ObjectID edited_emitter_id;
 	bool preview_playing = true;
+	bool preview_loop = true;
 	bool rebuilding_preview = false;
 	double preview_time = 0.0;
 	double preview_duration = 5.0;
@@ -63,6 +65,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_restart_pressed();
 	void _on_timeline_changed(double p_value);
 	void _on_speed_changed(double p_value);
+	void _on_loop_toggled(bool p_enabled);
 	void _on_emitter_selected();
 	void _on_emitter_property_edited(const String &p_property);
 	void _update_time_label();
