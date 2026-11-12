@@ -16,11 +16,13 @@ This repository does not currently include a standalone game sample or a reusabl
 
 The editor is built into the engine, so its workspace and tools are available when opening any Godot project. The custom UI is still hosted by Godot's `EditorNode`; FPS Studio is not a separately rewritten editor.
 
-The workspace includes Level, Model, Code, and Assets screens, a Content Browser, Level viewport authoring tools, NPC route editing, NavigationMesh tools, and model import settings with LOD preview and configuration. The engine also provides a `PostProcessVolume3D` node for camera-position based Environment overrides with a box gizmo, priority, weight, and smooth blend radius. Play can run in the Level viewport or in a separate window.
+The workspace includes Level, Model, Code, Assets, and Particle screens, a Content Browser, Level viewport authoring tools, NPC route editing, NavigationMesh tools, model import settings with LOD preview and configuration, and a particle preview workspace for native 3D particle nodes. The engine also provides a `PostProcessVolume3D` node for camera-position based Environment overrides with a box gizmo, priority, weight, and smooth blend radius. Play can run in the Level viewport or in a separate window.
 
 UniBuilder is bundled with the editor as a built-in resource pack. It does not need to be installed as a project add-on.
 
 See [PostProcessVolume3D](docs/post_process_volume_3d.md) for setup and limitations.
+
+See [Particle workspace](docs/particle_editor.md) for its workflow and current scope.
 
 ## Build on macOS Apple Silicon
 

@@ -72,6 +72,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/fps_studio/fps_studio_workspace.h"
+#include "editor/fps_studio/particle_editor_plugin.h"
 #include "editor/export/dedicated_server_export_plugin.h"
 #include "editor/export/editor_export.h"
 #include "editor/export/export_template_manager.h"
@@ -9227,6 +9228,7 @@ EditorNode::EditorNode() {
 	} else {
 		print_verbose("Asset Store not available (due to using Web editor, or SSL support disabled).");
 	}
+	add_editor_plugin(memnew(FPSStudioParticleEditorPlugin));
 
 	// More visually meaningful to have this later.
 	add_editor_plugin(memnew(AnimationPlayerEditorPlugin));

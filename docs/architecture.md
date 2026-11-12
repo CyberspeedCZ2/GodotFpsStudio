@@ -12,7 +12,7 @@ V repozitáři momentálně není samostatná herní šablona ani ukázkový FPS
 
 ## Pracovní prostředí
 
-FPS Studio nabízí obrazovky Level, Model, Code a Assets. Vlastní třída `FPSStudioWorkspace` skládá hlavní rozložení, pracovní plochy a docky. Stále ji vytváří a propojuje Godotova třída `EditorNode`; editor tedy používá nativní služby Godotu a není přepsaný od nuly.
+FPS Studio nabízí obrazovky Level, Model, Code, Assets a Particle. Vlastní třída `FPSStudioWorkspace` skládá hlavní rozložení, pracovní plochy a docky. Stále ji vytváří a propojuje Godotova třída `EditorNode`; editor tedy používá nativní služby Godotu a není přepsaný od nuly.
 
 Content Browser vychází z vestavěného filesystem panelu. UniBuilder je součástí sestavené aplikace, takže jeho funkce nejsou závislé na doplňku v projektu uživatele.
 
@@ -21,6 +21,7 @@ Content Browser vychází z vestavěného filesystem panelu. UniBuilder je souč
 - **Level:** úpravy scény a viewportu, vytváření FPS uzlů, NPC tras a waypoint akcí, práce s NavigationRegion3D, NavigationObstacle3D a NavigationLink3D.
 - **Play:** spuštění hry v Level viewportu nebo v samostatném okně.
 - **Model:** náhled importovaných modelů, LOD nastavení a jejich průběžné ukládání do souboru `.lodcfg`. Podrobnosti jsou v [Model Editor: LOD a náhled modelu](model_editor_lod.md).
+- **Particle:** samostatná pracovní obrazovka pro náhled `GPUParticles3D` a `CPUParticles3D`, přehrávání simulace a úpravu nativních uzlů a materiálů. Aktuální rozsah popisuje [Particle workspace](particle_editor.md).
 - **UniBuilder:** vestavěné nástroje pro tvorbu a úpravu brush/CSG geometrie.
 
 ## Směr dalšího vývoje
