@@ -7,6 +7,7 @@
 
 #include "particle_editor_plugin.h"
 
+#include "core/input/input_event.h"
 #include "core/object/callable_mp.h"
 #include "core/object/script_language.h"
 #include "editor/editor_data.h"
@@ -34,8 +35,49 @@
 #include "scene/main/viewport.h"
 #include "scene/resources/3d/primitive_meshes.h"
 #include "scene/resources/environment.h"
+#include "scene/resources/immediate_mesh.h"
 #include "scene/resources/material.h"
 #include "scene/resources/particle_process_material.h"
+
+static MeshInstance3D *create_particle_preview_grid() {
+	Ref<StandardMaterial3D> grid_material;
+	grid_material.instantiate();
+	grid_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	grid_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	grid_material->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+
+	Ref<ImmediateMesh> grid_mesh;
+	grid_mesh.instantiate();
+	grid_mesh->surface_begin(Mesh::PRIMITIVE_LINES, grid_material);
+	constexpr real_t grid_step = 0.5;
+	constexpr real_t grid_extent = 30.0;
+	constexpr int grid_divisions = 60;
+	auto add_grid_line = [&](const Vector3 &p_from, const Vector3 &p_to, const Color &p_color) {
+		Color from_color = p_color;
+		Color to_color = p_color;
+		from_color.a *= MAX(0.0, 1.0 - Vector2(p_from.x, p_from.z).length() / grid_extent);
+		to_color.a *= MAX(0.0, 1.0 - Vector2(p_to.x, p_to.z).length() / grid_extent);
+		grid_mesh->surface_set_color(from_color);
+		grid_mesh->surface_add_vertex(p_from);
+		grid_mesh->surface_set_color(to_color);
+		grid_mesh->surface_add_vertex(p_to);
+	};
+	for (int i = -grid_divisions; i <= grid_divisions; i++) {
+		const real_t coordinate = i * grid_step;
+		const Color grid_color = i == 0 ? Color(0.76, 0.23, 0.19, 0.55) : Color(0.34, 0.4, 0.5, 0.24);
+		add_grid_line(Vector3(-grid_extent, -0.1, coordinate), Vector3(grid_extent, -0.1, coordinate), grid_color);
+
+		const Color side_color = i == 0 ? Color(0.23, 0.42, 0.78, 0.55) : Color(0.34, 0.4, 0.5, 0.24);
+		add_grid_line(Vector3(coordinate, -0.1, -grid_extent), Vector3(coordinate, -0.1, grid_extent), side_color);
+	}
+	grid_mesh->surface_end();
+
+	MeshInstance3D *grid_instance = memnew(MeshInstance3D);
+	grid_instance->set_name("ParticlePreviewGrid");
+	grid_instance->set_mesh(grid_mesh);
+	grid_instance->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	return grid_instance;
+}
 
 Node *FPSStudioParticleEditorPlugin::_get_active_scene_root() const {
 	EditorData &editor_data = EditorNode::get_editor_data();
@@ -338,6 +380,47 @@ void FPSStudioParticleEditorPlugin::_on_loop_toggled(bool p_enabled) {
 	preview_loop = p_enabled;
 }
 
+void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventMouseButton> mouse_button = p_event;
+	if (mouse_button.is_valid()) {
+		const MouseButton button_index = mouse_button->get_button_index();
+		if (button_index == MouseButton::LEFT || button_index == MouseButton::RIGHT) {
+			preview_orbit_dragging = mouse_button->is_pressed();
+			preview_container->accept_event();
+			return;
+		}
+		if (mouse_button->is_pressed() && (button_index == MouseButton::WHEEL_UP || button_index == MouseButton::WHEEL_DOWN)) {
+			preview_camera_distance = CLAMP(preview_camera_distance * (button_index == MouseButton::WHEEL_UP ? 0.85 : 1.0 / 0.85), 1.0, 50.0);
+			_update_preview_camera();
+			preview_container->accept_event();
+			return;
+		}
+	}
+
+	Ref<InputEventMouseMotion> mouse_motion = p_event;
+	if (mouse_motion.is_valid() && preview_orbit_dragging) {
+		const BitField<MouseButtonMask> button_mask = mouse_motion->get_button_mask();
+		if (!button_mask.has_flag(MouseButtonMask::LEFT) && !button_mask.has_flag(MouseButtonMask::RIGHT)) {
+			preview_orbit_dragging = false;
+			return;
+		}
+		const Vector2 relative = mouse_motion->get_relative();
+		preview_camera_yaw -= relative.x * 0.01;
+		preview_camera_pitch = CLAMP(preview_camera_pitch - relative.y * 0.01, Math::deg_to_rad(-85.0), Math::deg_to_rad(85.0));
+		_update_preview_camera();
+		preview_container->accept_event();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_update_preview_camera() {
+	if (!preview_camera) {
+		return;
+	}
+	const real_t horizontal_distance = preview_camera_distance * Math::cos(preview_camera_pitch);
+	const Vector3 camera_position = preview_camera_target + Vector3(Math::sin(preview_camera_yaw) * horizontal_distance, Math::sin(preview_camera_pitch) * preview_camera_distance, Math::cos(preview_camera_yaw) * horizontal_distance);
+	preview_camera->look_at_from_position(camera_position, preview_camera_target);
+}
+
 void FPSStudioParticleEditorPlugin::_update_time_label() {
 	if (time_label) {
 		time_label->set_text(vformat("%s / %s s", String::num(preview_time, 2), String::num(preview_duration, 2)));
@@ -447,10 +530,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	selection_label->set_clip_text(true);
 	preview_panel->add_child(selection_label);
 
-	SubViewportContainer *preview_container = memnew(SubViewportContainer);
+	preview_container = memnew(SubViewportContainer);
 	preview_container->set_stretch(true);
 	preview_container->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	preview_container->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	preview_container->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_gui_input));
 	preview_panel->add_child(preview_container);
 
 	preview_viewport = memnew(SubViewport);
@@ -478,12 +563,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	key_light->set_rotation(Vector3(Math::deg_to_rad(-40.0), Math::deg_to_rad(-25.0), 0.0));
 	key_light->set_param(Light3D::PARAM_ENERGY, 1.4);
 	preview_root->add_child(key_light);
+	preview_root->add_child(create_particle_preview_grid());
 
-	Camera3D *camera = memnew(Camera3D);
-	camera->set_position(Vector3(0.0, 2.0, 6.0));
-	camera->look_at_from_position(Vector3(0.0, 2.0, 6.0), Vector3(0.0, 0.5, 0.0));
-	camera->set_current(true);
-	preview_root->add_child(camera);
+	preview_camera = memnew(Camera3D);
+	preview_root->add_child(preview_camera);
+	_update_preview_camera();
+	preview_camera->set_current(true);
 
 	HBoxContainer *transport = memnew(HBoxContainer);
 	transport->set_custom_minimum_size(Size2(0, 34) * EDSCALE);

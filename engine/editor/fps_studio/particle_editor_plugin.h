@@ -13,14 +13,17 @@
 #include "editor/plugins/editor_plugin.h"
 
 class Button;
+class Camera3D;
 class CheckButton;
 class EditorInspector;
 class HSlider;
+class InputEvent;
 class Label;
 class Node;
 class Node3D;
 class QuadMesh;
 class SubViewport;
+class SubViewportContainer;
 class SpinBox;
 class Tree;
 class TreeItem;
@@ -31,7 +34,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Control *screen = nullptr;
 	Tree *emitter_tree = nullptr;
 	SubViewport *preview_viewport = nullptr;
+	SubViewportContainer *preview_container = nullptr;
 	Node3D *preview_root = nullptr;
+	Camera3D *preview_camera = nullptr;
 	Node *preview_emitter = nullptr;
 	Ref<QuadMesh> preview_quad;
 	EditorInspector *emitter_inspector = nullptr;
@@ -46,10 +51,15 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	ObjectID edited_emitter_id;
 	bool preview_playing = true;
 	bool preview_loop = true;
+	bool preview_orbit_dragging = false;
 	bool rebuilding_preview = false;
 	double preview_time = 0.0;
 	double preview_duration = 5.0;
 	double preview_speed = 1.0;
+	double preview_camera_yaw = 0.0;
+	double preview_camera_pitch = 0.245;
+	double preview_camera_distance = 6.18;
+	Vector3 preview_camera_target = Vector3(0.0, 0.5, 0.0);
 
 	Node *_get_active_scene_root() const;
 	Node *_get_edited_emitter() const;
@@ -61,6 +71,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _apply_preview_defaults();
 	void _sync_preview_properties();
 	void _set_preview_playing(bool p_playing);
+	void _on_preview_gui_input(const Ref<InputEvent> &p_event);
+	void _update_preview_camera();
 	void _on_play_toggled(bool p_pressed);
 	void _on_restart_pressed();
 	void _on_timeline_changed(double p_value);

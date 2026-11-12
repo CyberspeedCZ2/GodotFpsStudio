@@ -9207,8 +9207,9 @@ EditorNode::EditorNode() {
 	add_editor_plugin(memnew(CanvasItemEditorPlugin));
 	add_editor_plugin(memnew(Node3DEditorPlugin));
 	// Model workspace (Advanced Import Settings as a main screen tab,
-	// right next to Level/Code) instead of the old modal dialog.
+	// right next to Level) instead of the old modal dialog.
 	add_editor_plugin(memnew(ModelEditorPlugin));
+	add_editor_plugin(memnew(FPSStudioParticleEditorPlugin));
 	add_editor_plugin(memnew(ScriptEditorPlugin));
 
 	if (!Engine::get_singleton()->is_recovery_mode_hint()) {
@@ -9228,8 +9229,6 @@ EditorNode::EditorNode() {
 	} else {
 		print_verbose("Asset Store not available (due to using Web editor, or SSL support disabled).");
 	}
-	add_editor_plugin(memnew(FPSStudioParticleEditorPlugin));
-
 	// More visually meaningful to have this later.
 	add_editor_plugin(memnew(AnimationPlayerEditorPlugin));
 	add_editor_plugin(memnew(AnimationTrackKeyEditEditorPlugin));
