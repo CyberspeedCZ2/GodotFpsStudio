@@ -9,6 +9,7 @@
 
 #include "core/object/callable_mp.h"
 #include "core/object/script_language.h"
+#include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -35,6 +36,15 @@
 #include "scene/resources/material.h"
 #include "scene/resources/particle_process_material.h"
 
+Node *FPSStudioParticleEditorPlugin::_get_active_scene_root() const {
+	EditorData &editor_data = EditorNode::get_editor_data();
+	const int scene_index = editor_data.get_edited_scene();
+	if (scene_index < 0 || scene_index >= editor_data.get_edited_scene_count()) {
+		return nullptr;
+	}
+	return editor_data.get_edited_scene_root(scene_index);
+}
+
 Node *FPSStudioParticleEditorPlugin::_get_edited_emitter() const {
 	return Object::cast_to<Node>(ObjectDB::get_instance(edited_emitter_id));
 }
@@ -57,7 +67,7 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	}
 	emitter_tree->clear();
 	TreeItem *root_item = emitter_tree->create_item();
-	Node *scene_root = EditorNode::get_singleton()->get_edited_scene();
+	Node *scene_root = _get_active_scene_root();
 	Vector<Node *> emitters;
 	_collect_emitters(scene_root, emitters);
 	Node *edited_emitter = _get_edited_emitter();
@@ -74,7 +84,9 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	if (selected_item) {
 		selected_item->select(0);
 	}
-	if (scene_root && emitters.is_empty()) {
+	if (!scene_root) {
+		root_item->set_text(0, TTR("No scene is open"));
+	} else if (emitters.is_empty()) {
 		root_item->set_text(0, TTR("No 3D particle emitters in this scene"));
 	}
 }
@@ -284,7 +296,7 @@ void FPSStudioParticleEditorPlugin::_on_timeline_changed(double p_value) {
 
 void FPSStudioParticleEditorPlugin::_on_emitter_selected() {
 	TreeItem *item = emitter_tree ? emitter_tree->get_selected() : nullptr;
-	Node *scene_root = EditorNode::get_singleton()->get_edited_scene();
+	Node *scene_root = _get_active_scene_root();
 	if (!item || !scene_root) {
 		return;
 	}
@@ -366,7 +378,7 @@ bool FPSStudioParticleEditorPlugin::handles(Object *p_object) const {
 
 void FPSStudioParticleEditorPlugin::edited_scene_changed() {
 	_update_emitter_tree();
-	Node *scene_root = EditorNode::get_singleton()->get_edited_scene();
+	Node *scene_root = _get_active_scene_root();
 	Node *edited_emitter = _get_edited_emitter();
 	if (scene_root && edited_emitter && (scene_root == edited_emitter || scene_root->is_ancestor_of(edited_emitter))) {
 		_rebuild_preview();
@@ -458,7 +470,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 
 	Camera3D *camera = memnew(Camera3D);
 	camera->set_position(Vector3(0.0, 2.0, 6.0));
-	camera->look_at(Vector3(0.0, 0.5, 0.0));
+	camera->look_at_from_position(Vector3(0.0, 2.0, 6.0), Vector3(0.0, 0.5, 0.0));
 	camera->set_current(true);
 	preview_root->add_child(camera);
 

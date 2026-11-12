@@ -49,6 +49,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	double preview_duration = 5.0;
 	double preview_speed = 1.0;
 
+	Node *_get_active_scene_root() const;
 	Node *_get_edited_emitter() const;
 	void _collect_emitters(Node *p_node, Vector<Node *> &r_emitters) const;
 	void _update_emitter_tree();
