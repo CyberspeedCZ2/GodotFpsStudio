@@ -53,21 +53,26 @@ static MeshInstance3D *create_particle_preview_grid() {
 	constexpr real_t grid_extent = 30.0;
 	constexpr int grid_divisions = 60;
 	auto add_grid_line = [&](const Vector3 &p_from, const Vector3 &p_to, const Color &p_color) {
-		Color from_color = p_color;
-		Color to_color = p_color;
-		from_color.a *= MAX(0.0, 1.0 - Vector2(p_from.x, p_from.z).length() / grid_extent);
-		to_color.a *= MAX(0.0, 1.0 - Vector2(p_to.x, p_to.z).length() / grid_extent);
-		grid_mesh->surface_set_color(from_color);
-		grid_mesh->surface_add_vertex(p_from);
-		grid_mesh->surface_set_color(to_color);
-		grid_mesh->surface_add_vertex(p_to);
+		const int segment_count = MAX(1, int((p_to - p_from).length()));
+		for (int segment = 0; segment < segment_count; segment++) {
+			const Vector3 from = p_from.lerp(p_to, real_t(segment) / segment_count);
+			const Vector3 to = p_from.lerp(p_to, real_t(segment + 1) / segment_count);
+			Color from_color = p_color;
+			Color to_color = p_color;
+			from_color.a *= MAX(0.0, 1.0 - Vector2(from.x, from.z).length() / grid_extent);
+			to_color.a *= MAX(0.0, 1.0 - Vector2(to.x, to.z).length() / grid_extent);
+			grid_mesh->surface_set_color(from_color);
+			grid_mesh->surface_add_vertex(from);
+			grid_mesh->surface_set_color(to_color);
+			grid_mesh->surface_add_vertex(to);
+		}
 	};
 	for (int i = -grid_divisions; i <= grid_divisions; i++) {
 		const real_t coordinate = i * grid_step;
-		const Color grid_color = i == 0 ? Color(0.76, 0.23, 0.19, 0.55) : Color(0.34, 0.4, 0.5, 0.24);
+		const Color grid_color = i == 0 ? Color(0.76, 0.23, 0.19, 0.85) : Color(0.48, 0.56, 0.7, 0.4);
 		add_grid_line(Vector3(-grid_extent, -0.1, coordinate), Vector3(grid_extent, -0.1, coordinate), grid_color);
 
-		const Color side_color = i == 0 ? Color(0.23, 0.42, 0.78, 0.55) : Color(0.34, 0.4, 0.5, 0.24);
+		const Color side_color = i == 0 ? Color(0.23, 0.42, 0.78, 0.85) : Color(0.48, 0.56, 0.7, 0.4);
 		add_grid_line(Vector3(coordinate, -0.1, -grid_extent), Vector3(coordinate, -0.1, grid_extent), side_color);
 	}
 	grid_mesh->surface_end();
