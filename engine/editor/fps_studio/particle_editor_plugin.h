@@ -15,6 +15,7 @@
 class Button;
 class Camera3D;
 class CheckButton;
+class EditorFileDialog;
 class EditorInspector;
 class HSlider;
 class InputEvent;
@@ -36,6 +37,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Control *screen = nullptr;
 	Tree *emitter_tree = nullptr;
 	MenuButton *add_emitter_button = nullptr;
+	EditorFileDialog *save_scene_dialog = nullptr;
 	SubViewport *preview_viewport = nullptr;
 	SubViewportContainer *preview_container = nullptr;
 	Node3D *preview_root = nullptr;
@@ -47,6 +49,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	EditorInspector *process_material_inspector = nullptr;
 	Button *play_button = nullptr;
 	Button *restart_button = nullptr;
+	Button *save_scene_button = nullptr;
 	HSlider *timeline = nullptr;
 	SpinBox *speed_spin = nullptr;
 	Label *time_label = nullptr;
@@ -85,6 +88,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_speed_changed(double p_value);
 	void _on_loop_toggled(bool p_enabled);
 	void _on_add_emitter_pressed(int p_id);
+	void _on_save_scene_pressed();
+	void _save_emitter_scene(const String &p_path);
 	void _on_emitter_selected();
 	void _on_emitter_property_edited(const String &p_property);
 	void _update_time_label();

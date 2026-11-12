@@ -8,9 +8,12 @@
 #include "particle_editor_plugin.h"
 
 #include "core/input/input_event.h"
+#include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
 #include "core/object/script_language.h"
 #include "editor/editor_data.h"
+#include "editor/file_system/editor_file_system.h"
+#include "editor/gui/editor_file_dialog.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
@@ -41,6 +44,7 @@
 #include "scene/resources/immediate_mesh.h"
 #include "scene/resources/material.h"
 #include "scene/resources/particle_process_material.h"
+#include "scene/resources/packed_scene.h"
 
 static MeshInstance3D *create_particle_preview_grid() {
 	Ref<StandardMaterial3D> grid_material;
@@ -99,6 +103,14 @@ static Ref<QuadMesh> create_particle_quad() {
 	particle_material->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
 	particle_mesh->set_material(particle_material);
 	return particle_mesh;
+}
+
+static void set_scene_subtree_owners(Node *p_node, Node *p_scene_root) {
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		Node *child = p_node->get_child(i);
+		child->set_owner(p_scene_root);
+		set_scene_subtree_owners(child, p_scene_root);
+	}
 }
 
 Node *FPSStudioParticleEditorPlugin::_get_active_scene_root() const {
@@ -195,6 +207,9 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 	}
 	if (restart_button) {
 		restart_button->set_disabled(p_node == nullptr);
+	}
+	if (save_scene_button) {
+		save_scene_button->set_disabled(p_node == nullptr);
 	}
 	if (p_update_tree) {
 		_update_emitter_tree();
@@ -503,6 +518,51 @@ void FPSStudioParticleEditorPlugin::_on_add_emitter_pressed(int p_id) {
 	_set_edited_emitter(emitter);
 }
 
+void FPSStudioParticleEditorPlugin::_on_save_scene_pressed() {
+	Node *emitter = _get_edited_emitter();
+	if (!emitter || !save_scene_dialog) {
+		return;
+	}
+	save_scene_dialog->set_current_dir("res://");
+	save_scene_dialog->set_current_file(String(emitter->get_name()).validate_filename() + ".tscn");
+	save_scene_dialog->popup_file_dialog();
+}
+
+void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
+	Node *emitter = _get_edited_emitter();
+	if (!emitter) {
+		return;
+	}
+
+	Node *emitter_copy = emitter->duplicate();
+	if (!emitter_copy) {
+		EditorNode::get_singleton()->show_warning(TTR("Could not duplicate the selected emitter for saving."));
+		return;
+	}
+	emitter_copy->set_name(emitter->get_name());
+	set_scene_subtree_owners(emitter_copy, emitter_copy);
+
+	Ref<PackedScene> packed_scene;
+	packed_scene.instantiate();
+	const Error pack_error = packed_scene->pack(emitter_copy);
+	memdelete(emitter_copy);
+	if (pack_error != OK) {
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not pack the selected emitter scene (error %d)."), pack_error));
+		return;
+	}
+
+	String save_path = p_path;
+	if (save_path.get_extension().to_lower() != "tscn") {
+		save_path += ".tscn";
+	}
+	const Error save_error = ResourceSaver::save(packed_scene, save_path);
+	if (save_error != OK) {
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save particle scene to %s (error %d)."), save_path, save_error));
+		return;
+	}
+	EditorFileSystem::get_singleton()->scan_changes();
+}
+
 void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventMouseButton> mouse_button = p_event;
 	if (mouse_button.is_valid()) {
@@ -680,6 +740,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	grid_toggle->set_tooltip_text(TTR("Show or hide the preview grid."));
 	grid_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_grid_toggled));
 	preview_toolbar->add_child(grid_toggle);
+	save_scene_button = memnew(Button);
+	save_scene_button->set_text(TTR("Save Scene"));
+	save_scene_button->set_tooltip_text(TTR("Save the selected emitter and its children as a reusable scene."));
+	save_scene_button->set_disabled(true);
+	save_scene_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_save_scene_pressed));
+	preview_toolbar->add_child(save_scene_button);
 
 	preview_container = memnew(SubViewportContainer);
 	preview_container->set_stretch(true);
@@ -786,6 +852,14 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	process_material_inspector->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_property_edited));
 	settings_tabs->add_child(process_material_inspector);
 	process_material_inspector->hide();
+
+	save_scene_dialog = memnew(EditorFileDialog);
+	save_scene_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
+	save_scene_dialog->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
+	save_scene_dialog->set_title(TTR("Save Particle Emitter Scene"));
+	save_scene_dialog->add_filter("*.tscn", TTR("Godot Scene"));
+	add_child(save_scene_dialog);
+	save_scene_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_save_emitter_scene));
 
 	preview_quad.instantiate();
 	preview_quad->set_size(Vector2(0.12, 0.12));
