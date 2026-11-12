@@ -403,6 +403,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitters_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
 	emitters_panel->add_child(emitters_title);
 	emitter_tree = memnew(Tree);
+	emitter_tree->set_columns(1);
 	emitter_tree->set_hide_root(true);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	emitter_tree->set_h_size_flags(Control::SIZE_EXPAND_FILL);
