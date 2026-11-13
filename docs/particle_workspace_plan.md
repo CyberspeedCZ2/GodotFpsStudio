@@ -33,12 +33,12 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 
 | Etapa | Závisí na | Ověřovací scénáře | Stav |
 | --- | --- | --- | --- |
-| 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | Základ hotový; celý cyklus čeká na ruční kontrolu. |
-| 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenování ověřit po implementaci. | Přidání/odebrání hotové; přejmenování chybí. |
-| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Základ hotový; responsivita čeká na kontrolu. |
+| 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | V dočasném projektu ručně ověřeno uložení, znovunačtení efektu i přidání do Levelu. |
+| 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenovat emitter a ověřit Undo/Redo. | Přidání, odebrání i přejmenování jsou implementované; rename a jeho Undo/Redo ručně ověřeny. |
+| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Rozměry splitterů se ukládají; změnu šířky levého panelu jsem ověřil v dočasném projektu. Malé okno a Output panel čekají na kontrolu. |
 | 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo ověřeny; ruční editace bodů a uložení/načtení čekají. |
-| 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; prověřit možnost vložení skutečného editoru do panelu. | Nativní graf lze otevřít samostatně; vložený pohled a celý persistence scénář čekají. |
-| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Headless import PNG i přiřazení textury emitoru ověřeny. Synchronní reimport se sestavil; editorové tlačítko Apply po opravě stále čeká na ruční kontrolu. |
+| 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; ověřit Undo/Redo vytvoření. | Nativní editor grafu je vložený v Particle Logic. Vytvoření, uložení a znovunačtení grafu i oprava UndoRedo byly ručně ověřeny. Přepnutí mezi více GPU emitory čeká na kontrolu. |
+| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo exportováno, synchronně naimportováno a přiřazeno emitoru v editoru. Kolize modálních oken ze screenshotu je opravená v kódu a nový build prošel; její konkrétní exportní průchod po opravě ještě čeká na ruční potvrzení. Sprite sheet je volitelný a neověřený. |
 | 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Průběžně. |
 
 Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
@@ -66,7 +66,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 
 - [x] Oddělit nedávné soubory od emitterů v aktuálním efektu.
 - [x] Přidat GPU/CPU emitter i předvolbu a odebrat vybraný emitter.
-- [ ] Bezpečně přejmenovat vybraný emitter přímo v hierarchii.
+- [x] Bezpečně přejmenovat vybraný emitter dvojklikem v hierarchii; změna používá Undo/Redo.
 - [x] Simulovat celý efekt včetně více emitterů.
 - [x] Odvodit délku náhledu z nejdelší životnosti; přehrávání, restart, scrub, rychlost a Loop defaultně zapnutý.
 - [x] Výběr uzlu přepíná odpovídající Emitter/Process/Renderer inspektory.
@@ -79,7 +79,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Transport ovládání pod náhledem.
 - [x] Pravé karty Emitter, Process a Renderer používají nativní Godot inspektory.
 - [x] Upravit výchozí poměr vertikálního splitteru tak, aby 3D preview dostalo více plochy než spodní informační panel.
-- [ ] Uložit šířky panelů a jejich rozložení do editorových nastavení.
+- [x] Uložit poměry splitterů do editorového rozvržení a obnovit je při spuštění.
 - [ ] Znovu proměřit responsivitu rozvržení s/bez spodního Output panelu a při malém okně.
 
 ### 4. Křivky — základ hotov
@@ -91,21 +91,25 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Ručně ověřit Alpha/Scale presety a Undo/Redo v editoru; ruční editace bodů a uložení/načtení křivek čekají.
 - [ ] Rozšířit nástroje na další parametry podle uživatelské hodnoty.
 
-### 5. Nativní Particle `VisualShader` — základ hotov, graf zatím samostatně
+### 5. Nativní Particle `VisualShader` — vložený graf hotový
 
 - [x] Zachovat a otevřít nativní particle `VisualShader` Godotu.
 - [x] Vytvořit particle `VisualShader` pro GPU emitter s potvrzením před nahrazením materiálu a možností Undo.
 - [x] Rozlišit shaderový graf emitoru od hierarchie celého efektu.
-- [x] Zatím otevřít graf ve vestavěném Shader Editoru Godotu; particle preview zůstává dostupný ve workspace.
-- [ ] Prověřit, zda lze bezpečně vložit nativní GraphEdit view do spodního panelu bez kopírování editoru Shader.
-- [ ] Ručně ověřit ukládání/načítání efektu s existujícím grafem i jeho napojením.
+- [x] Vložit nativní `VisualShaderEditor` do spodního panelu a ponechat možnost otevřít graf ve velkém Shader Editoru.
+- [x] Uložit a načíst efekt se shaderovým grafem; opravit historii UndoRedo při jeho vytvoření.
+- [ ] Ručně ověřit přepínání vloženého grafu mezi více GPU emitory.
 
 ### 6. Ověření, dokumentace, Git — probíhá
 
 - [x] Přeložit editor přes `./tools/build_macos.sh`.
 - [x] Aktualizovat uživatelskou dokumentaci a tuto roadmapu podle současného stavu.
 - [x] Ověřit headless start editoru a opravit chybu `p_owner == this` v náhledu.
-- [ ] Ověřit hlavní pracovní postup v odděleném testovacím projektu: create, add/remove emitter, preview, Save/Open, Add to Level.
+- [x] V dočasném projektu vytvořit a uložit efekt, znovu načíst scénu a přidat efekt do Levelu.
+- [x] V novém buildu vytvořit particle `VisualShader`, uložit a znovu načíst scénu s grafem, otevřít další efekt bez pádu a ověřit čistý Output.
+- [ ] Projít export PNG a Apply to Emitter na novém buildu, aby se ručně potvrdila oprava modal dialogů z uživatelova screenshotu.
+- [ ] Dovyzkoušet editaci bodů křivek včetně Undo/Redo a uložení/načtení, přepínání shader grafu mezi GPU emitory a malé okno s otevřeným Output panelem.
+- [ ] Projít celý create/add/remove/preview/save/open/Add to Level cyklus v jedné relaci.
 - [ ] Zkontrolovat diff, commitnout a pushnout změny na pracovní GitHub větev podle instrukcí repozitáře.
 
 ### 7. Nativní VFX generátor textur — první verze hotová, pokračovat iterativně
@@ -117,7 +121,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Exportovat PNG do projektu a importovat ho synchronně před přiřazením materiálu emitteru.
 - Záměrně jde o nově napsaný nativní kód podle veřejně popsaného postupu. Konkrétní shaderové soubory EffectTextureMaker jsou minifikované a jejich licence není pro tento kód jednoznačně doložená. CC0 pro vygenerované textury automaticky nepovoluje kopírování generátoru.
 - [x] Headless načíst statický PNG a přiřadit ho `StandardMaterial3D` na `QuadMesh` emitoru.
-- [ ] V editoru ručně ověřit Export PNG a Apply to Emitter po synchronním reimportu; animovaný preview a sprite sheet jsou volitelné scénáře.
+- [x] V editoru ručně ověřit Export PNG a Apply to Emitter po synchronním reimportu; statický obrázek stačí pro použitelný particle efekt.
 - [ ] Volitelně ověřit animaci náhledu a export animovaného sprite sheetu v editoru.
 - [ ] Doplnit normal map, seamless tiling, color balance a pokročilejší šum.
 - [ ] Ukládat parametry generátoru do samostatného Godot resource pro opětovnou editaci.

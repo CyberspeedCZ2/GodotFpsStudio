@@ -2566,7 +2566,11 @@ void VisualShaderEditor::_set_mode(int p_which) {
 }
 
 void VisualShaderEditor::update_toggle_files_button() {
-	ERR_FAIL_NULL(toggle_files_list);
+	if (!toggle_files_list) {
+		toggle_files_button->hide();
+		return;
+	}
+	toggle_files_button->show();
 	bool forward = toggle_files_list->is_visible() == is_layout_rtl();
 	toggle_files_button->set_button_icon(get_editor_theme_icon(forward ? SNAME("Forward") : SNAME("Back")));
 	toggle_files_button->set_tooltip_text(vformat("%s (%s)", TTR("Toggle Files Panel"), ED_GET_SHORTCUT("script_editor/toggle_files_panel")->get_as_text()));
@@ -6506,10 +6510,15 @@ void VisualShaderEditor::_show_shader_preview() {
 
 void VisualShaderEditor::set_toggle_list_control(Control *p_toggle_list_control) {
 	toggle_files_list = p_toggle_list_control;
+	if (toggle_files_button) {
+		update_toggle_files_button();
+	}
 }
 
 void VisualShaderEditor::_toggle_files_pressed() {
-	ERR_FAIL_NULL(toggle_files_list);
+	if (!toggle_files_list) {
+		return;
+	}
 	toggle_files_list->set_visible(!toggle_files_list->is_visible());
 	update_toggle_files_button();
 }
@@ -6536,7 +6545,9 @@ VisualShaderEditor::VisualShaderEditor() {
 	vs_editor_cache->load(EditorPaths::get_singleton()->get_project_settings_dir().path_join("vs_editor_cache.cfg"));
 
 	ShaderLanguage::get_keyword_list(&keyword_list);
-	EditorNode::get_singleton()->connect("resource_saved", callable_mp(this, &VisualShaderEditor::_resource_saved));
+	if (EditorNode::get_singleton() && EditorNode::get_singleton()->has_signal(SNAME("resource_saved"))) {
+		EditorNode::get_singleton()->connect(SNAME("resource_saved"), callable_mp(this, &VisualShaderEditor::_resource_saved));
+	}
 	FileSystemDock::get_singleton()->get_script_create_dialog()->connect("script_created", callable_mp(this, &VisualShaderEditor::_script_created));
 	FileSystemDock::get_singleton()->connect("resource_removed", callable_mp(this, &VisualShaderEditor::_resource_removed));
 

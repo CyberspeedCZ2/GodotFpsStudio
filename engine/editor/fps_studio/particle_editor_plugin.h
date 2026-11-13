@@ -16,6 +16,7 @@ class Button;
 class Camera3D;
 class CheckButton;
 class ColorPickerButton;
+class ConfigFile;
 class AcceptDialog;
 class ConfirmationDialog;
 class CurveEditor;
@@ -36,10 +37,12 @@ class QuadMesh;
 class SubViewport;
 class SubViewportContainer;
 class SpinBox;
+class SplitContainer;
 class Tree;
 class TreeItem;
 class TextureRect;
 class VisualShader;
+class VisualShaderEditor;
 class VBoxContainer;
 class Image;
 class Texture2D;
@@ -49,6 +52,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	GDCLASS(FPSStudioParticleEditorPlugin, EditorPlugin);
 
 	Control *screen = nullptr;
+	SplitContainer *main_panel_split = nullptr;
+	SplitContainer *preview_properties_split = nullptr;
+	SplitContainer *preview_logic_split = nullptr;
 	Tree *effects_tree = nullptr;
 	Tree *emitter_tree = nullptr;
 	LineEdit *effect_filter = nullptr;
@@ -85,6 +91,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	int generated_texture_fps = 12;
 	int texture_generator_preview_frame = -1;
 	double texture_generator_preview_refresh = 0.0;
+	bool texture_generator_return_after_export = false;
 	ConfirmationDialog *particle_graph_confirmation = nullptr;
 	ConfirmationDialog *replace_document_confirmation = nullptr;
 	SubViewport *preview_viewport = nullptr;
@@ -98,6 +105,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	EditorInspector *process_material_inspector = nullptr;
 	EditorInspector *renderer_inspector = nullptr;
 	Control *process_material_page = nullptr;
+	Control *particle_logic_content = nullptr;
 	Control *curve_panel = nullptr;
 	VBoxContainer *alpha_curve_card = nullptr;
 	VBoxContainer *scale_curve_card = nullptr;
@@ -111,6 +119,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *scale_curve_info = nullptr;
 	Button *particle_graph_button = nullptr;
 	Label *particle_logic_status = nullptr;
+	Label *particle_logic_hint = nullptr;
+	VisualShaderEditor *particle_graph_editor = nullptr;
 	Button *play_button = nullptr;
 	Button *restart_button = nullptr;
 	HSlider *timeline = nullptr;
@@ -139,6 +149,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	double preview_camera_pitch = 0.245;
 	double preview_camera_distance = 6.18;
 	Vector3 preview_camera_target = Vector3(0.0, 0.5, 0.0);
+	real_t panel_layout_main_ratio = 0.0;
+	real_t panel_layout_properties_ratio = 0.0;
+	real_t panel_layout_logic_ratio = 0.0;
+	bool panel_layout_pending = false;
 
 	Node *_get_active_scene_root() const;
 	Node *_get_effect_root() const;
@@ -154,6 +168,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _create_effect_document(int p_template);
 	void _add_emitter(int p_type);
 	void _remove_selected_emitter();
+	void _on_emitter_renamed();
+	void _on_emitter_name_changed();
 	void _rebuild_preview();
 	void _clear_preview_scripts(Node *p_node);
 	void _apply_preview_defaults(Node *p_node);
@@ -174,6 +190,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_time_changed(double p_value);
 	void _on_texture_generator_color_changed(const Color &p_color);
 	void _on_texture_generator_action(const String &p_action);
+	void _on_texture_save_dialog_visibility_changed();
+	void _on_texture_save_dialog_cancelled();
+	void _show_texture_generator_after_export();
 	void _on_texture_save_path_selected(const String &p_path);
 	void _regenerate_texture(bool p_preview_only = false);
 	void _update_texture_preview();
@@ -204,6 +223,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _apply_curve_preset(bool p_alpha, int p_preset_id);
 	void _refresh_curve_editors();
 	void _update_particle_graph_controls();
+	void _restore_panel_layout();
+	void _on_panel_split_drag_ended();
 	void _on_particle_graph_button_pressed();
 	void _create_particle_graph();
 	void _open_particle_graph(const Ref<VisualShader> &p_visual_shader);
@@ -212,6 +233,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _mark_document_dirty();
 
 protected:
+	static void _bind_methods();
 	void _notification(int p_what);
 
 public:
@@ -220,6 +242,8 @@ public:
 	void edit(Object *p_object) override;
 	bool handles(Object *p_object) const override;
 	void edited_scene_changed() override;
+	void set_window_layout(Ref<ConfigFile> p_layout) override;
+	void get_window_layout(Ref<ConfigFile> p_layout) override;
 	String get_plugin_name() const override { return TTRC("Particle"); }
 	const Ref<Texture2D> get_plugin_icon() const override;
 

@@ -12,6 +12,7 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
+#include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/string/print_string.h"
 #include "editor/editor_data.h"
@@ -25,6 +26,7 @@
 #include "editor/scene/curve_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
+#include "modules/visual_shader/editor/visual_shader_editor_plugin.h"
 #include "modules/visual_shader/visual_shader.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
@@ -534,7 +536,8 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	for (Node *emitter : emitters) {
 		TreeItem *item = emitter_tree->create_item(root_item);
 		item->set_text(0, emitter->get_name());
-		item->set_tooltip_text(0, String(emitter->get_class()) + "\n" + emitter->get_name());
+		item->set_tooltip_text(0, String(emitter->get_class()) + "\n" + emitter->get_name() + "\n" + TTR("Double-click to rename"));
+		item->set_editable(0, true);
 		item->set_metadata(0, uint64_t(emitter->get_instance_id()));
 		if (emitter == edited_emitter) {
 			selected_item = item;
@@ -598,6 +601,21 @@ void FPSStudioParticleEditorPlugin::_mark_document_dirty() {
 void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const String &p_path, bool p_dirty) {
 	Node *previous = _get_effect_root();
 	if (previous && previous != p_root) {
+		// Clear inspector sub-properties and the inline shader editor while their
+		// resources are still alive. Resource properties fold themselves when
+		// removed from the inspector and need their edited object to remain valid.
+		if (emitter_inspector) {
+			emitter_inspector->edit(nullptr);
+		}
+		if (process_material_inspector) {
+			process_material_inspector->edit(nullptr);
+		}
+		if (renderer_inspector) {
+			renderer_inspector->edit(nullptr);
+		}
+		if (particle_graph_editor) {
+			particle_graph_editor->edit_shader(Ref<Shader>());
+		}
 		if (previous->is_inside_tree()) {
 			previous->queue_free();
 		} else {
@@ -894,14 +912,37 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_action(const String &p
 		}
 		const String output_suffix = generated_texture_frame_columns > 1 ? vformat("_flipbook_%dx%d", generated_texture_frame_columns, generated_texture_frame_columns) : String();
 		texture_save_dialog->set_current_file(vformat("%s%s_%d.png", texture_generator_preset->get_text().to_lower(), output_suffix, int(texture_generator_seed->get_value())));
+		texture_generator_return_after_export = true;
+		texture_generator_dialog->hide();
 		texture_save_dialog->popup_file_dialog();
 	} else if (p_action == "apply") {
 		_apply_generated_texture();
 	}
 }
 
+void FPSStudioParticleEditorPlugin::_on_texture_save_dialog_visibility_changed() {
+	if (texture_save_dialog && !texture_save_dialog->is_visible()) {
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_show_texture_generator_after_export).call_deferred();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_save_dialog_cancelled() {
+	callable_mp(this, &FPSStudioParticleEditorPlugin::_show_texture_generator_after_export).call_deferred();
+}
+
+void FPSStudioParticleEditorPlugin::_show_texture_generator_after_export() {
+	if (!texture_generator_return_after_export) {
+		return;
+	}
+	texture_generator_return_after_export = false;
+	if (texture_generator_dialog) {
+		texture_generator_dialog->popup_centered_clamped(Size2i(900, 680) * EDSCALE, 0.85);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String &p_path) {
 	if (!generated_texture_image.is_valid()) {
+		texture_generator_return_after_export = false;
 		return;
 	}
 	String path = p_path;
@@ -910,6 +951,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 	}
 	const Error save_error = generated_texture_image->save_png(path);
 	if (save_error != OK) {
+		texture_generator_return_after_export = false;
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save generated texture to %s (error %d)."), path, save_error));
 		return;
 	}
@@ -921,6 +963,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 	Ref<Texture2D> imported_texture = ResourceLoader::load(path, "Texture2D");
 	if (imported_texture.is_null()) {
 		generated_texture_path = String();
+		texture_generator_return_after_export = false;
 		EditorNode::get_singleton()->show_warning(TTR("The PNG was saved, but Godot could not load the imported texture."));
 		return;
 	}
@@ -931,6 +974,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 	if (texture_generator_status) {
 		texture_generator_status->set_text(vformat(TTR("Exported: %s"), path.get_file()));
 	}
+	callable_mp(this, &FPSStudioParticleEditorPlugin::_show_texture_generator_after_export).call_deferred();
 }
 
 void FPSStudioParticleEditorPlugin::_update_texture_time_controls() {
@@ -1203,6 +1247,51 @@ void FPSStudioParticleEditorPlugin::_on_emitter_selected() {
 	_set_edited_emitter(Object::cast_to<Node>(ObjectDB::get_instance(ObjectID(id))), false);
 }
 
+void FPSStudioParticleEditorPlugin::_on_emitter_renamed() {
+	TreeItem *item = emitter_tree ? emitter_tree->get_selected() : nullptr;
+	Node *effect = _get_effect_root();
+	if (!item || !effect) {
+		_update_emitter_tree();
+		return;
+	}
+	const uint64_t id = uint64_t(item->get_metadata(0));
+	Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(ObjectID(id)));
+	if (!emitter || emitter->get_parent() != effect) {
+		_update_emitter_tree();
+		return;
+	}
+
+	const String old_name = emitter->get_name();
+	String new_name = item->get_text(0).strip_edges().validate_node_name();
+	if (new_name.is_empty()) {
+		_update_emitter_tree();
+		return;
+	}
+	new_name = effect->prevalidate_child_name(emitter, new_name);
+	if (new_name == old_name) {
+		_update_emitter_tree();
+		return;
+	}
+
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Rename Particle Emitter"), UndoRedo::MERGE_DISABLE, emitter);
+	undo_redo->add_do_method(emitter, "set_name", new_name);
+	undo_redo->add_undo_method(emitter, "set_name", old_name);
+	undo_redo->add_do_method(this, "_on_emitter_name_changed");
+	undo_redo->add_undo_method(this, "_on_emitter_name_changed");
+	undo_redo->commit_action();
+}
+
+void FPSStudioParticleEditorPlugin::_on_emitter_name_changed() {
+	Node *emitter = _get_edited_emitter();
+	if (selection_label) {
+		selection_label->set_text(emitter ? vformat(TTR("Previewing %s"), emitter->get_name()) : TTR("Create or open a particle effect to start."));
+	}
+	_update_emitter_tree();
+	_rebuild_preview();
+	_mark_document_dirty();
+}
+
 void FPSStudioParticleEditorPlugin::_confirm_replace_document() {
 	if (pending_new_template >= 0) {
 		const int template_type = pending_new_template;
@@ -1375,15 +1464,35 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
 	Ref<VisualShader> visual_shader = _get_particle_visual_shader(emitter);
 	particle_graph_button->set_disabled(!gpu);
-	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Edit Node Graph") : TTR("Create Node Graph"));
+	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Open in Shader Editor") : TTR("Create Node Graph"));
 	if (!emitter) {
 		particle_logic_status->set_text(TTR("Select an emitter to edit its particle logic."));
 	} else if (!gpu) {
 		particle_logic_status->set_text(TTR("CPU particles use built-in simulation settings. Particle shader graphs are available for GPU emitters."));
 	} else if (visual_shader.is_valid()) {
-		particle_logic_status->set_text(TTR("Native particle VisualShader is active. The full graph opens in Godot's Shader Editor dock."));
+		particle_logic_status->set_text(TTR("Editing this emitter's native particle VisualShader."));
 	} else {
 		particle_logic_status->set_text(TTR("Using ParticleProcessMaterial. Create a native VisualShader to edit particle behavior as nodes."));
+	}
+	if (visual_shader.is_valid()) {
+		if (!particle_graph_editor && particle_logic_content) {
+			particle_graph_editor = memnew(VisualShaderEditor);
+			particle_graph_editor->set_toggle_list_control(nullptr);
+			particle_graph_editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+			particle_graph_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+			particle_graph_editor->set_custom_minimum_size(Size2(0, 180) * EDSCALE);
+			particle_logic_content->add_child(particle_graph_editor);
+		}
+		if (particle_graph_editor) {
+			particle_graph_editor->edit_shader(visual_shader);
+			particle_graph_editor->show();
+		}
+	} else if (particle_graph_editor) {
+		particle_graph_editor->edit_shader(Ref<Shader>());
+		particle_graph_editor->hide();
+	}
+	if (particle_logic_hint) {
+		particle_logic_hint->set_visible(!visual_shader.is_valid());
 	}
 	if (visual_shader.is_valid()) {
 		const Callable changed_callable = callable_mp(this, &FPSStudioParticleEditorPlugin::_on_curve_changed);
@@ -1424,7 +1533,8 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	shader_material->set_shader(visual_shader);
 	Ref<Material> previous_material = gpu->get_process_material();
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Create Particle Node Graph"));
+	undo_redo->create_action(TTR("Create Particle Node Graph"), UndoRedo::MERGE_DISABLE, gpu);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(gpu, "set_process_material", shader_material);
 	undo_redo->add_undo_method(gpu, "set_process_material", previous_material);
 	undo_redo->add_do_reference(shader_material.ptr());
@@ -1436,7 +1546,6 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	_mark_document_dirty();
 	_sync_preview_properties();
 	_update_particle_graph_controls();
-	_open_particle_graph(visual_shader);
 }
 
 void FPSStudioParticleEditorPlugin::_open_particle_graph(const Ref<VisualShader> &p_visual_shader) {
@@ -1906,6 +2015,10 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	}
 }
 
+void FPSStudioParticleEditorPlugin::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("_on_emitter_name_changed"), &FPSStudioParticleEditorPlugin::_on_emitter_name_changed);
+}
+
 void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
 	if (screen) {
 		screen->set_visible(p_visible);
@@ -1928,6 +2041,59 @@ bool FPSStudioParticleEditorPlugin::handles(Object *p_object) const {
 
 void FPSStudioParticleEditorPlugin::edited_scene_changed() {
 	_update_document_ui();
+}
+
+void FPSStudioParticleEditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) {
+	if (p_layout.is_null() || !p_layout->has_section("ParticleWorkspace")) {
+		return;
+	}
+	if (!p_layout->has_section_key("ParticleWorkspace", "main_split_ratio") ||
+			!p_layout->has_section_key("ParticleWorkspace", "properties_split_ratio") ||
+			!p_layout->has_section_key("ParticleWorkspace", "logic_split_ratio")) {
+		return;
+	}
+	panel_layout_main_ratio = p_layout->get_value("ParticleWorkspace", "main_split_ratio", 0.0);
+	panel_layout_properties_ratio = p_layout->get_value("ParticleWorkspace", "properties_split_ratio", 0.0);
+	panel_layout_logic_ratio = p_layout->get_value("ParticleWorkspace", "logic_split_ratio", 0.0);
+	panel_layout_pending = true;
+	callable_mp(this, &FPSStudioParticleEditorPlugin::_restore_panel_layout).call_deferred();
+}
+
+void FPSStudioParticleEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) {
+	if (p_layout.is_null() || !main_panel_split || !preview_properties_split || !preview_logic_split) {
+		return;
+	}
+	const real_t main_extent = main_panel_split->get_size().width;
+	const real_t properties_extent = preview_properties_split->get_size().width;
+	const real_t logic_extent = preview_logic_split->get_size().height;
+	if (main_extent <= 0.0 || properties_extent <= 0.0 || logic_extent <= 0.0) {
+		return;
+	}
+	p_layout->set_value("ParticleWorkspace", "main_split_ratio", main_panel_split->get_split_offset() / main_extent);
+	p_layout->set_value("ParticleWorkspace", "properties_split_ratio", preview_properties_split->get_split_offset() / properties_extent);
+	p_layout->set_value("ParticleWorkspace", "logic_split_ratio", preview_logic_split->get_split_offset() / logic_extent);
+}
+
+void FPSStudioParticleEditorPlugin::_restore_panel_layout() {
+	if (!panel_layout_pending || !main_panel_split || !preview_properties_split || !preview_logic_split) {
+		return;
+	}
+	const real_t main_extent = main_panel_split->get_size().width;
+	const real_t properties_extent = preview_properties_split->get_size().width;
+	const real_t logic_extent = preview_logic_split->get_size().height;
+	if (main_extent <= 0.0 || properties_extent <= 0.0 || logic_extent <= 0.0) {
+		return;
+	}
+	main_panel_split->set_split_offset(Math::round(panel_layout_main_ratio * main_extent));
+	preview_properties_split->set_split_offset(Math::round(panel_layout_properties_ratio * properties_extent));
+	preview_logic_split->set_split_offset(Math::round(panel_layout_logic_ratio * logic_extent));
+	panel_layout_pending = false;
+}
+
+void FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended() {
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
 }
 
 const Ref<Texture2D> FPSStudioParticleEditorPlugin::get_plugin_icon() const {
@@ -1970,8 +2136,10 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	document_toolbar->add_child(add_to_level_button);
 
 	HSplitContainer *main_split = memnew(HSplitContainer);
+	main_panel_split = main_split;
 	main_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	main_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	main_split->connect("drag_ended", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended));
 	workspace->add_child(main_split);
 
 	VBoxContainer *left_panel = memnew(VBoxContainer);
@@ -2036,16 +2204,21 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitter_tree->set_hide_root(true);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	emitter_tree->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_selected));
+	emitter_tree->connect("item_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_renamed));
 	left_panel->add_child(emitter_tree);
 
 	HSplitContainer *center_right_split = memnew(HSplitContainer);
+	preview_properties_split = center_right_split;
 	center_right_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	center_right_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	center_right_split->connect("drag_ended", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended));
 	main_split->add_child(center_right_split);
 
 	VSplitContainer *center_split = memnew(VSplitContainer);
+	preview_logic_split = center_split;
 	center_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	center_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	center_split->connect("drag_ended", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended));
 	center_right_split->add_child(center_split);
 
 	VBoxContainer *preview_panel = memnew(VBoxContainer);
@@ -2177,6 +2350,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	logic_panel->set_stretch_ratio(1.0);
 	center_split->add_child(logic_panel);
 	VBoxContainer *logic_content = memnew(VBoxContainer);
+	particle_logic_content = logic_content;
 	logic_panel->add_child(logic_content);
 	HBoxContainer *logic_header = memnew(HBoxContainer);
 	logic_content->add_child(logic_header);
@@ -2192,10 +2366,10 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_graph_button->set_text(TTR("Create Node Graph"));
 	particle_graph_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed));
 	logic_header->add_child(particle_graph_button);
-	Label *logic_hint = memnew(Label);
-	logic_hint->set_text(TTR("ParticleProcessMaterial and VisualShader are native Godot resources. Editing the effect refreshes the complete preview."));
-	logic_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	logic_content->add_child(logic_hint);
+	particle_logic_hint = memnew(Label);
+	particle_logic_hint->set_text(TTR("ParticleProcessMaterial and VisualShader are native Godot resources. Editing the effect refreshes the complete preview."));
+	particle_logic_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	logic_content->add_child(particle_logic_hint);
 
 	TabContainer *properties_tabs = memnew(TabContainer);
 	properties_tabs->set_custom_minimum_size(Size2(340, 0) * EDSCALE);
@@ -2463,6 +2637,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	texture_save_dialog->add_filter("*.png", TTR("PNG Image"));
 	texture_save_dialog->set_current_dir("res://");
 	add_child(texture_save_dialog);
+	texture_save_dialog->connect(SceneStringName(visibility_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_save_dialog_visibility_changed));
+	texture_save_dialog->connect("canceled", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_save_dialog_cancelled));
 	texture_save_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_save_path_selected));
 
 	replace_document_confirmation = memnew(ConfirmationDialog);
