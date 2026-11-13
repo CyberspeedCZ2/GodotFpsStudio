@@ -71,6 +71,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	EditorFileDialog *save_scene_dialog = nullptr;
 	EditorFileDialog *load_scene_dialog = nullptr;
 	EditorFileDialog *texture_save_dialog = nullptr;
+	EditorFileDialog *texture_recipe_save_dialog = nullptr;
+	EditorFileDialog *texture_recipe_load_dialog = nullptr;
 	AcceptDialog *texture_generator_dialog = nullptr;
 	TextureRect *texture_generator_preview = nullptr;
 	CheckButton *texture_generator_animate = nullptr;
@@ -85,6 +87,13 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *texture_generator_fps_label = nullptr;
 	ColorPickerButton *texture_generator_color_a = nullptr;
 	ColorPickerButton *texture_generator_color_b = nullptr;
+	ColorPickerButton *texture_generator_shadows_tint = nullptr;
+	ColorPickerButton *texture_generator_midtones_tint = nullptr;
+	ColorPickerButton *texture_generator_highlights_tint = nullptr;
+	SpinBox *texture_generator_alpha_threshold = nullptr;
+	SpinBox *texture_generator_alpha_blur = nullptr;
+	CheckButton *texture_generator_alpha_preview = nullptr;
+	CheckButton *texture_generator_normal_map = nullptr;
 	Button *texture_generator_apply_button = nullptr;
 	Ref<Image> generated_texture_image;
 	Ref<Texture2D> generated_texture;
@@ -94,6 +103,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	int texture_generator_preview_frame = -1;
 	double texture_generator_preview_refresh = 0.0;
 	bool texture_generator_return_after_export = false;
+	bool texture_generator_return_after_recipe = false;
+	bool texture_generator_loading_recipe = false;
 	ConfirmationDialog *particle_graph_confirmation = nullptr;
 	ConfirmationDialog *replace_document_confirmation = nullptr;
 	SubViewport *preview_viewport = nullptr;
@@ -195,6 +206,16 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_time_changed(double p_value);
 	void _on_texture_generator_color_changed(const Color &p_color);
 	void _on_texture_generator_action(const String &p_action);
+	void _on_texture_generator_processing_value_changed(double p_value);
+	void _on_texture_generator_alpha_preview_toggled(bool p_enabled);
+	void _on_texture_generator_normal_map_toggled(bool p_enabled);
+	void _on_texture_recipe_save_pressed();
+	void _on_texture_recipe_load_pressed();
+	void _on_texture_recipe_save_path_selected(const String &p_path);
+	void _on_texture_recipe_load_path_selected(const String &p_path);
+	void _on_texture_recipe_dialog_visibility_changed();
+	void _show_texture_generator_after_recipe();
+	void _invalidate_texture_export();
 	void _on_texture_save_dialog_visibility_changed();
 	void _on_texture_save_dialog_cancelled();
 	void _show_texture_generator_after_export();
