@@ -89,6 +89,21 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *texture_generator_duration_label = nullptr;
 	ColorPickerButton *texture_generator_color_a = nullptr;
 	ColorPickerButton *texture_generator_color_b = nullptr;
+	enum VFXTextureStyle {
+		VFX_STYLE_REALISTIC = 0,
+		VFX_STYLE_MEDIUM = 1,
+		VFX_STYLE_LOW = 2,
+		VFX_STYLE_TOON = 3,
+		VFX_STYLE_CUSTOM = 4,
+	};
+	OptionButton *texture_generator_style = nullptr;
+	SpinBox *texture_generator_param_speed = nullptr;
+	SpinBox *texture_generator_param_density = nullptr;
+	SpinBox *texture_generator_param_emission = nullptr;
+	SpinBox *texture_generator_param_detail = nullptr;
+	SpinBox *texture_generator_param_contrast = nullptr;
+	SpinBox *texture_generator_param_angle = nullptr;
+	Button *texture_generator_reset_params = nullptr;
 	CheckButton *texture_generator_polar = nullptr;
 	CheckButton *texture_generator_toon = nullptr;
 	SpinBox *texture_generator_toon_dark = nullptr;
@@ -218,6 +233,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_color_changed(const Color &p_color);
 	void _on_texture_generator_action(const String &p_action);
 	void _on_texture_generator_processing_value_changed(double p_value);
+	void _on_texture_generator_style_selected(int p_index);
+	void _on_texture_generator_param_changed(double p_value);
+	void _on_texture_generator_reset_params_pressed();
 	void _on_texture_generator_polar_toggled(bool p_enabled);
 	void _on_texture_generator_toon_toggled(bool p_enabled);
 	void _on_texture_generator_tiling_toggled(bool p_enabled);

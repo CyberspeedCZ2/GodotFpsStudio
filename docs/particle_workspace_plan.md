@@ -141,6 +141,9 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Aktualizovat formát `.cfg` receptů na verzi 2 s podporou nových parametrů a zpětnou kompatibilitou.
 - [x] Automaticky nastavit billboard částic (`BILLBOARD_PARTICLES`) a rozdělení atlasu (`particles_anim_h_frames` / `v_frames`) na `StandardMaterial3D` emitoru při Apply to Emitter.
 - [x] Přepracovat procedurální exploze: nahradit základní explozi realistickou vířivou ohnivou koulí (`Explosion (Fireball)`) s domain-warpingem a přidat prstencovou rázovou vlnu (`Explosion 2 (Shockwave ring)`) s ridged spiral šumem a žhavými filamenty odpovídajícími EffectTextureMakeru.
+- [x] Přidat sekci Parameters podle EffectTextureMakeru: posuvníky Speed, Density, Emission, Turbulence / Detail, Contrast / Sharpness, Rotation (deg) a tlačítko Reset Parameters.
+- [x] Přidat herní stylové předvolby (Game style / Quality presets): Realistic (Cinematic), Medium (Balanced), Low (Performance / Retro), Cartoon / Toon (Anime) a Custom pro rychlé přizpůsobení vizuální stylistiky a hardwarové náročnosti.
+- [x] Rozšířit serializaci `.cfg` receptů o herní styl a parametry Speed, Density, Emission, Detail, Contrast a Angle.
 - [ ] Ručně ověřit nová ovládání, uložení/načtení receptu v2, export normal mapy a úpravy alfa kanálu v editoru.
 - [ ] Ověřit alfa export sprite sheetu a přiřazení animovaného sheetu emitoru.
 
