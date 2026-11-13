@@ -6498,7 +6498,14 @@ void VisualShaderEditor::_visibility_changed() {
 }
 
 void VisualShaderEditor::_show_shader_preview() {
-	shader_preview_showed = !shader_preview_showed;
+	set_shader_preview_visible(!shader_preview_showed);
+}
+
+void VisualShaderEditor::set_shader_preview_visible(bool p_visible) {
+	shader_preview_showed = p_visible;
+	if (shader_preview_button && shader_preview_button->is_pressed() != p_visible) {
+		shader_preview_button->set_pressed(p_visible);
+	}
 	if (shader_preview_showed) {
 		shader_preview_vbox->show();
 	} else {
@@ -6506,6 +6513,45 @@ void VisualShaderEditor::_show_shader_preview() {
 
 		_param_unselected();
 	}
+}
+
+void VisualShaderEditor::fit_graph_to_content() {
+	Timer *fit_timer = memnew(Timer);
+	fit_timer->set_wait_time(0.1);
+	fit_timer->set_one_shot(true);
+	add_child(fit_timer);
+	fit_timer->connect("timeout", callable_mp(this, &VisualShaderEditor::_fit_graph_to_content));
+	fit_timer->connect("timeout", callable_mp(static_cast<Node *>(fit_timer), &Node::queue_free));
+	fit_timer->start();
+}
+
+void VisualShaderEditor::_fit_graph_to_content() {
+	if (!graph || !shader_fully_loaded || graph->get_size().is_zero_approx()) {
+		return;
+	}
+
+	Rect2 content_bounds;
+	bool has_content = false;
+	for (int i = 0; i < graph->get_child_count(); i++) {
+		GraphElement *element = Object::cast_to<GraphElement>(graph->get_child(i));
+		if (!element) {
+			continue;
+		}
+		const Rect2 element_bounds(element->get_position_offset(), element->get_size());
+		content_bounds = has_content ? content_bounds.merge(element_bounds) : element_bounds;
+		has_content = true;
+	}
+	if (!has_content) {
+		return;
+	}
+
+	const Vector2 graph_size = graph->get_size();
+	const Vector2 content_size = content_bounds.get_size().max(Vector2(1.0, 1.0));
+	const Vector2 fit_size = graph_size * 0.60;
+	const real_t zoom = CLAMP(MIN(fit_size.x / content_size.x, fit_size.y / content_size.y), graph->get_zoom_min(), MIN(real_t(1.0), graph->get_zoom_max()));
+	graph->set_zoom(zoom);
+	const Vector2 view_center(graph_size.x * 0.5, graph_size.y * 0.68);
+	graph->set_scroll_offset(content_bounds.get_center() * zoom - view_center);
 }
 
 void VisualShaderEditor::set_toggle_list_control(Control *p_toggle_list_control) {

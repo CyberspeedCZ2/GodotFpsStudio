@@ -28,6 +28,7 @@
 #include "editor/themes/editor_scale.h"
 #include "modules/visual_shader/editor/visual_shader_editor_plugin.h"
 #include "modules/visual_shader/visual_shader.h"
+#include "modules/visual_shader/vs_nodes/visual_shader_particle_nodes.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
@@ -1571,24 +1572,31 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	Node *emitter = _get_edited_emitter();
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
 	Ref<VisualShader> visual_shader = _get_particle_visual_shader(emitter);
+	if (particle_logic_content) {
+		Control *logic_panel = Object::cast_to<Control>(particle_logic_content->get_parent());
+		if (logic_panel) {
+			logic_panel->set_visible(emitter != nullptr);
+		}
+	}
 	particle_graph_button->set_disabled(!gpu);
 	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Open in Shader Editor") : TTR("Create Node Graph"));
 	if (!emitter) {
-		particle_logic_status->set_text(TTR("Select an emitter to edit its particle logic."));
+		particle_logic_status->set_text(TTR("No emitter selected"));
 	} else if (!gpu) {
-		particle_logic_status->set_text(TTR("CPU particles use built-in simulation settings. Particle shader graphs are available for GPU emitters."));
+		particle_logic_status->set_text(TTR("CPU - Built-in simulation"));
 	} else if (visual_shader.is_valid()) {
-		particle_logic_status->set_text(TTR("Editing this emitter's native particle VisualShader."));
+		particle_logic_status->set_text(TTR("GPU - Particle VisualShader"));
 	} else {
-		particle_logic_status->set_text(TTR("Using ParticleProcessMaterial. Create a native VisualShader to edit particle behavior as nodes."));
+		particle_logic_status->set_text(TTR("GPU - ParticleProcessMaterial"));
 	}
 	if (visual_shader.is_valid()) {
 		if (!particle_graph_editor && particle_logic_content) {
 			particle_graph_editor = memnew(VisualShaderEditor);
 			particle_graph_editor->set_toggle_list_control(nullptr);
+			particle_graph_editor->set_shader_preview_visible(false);
 			particle_graph_editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 			particle_graph_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-			particle_graph_editor->set_custom_minimum_size(Size2(0, 180) * EDSCALE);
+			particle_graph_editor->set_custom_minimum_size(Size2(0, 300) * EDSCALE);
 			particle_logic_content->add_child(particle_graph_editor);
 		}
 		if (particle_graph_editor) {
@@ -1636,6 +1644,31 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	Ref<VisualShader> visual_shader;
 	visual_shader.instantiate();
 	visual_shader->set_mode(Shader::MODE_PARTICLES);
+
+	// Start with a small, valid particle setup instead of an empty shader. This
+	// gives a newly-created graph visible behavior and a clear place to continue
+	// editing in the native VisualShader editor.
+	Ref<VisualShaderNodeParticleSphereEmitter> spawn_shape;
+	spawn_shape.instantiate();
+	spawn_shape->set_input_port_default_value(0, 0.25);
+	spawn_shape->set_input_port_default_value(1, 0.0);
+	const int spawn_shape_id = visual_shader->get_valid_node_id(VisualShader::TYPE_START);
+	visual_shader->add_node(VisualShader::TYPE_START, spawn_shape, Vector2(40.0, 90.0), spawn_shape_id);
+
+	Ref<VisualShaderNodeParticleConeVelocity> initial_velocity;
+	initial_velocity.instantiate();
+	initial_velocity->set_input_port_default_value(0, Vector3(0.0, 1.0, 0.0));
+	initial_velocity->set_input_port_default_value(1, 18.0);
+	const int initial_velocity_id = visual_shader->get_valid_node_id(VisualShader::TYPE_START);
+	visual_shader->add_node(VisualShader::TYPE_START, initial_velocity, Vector2(40.0, 300.0), initial_velocity_id);
+
+	if (visual_shader->can_connect_nodes(VisualShader::TYPE_START, spawn_shape_id, 0, VisualShader::NODE_ID_OUTPUT, 4)) {
+		visual_shader->connect_nodes(VisualShader::TYPE_START, spawn_shape_id, 0, VisualShader::NODE_ID_OUTPUT, 4);
+	}
+	if (visual_shader->can_connect_nodes(VisualShader::TYPE_START, initial_velocity_id, 0, VisualShader::NODE_ID_OUTPUT, 1)) {
+		visual_shader->connect_nodes(VisualShader::TYPE_START, initial_velocity_id, 0, VisualShader::NODE_ID_OUTPUT, 1);
+	}
+
 	Ref<ShaderMaterial> shader_material;
 	shader_material.instantiate();
 	shader_material->set_shader(visual_shader);
@@ -1654,6 +1687,9 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	_mark_document_dirty();
 	_sync_preview_properties();
 	_update_particle_graph_controls();
+	if (particle_graph_editor) {
+		particle_graph_editor->fit_graph_to_content();
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_open_particle_graph(const Ref<VisualShader> &p_visual_shader) {
@@ -2340,7 +2376,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	VBoxContainer *preview_panel = memnew(VBoxContainer);
 	preview_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	preview_panel->set_stretch_ratio(1.4);
+	preview_panel->set_stretch_ratio(2.4);
 	center_split->add_child(preview_panel);
 	HBoxContainer *preview_toolbar = memnew(HBoxContainer);
 	preview_panel->add_child(preview_toolbar);
@@ -2474,7 +2510,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	transport->add_child(loop_toggle);
 
 	PanelContainer *logic_panel = memnew(PanelContainer);
-	logic_panel->set_custom_minimum_size(Size2(0, 108) * EDSCALE);
+	logic_panel->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
 	logic_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	logic_panel->set_stretch_ratio(1.0);
 	center_split->add_child(logic_panel);
@@ -2496,7 +2532,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_graph_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed));
 	logic_header->add_child(particle_graph_button);
 	particle_logic_hint = memnew(Label);
-	particle_logic_hint->set_text(TTR("ParticleProcessMaterial and VisualShader are native Godot resources. Editing the effect refreshes the complete preview."));
+	particle_logic_hint->set_text(TTR("Edit this emitter in Process, or create a VisualShader for custom particle logic."));
 	particle_logic_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	logic_content->add_child(particle_logic_hint);
 

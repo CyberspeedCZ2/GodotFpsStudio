@@ -465,6 +465,7 @@ class VisualShaderEditor : public ShaderEditor {
 	String _get_description(int p_idx);
 
 	void _show_shader_preview();
+	void _fit_graph_to_content();
 
 	void _toggle_files_pressed();
 
@@ -670,6 +671,8 @@ public:
 
 	void save_editor_layout();
 
+	void set_shader_preview_visible(bool p_visible);
+	void fit_graph_to_content();
 	void set_current_shader_type(VisualShader::Type p_type);
 	VisualShader::Type get_current_shader_type() const;
 

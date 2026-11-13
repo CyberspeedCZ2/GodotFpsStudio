@@ -35,10 +35,10 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 | --- | --- | --- | --- |
 | 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | V dočasném projektu ručně ověřeno uložení, opětovné načtení a přidání instance do Levelu s následným Undo. Přejmenování rootu přes titulek a jeho Undo/Redo je také ručně ověřené. |
 | 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenovat emitter a ověřit Undo/Redo. | Přidání, odebrání i přejmenování jsou implementované. Přejmenování i Undo/Redo přidání a odebrání byly ručně ověřeny; oprava obnovuje strom výběru a vlastnictví uzlu bez varování v Outputu. |
-| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | V úzkém rozvržení s otevřeným Output panelem zůstaly zkrácené záhlaví i Save/Add viditelné. Uživatel potvrdil, že cukání pravé strany při pohybu časové osy už nepozoruje. Samostatná kontrola bez Output panelu a při změně šířky okna zůstává otevřená. |
+| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | V okně 1440×900 s otevřeným Output panelem zůstaly náhled, transport i vložený particle graf použitelné; při vytvoření grafu byly viditelné uzly SphereEmitter, ConeVelocity a Output. Prázdný stav bez vybraného emitoru spodní panel skrývá. Uživatel potvrdil, že cukání pravé strany při pohybu časové osy už nepozoruje. Samostatná kontrola bez Output panelu a při průběžné změně šířky okna zůstává otevřená. |
 | 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo byly ověřeny už dříve. Bod Alpha over Life jsem upravil, uložil do `.tscn` a po opětovném otevření ověřil jeho zachované souřadnice v CurveEditoru. |
 | 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; ověřit Undo/Redo vytvoření. | Nativní editor grafu je vložený v Particle Logic. Vytvoření, uložení, znovunačtení i UndoRedo byly ručně ověřeny; při výběru dvou GPU emitterů se správně přepíná jejich samostatný graf. |
-| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo v novém buildu exportováno, naimportováno a Apply to Emitter ho přiřadilo jako texturu PlaneMesh. Náhled ohně zůstal v Rendereru viditelný i při zapnutém přehrávání generátoru; další přepínání karet už nezpůsobilo pád a Output neměl chyby. Sprite sheet je volitelný a neověřený. |
+| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo v novém buildu exportováno, naimportováno a Apply to Emitter ho přiřadilo jako texturu PlaneMesh. Náhled ohně zůstal v Rendereru viditelný i při zapnutém přehrávání generátoru; další přepínání karet už nezpůsobilo pád a Output neměl chyby. V navazující kontrole se animoval náhled 4×4 sprite sheetu při 12 FPS a exportoval se PNG soubor; přiřazení sprite sheetu emitoru samostatně potvrzené není. |
 | 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | `./tools/build_macos.sh` uspěl a zabalil UniBuilder. V dočasném projektu prošel celý cyklus efektu včetně Undo/Redo emitterů a vložení instance do Levelu. Uživatel potvrdil, že cukání pravého panelu už nepozoruje. Změny jsou v commitu `e1dcefe3` pushnutém na pracovní větev. Vizuální kontrola bez Output panelu a při změně šířky okna zůstává otevřená. |
 
 Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
@@ -81,6 +81,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Upravit výchozí poměr vertikálního splitteru tak, aby 3D preview dostalo více plochy než spodní informační panel.
 - [x] Uložit poměry splitterů do editorového rozvržení a obnovit je při spuštění.
 - [x] Uživatel potvrdil, že při běhu časové osy už cukání pravé strany nepozoruje.
+- [x] V okně 1440×900 s otevřeným Output panelem ověřit viditelnost preview, transportu a vloženého particle grafu; nový graf se otevře s připojeným spawn tvarem a rychlostí.
 - [ ] Zopakovat vizuální kontrolu bez Output panelu a při změně šířky hlavního okna.
 
 ### 4. Křivky — základ hotov
@@ -127,9 +128,24 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - Záměrně jde o nově napsaný nativní kód podle veřejně popsaného postupu. Konkrétní shaderové soubory EffectTextureMaker jsou minifikované a jejich licence není pro tento kód jednoznačně doložená. CC0 pro vygenerované textury automaticky nepovoluje kopírování generátoru.
 - [x] Headless načíst statický PNG a přiřadit ho `StandardMaterial3D` na `QuadMesh` emitoru.
 - [x] V editoru ručně ověřit Export PNG a Apply to Emitter po synchronním reimportu; statický obrázek stačí pro použitelný particle efekt.
-- [ ] Volitelně ověřit animaci náhledu a export animovaného sprite sheetu v editoru.
+- [x] Volitelně ověřit animaci náhledu a export 4×4 sprite sheetu v editoru; přiřazení animovaného sheetu emitoru zůstává samostatně neověřené.
 - [ ] Doplnit normal map, seamless tiling, color balance a pokročilejší šum.
 - [ ] Ukládat parametry generátoru do samostatného Godot resource pro opětovnou editaci.
+
+## Analýza reference: EffectTextureMaker
+
+Pro další rozvoj byl 2026-11-13 zkontrolován [anglický popis EffectTextureMakeru](https://mebiusbox.github.io/en/docs/lab/effect_texture_maker) a přiložené screenshoty jeho ovládání. Jde o širší procedurální nástroj než náš současný generátor. Dokumentace reference uvádí desítky předloh, normal mapu, sprite sheet, color balance, maximum 2048 px, časové efekty, polar conversion, toon shading, tiling, alpha PNG a ukládání/načítání nastavení v JSON.
+
+| Oblast | EffectTextureMaker | Particle workspace dnes | Doporučení |
+| --- | --- | --- | --- |
+| Předlohy | Rozsáhlá galerie pro gradienty/geometrii, oheň/kouř/exploze, laser/flare/světla, ornamenty, částice, organické tvary a šum (např. MagicCircle, FlameLance, Bubbles, InkSplat, VoronoiNoise). Každý typ má vlastní parametry. | Fire, Smoke, Explosion a Spark streak se společným seedem a dvěma barvami. | Rozšířit nabídku po skupinách a ukazovat parametry relevantní vybrané předloze; nekopírovat desítky položek do jediného dlouhého seznamu. |
+| Rozlišení a reprodukce | Až 2048 px; Save/Load ukládá parametry v JSON. | 128–1024 px, seed a dvě barvy; žádný uložený recipe resource. | Přidat 2048 px po ověření času výpočtu a uložit recept jako Godot resource, aby zůstal editovatelný v projektu. |
+| Animace | Čas a přehrávání; sprite-sheet dimension, start, délka animace a časový krok snímků. | Časový náhled a sheet 4×4/8×8 s FPS; export PNG. | Doplnit start, délku a frame step, aby uživatel řídil sampling nezávisle na výsledné FPS i počtu obsazených buněk atlasu. |
+| Alfa | Prahování, tolerance, blur a náhled alfa kanálu. Přiložený screenshot ukazuje samostatné uložení PNG i sprite sheetu s alfou. | Generované textury už mají průhledné pozadí; zvláštní úprava alfa kanálu chybí. | Přidat volitelné ovládání prahu, tolerance a měkkého okraje; nabídnout náhled výsledné alfa masky. Webový popis tvrdí, že alpha PNG nefunguje pro sprite sheet, ale changelog i přiložené UI ukazují export sprite sheetu s alfou; ověřit skutečně uložený soubor. |
+| Barevné zpracování | Samostatné shadows/midtones/highlights a reset. | Dvě barvy určují základní gradient. | Přidat color-balance jako samostatnou nedestruktivní fázi za generováním tvaru. |
+| Odvozené výstupy | Normal map z výškové intenzity, toon shading se třemi tóny, polar conversion a tiling s radiální maskou. | Jen barevný RGBA výstup; bez postprocesních režimů. | Normal map a toon výstup jsou dobré následné funkce. Tiling dát níže v pořadí, protože samotný autor reference ho označuje jako nekvalitní. |
+
+Implementaci převzít jako nezávislý nativní Godot kód podle popsaného chování, nikoli překladem jejich minifikovaných shaderů. Reference výslovně licencuje vygenerované textury jako CC0, zatímco stránka uvádí copyright softwaru; licence obrazových výstupů proto není důvodem kopírovat implementaci generátoru.
 
 ## Rozsah mimo tuto etapu
 
