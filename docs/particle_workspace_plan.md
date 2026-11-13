@@ -24,10 +24,24 @@ Referenční render vymezuje cílové rozložení: knihovna efektů a hierarchie
 - 3D náhled simuluje celou efektovou scénu, má stabilní perspektivu, mřížku, orbit, pan, zoom, reset a ovládání přehrávání.
 - Vybraný GPU emitor může používat `ParticleProcessMaterial` nebo nativní particle `VisualShader`. Jeho skutečný graf lze upravovat přímo v dolním panelu; tlačítko ho může otevřít i ve velkém Shader Editoru. Výběr emitora určuje obsah grafu.
 - Často používané křivky včetně Alpha over Life a Scale over Life jsou snadno dosažitelné, mají užitečné presety a změny se ihned projeví v náhledu.
-- Generátor VFX textur vytváří obrazové assety, umí znovu otevřít jejich parametry, exportovat animované sprite sheety a přiřadit výsledek emitoru.
+- Generátor VFX textur musí pro základní workflow vytvořit statický obrázek, exportovat ho jako PNG a přiřadit ho emitoru. Přehrávání animace a export sprite sheetu jsou volitelná rozšíření; nejsou podmínkou pro vytvoření použitelného particle obrázku.
 - Rozvržení zůstává použitelné při malé šířce okna i s otevřeným Output panelem. Testy probíhají v dočasném projektu, nikoli v samostatném herním repozitáři.
 
 Hotový systém budu označovat za dokončený teprve po ručním ověření uvedeného workflow v běžném editoru Godotu a po aktualizaci této roadmapy skutečným výsledkem testů.
+
+## Etapy, závislosti a ověřovací scénáře
+
+| Etapa | Závisí na | Ověřovací scénáře | Stav |
+| --- | --- | --- | --- |
+| 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | Základ hotový; celý cyklus čeká na ruční kontrolu. |
+| 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenování ověřit po implementaci. | Přidání/odebrání hotové; přejmenování chybí. |
+| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Základ hotový; responsivita čeká na kontrolu. |
+| 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo ověřeny; ruční editace bodů a uložení/načtení čekají. |
+| 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; prověřit možnost vložení skutečného editoru do panelu. | Nativní graf lze otevřít samostatně; vložený pohled a celý persistence scénář čekají. |
+| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statický Fire náhled i uložení PNG viděny; původní pokus selhal při načtení importu. Doplnil jsem synchronní reimport, který se sestavil; ověření opravy a přiřazení čeká. |
+| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Průběžně. |
+
+Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
 
 ## Zásady UI
 
@@ -72,8 +86,10 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 
 - [x] Alpha over Life a Scale over Life s nativními `CurveTexture` a `CurveEditor`.
 - [x] Přidat chybějící curve resource do Undo/Redo a promítnout změnu do preview.
-- [ ] Přidat volitelné presety a rozšířit nástroje na další parametry podle uživatelské hodnoty.
-- [ ] Zlepšit umístění a dosažitelnost křivek v dlouhé kartě Process.
+- [x] Přidat účelové presety Fade/Grow, které lze aplikovat i před vytvořením křivky.
+- [x] Přesunout křivky před kompletní inspektor v kartě Process.
+- [x] Ručně ověřit Alpha/Scale presety a Undo/Redo v editoru; ruční editace bodů a uložení/načtení křivek čekají.
+- [ ] Rozšířit nástroje na další parametry podle uživatelské hodnoty.
 
 ### 5. Nativní Particle `VisualShader` — základ hotov, graf zatím samostatně
 
@@ -98,10 +114,10 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 - [x] Procedurálně vytvořit základní textury pro oheň, kouř, explozi a jiskru s průhledným pozadím.
 - [x] Nastavit seed, rozlišení a dvě barvy; zobrazit živý 2D náhled.
 - [x] Přidat přehrávání a posuvník času; sprite sheet zobrazuje právě vybraný snímek, samostatná textura znovu vzorkuje procedurální animaci.
-- [x] Exportovat PNG do projektu a přiřadit ho materiálu vybraného GPU/CPU emitoru.
+- [x] Exportovat PNG do projektu a importovat ho synchronně před přiřazením materiálu emitteru.
 - Záměrně jde o nově napsaný nativní kód podle veřejně popsaného postupu. Konkrétní shaderové soubory EffectTextureMaker jsou minifikované a jejich licence není pro tento kód jednoznačně doložená. CC0 pro vygenerované textury automaticky nepovoluje kopírování generátoru.
-- [ ] Vizuálně ověřit generování, uložení a přiřazení v editoru.
-- [ ] Ověřit animaci náhledu a export animovaného sprite sheetu v editoru.
+- [ ] Ručně ověřit, že statický PNG projde exportem a jde použít u emitora; animovaný preview a sprite sheet jsou volitelné scénáře.
+- [ ] Volitelně ověřit animaci náhledu a export animovaného sprite sheetu v editoru.
 - [ ] Doplnit normal map, seamless tiling, color balance a pokročilejší šum.
 - [ ] Ukládat parametry generátoru do samostatného Godot resource pro opětovnou editaci.
 

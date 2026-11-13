@@ -105,6 +105,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	CurveEditor *scale_curve_editor = nullptr;
 	Button *alpha_curve_add_button = nullptr;
 	Button *scale_curve_add_button = nullptr;
+	MenuButton *alpha_curve_presets_button = nullptr;
+	MenuButton *scale_curve_presets_button = nullptr;
 	Label *alpha_curve_info = nullptr;
 	Label *scale_curve_info = nullptr;
 	Button *particle_graph_button = nullptr;
@@ -197,6 +199,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_curve_changed();
 	void _on_add_alpha_curve_pressed();
 	void _on_add_scale_curve_pressed();
+	void _on_alpha_curve_preset_selected(int p_preset_id);
+	void _on_scale_curve_preset_selected(int p_preset_id);
+	void _apply_curve_preset(bool p_alpha, int p_preset_id);
 	void _refresh_curve_editors();
 	void _update_particle_graph_controls();
 	void _on_particle_graph_button_pressed();

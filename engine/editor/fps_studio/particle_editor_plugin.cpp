@@ -84,6 +84,22 @@ enum VFXTextureOutput {
 	VFX_TEXTURE_OUTPUT_SHEET_8X8 = 8,
 };
 
+enum ParticleAlphaCurvePreset {
+	PARTICLE_ALPHA_CURVE_FADE_OUT_LINEAR = 0,
+	PARTICLE_ALPHA_CURVE_FADE_OUT_SMOOTH,
+	PARTICLE_ALPHA_CURVE_FADE_IN,
+	PARTICLE_ALPHA_CURVE_FADE_IN_OUT,
+	PARTICLE_ALPHA_CURVE_HOLD_THEN_FADE,
+};
+
+enum ParticleScaleCurvePreset {
+	PARTICLE_SCALE_CURVE_GROW = 0,
+	PARTICLE_SCALE_CURVE_SHRINK,
+	PARTICLE_SCALE_CURVE_GROW_AND_SHRINK,
+	PARTICLE_SCALE_CURVE_HOLD_THEN_GROW,
+	PARTICLE_SCALE_CURVE_HOLD,
+};
+
 static uint32_t particle_texture_hash(int p_x, int p_y, int p_seed) {
 	uint32_t value = uint32_t(p_x) * 0x8da6b343u ^ uint32_t(p_y) * 0xd8163841u ^ uint32_t(p_seed) * 0xcb1ab31fu;
 	value ^= value >> 13;
@@ -899,10 +915,13 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 	}
 	generated_texture_path = path;
 	EditorFileSystem::get_singleton()->update_file(path);
+	Vector<String> files_to_reimport;
+	files_to_reimport.push_back(path);
+	EditorFileSystem::get_singleton()->reimport_files(files_to_reimport);
 	Ref<Texture2D> imported_texture = ResourceLoader::load(path, "Texture2D");
 	if (imported_texture.is_null()) {
 		generated_texture_path = String();
-		EditorNode::get_singleton()->show_warning(TTR("The PNG was saved, but Godot could not load the imported texture yet. Wait for the file scan and export it again."));
+		EditorNode::get_singleton()->show_warning(TTR("The PNG was saved, but Godot could not load the imported texture."));
 		return;
 	}
 	generated_texture = imported_texture;
@@ -1441,6 +1460,90 @@ static void make_lifetime_curve(const Ref<Curve> &p_curve, bool p_fade_out) {
 	p_curve->set_point_left_mode(1, Curve::TANGENT_LINEAR);
 }
 
+static void append_particle_curve_point(Array &r_data, real_t p_x, real_t p_y, real_t p_left_tangent = 0.0, real_t p_right_tangent = 0.0) {
+	r_data.push_back(Vector2(p_x, p_y));
+	r_data.push_back(p_left_tangent);
+	r_data.push_back(p_right_tangent);
+	r_data.push_back(int(Curve::TANGENT_FREE));
+	r_data.push_back(int(Curve::TANGENT_FREE));
+}
+
+static Array make_particle_curve_preset_data(const Ref<Curve> &p_curve, bool p_alpha, int p_preset_id) {
+	Array data;
+	if (p_curve.is_null()) {
+		return data;
+	}
+
+	const real_t x0 = p_curve->get_min_domain();
+	const real_t x1 = p_curve->get_max_domain();
+	const real_t x_width = x1 - x0;
+	const real_t x_mid = x0 + x_width * 0.5;
+	const real_t y_min = p_curve->get_min_value();
+	const real_t y_max = p_curve->get_max_value();
+	const real_t y_range = y_max - y_min;
+	const real_t low = p_alpha ? y_min : y_min + y_range * 0.15;
+	const real_t high = y_max;
+	const real_t slope = (high - low) / x_width;
+
+	if (p_alpha) {
+		switch (p_preset_id) {
+			case PARTICLE_ALPHA_CURVE_FADE_OUT_LINEAR:
+				append_particle_curve_point(data, x0, high, 0.0, -slope);
+				append_particle_curve_point(data, x1, y_min, -slope, 0.0);
+				break;
+			case PARTICLE_ALPHA_CURVE_FADE_OUT_SMOOTH:
+				append_particle_curve_point(data, x0, high);
+				append_particle_curve_point(data, x1, y_min);
+				break;
+			case PARTICLE_ALPHA_CURVE_FADE_IN:
+				append_particle_curve_point(data, x0, y_min, 0.0, slope);
+				append_particle_curve_point(data, x1, high, slope, 0.0);
+				break;
+			case PARTICLE_ALPHA_CURVE_FADE_IN_OUT:
+				append_particle_curve_point(data, x0, y_min);
+				append_particle_curve_point(data, x_mid, high);
+				append_particle_curve_point(data, x1, y_min);
+				break;
+			case PARTICLE_ALPHA_CURVE_HOLD_THEN_FADE: {
+				const real_t fade_start = x0 + x_width * 0.7;
+				const real_t fade_slope = (y_min - high) / (x1 - fade_start);
+				append_particle_curve_point(data, x0, high);
+				append_particle_curve_point(data, fade_start, high, 0.0, fade_slope);
+				append_particle_curve_point(data, x1, y_min, fade_slope, 0.0);
+			} break;
+		}
+	} else {
+		switch (p_preset_id) {
+			case PARTICLE_SCALE_CURVE_GROW:
+				append_particle_curve_point(data, x0, low, 0.0, slope);
+				append_particle_curve_point(data, x1, high, slope, 0.0);
+				break;
+			case PARTICLE_SCALE_CURVE_SHRINK:
+				append_particle_curve_point(data, x0, high, 0.0, -slope);
+				append_particle_curve_point(data, x1, low, -slope, 0.0);
+				break;
+			case PARTICLE_SCALE_CURVE_GROW_AND_SHRINK:
+				append_particle_curve_point(data, x0, low);
+				append_particle_curve_point(data, x_mid, high);
+				append_particle_curve_point(data, x1, low);
+				break;
+			case PARTICLE_SCALE_CURVE_HOLD_THEN_GROW: {
+				const real_t grow_start = x0 + x_width * 0.65;
+				const real_t grow_slope = (high - low) / (x1 - grow_start);
+				append_particle_curve_point(data, x0, low);
+				append_particle_curve_point(data, grow_start, low, 0.0, grow_slope);
+				append_particle_curve_point(data, x1, high, grow_slope, 0.0);
+			} break;
+			case PARTICLE_SCALE_CURVE_HOLD: {
+				const real_t steady = y_min + y_range * 0.8;
+				append_particle_curve_point(data, x0, steady);
+				append_particle_curve_point(data, x1, steady);
+			} break;
+		}
+	}
+	return data;
+}
+
 void FPSStudioParticleEditorPlugin::_on_add_alpha_curve_pressed() {
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
 	Ref<ParticleProcessMaterial> material;
@@ -1505,6 +1608,70 @@ void FPSStudioParticleEditorPlugin::_on_add_scale_curve_pressed() {
 	_sync_preview_properties();
 }
 
+void FPSStudioParticleEditorPlugin::_on_alpha_curve_preset_selected(int p_preset_id) {
+	_apply_curve_preset(true, p_preset_id);
+}
+
+void FPSStudioParticleEditorPlugin::_on_scale_curve_preset_selected(int p_preset_id) {
+	_apply_curve_preset(false, p_preset_id);
+}
+
+void FPSStudioParticleEditorPlugin::_apply_curve_preset(bool p_alpha, int p_preset_id) {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
+	Ref<ParticleProcessMaterial> material;
+	if (gpu) {
+		material = Ref<ParticleProcessMaterial>(Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
+	}
+	if (material.is_null()) {
+		return;
+	}
+
+	Ref<Texture2D> previous_texture = p_alpha ? material->get_alpha_curve() : material->get_param_texture(ParticleProcessMaterial::PARAM_SCALE);
+	Ref<CurveTexture> curve_texture = Ref<CurveTexture>(Object::cast_to<CurveTexture>(previous_texture.ptr()));
+	if (previous_texture.is_valid() && curve_texture.is_null()) {
+		return;
+	}
+	Ref<Curve> curve = curve_texture.is_valid() ? curve_texture->get_curve() : Ref<Curve>();
+	const bool create_curve_resource = curve.is_null();
+	if (create_curve_resource) {
+		curve.instantiate();
+		curve->set_min_domain(0.0);
+		curve->set_max_domain(1.0);
+		curve->set_min_value(0.0);
+		curve->set_max_value(1.0);
+		curve_texture.instantiate();
+		curve_texture->set_curve(curve);
+	}
+
+	const Array previous_data = curve->get_data();
+	const Array preset_data = make_particle_curve_preset_data(curve, p_alpha, p_preset_id);
+	if (preset_data.is_empty()) {
+		return;
+	}
+
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(p_alpha ? TTR("Apply Alpha over Life Preset") : TTR("Apply Scale over Life Preset"));
+	if (create_curve_resource) {
+		if (p_alpha) {
+			undo_redo->add_do_method(material.ptr(), "set_alpha_curve", Ref<Texture2D>(curve_texture));
+			undo_redo->add_undo_method(material.ptr(), "set_alpha_curve", previous_texture);
+		} else {
+			undo_redo->add_do_method(material.ptr(), "set_param_texture", ParticleProcessMaterial::PARAM_SCALE, Ref<Texture2D>(curve_texture));
+			undo_redo->add_undo_method(material.ptr(), "set_param_texture", ParticleProcessMaterial::PARAM_SCALE, previous_texture);
+		}
+		undo_redo->add_do_reference(curve_texture.ptr());
+		if (previous_texture.is_valid()) {
+			undo_redo->add_undo_reference(previous_texture.ptr());
+		}
+	}
+	undo_redo->add_do_method(curve.ptr(), "_set_data", preset_data);
+	undo_redo->add_undo_method(curve.ptr(), "_set_data", previous_data);
+	undo_redo->commit_action();
+	_refresh_curve_editors();
+	_mark_document_dirty();
+	_sync_preview_properties();
+}
+
 void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 	if (!curve_panel) {
 		return;
@@ -1523,6 +1690,7 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 	const bool has_alpha_curve = alpha_curve_texture && alpha_curve_texture->get_curve().is_valid();
 	alpha_curve_editor->set_visible(has_alpha_curve);
 	alpha_curve_add_button->set_visible(!alpha_texture.is_valid());
+	alpha_curve_presets_button->set_disabled(alpha_texture.is_valid() && !has_alpha_curve);
 	alpha_curve_info->set_visible(alpha_texture.is_valid() && !has_alpha_curve);
 	if (has_alpha_curve) {
 		alpha_curve_editor->set_curve(alpha_curve_texture->get_curve());
@@ -1533,6 +1701,8 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 		if (!alpha_curve_texture->get_curve()->is_connected(SNAME("changed"), changed_callable)) {
 			alpha_curve_texture->get_curve()->connect(SNAME("changed"), changed_callable);
 		}
+	} else {
+		alpha_curve_editor->set_curve(Ref<Curve>());
 	}
 	if (alpha_curve_info->is_visible()) {
 		alpha_curve_info->set_text(TTR("This curve resource is not a CurveTexture. Open Advanced properties to inspect it."));
@@ -1543,6 +1713,7 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 	const bool has_scale_curve = scale_curve_texture && scale_curve_texture->get_curve().is_valid();
 	scale_curve_editor->set_visible(has_scale_curve);
 	scale_curve_add_button->set_visible(!scale_texture.is_valid());
+	scale_curve_presets_button->set_disabled(scale_texture.is_valid() && !has_scale_curve);
 	scale_curve_info->set_visible(scale_texture.is_valid() && !has_scale_curve);
 	if (has_scale_curve) {
 		scale_curve_editor->set_curve(scale_curve_texture->get_curve());
@@ -1553,6 +1724,8 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 		if (!scale_curve_texture->get_curve()->is_connected(SNAME("changed"), changed_callable)) {
 			scale_curve_texture->get_curve()->connect(SNAME("changed"), changed_callable);
 		}
+	} else {
+		scale_curve_editor->set_curve(Ref<Curve>());
 	}
 	if (scale_curve_info->is_visible()) {
 		scale_curve_info->set_text(TTR("This is a 3D curve or another texture type. Edit it in Advanced properties."));
@@ -2057,12 +2230,6 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	process_mode_label->set_text(TTR("Process Material"));
 	process_mode_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	process_header->add_child(process_mode_label);
-	process_material_inspector = EditorInspector::create_default_inspector();
-	process_material_inspector->set_custom_minimum_size(Size2(0, 250) * EDSCALE);
-	process_material_inspector->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	process_material_inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	process_material_inspector->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_property_edited));
-	process_content->add_child(process_material_inspector);
 
 	VBoxContainer *curve_panel_vbox = memnew(VBoxContainer);
 	curve_panel_vbox->set_custom_minimum_size(Size2(0, 0) * EDSCALE);
@@ -2080,10 +2247,23 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	alpha_curve_info = memnew(Label);
 	alpha_curve_info->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	alpha_curve_card->add_child(alpha_curve_info);
+	HBoxContainer *alpha_curve_actions = memnew(HBoxContainer);
+	alpha_curve_card->add_child(alpha_curve_actions);
 	alpha_curve_add_button = memnew(Button);
 	alpha_curve_add_button->set_text(TTR("Add Fade Out Curve"));
+	alpha_curve_add_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	alpha_curve_add_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_alpha_curve_pressed));
-	alpha_curve_card->add_child(alpha_curve_add_button);
+	alpha_curve_actions->add_child(alpha_curve_add_button);
+	alpha_curve_presets_button = memnew(MenuButton);
+	alpha_curve_presets_button->set_text(TTR("Presets"));
+	alpha_curve_presets_button->set_tooltip_text(TTR("Apply a ready-made Alpha over Life curve. If no curve exists yet, this creates one."));
+	alpha_curve_presets_button->get_popup()->add_item(TTR("Fade Out (Linear)"), PARTICLE_ALPHA_CURVE_FADE_OUT_LINEAR);
+	alpha_curve_presets_button->get_popup()->add_item(TTR("Fade Out (Smooth)"), PARTICLE_ALPHA_CURVE_FADE_OUT_SMOOTH);
+	alpha_curve_presets_button->get_popup()->add_item(TTR("Fade In"), PARTICLE_ALPHA_CURVE_FADE_IN);
+	alpha_curve_presets_button->get_popup()->add_item(TTR("Fade In and Out"), PARTICLE_ALPHA_CURVE_FADE_IN_OUT);
+	alpha_curve_presets_button->get_popup()->add_item(TTR("Hold then Fade"), PARTICLE_ALPHA_CURVE_HOLD_THEN_FADE);
+	alpha_curve_presets_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_alpha_curve_preset_selected));
+	alpha_curve_actions->add_child(alpha_curve_presets_button);
 	alpha_curve_editor = memnew(CurveEditor);
 	alpha_curve_editor->set_custom_minimum_size(Size2(0, 156) * EDSCALE);
 	alpha_curve_card->add_child(alpha_curve_editor);
@@ -2095,14 +2275,34 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	scale_curve_info = memnew(Label);
 	scale_curve_info->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	scale_curve_card->add_child(scale_curve_info);
+	HBoxContainer *scale_curve_actions = memnew(HBoxContainer);
+	scale_curve_card->add_child(scale_curve_actions);
 	scale_curve_add_button = memnew(Button);
 	scale_curve_add_button->set_text(TTR("Add Growth Curve"));
+	scale_curve_add_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	scale_curve_add_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_scale_curve_pressed));
-	scale_curve_card->add_child(scale_curve_add_button);
+	scale_curve_actions->add_child(scale_curve_add_button);
+	scale_curve_presets_button = memnew(MenuButton);
+	scale_curve_presets_button->set_text(TTR("Presets"));
+	scale_curve_presets_button->set_tooltip_text(TTR("Apply a ready-made Scale over Life curve. If no curve exists yet, this creates one."));
+	scale_curve_presets_button->get_popup()->add_item(TTR("Grow"), PARTICLE_SCALE_CURVE_GROW);
+	scale_curve_presets_button->get_popup()->add_item(TTR("Shrink"), PARTICLE_SCALE_CURVE_SHRINK);
+	scale_curve_presets_button->get_popup()->add_item(TTR("Grow and Shrink"), PARTICLE_SCALE_CURVE_GROW_AND_SHRINK);
+	scale_curve_presets_button->get_popup()->add_item(TTR("Hold then Grow"), PARTICLE_SCALE_CURVE_HOLD_THEN_GROW);
+	scale_curve_presets_button->get_popup()->add_item(TTR("Steady"), PARTICLE_SCALE_CURVE_HOLD);
+	scale_curve_presets_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_scale_curve_preset_selected));
+	scale_curve_actions->add_child(scale_curve_presets_button);
 	scale_curve_editor = memnew(CurveEditor);
 	scale_curve_editor->set_custom_minimum_size(Size2(0, 156) * EDSCALE);
 	scale_curve_card->add_child(scale_curve_editor);
 	curve_panel->hide();
+
+	process_material_inspector = EditorInspector::create_default_inspector();
+	process_material_inspector->set_custom_minimum_size(Size2(0, 250) * EDSCALE);
+	process_material_inspector->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	process_material_inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	process_material_inspector->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_property_edited));
+	process_content->add_child(process_material_inspector);
 
 	ScrollContainer *renderer_scroll = memnew(ScrollContainer);
 	renderer_scroll->set_name(TTR("Renderer"));

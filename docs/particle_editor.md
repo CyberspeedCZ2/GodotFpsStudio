@@ -22,7 +22,7 @@ Neexistuje žádný pevně vybraný `BubbleParticles`. Při otevření workspace
 
 Levý panel rozděluje nedávné soubory efektů a strom emitorů. **Add** přidá GPU/CPU emitter nebo předvolbu, **Remove** odstraní vybraný uzel. Efekt může obsahovat více particle uzlů; výběr v hierarchii určuje, který emitor se upravuje v pravých kartách **Emitter**, **Process** a **Renderer**.
 
-Vlastnosti upravují Godotovy vestavěné `EditorInspector` panely. `ParticleProcessMaterial` zachovává běžné nastavení procesu. Pokud GPU emitor používá tento materiál, karta Process nabízí také přímé editory křivek Alpha over Life a Scale over Life; nové křivky jsou nativní `CurveTexture` resources. Ostatní vlastnosti zůstávají dostupné v kompletním inspektoru.
+Vlastnosti upravují Godotovy vestavěné `EditorInspector` panely. Pokud GPU emitor používá `ParticleProcessMaterial`, karta Process zobrazuje křivky Alpha over Life a Scale over Life ještě před úplným inspektorem, aby byly rychle dostupné. **Presets** nabízí pro Alpha Fade Out (Linear/Smooth), Fade In, Fade In and Out a Hold then Fade; pro Scale Grow, Shrink, Grow and Shrink, Hold then Grow a Steady. Preset vytvoří křivku, pokud zatím neexistuje. Křivky jsou nativní `CurveTexture` resources a změny presetů i bodů lze vrátit přes Undo/Redo. Ostatní vlastnosti zůstávají dostupné v kompletním inspektoru.
 
 Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a otevře graf ve vestavěném Godot Shader Editoru. Nahrazení existujícího materiálu se nejprve potvrdí a změnu lze vrátit přes Undo. Pokud emitor už particle `VisualShader` používá, tlačítko otevře tento graf. CPU particles nemají particle shader graph.
 
@@ -41,10 +41,10 @@ Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewp
 
 - Náhled a nastavení jsou integrovány, ale VisualShader graf se zatím otevírá ve vlastním Godot Shader Editoru. Dolní panel workspace zatím zobrazuje stav materiálu a akci Create/Edit Node Graph; na renderu je zobrazený budoucí cíl přímé integrace.
 - Předvolby emitorů jsou dostupné při tvorbě, ale úprava názvu vybraného emitoru přímo ze stromu ještě chybí.
-- Základní křivky Alpha a Scale lze vytvářet a upravovat. Další křivky, křivkové presety a samostatný pohodlný editor každé podporované varianty jsou další iterace.
-- **Texture Generator** otevírá nativní nástroj s průhledným 2D náhledem. Nabízí předvolby Fire, Smoke, Explosion a Spark streak, změnu seedu, rozlišení a dvou barev. **Export PNG** uloží výsledek do projektu; po exportu ho lze přes **Apply to Emitter** přiřadit materiálu zvoleného GPU/CPU emitoru. Efektová `.tscn` tak pracuje s běžným PNG assetem.
+- Křivky Alpha a Scale mají účelové presety i nativní CurveEditor. Další parametry procesu zatím nemají vlastní zjednodušené křivkové karty.
+- **Texture Generator** otevírá nativní nástroj s průhledným 2D náhledem. Pro běžný particle efekt stačí samostatná statická textura: zvol předvolbu Fire, Smoke, Explosion nebo Spark streak, seed, rozlišení 128/256/512/1024 a dvě barvy, potom použij **Export PNG** a **Apply to Emitter**. PNG se naimportuje do projektu před přiřazením vybranému emitoru a efektová `.tscn` odkazuje na tento běžný obrázkový asset. Přehrávání, časový posuvník a export sprite sheetu 4×4 či 8×8 s FPS jsou volitelné rozšíření pro animaci; k vytvoření použitelného particle obrázku nejsou potřeba.
 - První generátor je procedurální implementace v Godot editoru, inspirovaná veřejným popisem pracovního postupu EffectTextureMaker. Minifikované zdrojové kódy tohoto webu nejsou převzaté, protože licence konkrétních souborů není jednoznačně doložená. Samotná CC0 licence generovaných textur nepokrývá automaticky jeho implementační kód.
-- Zatím chybí animované sprite sheety, ukládání nastavení generátoru, normal mapy, seamless tiling a další generátory/procesní režimy. Jejich další kroky popisuje [plán Particle workspace](particle_workspace_plan.md).
+- Sprite sheet lze přiřadit emitoru, ale animovaného náhledu ani exportu zatím není ručně potvrzeno. Chybí ukládání nastavení generátoru, normal mapy, seamless tiling a další generátory/procesní režimy. Jejich další kroky popisuje [plán Particle workspace](particle_workspace_plan.md).
 - Náhled kopíruje podstrom uloženého efektu. Kolizní nebo attractor uzly, které jsou mimo tento podstrom ve scéně Level, se do simulace nepřidají.
 
 ## Implementace
