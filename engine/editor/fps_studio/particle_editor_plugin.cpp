@@ -92,6 +92,7 @@ enum VFXTexturePreset {
 	VFX_TEXTURE_PLASMA_BURST = 12,
 	VFX_TEXTURE_VORONOI_CAUSTICS = 13,
 	VFX_TEXTURE_ELECTRIC_ARC = 14,
+	VFX_TEXTURE_EXPLOSION_RING = 15,
 };
 
 enum VFXTextureOutput {
@@ -182,6 +183,29 @@ static real_t particle_texture_smoothstep(real_t p_edge_a, real_t p_edge_b, real
 	return t * t * (3.0 - 2.0 * t);
 }
 
+static real_t particle_texture_spiral(real_t p_x, real_t p_y, real_t p_z, real_t p_time, real_t p_speed = 1.0) {
+	const real_t nudge = 4.0;
+	const real_t normalizer = 1.0 / Math::sqrt(1.0 + nudge * nudge);
+	real_t n = -Math::fposmod(real_t(p_time * 0.8 * p_speed), real_t(2.1));
+	real_t iter = 2.0;
+	real_t px = p_x;
+	real_t py = p_y;
+	real_t pz = p_z;
+	for (int i = 0; i < 8; i++) {
+		n -= Math::abs(Math::sin(py * iter) + Math::cos(px * iter)) / iter;
+		const real_t nx = (px + py * nudge) * normalizer;
+		const real_t ny = (py - px * nudge) * normalizer;
+		px = nx;
+		py = ny;
+		const real_t mx = (px + pz * nudge) * normalizer;
+		const real_t mz = (pz - px * nudge) * normalizer;
+		px = mx;
+		pz = mz;
+		iter *= 1.733733;
+	}
+	return n;
+}
+
 // Native, deterministic VFX texture recipe. It follows the publicly documented
 // workflow (procedural templates, time samples, sprite sheets and alpha) without
 // embedding or translating the website's shader source.
@@ -244,12 +268,49 @@ static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int 
 				color_mix = CLAMP(noise * 0.8 + 0.1, 0.0, 1.0);
 			} else if (p_preset == VFX_TEXTURE_EXPLOSION) {
 				const real_t radius = Vector2(x, y).length();
-				const real_t expanding_radius = 0.24 + phase * 0.5;
-				const real_t irregular_radius = radius + (noise - 0.5) * 0.26;
-				const real_t core = 1.0 - CLAMP(radius / expanding_radius, 0.0, 1.0);
-				const real_t shell = 1.0 - CLAMP(Math::abs(irregular_radius - (0.22 + phase * 0.42)) / (0.15 + phase * 0.2), 0.0, 1.0);
-				alpha = MAX(core * 0.72, shell) * CLAMP(1.0 - phase * 0.55, 0.0, 1.0) * CLAMP((1.25 - radius) * 2.2, 0.0, 1.0);
-				color_mix = CLAMP(core * 0.7 + shell * 0.3 + noise * 0.12, 0.0, 1.0);
+				const real_t expanding_radius = 0.44 + phase * 0.42;
+
+				const real_t wx = particle_texture_fractal(u * 3.6 + phase * 0.45, v * 3.6 - phase * 0.28, p_seed);
+				const real_t wy = particle_texture_fractal(u * 3.6 - phase * 0.32, v * 3.6 + phase * 0.48, p_seed + 19);
+				const real_t dist_warp = Vector2(x + (wx - 0.5) * 0.55, y + (wy - 0.5) * 0.55).length();
+
+				const real_t core = CLAMP(1.0 - dist_warp / expanding_radius, 0.0, 1.0);
+				const real_t sn = particle_texture_spiral(x * 3.5, y * 3.5, phase * 1.6 + p_seed * 0.05, phase);
+				const real_t norm_sn = CLAMP((sn + 2.2) / 1.1, 0.0, 1.0);
+				const real_t ridge = Math::pow(CLAMP(1.0 - Math::abs(norm_sn - 0.5) * 2.2, 0.0, 1.0), 2.0);
+				const real_t fbm_high = particle_texture_fractal((x + wx) * 6.5, (y + wy) * 6.5, p_seed + 43);
+
+				real_t fire = core * 1.35 + ridge * core * 1.25 + fbm_high * core * 0.45;
+				fire -= (dist_warp / expanding_radius) * 0.35;
+				const real_t fade = CLAMP((0.98 - radius) * 4.5, 0.0, 1.0);
+				fire *= fade;
+
+				alpha = CLAMP((fire - 0.07) * 2.2, 0.0, 1.0);
+				color_mix = CLAMP(fire * 0.95, 0.0, 1.0);
+			} else if (p_preset == VFX_TEXTURE_EXPLOSION_RING) {
+				const real_t radius = Vector2(x, y).length();
+				const real_t shell_dist = Math::abs(radius - (0.54 + phase * 0.16));
+				const real_t shell = Math::exp(-Math::pow(shell_dist / 0.22, 2.0));
+
+				const real_t sn1 = particle_texture_spiral(x * 3.5, y * 3.5, phase * 1.5 + p_seed * 0.08, phase);
+				const real_t sn2 = particle_texture_spiral(y * 7.2 + 13.0, x * 7.2 - 27.0, phase * 2.2 + p_seed * 0.16, phase);
+				const real_t sn3 = particle_texture_spiral(x * 14.0 - 5.0, y * 14.0 + 8.0, phase * 3.5 + p_seed * 0.24, phase);
+
+				const real_t norm_sn1 = CLAMP((sn1 + 2.2) / 1.1, 0.0, 1.0);
+				const real_t norm_sn2 = CLAMP((sn2 + 2.2) / 1.1, 0.0, 1.0);
+				const real_t norm_sn3 = CLAMP((sn3 + 2.2) / 1.1, 0.0, 1.0);
+
+				const real_t ridge1 = Math::pow(CLAMP(1.0 - Math::abs(norm_sn1 - 0.5) * 2.2, 0.0, 1.0), 2.2);
+				const real_t ridge2 = Math::pow(CLAMP(1.0 - Math::abs(norm_sn2 - 0.5) * 2.4, 0.0, 1.0), 1.8);
+				const real_t ridge3 = Math::pow(CLAMP(1.0 - Math::abs(norm_sn3 - 0.5) * 2.6, 0.0, 1.0), 1.5);
+
+				const real_t inner = Math::exp(-Math::pow(radius / 0.35, 2.0)) * 0.28 * (norm_sn1 * 0.7 + 0.3);
+				real_t fire = shell * (0.12 + ridge1 * 1.6 + ridge2 * 1.0 + ridge3 * 0.5) + inner;
+				const real_t fade = CLAMP((0.96 - radius) * 4.5, 0.0, 1.0);
+				fire *= fade;
+
+				alpha = CLAMP((fire - 0.06) * 2.2, 0.0, 1.0);
+				color_mix = CLAMP(fire * 0.95, 0.0, 1.0);
 			} else if (p_preset == VFX_TEXTURE_SPARK) {
 				const real_t angle = phase * Math::TAU;
 				const real_t center_line = 0.5 + 0.62 * (0.5 - v) + Math::sin(angle) * 0.16;
@@ -392,6 +453,10 @@ static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int 
 				alpha *= mask;
 			}
 			Color color = p_color_a.lerp(p_color_b, color_mix);
+			if ((p_preset == VFX_TEXTURE_EXPLOSION || p_preset == VFX_TEXTURE_EXPLOSION_RING) && color_mix > 0.65) {
+				const real_t hot_glow = (color_mix - 0.65) / 0.35;
+				color = color.lerp(Color(1.0, 1.0, 0.92, 1.0), hot_glow * 0.7);
+			}
 			color.a = CLAMP(alpha, 0.0, 1.0);
 			image->set_pixel(px, py, color);
 		}
@@ -1166,6 +1231,9 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_preset_selected(int p_
 	} else if (preset_id == VFX_TEXTURE_NOISE) {
 		texture_generator_color_a->set_pick_color(Color(0.04, 0.18, 0.26, 1.0));
 		texture_generator_color_b->set_pick_color(Color(0.2, 0.9, 0.58, 1.0));
+	} else if (preset_id == VFX_TEXTURE_EXPLOSION || preset_id == VFX_TEXTURE_EXPLOSION_RING) {
+		texture_generator_color_a->set_pick_color(Color(0.96, 0.16, 0.02, 1.0));
+		texture_generator_color_b->set_pick_color(Color(1.0, 0.92, 0.45, 1.0));
 	} else {
 		texture_generator_color_a->set_pick_color(Color(0.95, 0.12, 0.025, 1.0));
 		texture_generator_color_b->set_pick_color(Color(1.0, 0.82, 0.18, 1.0));
@@ -3323,7 +3391,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	texture_generator_preset->add_separator(TTR("Fire and smoke"));
 	texture_generator_preset->add_item(TTR("Fire"), VFX_TEXTURE_FIRE);
 	texture_generator_preset->add_item(TTR("Smoke"), VFX_TEXTURE_SMOKE);
-	texture_generator_preset->add_item(TTR("Explosion"), VFX_TEXTURE_EXPLOSION);
+	texture_generator_preset->add_item(TTR("Explosion (Fireball)"), VFX_TEXTURE_EXPLOSION);
+	texture_generator_preset->add_item(TTR("Explosion 2 (Shockwave ring)"), VFX_TEXTURE_EXPLOSION_RING);
 	texture_generator_preset->add_item(TTR("Plasma fireball"), VFX_TEXTURE_PLASMA_BURST);
 	texture_generator_preset->add_separator(TTR("Energy and light"));
 	texture_generator_preset->add_item(TTR("Spark streak"), VFX_TEXTURE_SPARK);

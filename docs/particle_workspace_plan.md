@@ -140,6 +140,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Doplnit výškové měřítko normal mapy (cHeightScale 0.1–10.0) a tlačítko Reset pro vyvážení barev.
 - [x] Aktualizovat formát `.cfg` receptů na verzi 2 s podporou nových parametrů a zpětnou kompatibilitou.
 - [x] Automaticky nastavit billboard částic (`BILLBOARD_PARTICLES`) a rozdělení atlasu (`particles_anim_h_frames` / `v_frames`) na `StandardMaterial3D` emitoru při Apply to Emitter.
+- [x] Přepracovat procedurální exploze: nahradit základní explozi realistickou vířivou ohnivou koulí (`Explosion (Fireball)`) s domain-warpingem a přidat prstencovou rázovou vlnu (`Explosion 2 (Shockwave ring)`) s ridged spiral šumem a žhavými filamenty odpovídajícími EffectTextureMakeru.
 - [ ] Ručně ověřit nová ovládání, uložení/načtení receptu v2, export normal mapy a úpravy alfa kanálu v editoru.
 - [ ] Ověřit alfa export sprite sheetu a přiřazení animovaného sheetu emitoru.
 
