@@ -642,6 +642,12 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 			memdelete(previous);
 		}
 	}
+	if (p_root && document_host && p_root->get_parent() != document_host) {
+		if (p_root->get_parent()) {
+			p_root->get_parent()->remove_child(p_root);
+		}
+		document_host->add_child(p_root);
+	}
 	effect_root_id = p_root ? p_root->get_instance_id() : ObjectID();
 	effect_path = p_path;
 	effect_dirty = p_dirty;
@@ -2376,6 +2382,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_root = memnew(Node3D);
 	preview_root->set_name("ParticlePreviewWorld");
 	preview_viewport->add_child(preview_root);
+	document_host = memnew(Node3D);
+	document_host->set_name("ParticleDocumentHost");
+	document_host->set_visible(false);
+	document_host->set_process_mode(Node::PROCESS_MODE_DISABLED);
+	preview_root->add_child(document_host);
 
 	Ref<Environment> preview_environment;
 	preview_environment.instantiate();

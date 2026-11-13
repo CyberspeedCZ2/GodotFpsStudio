@@ -99,6 +99,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	SubViewport *preview_viewport = nullptr;
 	SubViewportContainer *preview_container = nullptr;
 	Node3D *preview_root = nullptr;
+	Node3D *document_host = nullptr;
 	Camera3D *preview_camera = nullptr;
 	MeshInstance3D *preview_grid = nullptr;
 	Node *preview_effect = nullptr;
