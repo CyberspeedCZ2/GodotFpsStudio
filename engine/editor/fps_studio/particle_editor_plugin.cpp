@@ -1120,10 +1120,19 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 	for (int surface = 0; surface < mesh->get_surface_count(); surface++) {
 		mesh->surface_set_material(surface, material);
 	}
+	// The renderer inspector edits the old mesh by raw Object pointer. Detach it
+	// before replacing the emitter's resource, then bind it to the new mesh while
+	// this local Ref keeps the replacement alive.
+	if (renderer_inspector) {
+		renderer_inspector->edit(nullptr);
+	}
 	if (gpu) {
 		gpu->set_draw_pass_mesh(0, mesh);
 	} else if (cpu) {
 		cpu->set_mesh(mesh);
+	}
+	if (renderer_inspector) {
+		renderer_inspector->edit(mesh.ptr());
 	}
 	_mark_document_dirty();
 	_sync_preview_properties();
@@ -1980,15 +1989,9 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			const double refresh_interval = 1.0 / 12.0;
 			if (texture_generator_playback_accumulator >= refresh_interval) {
 				texture_generator_playback_accumulator = Math::fmod(texture_generator_playback_accumulator, refresh_interval);
-				if (!generated_texture_path.is_empty()) {
-					generated_texture_path = String();
-					if (texture_generator_apply_button) {
-						texture_generator_apply_button->set_disabled(true);
-					}
-					if (texture_generator_status) {
-						texture_generator_status->set_text(String());
-					}
-				}
+				// Playback changes only the live preview. Keep an exported PNG available
+				// for Apply to Emitter until the user changes its generator parameters
+				// or manually scrubs to a different sample.
 				_regenerate_texture(true);
 			}
 		}
