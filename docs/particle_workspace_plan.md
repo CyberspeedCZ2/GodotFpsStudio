@@ -133,9 +133,15 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Přidat prahování a měkké 3×3 rozmazání alfa kanálu, grayscale náhled masky a barevné tints pro shadows/midtones/highlights.
 - [x] Přidat PNG export tangent-space normal mapy odvozené z alfa masky; generátor ji záměrně nepřiřazuje jako barvu částic.
 - [x] Ukládat a načítat `.cfg` recepty včetně typu, barev, rozlišení, atlasu, FPS a postprocesů.
-- [ ] Ručně ověřit nová ovládání, uložení/načtení receptu, export normal mapy a úpravy alfa kanálu v editoru.
+- [x] Rozšířit katalog na 15 typů ve skupinách (přidány WaveRing, Flash / Lens flare, Bubbles / Bokeh, Plasma fireball, Voronoi caustics, Electric arc) s procedurálním Voronoi generátorem.
+- [x] Implementovat polární konverzi souřadnic (Polar conversion) pro kruhové/radiální VFX efekty inspirovanou EffectTextureMakerem.
+- [x] Implementovat Toon shading s nastavitelnou 3-úrovňovou kvantizací prahů (dark/light thresholds).
+- [x] Implementovat Seamless tiling s periodickým vzorkováním okrajů a nastavitelnou radiální maskou (radial mask).
+- [x] Doplnit výškové měřítko normal mapy (cHeightScale 0.1–10.0) a tlačítko Reset pro vyvážení barev.
+- [x] Aktualizovat formát `.cfg` receptů na verzi 2 s podporou nových parametrů a zpětnou kompatibilitou.
+- [x] Automaticky nastavit billboard částic (`BILLBOARD_PARTICLES`) a rozdělení atlasu (`particles_anim_h_frames` / `v_frames`) na `StandardMaterial3D` emitoru při Apply to Emitter.
+- [ ] Ručně ověřit nová ovládání, uložení/načtení receptu v2, export normal mapy a úpravy alfa kanálu v editoru.
 - [ ] Ověřit alfa export sprite sheetu a přiřazení animovaného sheetu emitoru.
-- [ ] Doplnit seamless tiling, toon/polar výstup a další tematické šablony s vlastními parametry.
 
 ## Analýza reference: EffectTextureMaker
 
