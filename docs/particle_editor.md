@@ -1,26 +1,52 @@
 # Pracovní prostředí Particle
 
-Particle je samostatná obrazovka FPS Studia pro tvorbu a náhled nativních 3D particle uzlů Godotu. Upravuje vybraný uzel a jeho existující zdroje; nezavádí nový formát simulace ani assetů.
+Particle workspace je samostatný editor opakovaně použitelných 3D efektů. Efekt upravuje mimo aktivní Level a do herní scény se přidává až příkazem **Add to Level**.
 
-## Pracovní postup
+![Konceptuální podoba Particle workspace](images/particle_workspace_concept.png)
 
-1. Seznam **Emitters** vlevo zobrazuje uzly z právě otevřené scény; Particle workspace do ní žádný výchozí emitor nevkládá. V nabídce **File** vytvoříš GPU nebo CPU emitor, případně GPU předvolbu **Burst**, **Fountain** nebo **Smoke**. Nový uzel se přidá přes Undo/Redo a ihned se otevře v náhledu. Stejná nabídka umí načíst particle scénu do otevřené scény a uložit vybraný emitor s potomky jako znovupoužitelnou scénu.
-2. V seznamu **Emitters** můžeš přepínat mezi 3D particle uzly v otevřené scéně.
-3. V inspektoru **Emitter** upravuješ vlastnosti uzlu. U GPU uzlů je dostupný také materiál v inspektoru **Process Material**. Tlačítko **Create Node Graph** přepne procesní materiál na nativní `VisualShader` v režimu `particles` a otevře vestavěný editor grafu Godotu. Pokud už emitter procesní materiál používá, před jeho nahrazením se zobrazí potvrzení; změnu lze vrátit přes Undo. U existujícího particle grafu tlačítko nabídne jeho otevření.
-4. Simulaci můžeš spustit, pozastavit, restartovat, změnit její rychlost a posunout časovou osu. **Loop** je ve výchozím stavu zapnutý; po vypnutí se přehrávání zastaví na konci životnosti emitteru. Tažením levým nebo pravým tlačítkem otáčíš kameru, prostředním tlačítkem náhled posouváš a kolečkem přibližuješ. **Reset View** vrátí kameru do výchozího pohledu. Kamera používá perspektivu s FOV 55° a pevnou světovou osou Y nahoru. Mřížku lze přepnout přes **Grid**.
+Render je vizuální reference pro další úpravy UI. Levá část představuje knihovnu efektů a strom uzlů efektu, střed celý simulovaný efekt a pravý panel vlastnosti právě vybraného emitoru. Spodní graf v renderu znamená nativní Godot `VisualShader` v režimu Particle; není to graf vztahů mezi emitory. Jeho přímé vložení do workspace zatím není implementované.
 
-Náhled simuluje kopii vybraného emitteru a jeho potomků ve vlastním `SubViewport` s odděleným prostředím, světlem a kamerou. Změny vlastností emitteru i Process Material se promítají do náhledu. Pokud emitter nemá mesh nebo GPU process material, náhled doplní výchozí hodnoty pouze do této kopie; scéna se tím nemění. Úpravy vlastností používají vestavěné inspektory Godotu a jeho Undo/Redo. Node Graph je skutečný Godot `VisualShader`, nikoli vlastní formát grafu; editor nabízí nativní particle fáze a uzly Godotu.
+Při návrhu práce s efekty zohledňujeme také [tutoriál ohně a jisker od Le Lu](https://www.youtube.com/watch?v=Y1ZBzIiP-v4) a [EffectTextureMaker od Mebiusbox](https://mebiusbox.github.io/contents/EffectTextureMaker/). Oheň, kouř a jiskry se skládají z více emitterů; sprite a další VFX textury jsou samostatné obrazové zdroje. Z Particle workspace je nyní dostupný první nativní generátor: vytváří průhledné textury, ukládá je jako PNG a umí je přiřadit vybranému emitoru. Efektová scéna pak uchovává běžný odkaz na PNG asset.
 
-Godotův panel náhledu uvnitř VisualShader editoru neumí zobrazit režim `particles` — hlášení na screenshotu je omezení shaderového náhledu, ne particle simulace. Náhled Particle workspace zobrazuje celou simulaci emitteru a jeho draw passů, takže doplňuje graf na úrovni celého efektu; nejde o náhled jednotlivého uzlu grafu.
+## Vytvoření a ukládání efektu
 
-## Aktuální rozsah
+- **New** vytvoří prázdný dokument efektu s kořenovým `Node3D` a připraveným GPU nebo CPU emitorem. Nabízí také předvolby Burst, Fountain a Smoke.
+- **Open** načte efektovou scénu `.tscn` do Particle workspace. Panel **Effects** zobrazuje nedávno otevřené efekty a umí je filtrovat.
+- **Save** nebo **Save As** ukládá celý dokument, včetně více emitorů, jejich potomků a navázaných zdrojů, jako `.tscn`. Běžné materiály a křivky zůstávají nativní Godot resources. Particle `VisualShader` je součástí zdrojů emitoru a lze ho také uložit samostatně jako `.tres`. Obrázková textura se ukládá samostatně (typicky `.png`) a emitter na ni odkazuje přes renderer materiál.
+- Starší scéna, jejímž kořenem je přímo `GPUParticles3D` nebo `CPUParticles3D`, se při otevření zachová jako efekt. Nový dokument používá `Node3D` kořen.
+- **Add to Level** přidá instanci celého otevřeného efektu do právě upravované Level scény přes editorové Undo/Redo.
 
-- Podporované jsou 3D GPU a CPU particle uzly. Prostředí vypisuje emittery aktivní scény, umožňuje vytvořit nový uzel a současně zobrazuje jeden vybraný uzel.
-- GPU emitter může používat běžný `ParticleProcessMaterial` nebo nativní particle `VisualShader`. Kompletní emitter je Godot `Node`, a proto se ukládá jako PackedScene `.tscn`; nabídka **File > Load Particle Scene** jej vloží do otevřené scény přes Undo/Redo a **File > Save Particle Scene As** uloží vybraný emitter i potomky. Samotný uzlový graf je `VisualShader` zdroj ukládaný jako `.tres`. Tyto formáty řeší odlišné vrstvy: `.tscn` uchovává celý efekt, `.tres` shaderový graf. Vlastní přípona FPS Studia by nepřinesla výhodu, dokud nebude definován další obsah particle assetu.
-- Náhled kopíruje vybraný emitter a jeho potomky. Neinstancuje celou aktivní úroveň, takže kolizní nebo attractor uzly mimo jeho podstrom nejsou součástí simulace.
-- Posunutí časové osy restartuje náhled a simuluje částice dopředu do zvoleného času. Nejde o přímý skok na libovolný stav.
-- Náhled má referenční mřížku, orbitovací a posouvací kameru a přiblížení kolečkem myši. Tvorba více emitterů jako jednoho systému, časová osa celého systému a editace 2D částic nejsou součástí této verze.
+Neexistuje žádný pevně vybraný `BubbleParticles`. Při otevření workspace je efektový dokument prázdný; obsah aktuální Level scény se do něj automaticky nepřenáší.
+
+## Emitory a vlastnosti
+
+Levý panel rozděluje nedávné soubory efektů a strom emitorů. **Add** přidá GPU/CPU emitter nebo předvolbu, **Remove** odstraní vybraný uzel. Efekt může obsahovat více particle uzlů; výběr v hierarchii určuje, který emitor se upravuje v pravých kartách **Emitter**, **Process** a **Renderer**.
+
+Vlastnosti upravují Godotovy vestavěné `EditorInspector` panely. `ParticleProcessMaterial` zachovává běžné nastavení procesu. Pokud GPU emitor používá tento materiál, karta Process nabízí také přímé editory křivek Alpha over Life a Scale over Life; nové křivky jsou nativní `CurveTexture` resources. Ostatní vlastnosti zůstávají dostupné v kompletním inspektoru.
+
+Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a otevře graf ve vestavěném Godot Shader Editoru. Nahrazení existujícího materiálu se nejprve potvrdí a změnu lze vrátit přes Undo. Pokud emitor už particle `VisualShader` používá, tlačítko otevře tento graf. CPU particles nemají particle shader graph.
+
+`VisualShader` je graf výpočtu shaderu pro vybraný GPU emitor. Neřídí hierarchii, počet emitorů ani celý efekt. Vztahy a společné uložení emitorů řeší strom scény `.tscn`; shaderový graf je zdroj použitý jedním emitorem. Workspace proto tyto vrstvy rozlišuje.
+
+## 3D náhled a simulace
+
+Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport`, s vlastním prostředím, světly, kamerou a referenční mřížkou. Chybějící draw mesh nebo GPU process material doplní pouze náhledová kopie; editovaný efekt se tím nemění.
+
+- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení náhled posouvá a kolečko přibližuje.
+- **Reset View** znovu orámuje rozsah emitovaných particle uzlů. **Grid** zapíná referenční mřížku.
+- **Play/Pause**, **Restart**, časová osa, **Speed** a **Loop** ovládají lokální simulaci. Smyčka je výchozím stavem zapnutá.
+- Časová osa má délku nejdelší životnosti emitoru. Posun na jiné místo resetuje particle uzly a přehrává simulaci dopředu do zvoleného času; nejde o přímý skok na přesně rekonstruovaný stav.
+
+## Současné hranice a další práce
+
+- Náhled a nastavení jsou integrovány, ale VisualShader graf se zatím otevírá ve vlastním Godot Shader Editoru. Dolní panel workspace zatím zobrazuje stav materiálu a akci Create/Edit Node Graph; na renderu je zobrazený budoucí cíl přímé integrace.
+- Předvolby emitorů jsou dostupné při tvorbě, ale úprava názvu vybraného emitoru přímo ze stromu ještě chybí.
+- Základní křivky Alpha a Scale lze vytvářet a upravovat. Další křivky, křivkové presety a samostatný pohodlný editor každé podporované varianty jsou další iterace.
+- **Texture Generator** otevírá nativní nástroj s průhledným 2D náhledem. Nabízí předvolby Fire, Smoke, Explosion a Spark streak, změnu seedu, rozlišení a dvou barev. **Export PNG** uloží výsledek do projektu; po exportu ho lze přes **Apply to Emitter** přiřadit materiálu zvoleného GPU/CPU emitoru. Efektová `.tscn` tak pracuje s běžným PNG assetem.
+- První generátor je procedurální implementace v Godot editoru, inspirovaná veřejným popisem pracovního postupu EffectTextureMaker. Minifikované zdrojové kódy tohoto webu nejsou převzaté, protože licence konkrétních souborů není jednoznačně doložená. Samotná CC0 licence generovaných textur nepokrývá automaticky jeho implementační kód.
+- Zatím chybí animované sprite sheety, ukládání nastavení generátoru, normal mapy, seamless tiling a další generátory/procesní režimy. Jejich další kroky popisuje [plán Particle workspace](particle_workspace_plan.md).
+- Náhled kopíruje podstrom uloženého efektu. Kolizní nebo attractor uzly, které jsou mimo tento podstrom ve scéně Level, se do simulace nepřidají.
 
 ## Implementace
 
-Obrazovku přidává `FPSStudioParticleEditorPlugin` v `engine/editor/fps_studio/particle_editor_plugin.cpp`. Používá `EditorInspector` pro úpravy nativního uzlu a materiálu, vestavěný Godot VisualShader editor pro node graph a samostatnou kopii uzlu pro simulaci. Plugin registruje `EditorNode` bezprostředně za obrazovkou Model.
+Workspace implementuje `FPSStudioParticleEditorPlugin` v `engine/editor/fps_studio/particle_editor_plugin.cpp`. Používá nativní uzly a resources Godotu, `EditorInspector`, vlastní náhledovou kopii a vestavěný VisualShader editor. Součástí zdokumentované designové reference je [particle_workspace_concept.png](images/particle_workspace_concept.png).
