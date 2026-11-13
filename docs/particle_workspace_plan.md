@@ -36,10 +36,10 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 | 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | V dočasném projektu ručně ověřeno uložení, znovunačtení efektu i přidání do Levelu. |
 | 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenovat emitter a ověřit Undo/Redo. | Přidání, odebrání i přejmenování jsou implementované; rename a jeho Undo/Redo ručně ověřeny. |
 | 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Rozměry splitterů se ukládají a změnu šířky levého panelu jsem ověřil v dočasném projektu. Pro úzké okno se zkracuje toolbar a časový popisek přehrávání má pevnou šířku, aby se měnící text nepřepočítával do minima layoutu. Aktuální build prošel; vizuální ověření této opravy se nepodařilo dokončit, protože automatizace při restartu editoru vypršela. |
-| 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo byly ověřeny už dříve. V novém buildu jsem vložil a upravil bod Alpha over Life; uložení úspěšně zapsalo jeho změněné souřadnice do `.tscn`. Opětovné načtení tohoto upraveného souboru ještě nebylo samostatně ověřeno. |
+| 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo byly ověřeny už dříve. Bod Alpha over Life jsem upravil, uložil do `.tscn` a po opětovném otevření ověřil jeho zachované souřadnice v CurveEditoru. |
 | 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; ověřit Undo/Redo vytvoření. | Nativní editor grafu je vložený v Particle Logic. Vytvoření, uložení, znovunačtení i UndoRedo byly ručně ověřeny; při výběru dvou GPU emitterů se správně přepíná jejich samostatný graf. |
 | 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo v novém buildu exportováno, naimportováno a Apply to Emitter ho přiřadilo jako texturu PlaneMesh. Náhled ohně zůstal v Rendereru viditelný i při zapnutém přehrávání generátoru; další přepínání karet už nezpůsobilo pád a Output neměl chyby. Sprite sheet je volitelný a neověřený. |
-| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Build i diff jsou zkontrolované; commit `7d4ea917` s opravou exportu a aktualizovanou dokumentací je pushnutý. Malé okno a opětovné načtení upravené křivky zůstávají neověřené. |
+| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Build i diff jsou zkontrolované; commity `7d4ea917` a `d791cf8b` jsou pushnuté. Opětovné načtení upravené křivky je ověřené; malé okno a stabilita pravého panelu při přehrávání ještě čekají na vizuální kontrolu. |
 
 Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
 
@@ -90,7 +90,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Přesunout křivky před kompletní inspektor v kartě Process.
 - [x] Ručně ověřit Alpha/Scale presety a Undo/Redo v editoru.
 - [x] V novém buildu upravit bod Alpha over Life, uložit efekt a ověřit zapsanou hodnotu v `.tscn`.
-- [ ] Znovu načíst právě uloženou scénu a zkontrolovat hodnotu bodu v CurveEditoru.
+- [x] Znovu načíst právě uloženou scénu a zkontrolovat hodnotu bodu v CurveEditoru.
 - [ ] Rozšířit nástroje na další parametry podle uživatelské hodnoty.
 
 ### 5. Nativní Particle `VisualShader` — vložený graf hotový
@@ -111,7 +111,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] V novém buildu vytvořit particle `VisualShader`, uložit a znovu načíst scénu s grafem, otevřít další efekt bez pádu a ověřit čistý Output.
 - [x] Projít export PNG a Apply to Emitter na novém buildu; ověřit přiřazení statické textury, Renderer náhled a stabilitu při přepínání karet.
 - [x] Dovyzkoušet editaci a uložení bodu křivky i přepínání shader grafu mezi GPU emitory.
-- [ ] Potvrdit opětovné načtení právě upraveného bodu křivky.
+- [x] Potvrdit opětovné načtení právě upraveného bodu křivky.
 - [ ] Ověřit malé okno s otevřeným Output panelem.
 - [ ] Projít celý create/add/remove/preview/save/open/Add to Level cyklus v jedné relaci.
 - [x] Zkontrolovat diff a stav Gitu, commitnout a pushnout změny na pracovní větev `codex/black-default-fps-level`.
