@@ -144,6 +144,13 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Přidat sekci Parameters podle EffectTextureMakeru: posuvníky Speed, Density, Emission, Turbulence / Detail, Contrast / Sharpness, Rotation (deg) a tlačítko Reset Parameters.
 - [x] Přidat herní stylové předvolby (Game style / Quality presets): Realistic (Cinematic), Medium (Balanced), Low (Performance / Retro), Cartoon / Toon (Anime) a Custom pro rychlé přizpůsobení vizuální stylistiky a hardwarové náročnosti.
 - [x] Rozšířit serializaci `.cfg` receptů o herní styl a parametry Speed, Density, Emission, Detail, Contrast a Angle.
+- [x] Kompletní overhaul realismu všech procedurálních předloh podle EffectTextureMakeru:
+  - 3D sférický Otaviogood spiral šum pro exploze (`Explosion (Fireball)` a `Explosion 2 (Shockwave ring)`) s hlubokými tmavými sopečnými prasklinami a žhavými filamenty (odstraněno ploché přesaturování středu).
+  - Fyzikální spalovací křivky pro oheň (`Fire`) s aerodynamickým profilem, prouděním plamene vzhůru, turbulencí a stoupajícími jiskrami.
+  - 3D objemový rozptyl světla a směrové stínování pro kouř (`Smoke`) a mraky (`Cloud`) se zubatými dissolving okraji.
+  - 3-maticová transformace pro ostré refrakční sítě kaustik (`Voronoi caustics`).
+  - Optická difrakce s Airy diskem a difrakčními paprsky pro záblesky (`Flash / Lens flare`).
+  - Dielektrický fraktální průraz s Voronoi uzly pro blesky (`Lightning`) a elektrické oblouky (`Electric arc`).
 - [ ] Ručně ověřit nová ovládání, uložení/načtení receptu v2, export normal mapy a úpravy alfa kanálu v editoru.
 - [ ] Ověřit alfa export sprite sheetu a přiřazení animovaného sheetu emitoru.
 
