@@ -2142,6 +2142,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	document_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
 	document_title->set_h_size_flags(Control::SIZE_SHRINK_BEGIN);
 	document_title->set_clip_text(true);
+	document_title->set_custom_minimum_size(Size2(180, 0) * EDSCALE);
 	document_toolbar->add_child(document_title);
 	document_path_label = memnew(Label);
 	document_path_label->set_clip_text(true);
@@ -2347,12 +2348,16 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	timeline->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_changed));
 	transport->add_child(timeline);
+	Control *time_label_container = memnew(Control);
+	time_label_container->set_custom_minimum_size(Size2(150, 0) * EDSCALE);
+	time_label_container->set_clip_contents(true);
+	transport->add_child(time_label_container);
 	time_label = memnew(Label);
 	time_label->set_text("0.00 / 5.00 s");
 	time_label->set_clip_text(true);
-	time_label->set_custom_minimum_size(Size2(150, 0) * EDSCALE);
 	time_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
-	transport->add_child(time_label);
+	time_label_container->add_child(time_label);
+	time_label->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	Label *speed_label = memnew(Label);
 	speed_label->set_text(TTR("Speed"));
 	transport->add_child(speed_label);
