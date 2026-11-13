@@ -15,6 +15,20 @@ Vizuální předloha je [particle_workspace_concept.png](images/particle_workspa
 
 Vlastní přípona `.particle` není zatím potřeba: uzly a vazby patří do `.tscn`, shader do `VisualShader` `.tres`/subresource, křivky do Godot `CurveTexture`. Vlastní kontejner má smysl až tehdy, kdyby dokument potřeboval data, která Godot scéna neumí uchovat.
 
+## Cíl a podmínky dokončení
+
+Referenční render vymezuje cílové rozložení: knihovna efektů a hierarchie emitorů vlevo, živý 3D náhled a časové ovládání uprostřed, skutečný particle shader graf ve spodní části a nativní inspektor vybraného uzlu vpravo. Hotový systém musí podporovat celý běžný cyklus tvorby bez přepínání do Level workspace.
+
+- Efekt lze vytvořit, otevřít, přejmenovat, uložit, zavřít a znovu načíst jako scénu Godotu; změny a stav uložení jsou zřejmé.
+- Efekt může mít více GPU/CPU emitorů; přidání, odebrání a přejmenování jsou bezpečné a lze je vrátit přes Undo/Redo.
+- 3D náhled simuluje celou efektovou scénu, má stabilní perspektivu, mřížku, orbit, pan, zoom, reset a ovládání přehrávání.
+- Vybraný GPU emitor může používat `ParticleProcessMaterial` nebo nativní particle `VisualShader`. Jeho skutečný graf lze upravovat přímo v dolním panelu; tlačítko ho může otevřít i ve velkém Shader Editoru. Výběr emitora určuje obsah grafu.
+- Často používané křivky včetně Alpha over Life a Scale over Life jsou snadno dosažitelné, mají užitečné presety a změny se ihned projeví v náhledu.
+- Generátor VFX textur vytváří obrazové assety, umí znovu otevřít jejich parametry, exportovat animované sprite sheety a přiřadit výsledek emitoru.
+- Rozvržení zůstává použitelné při malé šířce okna i s otevřeným Output panelem. Testy probíhají v dočasném projektu, nikoli v samostatném herním repozitáři.
+
+Hotový systém budu označovat za dokončený teprve po ručním ověření uvedeného workflow v běžném editoru Godotu a po aktualizaci této roadmapy skutečným výsledkem testů.
+
 ## Zásady UI
 
 - **Efekt je dokument, emitor je jeho část.** Otevření Particle workspace automaticky nevybírá uzly z Levelu. Při výběru emitteru se mění inspektor a shader graf pro tento uzel.
@@ -83,10 +97,11 @@ Vlastní přípona `.particle` není zatím potřeba: uzly a vazby patří do `.
 - [x] Otevřít nativní okno generátoru přímo z Particle workspace; nejde o vloženou webovou stránku.
 - [x] Procedurálně vytvořit základní textury pro oheň, kouř, explozi a jiskru s průhledným pozadím.
 - [x] Nastavit seed, rozlišení a dvě barvy; zobrazit živý 2D náhled.
+- [x] Přidat přehrávání a posuvník času; sprite sheet zobrazuje právě vybraný snímek, samostatná textura znovu vzorkuje procedurální animaci.
 - [x] Exportovat PNG do projektu a přiřadit ho materiálu vybraného GPU/CPU emitoru.
 - Záměrně jde o nově napsaný nativní kód podle veřejně popsaného postupu. Konkrétní shaderové soubory EffectTextureMaker jsou minifikované a jejich licence není pro tento kód jednoznačně doložená. CC0 pro vygenerované textury automaticky nepovoluje kopírování generátoru.
 - [ ] Vizuálně ověřit generování, uložení a přiřazení v editoru.
-- [ ] Doplnit animované sprite sheety a nastavení snímků.
+- [ ] Ověřit animaci náhledu a export animovaného sprite sheetu v editoru.
 - [ ] Doplnit normal map, seamless tiling, color balance a pokročilejší šum.
 - [ ] Ukládat parametry generátoru do samostatného Godot resource pro opětovnou editaci.
 
