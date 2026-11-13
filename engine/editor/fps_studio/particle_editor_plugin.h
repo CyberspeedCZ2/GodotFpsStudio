@@ -38,8 +38,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 
 	Control *screen = nullptr;
 	Tree *emitter_tree = nullptr;
-	MenuButton *add_emitter_button = nullptr;
+	MenuButton *particle_file_menu = nullptr;
 	EditorFileDialog *save_scene_dialog = nullptr;
+	EditorFileDialog *load_scene_dialog = nullptr;
 	ConfirmationDialog *particle_graph_confirmation = nullptr;
 	SubViewport *preview_viewport = nullptr;
 	SubViewportContainer *preview_container = nullptr;
@@ -54,7 +55,6 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Button *particle_graph_button = nullptr;
 	Button *play_button = nullptr;
 	Button *restart_button = nullptr;
-	Button *save_scene_button = nullptr;
 	HSlider *timeline = nullptr;
 	SpinBox *speed_spin = nullptr;
 	Label *time_label = nullptr;
@@ -64,6 +64,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool preview_playing = true;
 	bool preview_loop = true;
 	bool preview_orbit_dragging = false;
+	bool preview_pan_dragging = false;
 	bool rebuilding_preview = false;
 	double preview_time = 0.0;
 	double preview_duration = 5.0;
@@ -76,6 +77,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Node *_get_active_scene_root() const;
 	Node *_get_edited_emitter() const;
 	void _collect_emitters(Node *p_node, Vector<Node *> &r_emitters) const;
+	void _update_particle_file_menu_state();
 	void _update_emitter_tree();
 	void _set_edited_emitter(Node *p_node, bool p_update_tree = true);
 	void _rebuild_preview();
@@ -92,9 +94,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_timeline_changed(double p_value);
 	void _on_speed_changed(double p_value);
 	void _on_loop_toggled(bool p_enabled);
-	void _on_add_emitter_pressed(int p_id);
+	void _on_particle_file_menu_pressed(int p_id);
 	void _on_save_scene_pressed();
 	void _save_emitter_scene(const String &p_path);
+	void _load_particle_scene(const String &p_path);
 	void _on_emitter_selected();
 	void _on_emitter_property_edited(const String &p_property);
 	Ref<VisualShader> _get_particle_visual_shader(Node *p_emitter) const;

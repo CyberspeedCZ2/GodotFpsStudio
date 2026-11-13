@@ -8,6 +8,7 @@
 #include "particle_editor_plugin.h"
 
 #include "core/input/input_event.h"
+#include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
 #include "core/object/script_language.h"
@@ -47,6 +48,16 @@
 #include "scene/resources/material.h"
 #include "scene/resources/particle_process_material.h"
 #include "scene/resources/packed_scene.h"
+
+enum ParticleFileMenuItem {
+	PARTICLE_FILE_NEW_GPU = 0,
+	PARTICLE_FILE_NEW_CPU = 1,
+	PARTICLE_FILE_BURST = 2,
+	PARTICLE_FILE_FOUNTAIN = 3,
+	PARTICLE_FILE_SMOKE = 4,
+	PARTICLE_FILE_LOAD_SCENE = 5,
+	PARTICLE_FILE_SAVE_SCENE = 6,
+};
 
 static MeshInstance3D *create_particle_preview_grid() {
 	Ref<StandardMaterial3D> grid_material;
@@ -140,6 +151,19 @@ void FPSStudioParticleEditorPlugin::_collect_emitters(Node *p_node, Vector<Node 
 	}
 }
 
+void FPSStudioParticleEditorPlugin::_update_particle_file_menu_state() {
+	if (!particle_file_menu) {
+		return;
+	}
+	PopupMenu *menu = particle_file_menu->get_popup();
+	const bool scene_is_open = _get_active_scene_root() != nullptr;
+	for (int id = PARTICLE_FILE_NEW_GPU; id <= PARTICLE_FILE_SMOKE; id++) {
+		menu->set_item_disabled(menu->get_item_index(id), !scene_is_open);
+	}
+	menu->set_item_disabled(menu->get_item_index(PARTICLE_FILE_LOAD_SCENE), !scene_is_open);
+	menu->set_item_disabled(menu->get_item_index(PARTICLE_FILE_SAVE_SCENE), _get_edited_emitter() == nullptr);
+}
+
 void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	if (!emitter_tree) {
 		return;
@@ -163,9 +187,7 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	if (selected_item) {
 		selected_item->select(0);
 	}
-	if (add_emitter_button) {
-		add_emitter_button->set_disabled(!scene_root);
-	}
+	_update_particle_file_menu_state();
 	if (!scene_root) {
 		root_item->set_text(0, TTR("No scene is open"));
 	} else if (emitters.is_empty()) {
@@ -181,6 +203,9 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 		return;
 	}
 	edited_emitter_id = p_node ? p_node->get_instance_id() : ObjectID();
+	preview_camera_target = Vector3(0.0, 0.5, 0.0);
+	_update_preview_camera();
+	_update_particle_file_menu_state();
 	if (emitter_inspector) {
 		emitter_inspector->edit(p_node);
 	}
@@ -213,9 +238,6 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 	}
 	if (restart_button) {
 		restart_button->set_disabled(p_node == nullptr);
-	}
-	if (save_scene_button) {
-		save_scene_button->set_disabled(p_node == nullptr);
 	}
 	if (p_update_tree) {
 		_update_emitter_tree();
@@ -533,15 +555,26 @@ void FPSStudioParticleEditorPlugin::_on_grid_toggled(bool p_enabled) {
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_on_add_emitter_pressed(int p_id) {
+void FPSStudioParticleEditorPlugin::_on_particle_file_menu_pressed(int p_id) {
+	if (p_id == PARTICLE_FILE_LOAD_SCENE) {
+		if (load_scene_dialog) {
+			load_scene_dialog->popup_file_dialog();
+		}
+		return;
+	}
+	if (p_id == PARTICLE_FILE_SAVE_SCENE) {
+		_on_save_scene_pressed();
+		return;
+	}
+
 	Node *scene_root = _get_active_scene_root();
-	if (!scene_root || p_id < 0 || p_id > 4) {
+	if (!scene_root || p_id < PARTICLE_FILE_NEW_GPU || p_id > PARTICLE_FILE_SMOKE) {
 		return;
 	}
 
 	Node3D *emitter = nullptr;
 	Ref<QuadMesh> particle_mesh = create_particle_quad();
-	if (p_id == 1) {
+	if (p_id == PARTICLE_FILE_NEW_CPU) {
 		CPUParticles3D *cpu_emitter = memnew(CPUParticles3D);
 		cpu_emitter->set_name("CPUParticles3D");
 		cpu_emitter->set_amount(32);
@@ -553,11 +586,11 @@ void FPSStudioParticleEditorPlugin::_on_add_emitter_pressed(int p_id) {
 		String emitter_name = "GPUParticles3D";
 		int emitter_amount = 32;
 		double emitter_lifetime = 2.0;
-		if (p_id == 2) {
+		if (p_id == PARTICLE_FILE_BURST) {
 			emitter_name = "BurstParticles";
 			emitter_amount = 64;
 			emitter_lifetime = 1.25;
-		} else if (p_id == 3) {
+		} else if (p_id == PARTICLE_FILE_FOUNTAIN) {
 			emitter_name = "FountainParticles";
 		} else if (p_id == 4) {
 			emitter_name = "SmokeParticles";
@@ -663,12 +696,63 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	EditorFileSystem::get_singleton()->scan_changes();
 }
 
+void FPSStudioParticleEditorPlugin::_load_particle_scene(const String &p_path) {
+	Node *scene_root = _get_active_scene_root();
+	if (!scene_root) {
+		EditorNode::get_singleton()->show_warning(TTR("Open a scene before loading a particle scene."));
+		return;
+	}
+
+	Ref<PackedScene> packed_scene = ResourceLoader::load(p_path, "PackedScene");
+	if (packed_scene.is_null()) {
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not load particle scene from %s."), p_path));
+		return;
+	}
+
+	Node *particle_scene = packed_scene->instantiate();
+	if (!particle_scene) {
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not instantiate particle scene from %s."), p_path));
+		return;
+	}
+	Vector<Node *> emitters;
+	_collect_emitters(particle_scene, emitters);
+	if (emitters.is_empty()) {
+		memdelete(particle_scene);
+		EditorNode::get_singleton()->show_warning(TTR("The selected scene does not contain a 3D particle emitter."));
+		return;
+	}
+
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Load Particle Scene"));
+	undo_redo->add_do_method(scene_root, "add_child", particle_scene, true);
+	undo_redo->add_do_method(particle_scene, "set_owner", scene_root);
+	undo_redo->add_do_reference(particle_scene);
+	undo_redo->add_undo_method(scene_root, "remove_child", particle_scene);
+	undo_redo->commit_action();
+
+	EditorSelection *editor_selection = EditorNode::get_singleton()->get_editor_selection();
+	editor_selection->clear();
+	editor_selection->add_node(emitters[0]);
+	_set_edited_emitter(emitters[0]);
+}
+
 void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventMouseButton> mouse_button = p_event;
 	if (mouse_button.is_valid()) {
 		const MouseButton button_index = mouse_button->get_button_index();
 		if (button_index == MouseButton::LEFT || button_index == MouseButton::RIGHT) {
 			preview_orbit_dragging = mouse_button->is_pressed();
+			if (mouse_button->is_pressed()) {
+				preview_pan_dragging = false;
+			}
+			preview_container->accept_event();
+			return;
+		}
+		if (button_index == MouseButton::MIDDLE) {
+			preview_pan_dragging = mouse_button->is_pressed();
+			if (mouse_button->is_pressed()) {
+				preview_orbit_dragging = false;
+			}
 			preview_container->accept_event();
 			return;
 		}
@@ -681,15 +765,26 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 	}
 
 	Ref<InputEventMouseMotion> mouse_motion = p_event;
-	if (mouse_motion.is_valid() && preview_orbit_dragging) {
+	if (mouse_motion.is_valid() && (preview_orbit_dragging || preview_pan_dragging)) {
 		const BitField<MouseButtonMask> button_mask = mouse_motion->get_button_mask();
-		if (!button_mask.has_flag(MouseButtonMask::LEFT) && !button_mask.has_flag(MouseButtonMask::RIGHT)) {
+		if (preview_pan_dragging && !button_mask.has_flag(MouseButtonMask::MIDDLE)) {
+			preview_pan_dragging = false;
+			return;
+		}
+		if (preview_orbit_dragging && !button_mask.has_flag(MouseButtonMask::LEFT) && !button_mask.has_flag(MouseButtonMask::RIGHT)) {
 			preview_orbit_dragging = false;
 			return;
 		}
 		const Vector2 relative = mouse_motion->get_relative();
-		preview_camera_yaw -= relative.x * 0.01;
-		preview_camera_pitch = CLAMP(preview_camera_pitch - relative.y * 0.01, Math::deg_to_rad(-85.0), Math::deg_to_rad(85.0));
+		if (preview_pan_dragging) {
+			const real_t viewport_height = MAX(1.0, preview_container->get_size().height);
+			const real_t world_per_pixel = 2.0 * preview_camera_distance * Math::tan(Math::deg_to_rad(preview_camera->get_fov()) * 0.5) / viewport_height;
+			const Basis camera_basis = preview_camera->get_global_transform().basis;
+			preview_camera_target += camera_basis.get_column(0) * (-relative.x * world_per_pixel) + camera_basis.get_column(1) * (relative.y * world_per_pixel);
+		} else {
+			preview_camera_yaw -= relative.x * 0.006;
+			preview_camera_pitch = CLAMP(preview_camera_pitch - relative.y * 0.006, Math::deg_to_rad(-85.0), Math::deg_to_rad(85.0));
+		}
 		_update_preview_camera();
 		preview_container->accept_event();
 	}
@@ -701,7 +796,7 @@ void FPSStudioParticleEditorPlugin::_update_preview_camera() {
 	}
 	const real_t horizontal_distance = preview_camera_distance * Math::cos(preview_camera_pitch);
 	const Vector3 camera_position = preview_camera_target + Vector3(Math::sin(preview_camera_yaw) * horizontal_distance, Math::sin(preview_camera_pitch) * preview_camera_distance, Math::cos(preview_camera_yaw) * horizontal_distance);
-	preview_camera->look_at_from_position(camera_position, preview_camera_target);
+	preview_camera->look_at_from_position(camera_position, preview_camera_target, Vector3(0.0, 1.0, 0.0));
 }
 
 void FPSStudioParticleEditorPlugin::_update_time_label() {
@@ -712,7 +807,11 @@ void FPSStudioParticleEditorPlugin::_update_time_label() {
 
 void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree()) {
-		if (GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(_get_edited_emitter())) {
+		Node *edited_emitter = _get_edited_emitter();
+		Node *scene_root = _get_active_scene_root();
+		if (edited_emitter && (!scene_root || (scene_root != edited_emitter && !scene_root->is_ancestor_of(edited_emitter)))) {
+			_set_edited_emitter(nullptr);
+		} else if (GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(edited_emitter)) {
 			Ref<Material> process_material = gpu_emitter->get_process_material();
 			if (process_material_inspector && process_material_inspector->get_edited_object() != process_material.ptr()) {
 				process_material_inspector->edit(process_material.ptr());
@@ -806,17 +905,21 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitters_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
 	emitters_title->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	emitters_header->add_child(emitters_title);
-	add_emitter_button = memnew(MenuButton);
-	add_emitter_button->set_text(TTR("Add"));
-	add_emitter_button->set_tooltip_text(TTR("Add a GPU or CPU particle emitter to the open scene."));
-	add_emitter_button->get_popup()->add_item(TTR("GPU Particles 3D"), 0);
-	add_emitter_button->get_popup()->add_item(TTR("CPU Particles 3D"), 1);
-	add_emitter_button->get_popup()->add_separator(TTR("GPU Presets"));
-	add_emitter_button->get_popup()->add_item(TTR("Burst"), 2);
-	add_emitter_button->get_popup()->add_item(TTR("Fountain"), 3);
-	add_emitter_button->get_popup()->add_item(TTR("Smoke"), 4);
-	add_emitter_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_pressed));
-	emitters_header->add_child(add_emitter_button);
+	particle_file_menu = memnew(MenuButton);
+	particle_file_menu->set_text(TTR("File"));
+	particle_file_menu->set_tooltip_text(TTR("Create, load, or save a particle emitter scene."));
+	PopupMenu *particle_menu = particle_file_menu->get_popup();
+	particle_menu->add_item(TTR("New GPU Emitter"), PARTICLE_FILE_NEW_GPU);
+	particle_menu->add_item(TTR("New CPU Emitter"), PARTICLE_FILE_NEW_CPU);
+	particle_menu->add_separator(TTR("GPU Presets"));
+	particle_menu->add_item(TTR("Burst"), PARTICLE_FILE_BURST);
+	particle_menu->add_item(TTR("Fountain"), PARTICLE_FILE_FOUNTAIN);
+	particle_menu->add_item(TTR("Smoke"), PARTICLE_FILE_SMOKE);
+	particle_menu->add_separator(TTR("Particle Scene"));
+	particle_menu->add_item(TTR("Load Particle Scene..."), PARTICLE_FILE_LOAD_SCENE);
+	particle_menu->add_item(TTR("Save Particle Scene As..."), PARTICLE_FILE_SAVE_SCENE);
+	particle_menu->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_file_menu_pressed));
+	emitters_header->add_child(particle_file_menu);
 	emitter_tree = memnew(Tree);
 	emitter_tree->set_hide_root(true);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -851,18 +954,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	grid_toggle->set_tooltip_text(TTR("Show or hide the preview grid."));
 	grid_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_grid_toggled));
 	preview_toolbar->add_child(grid_toggle);
-	save_scene_button = memnew(Button);
-	save_scene_button->set_text(TTR("Save Scene"));
-	save_scene_button->set_tooltip_text(TTR("Save the selected emitter and its children as a reusable scene."));
-	save_scene_button->set_disabled(true);
-	save_scene_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_save_scene_pressed));
-	preview_toolbar->add_child(save_scene_button);
-
 	preview_container = memnew(SubViewportContainer);
 	preview_container->set_stretch(true);
 	preview_container->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	preview_container->set_tooltip_text(TTR("Drag with the left or right mouse button to orbit, middle mouse button to pan, and use the wheel to zoom."));
 	preview_container->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_gui_input));
 	preview_panel->add_child(preview_container);
 
@@ -895,6 +992,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_root->add_child(preview_grid);
 
 	preview_camera = memnew(Camera3D);
+	preview_camera->set_perspective(55.0, 0.05, 4000.0);
 	preview_root->add_child(preview_camera);
 	_update_preview_camera();
 	preview_camera->set_current(true);
@@ -979,10 +1077,18 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_graph_confirmation->connect(SceneStringName(confirmed), callable_mp(this, &FPSStudioParticleEditorPlugin::_create_particle_graph));
 	add_child(particle_graph_confirmation);
 
+	load_scene_dialog = memnew(EditorFileDialog);
+	load_scene_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
+	load_scene_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_FILE);
+	load_scene_dialog->set_title(TTR("Load Particle Scene"));
+	load_scene_dialog->add_filter("*.tscn,*.scn", TTR("Godot Scenes"));
+	add_child(load_scene_dialog);
+	load_scene_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_load_particle_scene));
+
 	save_scene_dialog = memnew(EditorFileDialog);
 	save_scene_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
 	save_scene_dialog->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);
-	save_scene_dialog->set_title(TTR("Save Particle Emitter Scene"));
+	save_scene_dialog->set_title(TTR("Save Particle Scene"));
 	save_scene_dialog->add_filter("*.tscn", TTR("Godot Scene"));
 	add_child(save_scene_dialog);
 	save_scene_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_save_emitter_scene));
