@@ -39,7 +39,7 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 | 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo ověřeny; ruční editace bodů a uložení/načtení čekají. |
 | 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; ověřit Undo/Redo vytvoření. | Nativní editor grafu je vložený v Particle Logic. Vytvoření, uložení a znovunačtení grafu i oprava UndoRedo byly ručně ověřeny. Přepnutí mezi více GPU emitory čeká na kontrolu. |
 | 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo exportováno, synchronně naimportováno a přiřazeno emitoru v editoru. Kolize modálních oken ze screenshotu je opravená v kódu a nový build prošel; její konkrétní exportní průchod po opravě ještě čeká na ruční potvrzení. Sprite sheet je volitelný a neověřený. |
-| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Průběžně. |
+| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Build, dokumentace a diff jsou zkontrolované; commit `56c2bc71` je pushnutý. Dokončení workspace čeká na otevřené ruční scénáře. |
 
 Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
 
@@ -100,7 +100,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Uložit a načíst efekt se shaderovým grafem; opravit historii UndoRedo při jeho vytvoření.
 - [ ] Ručně ověřit přepínání vloženého grafu mezi více GPU emitory.
 
-### 6. Ověření, dokumentace, Git — probíhá
+### 6. Ověření, dokumentace, Git — část hotova
 
 - [x] Přeložit editor přes `./tools/build_macos.sh`.
 - [x] Aktualizovat uživatelskou dokumentaci a tuto roadmapu podle současného stavu.
@@ -110,7 +110,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [ ] Projít export PNG a Apply to Emitter na novém buildu, aby se ručně potvrdila oprava modal dialogů z uživatelova screenshotu.
 - [ ] Dovyzkoušet editaci bodů křivek včetně Undo/Redo a uložení/načtení, přepínání shader grafu mezi GPU emitory a malé okno s otevřeným Output panelem.
 - [ ] Projít celý create/add/remove/preview/save/open/Add to Level cyklus v jedné relaci.
-- [ ] Zkontrolovat diff, commitnout a pushnout změny na pracovní GitHub větev podle instrukcí repozitáře.
+- [x] Zkontrolovat diff a stav Gitu, commitnout a pushnout změny na pracovní větev `codex/black-default-fps-level`.
 
 ### 7. Nativní VFX generátor textur — první verze hotová, pokračovat iterativně
 
