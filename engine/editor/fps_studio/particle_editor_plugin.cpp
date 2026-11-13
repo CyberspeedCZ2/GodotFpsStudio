@@ -20,6 +20,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/themes/editor_scale.h"
+#include "modules/visual_shader/visual_shader.h"
 #include "scene/3d/camera_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
@@ -29,6 +30,7 @@
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/check_button.h"
+#include "scene/gui/dialogs.h"
 #include "scene/gui/label.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/popup_menu.h"
@@ -191,6 +193,10 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 		process_material_inspector->edit(process_material.ptr());
 		process_material_inspector->set_visible(process_material.is_valid());
 	}
+	if (process_material_page) {
+		process_material_page->set_visible(Object::cast_to<GPUParticles3D>(p_node) != nullptr);
+	}
+	_update_particle_graph_controls();
 
 	if (selection_label) {
 		if (p_node) {
@@ -396,6 +402,7 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 		}
 		process_material_inspector->set_visible(process_material.is_valid());
 	}
+	_update_particle_graph_controls();
 	_sync_preview_properties();
 	if (p_property == "lifetime") {
 		if (source && source->has_method("get_lifetime")) {
@@ -405,6 +412,99 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 			}
 		}
 		_update_emitter_tree();
+	}
+}
+
+Ref<VisualShader> FPSStudioParticleEditorPlugin::_get_particle_visual_shader(Node *p_emitter) const {
+	GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(p_emitter);
+	if (!gpu_emitter) {
+		return Ref<VisualShader>();
+	}
+	Ref<Material> process_material = gpu_emitter->get_process_material();
+	ShaderMaterial *shader_material = Object::cast_to<ShaderMaterial>(process_material.ptr());
+	if (!shader_material) {
+		return Ref<VisualShader>();
+	}
+	Ref<Shader> shader = shader_material->get_shader();
+	VisualShader *visual_shader = Object::cast_to<VisualShader>(shader.ptr());
+	if (!visual_shader || visual_shader->get_mode() != Shader::MODE_PARTICLES) {
+		return Ref<VisualShader>();
+	}
+	return Ref<VisualShader>(visual_shader);
+}
+
+void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
+	if (!particle_graph_button) {
+		return;
+	}
+	Node *emitter = _get_edited_emitter();
+	GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(emitter);
+	Ref<VisualShader> visual_shader = _get_particle_visual_shader(emitter);
+	particle_graph_button->set_disabled(!gpu_emitter);
+	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Edit Node Graph") : TTR("Create Node Graph"));
+	if (visual_shader.is_valid()) {
+		particle_graph_button->set_tooltip_text(TTR("Open the native Godot VisualShader graph for this particle emitter."));
+	} else {
+		particle_graph_button->set_tooltip_text(TTR("Create a native Godot particle VisualShader. The current Process Material will be replaced and can be restored with Undo."));
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed() {
+	Node *emitter = _get_edited_emitter();
+	GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(emitter);
+	if (!gpu_emitter) {
+		return;
+	}
+
+	Ref<VisualShader> visual_shader = _get_particle_visual_shader(gpu_emitter);
+	if (visual_shader.is_valid()) {
+		_open_particle_graph(visual_shader);
+		return;
+	}
+
+	if (gpu_emitter->get_process_material().is_valid()) {
+		particle_graph_confirmation->set_text(TTR("Creating a node graph replaces this emitter's current Process Material. You can restore the previous material with Undo."));
+		particle_graph_confirmation->popup_centered();
+		return;
+	}
+	_create_particle_graph();
+}
+
+void FPSStudioParticleEditorPlugin::_create_particle_graph() {
+	GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
+	if (!gpu_emitter) {
+		return;
+	}
+
+	Ref<VisualShader> visual_shader;
+	visual_shader.instantiate();
+	visual_shader->set_mode(Shader::MODE_PARTICLES);
+
+	Ref<ShaderMaterial> shader_material;
+	shader_material.instantiate();
+	shader_material->set_shader(visual_shader);
+
+	Ref<Material> previous_material = gpu_emitter->get_process_material();
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Create Particle Node Graph"));
+	undo_redo->add_do_method(gpu_emitter, "set_process_material", shader_material);
+	undo_redo->add_undo_method(gpu_emitter, "set_process_material", previous_material);
+	undo_redo->add_do_reference(shader_material.ptr());
+	if (previous_material.is_valid()) {
+		undo_redo->add_undo_reference(previous_material.ptr());
+	}
+	undo_redo->commit_action();
+
+	process_material_inspector->edit(shader_material.ptr());
+	process_material_inspector->set_visible(true);
+	_sync_preview_properties();
+	_update_particle_graph_controls();
+	_open_particle_graph(visual_shader);
+}
+
+void FPSStudioParticleEditorPlugin::_open_particle_graph(const Ref<VisualShader> &p_visual_shader) {
+	if (p_visual_shader.is_valid()) {
+		EditorNode::get_singleton()->edit_item(p_visual_shader.ptr(), this);
 	}
 }
 
@@ -611,6 +711,17 @@ void FPSStudioParticleEditorPlugin::_update_time_label() {
 }
 
 void FPSStudioParticleEditorPlugin::_notification(int p_what) {
+	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree()) {
+		if (GPUParticles3D *gpu_emitter = Object::cast_to<GPUParticles3D>(_get_edited_emitter())) {
+			Ref<Material> process_material = gpu_emitter->get_process_material();
+			if (process_material_inspector && process_material_inspector->get_edited_object() != process_material.ptr()) {
+				process_material_inspector->edit(process_material.ptr());
+				process_material_inspector->set_visible(process_material.is_valid());
+				_update_particle_graph_controls();
+				_sync_preview_properties();
+			}
+		}
+	}
 	if (p_what == NOTIFICATION_PROCESS && preview_playing && preview_emitter && screen->is_visible_in_tree()) {
 		preview_time += get_process_delta_time() * preview_speed;
 		if (preview_time >= preview_duration) {
@@ -846,12 +957,27 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	settings_tabs->add_child(emitter_inspector);
 
 	process_material_inspector = EditorInspector::create_default_inspector();
-	process_material_inspector->set_name(TTR("Process Material"));
 	process_material_inspector->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	process_material_inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	process_material_inspector->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_property_edited));
-	settings_tabs->add_child(process_material_inspector);
-	process_material_inspector->hide();
+	process_material_page = memnew(VBoxContainer);
+	process_material_page->set_name(TTR("Process Material"));
+	process_material_page->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	process_material_page->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	settings_tabs->add_child(process_material_page);
+	particle_graph_button = memnew(Button);
+	particle_graph_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed));
+	process_material_page->add_child(particle_graph_button);
+	process_material_page->add_child(process_material_inspector);
+	process_material_page->hide();
+	_update_particle_graph_controls();
+
+	particle_graph_confirmation = memnew(ConfirmationDialog);
+	particle_graph_confirmation->set_title(TTR("Create Particle Node Graph"));
+	particle_graph_confirmation->set_ok_button_text(TTR("Replace Material"));
+	particle_graph_confirmation->set_cancel_button_text(TTR("Cancel"));
+	particle_graph_confirmation->connect(SceneStringName(confirmed), callable_mp(this, &FPSStudioParticleEditorPlugin::_create_particle_graph));
+	add_child(particle_graph_confirmation);
 
 	save_scene_dialog = memnew(EditorFileDialog);
 	save_scene_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);

@@ -15,6 +15,7 @@
 class Button;
 class Camera3D;
 class CheckButton;
+class ConfirmationDialog;
 class EditorFileDialog;
 class EditorInspector;
 class HSlider;
@@ -30,6 +31,7 @@ class SubViewportContainer;
 class SpinBox;
 class Tree;
 class TreeItem;
+class VisualShader;
 
 class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	GDCLASS(FPSStudioParticleEditorPlugin, EditorPlugin);
@@ -38,6 +40,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Tree *emitter_tree = nullptr;
 	MenuButton *add_emitter_button = nullptr;
 	EditorFileDialog *save_scene_dialog = nullptr;
+	ConfirmationDialog *particle_graph_confirmation = nullptr;
 	SubViewport *preview_viewport = nullptr;
 	SubViewportContainer *preview_container = nullptr;
 	Node3D *preview_root = nullptr;
@@ -47,6 +50,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Ref<QuadMesh> preview_quad;
 	EditorInspector *emitter_inspector = nullptr;
 	EditorInspector *process_material_inspector = nullptr;
+	Control *process_material_page = nullptr;
+	Button *particle_graph_button = nullptr;
 	Button *play_button = nullptr;
 	Button *restart_button = nullptr;
 	Button *save_scene_button = nullptr;
@@ -92,6 +97,11 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _save_emitter_scene(const String &p_path);
 	void _on_emitter_selected();
 	void _on_emitter_property_edited(const String &p_property);
+	Ref<VisualShader> _get_particle_visual_shader(Node *p_emitter) const;
+	void _update_particle_graph_controls();
+	void _on_particle_graph_button_pressed();
+	void _create_particle_graph();
+	void _open_particle_graph(const Ref<VisualShader> &p_visual_shader);
 	void _update_time_label();
 
 protected:
