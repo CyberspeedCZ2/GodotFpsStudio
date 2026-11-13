@@ -38,7 +38,7 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 | 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Základ hotový; responsivita čeká na kontrolu. |
 | 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo ověřeny; ruční editace bodů a uložení/načtení čekají. |
 | 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; prověřit možnost vložení skutečného editoru do panelu. | Nativní graf lze otevřít samostatně; vložený pohled a celý persistence scénář čekají. |
-| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statický Fire náhled i uložení PNG viděny; původní pokus selhal při načtení importu. Doplnil jsem synchronní reimport, který se sestavil; ověření opravy a přiřazení čeká. |
+| 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Headless import PNG i přiřazení textury emitoru ověřeny. Synchronní reimport se sestavil; editorové tlačítko Apply po opravě stále čeká na ruční kontrolu. |
 | 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Průběžně. |
 
 Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
@@ -116,7 +116,8 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Přidat přehrávání a posuvník času; sprite sheet zobrazuje právě vybraný snímek, samostatná textura znovu vzorkuje procedurální animaci.
 - [x] Exportovat PNG do projektu a importovat ho synchronně před přiřazením materiálu emitteru.
 - Záměrně jde o nově napsaný nativní kód podle veřejně popsaného postupu. Konkrétní shaderové soubory EffectTextureMaker jsou minifikované a jejich licence není pro tento kód jednoznačně doložená. CC0 pro vygenerované textury automaticky nepovoluje kopírování generátoru.
-- [ ] Ručně ověřit, že statický PNG projde exportem a jde použít u emitora; animovaný preview a sprite sheet jsou volitelné scénáře.
+- [x] Headless načíst statický PNG a přiřadit ho `StandardMaterial3D` na `QuadMesh` emitoru.
+- [ ] V editoru ručně ověřit Export PNG a Apply to Emitter po synchronním reimportu; animovaný preview a sprite sheet jsou volitelné scénáře.
 - [ ] Volitelně ověřit animaci náhledu a export animovaného sprite sheetu v editoru.
 - [ ] Doplnit normal map, seamless tiling, color balance a pokročilejší šum.
 - [ ] Ukládat parametry generátoru do samostatného Godot resource pro opětovnou editaci.
