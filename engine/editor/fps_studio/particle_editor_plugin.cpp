@@ -562,9 +562,11 @@ void FPSStudioParticleEditorPlugin::_update_document_ui() {
 	const bool has_document = root != nullptr;
 	if (document_title) {
 		document_title->set_text(has_document ? String(root->get_name()) : TTR("No Particle Effect Open"));
+		document_title->set_tooltip_text(effect_path.is_empty() ? document_title->get_text() : effect_path);
 	}
 	if (document_path_label) {
 		document_path_label->set_text(effect_path.is_empty() ? TTR("Unsaved effect") : effect_path);
+		document_path_label->set_tooltip_text(effect_path);
 	}
 	if (document_status_label) {
 		document_status_label->set_text(effect_dirty ? TTR("Unsaved changes") : effect_path.is_empty() ? TTR("New") : TTR("Saved"));
@@ -586,8 +588,25 @@ void FPSStudioParticleEditorPlugin::_update_document_ui() {
 	if (open_effect_button) {
 		open_effect_button->set_disabled(false);
 	}
+	_update_document_toolbar_layout();
 	_update_effects_tree();
 	_update_emitter_tree();
+}
+
+void FPSStudioParticleEditorPlugin::_update_document_toolbar_layout() {
+	const bool compact = screen && screen->get_size().x < 1200.0 * EDSCALE;
+	if (document_path_label) {
+		document_path_label->set_visible(!compact);
+	}
+	if (document_status_label) {
+		document_status_label->set_visible(!compact);
+	}
+	if (save_effect_button) {
+		save_effect_button->set_text(effect_dirty ? (compact ? TTR("Save*") : TTR("Save *")) : TTR("Save"));
+	}
+	if (add_to_level_button) {
+		add_to_level_button->set_text(compact ? TTR("Add") : TTR("Add to Level"));
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_mark_document_dirty() {
@@ -2117,10 +2136,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 
 	HBoxContainer *document_toolbar = memnew(HBoxContainer);
 	document_toolbar->set_custom_minimum_size(Size2(0, 34) * EDSCALE);
+	document_toolbar->connect("resized", callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout));
 	workspace->add_child(document_toolbar);
 	document_title = memnew(Label);
 	document_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
 	document_title->set_h_size_flags(Control::SIZE_SHRINK_BEGIN);
+	document_title->set_clip_text(true);
 	document_toolbar->add_child(document_title);
 	document_path_label = memnew(Label);
 	document_path_label->set_clip_text(true);
@@ -2328,6 +2349,9 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	transport->add_child(timeline);
 	time_label = memnew(Label);
 	time_label->set_text("0.00 / 5.00 s");
+	time_label->set_clip_text(true);
+	time_label->set_custom_minimum_size(Size2(150, 0) * EDSCALE);
+	time_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	transport->add_child(time_label);
 	Label *speed_label = memnew(Label);
 	speed_label->set_text(TTR("Speed"));

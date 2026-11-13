@@ -39,7 +39,7 @@ Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewp
 
 ## Současné hranice a další práce
 
-- Šířky hlavních panelů se ukládají do rozvržení editoru a při dalším spuštění obnoví. Responsivita při malém okně a s otevřeným Output panelem ještě vyžaduje samostatnou kontrolu.
+- Šířky hlavních panelů se ukládají do rozvržení editoru a při dalším spuštění obnoví. Při úzkém okně se zkracuje document toolbar a časový popisek přehrávání má pevnou šířku, aby jeho měnící se čísla nerozhazovala minimální šířku panelů. Toto rozložení ještě čeká na vizuální ověření v editoru.
 - Dvojklik na název emitoru ve stromu zahájí přejmenování; změna se objeví také v popisku náhledu a lze ji vrátit přes Undo/Redo.
 - Křivky Alpha a Scale mají účelové presety i nativní CurveEditor. Další parametry procesu zatím nemají vlastní zjednodušené křivkové karty.
 - **Texture Generator** otevírá nativní nástroj s průhledným 2D náhledem. Pro běžný particle efekt stačí samostatná statická textura: zvol předvolbu Fire, Smoke, Explosion nebo Spark streak, seed, rozlišení 128/256/512/1024 a dvě barvy, potom použij **Export PNG** a **Apply to Emitter**. PNG se naimportuje do projektu před přiřazením vybranému emitoru a efektová `.tscn` odkazuje na tento běžný obrázkový asset. Přehrávání, časový posuvník a export sprite sheetu 4×4 či 8×8 s FPS jsou volitelné rozšíření pro animaci; k vytvoření použitelného particle obrázku nejsou potřeba.

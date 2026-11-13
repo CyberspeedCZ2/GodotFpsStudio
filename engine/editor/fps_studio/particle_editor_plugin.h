@@ -163,6 +163,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _update_effects_tree();
 	void _update_emitter_tree();
 	void _update_document_ui();
+	void _update_document_toolbar_layout();
 	void _set_effect_document(Node *p_root, const String &p_path, bool p_dirty = false);
 	void _set_edited_emitter(Node *p_node, bool p_update_tree = true);
 	void _create_effect_document(int p_template);

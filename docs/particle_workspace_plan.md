@@ -35,7 +35,7 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 | --- | --- | --- | --- |
 | 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | V dočasném projektu ručně ověřeno uložení, znovunačtení efektu i přidání do Levelu. |
 | 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenovat emitter a ověřit Undo/Redo. | Přidání, odebrání i přejmenování jsou implementované; rename a jeho Undo/Redo ručně ověřeny. |
-| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Rozměry splitterů se ukládají; změnu šířky levého panelu jsem ověřil v dočasném projektu. Output je při tomto průchodu otevřený, ale malé okno a jeho responsivita ještě čekají na kontrolu. |
+| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Rozměry splitterů se ukládají a změnu šířky levého panelu jsem ověřil v dočasném projektu. Pro úzké okno se zkracuje toolbar a časový popisek přehrávání má pevnou šířku, aby se měnící text nepřepočítával do minima layoutu. Aktuální build prošel; vizuální ověření této opravy se nepodařilo dokončit, protože automatizace při restartu editoru vypršela. |
 | 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo byly ověřeny už dříve. V novém buildu jsem vložil a upravil bod Alpha over Life; uložení úspěšně zapsalo jeho změněné souřadnice do `.tscn`. Opětovné načtení tohoto upraveného souboru ještě nebylo samostatně ověřeno. |
 | 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; ověřit Undo/Redo vytvoření. | Nativní editor grafu je vložený v Particle Logic. Vytvoření, uložení, znovunačtení i UndoRedo byly ručně ověřeny; při výběru dvou GPU emitterů se správně přepíná jejich samostatný graf. |
 | 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo v novém buildu exportováno, naimportováno a Apply to Emitter ho přiřadilo jako texturu PlaneMesh. Náhled ohně zůstal v Rendereru viditelný i při zapnutém přehrávání generátoru; další přepínání karet už nezpůsobilo pád a Output neměl chyby. Sprite sheet je volitelný a neověřený. |
@@ -80,7 +80,7 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Pravé karty Emitter, Process a Renderer používají nativní Godot inspektory.
 - [x] Upravit výchozí poměr vertikálního splitteru tak, aby 3D preview dostalo více plochy než spodní informační panel.
 - [x] Uložit poměry splitterů do editorového rozvržení a obnovit je při spuštění.
-- [ ] Znovu proměřit responsivitu rozvržení s/bez spodního Output panelu a při malém okně.
+- [ ] V editoru vizuálně ověřit kompaktní toolbar a stabilní pravý panel při běhu časové osy, s/bez spodního Output panelu a při malém okně.
 
 ### 4. Křivky — základ hotov
 
