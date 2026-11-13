@@ -33,13 +33,13 @@ Hotový systém budu označovat za dokončený teprve po ručním ověření uve
 
 | Etapa | Závisí na | Ověřovací scénáře | Stav |
 | --- | --- | --- | --- |
-| 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | V dočasném projektu ručně ověřeno uložení, znovunačtení efektu i přidání do Levelu. |
-| 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenovat emitter a ověřit Undo/Redo. | Přidání, odebrání i přejmenování jsou implementované; rename a jeho Undo/Redo ručně ověřeny. |
-| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | Rozměry splitterů se ukládají a změnu šířky levého panelu jsem ověřil v dočasném projektu. Pro úzké okno se zkracuje toolbar; časový popisek přehrávání je v pevně širokém ořezávacím kontejneru, aby změna textu neměnila minimální šířku náhledu. Aktuální build prošel, ale po restartu se nepodařilo přes UI znovu přepnout testovací projekt na Particle workspace, takže stabilitu pravého panelu zatím nepovažuji za vizuálně potvrzenou. |
+| 1. Efektový dokument | — | Vytvořit efekt, uložit `.tscn`, zavřít workspace, znovu otevřít scénu a přidat instanci do Levelu. | V dočasném projektu ručně ověřeno uložení, opětovné načtení a přidání instance do Levelu s následným Undo. Přejmenování rootu přes titulek a jeho Undo/Redo je také ručně ověřené. |
+| 2. Hierarchie emitterů | 1 | Přidat GPU/CPU emitter, odebrat vybraný uzel, ověřit Undo/Redo a ochranu posledního emitteru; přejmenovat emitter a ověřit Undo/Redo. | Přidání, odebrání i přejmenování jsou implementované. Přejmenování i Undo/Redo přidání a odebrání byly ručně ověřeny; oprava obnovuje strom výběru a vlastnictví uzlu bez varování v Outputu. |
+| 3. Izolovaný náhled a rozvržení | 1, 2 | Ověřit více emitterů, orbit/pan/zoom, grid, přehrávání, restart, scrub a změnu materiálu; zopakovat při malém okně a otevřeném Output panelu. | V úzkém rozvržení s otevřeným Output panelem zůstaly zkrácené záhlaví i Save/Add viditelné. Uživatel potvrdil, že cukání pravé strany při pohybu časové osy už nepozoruje. Samostatná kontrola bez Output panelu a při změně šířky okna zůstává otevřená. |
 | 4. Křivky přes celý život částice | 2, 3 | Vytvořit Alpha/Scale křivku presetem, změnit body, ověřit okamžitý náhled, Undo/Redo a uložení/načtení efektu. | Presety a Undo/Redo byly ověřeny už dříve. Bod Alpha over Life jsem upravil, uložil do `.tscn` a po opětovném otevření ověřil jeho zachované souřadnice v CurveEditoru. |
 | 5. Particle `VisualShader` | 2, 3 | Vytvořit graf, uložit/načíst scénu s grafem, přepnout emitter a ověřit vazbu grafu; ověřit Undo/Redo vytvoření. | Nativní editor grafu je vložený v Particle Logic. Vytvoření, uložení, znovunačtení i UndoRedo byly ručně ověřeny; při výběru dvou GPU emitterů se správně přepíná jejich samostatný graf. |
 | 6. Generátor VFX textur | 2, 3 | Základ: vytvořit statický obrázek, exportovat PNG, importovat ho a přiřadit emitoru. Volitelně: projít animaci, FPS a sheet 4×4/8×8. | Statické PNG bylo v novém buildu exportováno, naimportováno a Apply to Emitter ho přiřadilo jako texturu PlaneMesh. Náhled ohně zůstal v Rendereru viditelný i při zapnutém přehrávání generátoru; další přepínání karet už nezpůsobilo pád a Output neměl chyby. Sprite sheet je volitelný a neověřený. |
-| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | Build i diff jsou zkontrolované; commity `7d4ea917` a `d791cf8b` jsou pushnuté. Opětovné načtení upravené křivky je ověřené; malé okno a stabilita pravého panelu při přehrávání ještě čekají na vizuální kontrolu. |
+| 7. Dokončení a distribuce změn | 1–6 | Spustit build, projít dokumentaci, zopakovat hlavní workflow v dočasném projektu, zkontrolovat diff a stav Gitu. | `./tools/build_macos.sh` uspěl a zabalil UniBuilder. V dočasném projektu prošel celý cyklus efektu včetně Undo/Redo emitterů a vložení instance do Levelu. Uživatel potvrdil, že cukání pravého panelu už nepozoruje. Vizuální kontrola bez Output panelu a při změně šířky okna zůstává otevřená; aktuální diff čeká na commit a push. |
 
 Závislosti určují pořadí implementace, ne blokování nezávislé dokumentace nebo jednotlivých oprav. Rozhraní považuj za ověřené až po ručním průchodu odpovídajícího scénáře v editoru.
 
@@ -80,7 +80,8 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Pravé karty Emitter, Process a Renderer používají nativní Godot inspektory.
 - [x] Upravit výchozí poměr vertikálního splitteru tak, aby 3D preview dostalo více plochy než spodní informační panel.
 - [x] Uložit poměry splitterů do editorového rozvržení a obnovit je při spuštění.
-- [ ] V editoru vizuálně ověřit kompaktní toolbar a stabilní pravý panel při běhu časové osy, s/bez spodního Output panelu a při malém okně.
+- [x] Uživatel potvrdil, že při běhu časové osy už cukání pravé strany nepozoruje.
+- [ ] Zopakovat vizuální kontrolu bez Output panelu a při změně šířky hlavního okna.
 
 ### 4. Křivky — základ hotov
 
@@ -112,8 +113,8 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Projít export PNG a Apply to Emitter na novém buildu; ověřit přiřazení statické textury, Renderer náhled a stabilitu při přepínání karet.
 - [x] Dovyzkoušet editaci a uložení bodu křivky i přepínání shader grafu mezi GPU emitory.
 - [x] Potvrdit opětovné načtení právě upraveného bodu křivky.
-- [ ] Ověřit malé okno s otevřeným Output panelem.
-- [ ] Projít celý create/add/remove/preview/save/open/Add to Level cyklus v jedné relaci.
+- [x] Ověřit malé okno s otevřeným Output panelem při běhu a smyčce časové osy.
+- [x] Projít celý create/add/remove/preview/save/open/Add to Level cyklus v jedné relaci; po uložení znovu načíst efekt, ověřit oba emitery a přidat instanci do Levelu přes Undo/Redo.
 - [x] Zkontrolovat diff a stav Gitu, commitnout a pushnout změny na pracovní větev `codex/black-default-fps-level`.
 
 ### 7. Nativní VFX generátor textur — první verze hotová, pokračovat iterativně

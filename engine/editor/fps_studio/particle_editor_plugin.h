@@ -66,6 +66,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *document_title = nullptr;
 	Label *document_path_label = nullptr;
 	Label *document_status_label = nullptr;
+	AcceptDialog *rename_effect_dialog = nullptr;
+	LineEdit *rename_effect_line_edit = nullptr;
 	EditorFileDialog *save_scene_dialog = nullptr;
 	EditorFileDialog *load_scene_dialog = nullptr;
 	EditorFileDialog *texture_save_dialog = nullptr;
@@ -142,6 +144,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool rebuilding_preview = false;
 	double preview_time = 0.0;
 	double preview_duration = 5.0;
+	double preview_time_label_update_accumulator = 0.0;
 	double preview_speed = 1.0;
 	double texture_generator_time_value = 0.0;
 	double texture_generator_playback_accumulator = 0.0;
@@ -209,7 +212,12 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_effect_filter_changed(const String &p_text);
 	void _on_open_effect_pressed();
 	void _on_effect_activated();
+	void _on_document_title_gui_input(const Ref<InputEvent> &p_event);
+	void _on_rename_effect_requested();
+	void _on_rename_effect_confirmed();
+	void _on_effect_name_changed();
 	void _on_emitter_selected();
+	void _on_emitter_hierarchy_history_changed(Node *p_preferred_emitter);
 	void _on_save_scene_pressed();
 	void _save_emitter_scene(const String &p_path);
 	void _load_particle_scene(const String &p_path);

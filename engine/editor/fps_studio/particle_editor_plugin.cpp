@@ -562,7 +562,8 @@ void FPSStudioParticleEditorPlugin::_update_document_ui() {
 	const bool has_document = root != nullptr;
 	if (document_title) {
 		document_title->set_text(has_document ? String(root->get_name()) : TTR("No Particle Effect Open"));
-		document_title->set_tooltip_text(effect_path.is_empty() ? document_title->get_text() : effect_path);
+		const String rename_hint = TTR("Double-click to rename this particle effect.");
+		document_title->set_tooltip_text(effect_path.is_empty() ? rename_hint : effect_path + "\n" + rename_hint);
 	}
 	if (document_path_label) {
 		document_path_label->set_text(effect_path.is_empty() ? TTR("Unsaved effect") : effect_path);
@@ -739,6 +740,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	}
 	preview_duration = MAX(preview_duration, 0.1);
 	preview_time = 0.0;
+	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
 		timeline->set_max(preview_duration);
 		timeline->set_value_no_signal(0.0);
@@ -789,6 +791,7 @@ void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
 		return;
 	}
 	preview_time = 0.0;
+	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
 		timeline->set_value_no_signal(0.0);
 	}
@@ -803,6 +806,7 @@ void FPSStudioParticleEditorPlugin::_on_timeline_changed(double p_value) {
 	}
 	_set_preview_playing(false);
 	preview_time = p_value;
+	preview_time_label_update_accumulator = 0.0;
 	restart_particle_nodes(preview_effect, true, preview_time);
 	_update_time_label();
 }
@@ -1180,14 +1184,18 @@ void FPSStudioParticleEditorPlugin::_add_emitter(int p_type) {
 		_create_effect_document(p_type);
 		return;
 	}
+	Node *previous_emitter = _get_edited_emitter();
 	Node3D *emitter = create_particle_emitter(p_type, create_particle_quad());
 	emitter->set_name(effect->prevalidate_child_name(emitter, emitter->get_name()));
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(vformat(TTR("Add %s to Particle Effect"), emitter->get_name()));
 	undo_redo->add_do_method(effect, "add_child", emitter, true);
 	undo_redo->add_do_method(emitter, "set_owner", effect);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter);
 	undo_redo->add_do_reference(emitter);
+	undo_redo->add_undo_method(emitter, "set_owner", (Object *)nullptr);
 	undo_redo->add_undo_method(effect, "remove_child", emitter);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", previous_emitter);
 	undo_redo->commit_action();
 	_set_edited_emitter(emitter);
 	_mark_document_dirty();
@@ -1214,12 +1222,32 @@ void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
 	}
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(TTR("Remove Particle Emitter"));
+	undo_redo->add_do_method(emitter, "set_owner", (Object *)nullptr);
 	undo_redo->add_do_method(effect, "remove_child", emitter);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", next_emitter);
 	undo_redo->add_undo_method(effect, "add_child", emitter, true);
 	undo_redo->add_undo_method(emitter, "set_owner", effect);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter);
 	undo_redo->add_do_reference(emitter);
 	undo_redo->commit_action();
 	_set_edited_emitter(next_emitter);
+	_mark_document_dirty();
+}
+
+void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *p_preferred_emitter) {
+	Node *effect = _get_effect_root();
+	if (!effect) {
+		_set_edited_emitter(nullptr, false);
+		_update_document_ui();
+		return;
+	}
+	Vector<Node *> emitters;
+	_collect_emitters(effect, emitters);
+	Node *selected_emitter = p_preferred_emitter;
+	if (!selected_emitter || (selected_emitter != effect && !effect->is_ancestor_of(selected_emitter))) {
+		selected_emitter = emitters.is_empty() ? nullptr : emitters[0];
+	}
+	_set_edited_emitter(selected_emitter, false);
 	_mark_document_dirty();
 }
 
@@ -1264,6 +1292,52 @@ void FPSStudioParticleEditorPlugin::_on_effect_activated() {
 			_load_particle_scene(path);
 		}
 	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_document_title_gui_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventMouseButton> mouse_button = p_event;
+	if (!mouse_button.is_valid() || !mouse_button->is_pressed() || mouse_button->get_button_index() != MouseButton::LEFT || !mouse_button->is_double_click()) {
+		return;
+	}
+	_on_rename_effect_requested();
+}
+
+void FPSStudioParticleEditorPlugin::_on_rename_effect_requested() {
+	Node *effect = _get_effect_root();
+	if (!effect || !rename_effect_dialog || !rename_effect_line_edit) {
+		return;
+	}
+	rename_effect_line_edit->set_text(effect->get_name());
+	rename_effect_dialog->popup_centered();
+	rename_effect_line_edit->grab_focus();
+	rename_effect_line_edit->select_all();
+}
+
+void FPSStudioParticleEditorPlugin::_on_rename_effect_confirmed() {
+	Node *effect = _get_effect_root();
+	if (!effect || !rename_effect_line_edit) {
+		return;
+	}
+	String new_name = rename_effect_line_edit->get_text().strip_edges().validate_node_name();
+	if (new_name.is_empty()) {
+		_update_document_ui();
+		return;
+	}
+	const String old_name = effect->get_name();
+	if (new_name == old_name) {
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Rename Particle Effect"), UndoRedo::MERGE_DISABLE, effect);
+	undo_redo->add_do_method(effect, "set_name", new_name);
+	undo_redo->add_undo_method(effect, "set_name", old_name);
+	undo_redo->add_do_method(this, "_on_effect_name_changed");
+	undo_redo->add_undo_method(this, "_on_effect_name_changed");
+	undo_redo->commit_action();
+}
+
+void FPSStudioParticleEditorPlugin::_on_effect_name_changed() {
+	_mark_document_dirty();
 }
 
 void FPSStudioParticleEditorPlugin::_on_emitter_selected() {
@@ -2016,7 +2090,8 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		}
 	}
 	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree() && preview_playing && preview_effect) {
-		preview_time += get_process_delta_time() * preview_speed;
+		const double delta = get_process_delta_time();
+		preview_time += delta * preview_speed;
 		if (preview_time >= preview_duration) {
 			if (preview_loop) {
 				preview_time = Math::fmod(preview_time, preview_duration);
@@ -2029,7 +2104,13 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		if (timeline) {
 			timeline->set_value_no_signal(preview_time);
 		}
-		_update_time_label();
+		// Keep the slider in sync every frame, but avoid invalidating the transport
+		// row and its parent split containers whenever the formatted time changes.
+		preview_time_label_update_accumulator += delta;
+		if (preview_time_label_update_accumulator >= 0.1 || !preview_playing) {
+			preview_time_label_update_accumulator = Math::fmod(preview_time_label_update_accumulator, 0.1);
+			_update_time_label();
+		}
 	}
 	if (p_what == NOTIFICATION_PREDELETE && preview_effect) {
 		preview_effect->queue_free();
@@ -2039,6 +2120,8 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 
 void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_emitter_name_changed"), &FPSStudioParticleEditorPlugin::_on_emitter_name_changed);
+	ClassDB::bind_method(D_METHOD("_on_effect_name_changed"), &FPSStudioParticleEditorPlugin::_on_effect_name_changed);
+	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
 }
 
 void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
@@ -2143,6 +2226,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	document_title->set_h_size_flags(Control::SIZE_SHRINK_BEGIN);
 	document_title->set_clip_text(true);
 	document_title->set_custom_minimum_size(Size2(180, 0) * EDSCALE);
+	document_title->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	document_title->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_document_title_gui_input));
 	document_toolbar->add_child(document_title);
 	document_path_label = memnew(Label);
 	document_path_label->set_clip_text(true);
@@ -2354,6 +2439,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	transport->add_child(time_label_container);
 	time_label = memnew(Label);
 	time_label->set_text("0.00 / 5.00 s");
+	time_label->set_custom_minimum_size(Size2(150, 0) * EDSCALE);
 	time_label->set_clip_text(true);
 	time_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	time_label_container->add_child(time_label);
@@ -2527,6 +2613,19 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_graph_confirmation->set_cancel_button_text(TTR("Cancel"));
 	particle_graph_confirmation->connect(SceneStringName(confirmed), callable_mp(this, &FPSStudioParticleEditorPlugin::_create_particle_graph));
 	add_child(particle_graph_confirmation);
+
+	rename_effect_dialog = memnew(AcceptDialog);
+	rename_effect_dialog->set_title(TTR("Rename Particle Effect"));
+	rename_effect_dialog->set_ok_button_text(TTR("Rename"));
+	rename_effect_dialog->set_hide_on_ok(true);
+	rename_effect_dialog->set_min_size(Size2(380, 120) * EDSCALE);
+	rename_effect_dialog->connect(SceneStringName(confirmed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_rename_effect_confirmed));
+	add_child(rename_effect_dialog);
+	rename_effect_line_edit = memnew(LineEdit);
+	rename_effect_line_edit->set_placeholder(TTR("Effect name"));
+	rename_effect_line_edit->set_custom_minimum_size(Size2(340, 0) * EDSCALE);
+	rename_effect_dialog->add_child(rename_effect_line_edit);
+	rename_effect_dialog->register_text_enter(rename_effect_line_edit);
 
 	texture_generator_dialog = memnew(AcceptDialog);
 	texture_generator_dialog->set_title(TTR("VFX Texture Generator"));
