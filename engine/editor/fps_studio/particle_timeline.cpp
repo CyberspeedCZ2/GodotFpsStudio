@@ -543,7 +543,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 				shape = CURSOR_DRAG;
 			}
 		} else if (pos.y < _ruler_height() && pos.x >= _name_width()) {
-			shape = mm->is_shift_pressed() ? CURSOR_HSPLIT : CURSOR_IBEAM;
+			shape = mm->is_shift_pressed() ? CURSOR_HSPLIT : CURSOR_POINTING_HAND; // Scrub the playhead.
 		}
 		set_default_cursor_shape(shape);
 		if (row != hover_row) {
