@@ -35,7 +35,7 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Graf VisualShader se edituje jen inline v Particle Logic, tlačítko „Open in Shader Editor“ je pryč. Náhled má minimální výšku 140 px.
 - Křížek v odděleném okně vrací panel zpět (dřív ho skryl). Pod 1200 px šířky se UI zhušťuje (`_apply_compact_layout`), záhlaví Particle Logic je `HFlowContainer`.
 - Convert to Shader Code otevírá kód inline v Particle Logic (`TextShaderEditor`, tlačítko Toggle Files Panel je skryté). Godotův Script editor shadery neumí, proto ne záložka Script.
-- Známé: s particle `ShaderMaterial` (kód) na emitoru hlásí headless editor při ukončení úniky RID/ObjectDB. Je to i bez vloženého editoru kódu, nejde o regresi; zatím neřešeno.
+- Úniky při ukončení opraveny (2026-11-15): náhledové slunce a prostředí 3D editoru (`~Node3DEditor`, ve forku výchozí vypnuté, nikdy nepřipojené) a ovládací prvky karet modulů, které vlastní plugin a u emitoru se shaderem zůstanou bez rodiče (`~FPSParticleModuleStack`). Opraven i pád `_build` u emitoru se shaderem (karta Collision neexistuje).
 - Po spuštění jsou Preview a Timeline vždy vidět (ukládá se jen stav bočních panelů). Posuvník času v transportu má minimální šířku 120 px. Zhuštěné UI se zapne i tehdy, když se široké rozložení nevejde.
 - Uživatel potvrdil, že rozložení v GUI funguje dobře.
 - Effect Library je přesunutá do menu **Library** v horní liště, panel knihovny je ve výchozím stavu skrytý (`show_library` v layoutu). Seznam emitorů má barvy stop (`FPSParticleTimeline::get_track_color`) a sloupec s typem.

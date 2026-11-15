@@ -135,4 +135,5 @@ public:
 	void set_module_custom_control(int p_module, Control *p_control);
 
 	FPSParticleModuleStack();
+	~FPSParticleModuleStack();
 };

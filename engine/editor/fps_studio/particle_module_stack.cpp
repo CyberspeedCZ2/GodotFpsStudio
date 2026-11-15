@@ -536,6 +536,8 @@ void FPSParticleModuleStack::_clear() {
 	create_material_button = nullptr;
 	generate_texture_button = nullptr;
 	custom_shader_note = nullptr;
+	collision_size_hint = nullptr;
+	collision_fit_button = nullptr;
 	for (int i = cards->get_child_count() - 1; i >= 0; i--) {
 		Node *child = cards->get_child(i);
 		cards->remove_child(child);
@@ -701,8 +703,8 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_COLLISION, TARGET_PROCESS, "collision_bounce", StringName(), TTR("Bounce"));
 	_add_row(MODULE_COLLISION, TARGET_PROCESS, "collision_use_scale", StringName(), TTR("Use Scale"));
 	_add_row(MODULE_COLLISION, TARGET_NODE, "collision_base_size", StringName(), TTR("Particle Size"));
-	{
-		VBoxContainer *collision = module_contents[MODULE_COLLISION];
+	// No Collision card for custom particle shaders or CPU emitters.
+	if (VBoxContainer *collision = module_contents[MODULE_COLLISION]) {
 		Label *collision_note = memnew(Label);
 		collision_note->set_text(TTR("In the game, the effect bounces particles off walls and floors that have physics collision (StaticBody3D) automatically: when it plays, it bakes the collision shapes around it in the background (ParticleEffect3D > Level Collision). Enable this module on every emitter that should bounce, e.g. Smoke or Sparks; fast particles get extra simulation steps so they do not pass through thin walls. Test bouncing here with View > Collision Test Walls. Add Collision to Level is optional: it also shows the collision in the Level editor viewport."));
 		collision_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
@@ -929,6 +931,25 @@ void FPSParticleModuleStack::_on_create_material_pressed() {
 	undo_redo->add_do_method(this, "_history_changed", StringName("material"));
 	undo_redo->add_undo_method(this, "_history_changed", StringName("material"));
 	undo_redo->commit_action();
+}
+
+FPSParticleModuleStack::~FPSParticleModuleStack() {
+	// Plugin-owned module controls outlive card rebuilds. Ones that are not in
+	// a card right now (e.g. the emitter uses a custom particle shader, so the
+	// process modules were not built) would otherwise never be freed.
+	for (int i = 0; i < MODULE_MAX; i++) {
+		Control *control = module_custom_controls[i];
+		if (!control || control->get_parent()) {
+			continue;
+		}
+		for (int j = i + 1; j < MODULE_MAX; j++) {
+			if (module_custom_controls[j] == control) {
+				module_custom_controls[j] = nullptr;
+			}
+		}
+		memdelete(control);
+		module_custom_controls[i] = nullptr;
+	}
 }
 
 void FPSParticleModuleStack::set_module_custom_control(int p_module, Control *p_control) {
