@@ -103,7 +103,12 @@ Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh
 | Light Flash | `OmniLight3D` (funguje i `SpotLight3D`) | intenzita sleduje křivku **Intensity over Time** během délky; délka 0 = trvale svítí; **Flicker** přidá mihotání |
 | Sound | `AudioStreamPlayer3D` | přehraje se jednou ve svém čase; **Pitch Random** náhodně mění výšku |
 | Camera Shake | `CameraShake3D` | otřese aktuální kamerou: náklon/otočení/převrácení a jemný posun (síla, délka, frekvence, max. rotace, max. posun, poloměr plné síly a útlumu) |
+| Damage | `RadialDamage3D` | zraní vše, co má `take_damage()`: plné zranění do vnitřního poloměru, k vnějšímu klesá na nulu; krytí za překážkou zranění sníží nebo zastaví; fyzikální objekty odhodí |
 | Decal | `Decal` | objeví se ve svém čase a během **Fade Out Part** zmizí; délka 0 = zůstane |
+
+**Damage** volá na zasaženém uzlu (nebo jeho rodiči) metodu `take_damage` s tolika parametry, kolik jich přijímá: `(amount)`, `(amount, hit_position)` nebo `(amount, hit_position, hit_direction)`. Funguje tak pro hráče, NPC i předměty bez úprav kódu. Postava s více kolizemi nebo hitboxy dostane zranění jen jednou. Krytí: z místa výbuchu jde 9 paprsků na střed a rohy cíle (vrstvy **Cover Layers**). Plně schovaný cíl nedostane nic, částečně krytý poměrnou část (např. 4 z 9 paprsků = 44 %). V editoru a v náhledu se nikomu zranění nedává. Preset Explosion obsahuje Damage 90 (plné do 2 m, nula v 7 m).
+
+Dosah Damage (červeně) a Camera Shake (modře) je vidět jako kruhy: vnitřní plná síla, vnější útlum. V náhledu je zapíná **View → Damage & Shake Radius** (výchozí zapnuto, vybraná událost svítí víc), v Level editoru jsou vidět jako gizmo.
 
 Otřes kamery funguje v náhledu i ve hře bez úprav herního kódu. Engine ho přidává ke kameře jako samostatný posun pohledu (`Camera3D.add_shake_offset`), takže nepřepisuje rotaci, kterou nastavuje skript hráče, a sčítá se s pohupováním hlavy nebo zpětným rázem. **Strength** je 0–1 (trauma), plnou sílu má kamera do **Full Strength Radius**, k **Fade Out Radius** plynule slábne. Pokud efekt startuje současně s levelem a kamera ještě není aktivní, otřes na ni až 0,5 s počká. Signál `shake_started(intensity)` lze napojit na další odezvu ve hře (vibrace ovladače).
 

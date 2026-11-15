@@ -43,6 +43,9 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Vzhled: `_apply_workspace_theme` (barvy z motivu editoru: `background` pro pozadí, `base_color` pro panely, `accent_color` pro výběr a vybranou záložku). Pozor na re-entry: override na kořeni vyvolá theme_changed → hlídá `applying_workspace_theme` (bez něj se editor zasekl).
 - CameraShake3D 2.0: rotační trauma otřes přes nový `Camera3D::add_shake_offset` (aditivní, neukládá se), `inner_radius`, `max_rotation_degrees`, `max_offset`, čekání až 0,5 s na kameru, signál `shake_started`. Ověřeno headless runtime testem (`shake_test*.gd` ve scratchpadu).
 - Ve hře: uzel `Explosion` ve `fps_level.tscn` je stará vložená kopie bez LightFlash/CameraShake; uživatel ho má nahradit (efekt uložit jako .tscn a znovu Add to Level). Herní repo needitovat bez žádosti.
+- RadialDamage3D (`engine/scene/3d/radial_damage_3d.*`, událost EVENT_DAMAGE): zranění s útlumem, krytí 9 paprsky (poměrně), `take_damage` voláno s počtem argumentů podle metody (hráč má 1, NPC 3), impulz pro RigidBody3D. Ověřeno headless (`damage_test.gd`). Kruhy dosahu: `particle_event_gizmos.*` (gizmo v Level + náhled, View → Damage & Shake Radius). View → Floor (výchozí vypnuto).
+- Otevřené: uživatel chce „zvuk plus efekty, aby se to dalo přidat“ – význam se upřesňuje (Sound událost už existuje).
+- Headless editor testy spouštěj s `--language en` (izolované nastavení jinak přepne editor do češtiny).
 - Inspirace od uživatele: Model workspace (záložky vlevo, svislé záložky vpravo) pro šetření místem.
 
 ## Co se právě řešilo

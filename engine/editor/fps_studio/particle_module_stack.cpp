@@ -418,6 +418,10 @@ void FPSParticleModuleStack::_build_event() {
 			title = TTR("Camera Shake");
 			subtitle = TTR("Shakes the active camera when it fires.");
 			break;
+		case ParticleEffect3D::EVENT_DAMAGE:
+			title = TTR("Damage");
+			subtitle = TTR("Hurts everything with take_damage() in range: full damage inside the inner radius, fading to zero at the outer radius. Targets fully behind cover take nothing, partly covered targets take the visible share.");
+			break;
 		case ParticleEffect3D::EVENT_DECAL:
 			title = TTR("Decal");
 			subtitle = TTR("Decal event: appears at its start and fades out.");
@@ -474,6 +478,17 @@ void FPSParticleModuleStack::_build_event() {
 			_add_row(MODULE_EVENT, TARGET_NODE, "max_offset", "max_offset", TTR("Max Offset"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "inner_radius", "inner_radius", TTR("Full Strength Radius"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "radius", "radius", TTR("Fade Out Radius"));
+			break;
+		case ParticleEffect3D::EVENT_DAMAGE:
+			_add_row(MODULE_EVENT, TARGET_NODE, "damage", "damage", TTR("Damage (Center)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "inner_radius", "inner_radius", TTR("Full Damage Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "radius", "radius", TTR("Fade Out Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "use_cover", "use_cover", TTR("Cover Blocks Damage"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "impulse", "impulse", TTR("Physics Push"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "collision_mask", "collision_mask", TTR("Target Layers"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "obstacle_mask", "obstacle_mask", TTR("Cover Layers"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "damage_method", "damage_method", TTR("Damage Method"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "target_group", "target_group", TTR("Only Group (optional)"));
 			break;
 		case ParticleEffect3D::EVENT_DECAL:
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s", 6.0);

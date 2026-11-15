@@ -234,6 +234,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	double preview_stats_accumulator = 0.0;
 	int preview_environment_preset = 0;
 	bool preview_show_bounds = false;
+	bool preview_show_radii = true;
+	Node3D *preview_radii_root = nullptr;
+	MeshInstance3D *preview_floor = nullptr;
 	Control *module_stack_scroll = nullptr;
 	TabContainer *properties_tabs = nullptr;
 	TabContainer *bottom_tabs = nullptr;
@@ -441,6 +444,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_bottom_close_pressed();
 	void _apply_compact_layout();
 	void _apply_workspace_theme();
+	void _update_event_radii();
 	void _toggle_bottom_floating();
 	void _on_bottom_window_visibility_changed(bool p_visible);
 	void _on_bottom_tab_changed(int p_tab);

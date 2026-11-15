@@ -8,6 +8,7 @@
 #include "particle_presets.h"
 
 #include "scene/3d/camera_shake_3d.h"
+#include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/light_3d.h"
 #include "scene/3d/particle_effect_3d.h"
@@ -262,6 +263,16 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 
 	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
 	add_camera_shake(p_effect, 0.85, 0.75, 6.0, 35.0, 0.0);
+	{
+		RadialDamage3D *damage = memnew(RadialDamage3D);
+		damage->set_name("Damage");
+		damage->set_damage(90.0);
+		damage->set_inner_radius(2.0);
+		damage->set_radius(7.0);
+		damage->set_impulse(12.0);
+		p_effect->add_child(damage, true);
+		damage->set_owner(p_effect);
+	}
 }
 
 void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {

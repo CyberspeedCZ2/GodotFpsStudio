@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="RadialDamage3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Area damage with distance falloff and cover checks, for example an explosion.
+	</brief_description>
+	<description>
+		When [method apply_damage] is called, every physics body within [member radius] whose node (or one of its ancestors) has the method [member damage_method] receives damage. Bodies within [member inner_radius] take the full [member damage]; beyond it the damage falls off linearly to zero at [member radius]. The distance is measured to the nearest point of the target's collision shapes.
+		With [member use_cover], rays are cast from this node to the center and eight inset corners of each target against [member obstacle_mask]. A target hidden from all of them takes no damage; a partly covered target takes the visible share (for example 4 of 9 rays visible = 44% of the damage).
+		The damage method is called with as many arguments as it accepts: [code]amount[/code], then [code]hit_position[/code] and [code]hit_direction[/code]. A character with several colliders or hitboxes is damaged once. [RigidBody3D] targets are pushed away by [member impulse].
+		Nothing is damaged in the editor. As a child of a [ParticleEffect3D], it fires automatically at its start time (see [method ParticleEffect3D.set_emitter_delay]).
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="apply_damage">
+			<return type="void" />
+			<description>
+				Deals damage to everything in range now.
+			</description>
+		</method>
+		<method name="get_damage_at_distance" qualifiers="const">
+			<return type="float" />
+			<param index="0" name="distance" type="float" />
+			<description>
+				Returns the damage before cover at the given distance from this node.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="collision_mask" type="int" setter="set_collision_mask" getter="get_collision_mask" default="4294967295">
+			Physics layers of the bodies that can be damaged or pushed.
+		</member>
+		<member name="damage" type="float" setter="set_damage" getter="get_damage" default="50.0">
+			Damage dealt within [member inner_radius].
+		</member>
+		<member name="damage_method" type="StringName" setter="set_damage_method" getter="get_damage_method" default="&amp;&quot;take_damage&quot;">
+			Name of the method called on the damaged node.
+		</member>
+		<member name="hit_areas" type="bool" setter="set_hit_areas" getter="is_hitting_areas" default="false">
+			If [code]true[/code], [Area3D] nodes (such as hitboxes) are also searched for targets.
+		</member>
+		<member name="impulse" type="float" setter="set_impulse" getter="get_impulse" default="8.0">
+			Impulse applied to [RigidBody3D] targets, scaled by distance falloff and cover. [code]0[/code] disables pushing.
+		</member>
+		<member name="inner_radius" type="float" setter="set_inner_radius" getter="get_inner_radius" default="1.5">
+			Distance within which targets take the full [member damage].
+		</member>
+		<member name="obstacle_mask" type="int" setter="set_obstacle_mask" getter="get_obstacle_mask" default="1">
+			Physics layers that provide cover and block the damage.
+		</member>
+		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="6.0">
+			Distance at which the damage falls off to zero.
+		</member>
+		<member name="target_group" type="StringName" setter="set_target_group" getter="get_target_group" default="&amp;&quot;&quot;">
+			If not empty, only nodes in this group take damage.
+		</member>
+		<member name="use_cover" type="bool" setter="set_use_cover" getter="is_using_cover" default="true">
+			If [code]true[/code], obstacles between this node and a target reduce or block the damage.
+		</member>
+	</members>
+	<signals>
+		<signal name="damaged">
+			<param index="0" name="target" type="Node" />
+			<param index="1" name="amount" type="float" />
+			<param index="2" name="exposure" type="float" />
+			<description>
+				Emitted for each damaged node with the dealt amount and the visible share ([code]0[/code] to [code]1[/code]).
+			</description>
+		</signal>
+	</signals>
+</class>

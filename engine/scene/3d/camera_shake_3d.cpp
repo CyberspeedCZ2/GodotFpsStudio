@@ -182,6 +182,7 @@ double CameraShake3D::get_duration() const {
 
 void CameraShake3D::set_radius(real_t p_radius) {
 	radius = MAX(0.0, p_radius);
+	update_gizmos();
 }
 
 real_t CameraShake3D::get_radius() const {
@@ -190,6 +191,7 @@ real_t CameraShake3D::get_radius() const {
 
 void CameraShake3D::set_inner_radius(real_t p_radius) {
 	inner_radius = MAX(0.0, p_radius);
+	update_gizmos();
 }
 
 real_t CameraShake3D::get_inner_radius() const {

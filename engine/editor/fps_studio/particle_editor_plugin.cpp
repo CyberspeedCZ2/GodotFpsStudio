@@ -7,6 +7,7 @@
 
 #include "particle_editor_plugin.h"
 
+#include "particle_event_gizmos.h"
 #include "particle_module_stack.h"
 #include "particle_presets.h"
 #include "particle_timeline.h"
@@ -50,6 +51,7 @@
 #include "scene/3d/light_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/camera_shake_3d.h"
+#include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/particle_effect_3d.h"
@@ -102,6 +104,7 @@ enum ParticleTemplate {
 	PARTICLE_EVENT_SOUND = 201,
 	PARTICLE_EVENT_SHAKE = 202,
 	PARTICLE_EVENT_DECAL = 203,
+	PARTICLE_EVENT_DAMAGE = 204,
 };
 
 enum ParticleLayoutPanel {
@@ -441,6 +444,11 @@ static Node3D *create_event_node(int p_type) {
 			shake->set_name("CameraShake");
 			return shake;
 		}
+		case PARTICLE_EVENT_DAMAGE: {
+			RadialDamage3D *damage = memnew(RadialDamage3D);
+			damage->set_name("Damage");
+			return damage;
+		}
 		case PARTICLE_EVENT_DECAL: {
 			Decal *decal = memnew(Decal);
 			decal->set_name("Decal");
@@ -734,6 +742,8 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 			detail = TTR("Shake");
 		} else if (Object::cast_to<Decal>(emitter)) {
 			detail = TTR("Decal");
+		} else if (RadialDamage3D *damage_track = Object::cast_to<RadialDamage3D>(emitter)) {
+			detail = vformat(TTR("Damage %d"), int(Math::round(damage_track->get_damage())));
 		} else if (emitter->is_class("AudioStreamPlayer3D")) {
 			detail = TTR("Sound");
 		} else {
@@ -975,6 +985,7 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 		return;
 	}
 	edited_emitter_id = p_node ? p_node->get_instance_id() : ObjectID();
+	_update_event_radii(); // The selected event's rings are drawn brighter.
 	if (emitter_inspector) {
 		emitter_inspector->edit(p_node);
 	}
@@ -1087,6 +1098,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	}
 	_apply_preview_solo();
 	_update_preview_bounds();
+	_update_event_radii();
 	_restart_preview_at(0.0);
 	_set_preview_playing(preview_playing);
 	_frame_preview();
@@ -1111,7 +1123,71 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	_apply_preview_defaults(preview_effect);
 	_apply_preview_solo();
 	_update_preview_bounds();
+	_update_event_radii();
 	_set_preview_playing(preview_playing);
+}
+
+void FPSStudioParticleEditorPlugin::_update_event_radii() {
+	if (!preview_radii_root) {
+		return;
+	}
+	for (int i = preview_radii_root->get_child_count() - 1; i >= 0; i--) {
+		Node *child = preview_radii_root->get_child(i);
+		preview_radii_root->remove_child(child);
+		child->queue_free();
+	}
+	Node *source = _get_effect_root();
+	if (!preview_show_radii || !source || !preview_effect) {
+		return;
+	}
+	Vector<Node *> tracks;
+	collect_tracks(source, tracks);
+	Node *selected = _get_edited_emitter();
+	for (Node *track : tracks) {
+		real_t inner = 0.0;
+		real_t outer = 0.0;
+		Color color;
+		if (!FPSParticleEventRadii::get_reach(track, inner, outer, color)) {
+			continue;
+		}
+		const Node3D *track_3d = Object::cast_to<Node3D>(track);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
+		Node3D *preview_track = Object::cast_to<Node3D>(preview_effect->get_node_or_null(source->get_path_to(track)));
+		if (!preview_track || !preview_track->is_inside_tree()) {
+			continue;
+		}
+		const real_t emphasis = track == selected ? 1.0 : 0.55;
+		Ref<ImmediateMesh> mesh;
+		mesh.instantiate();
+		for (int ring = 0; ring < 2; ring++) {
+			Vector<Vector3> lines;
+			FPSParticleEventRadii::append_sphere_rings(lines, ring == 0 ? inner : outer);
+			if (lines.is_empty()) {
+				continue;
+			}
+			Ref<StandardMaterial3D> material;
+			material.instantiate();
+			material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+			material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+			material->set_albedo(Color(color, (ring == 0 ? 0.95 : 0.5) * emphasis));
+			material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+			mesh->surface_begin(Mesh::PRIMITIVE_LINES, material);
+			for (const Vector3 &point : lines) {
+				mesh->surface_add_vertex(point);
+			}
+			mesh->surface_end();
+		}
+		if (mesh->get_surface_count() == 0) {
+			continue;
+		}
+		MeshInstance3D *rings = memnew(MeshInstance3D);
+		rings->set_mesh(mesh);
+		rings->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+		preview_radii_root->add_child(rings);
+		rings->set_global_position(preview_track->get_global_position());
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_set_preview_playing(bool p_playing) {
@@ -3535,6 +3611,15 @@ void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
 				preview_floor_collision->set_visible(checked);
 			}
 			break;
+		case 14:
+			preview_show_radii = checked;
+			_update_event_radii();
+			break;
+		case 15:
+			if (preview_floor) {
+				preview_floor->set_visible(checked);
+			}
+			break;
 	}
 }
 
@@ -4367,6 +4452,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	VBoxContainer *workspace = memnew(VBoxContainer);
 	workspace->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	workspace_background->add_child(workspace);
+	// Level editor gizmos showing the reach of damage and camera shake events.
+	add_node_3d_gizmo_plugin(memnew(FPSParticleEventGizmoPlugin));
 
 	HBoxContainer *document_toolbar = memnew(HBoxContainer);
 	document_toolbar->set_custom_minimum_size(Size2(0, 34) * EDSCALE);
@@ -4496,6 +4583,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_menu->get_popup()->add_item(TTR("Sound"), PARTICLE_EVENT_SOUND);
 	add_emitter_menu->get_popup()->add_item(TTR("Camera Shake"), PARTICLE_EVENT_SHAKE);
 	add_emitter_menu->get_popup()->add_item(TTR("Decal"), PARTICLE_EVENT_DECAL);
+	add_emitter_menu->get_popup()->add_item(TTR("Damage"), PARTICLE_EVENT_DAMAGE);
+	add_emitter_menu->get_popup()->set_item_tooltip(-1, TTR("Area damage with falloff and cover checks; calls take_damage() on what it hits."));
 	add_emitter_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_menu_pressed));
 	emitter_header->add_child(add_emitter_menu);
 	duplicate_emitter_button = memnew(Button);
@@ -4604,6 +4693,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->set_item_checked(view_popup->get_item_index(10), true);
 		view_popup->add_check_item(TTR("Glow (Bloom)"), 11);
 		view_popup->add_check_item(TTR("Emitter Bounds"), 12);
+		view_popup->add_check_item(TTR("Floor"), 15);
+		view_popup->set_item_tooltip(view_popup->get_item_index(15), TTR("Show a ground plane to judge height, lighting and decals."));
+		view_popup->add_check_item(TTR("Damage & Shake Radius"), 14);
+		view_popup->set_item_checked(view_popup->get_item_index(14), preview_show_radii);
+		view_popup->set_item_tooltip(view_popup->get_item_index(14), TTR("Rings around Damage (red) and Camera Shake (blue) events: inner = full strength, outer = fade out."));
 		view_popup->add_check_item(TTR("Floor Collision"), 13);
 		view_popup->set_item_tooltip(view_popup->get_item_index(13), TTR("Add a collision floor to the preview so the Collision module can be tested."));
 		view_popup->set_hide_on_checkable_item_selection(false);
@@ -4687,6 +4781,26 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		floor->set_visible(false);
 		preview_root->add_child(floor);
 		preview_floor_collision = floor;
+	}
+	{
+		// Visible ground plane, off by default (View > Floor).
+		Ref<PlaneMesh> plane;
+		plane.instantiate();
+		plane->set_size(Vector2(80.0, 80.0));
+		Ref<StandardMaterial3D> floor_material;
+		floor_material.instantiate();
+		floor_material->set_albedo(Color(0.22, 0.23, 0.25));
+		floor_material->set_roughness(0.95);
+		plane->set_material(floor_material);
+		preview_floor = memnew(MeshInstance3D);
+		preview_floor->set_name("PreviewFloor");
+		preview_floor->set_mesh(plane);
+		preview_floor->set_position(Vector3(0.0, -0.002, 0.0));
+		preview_floor->set_visible(false);
+		preview_root->add_child(preview_floor);
+		preview_radii_root = memnew(Node3D);
+		preview_radii_root->set_name("PreviewEventRadii");
+		preview_root->add_child(preview_radii_root);
 	}
 	preview_camera = memnew(Camera3D);
 	preview_camera->set_perspective(55.0, 0.03, 1000.0);

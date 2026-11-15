@@ -36,6 +36,7 @@ public:
 		EVENT_SOUND,
 		EVENT_CAMERA_SHAKE,
 		EVENT_DECAL,
+		EVENT_DAMAGE,
 	};
 
 private:

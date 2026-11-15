@@ -12,6 +12,7 @@
 #include "scene/3d/audio_stream_player_3d.h"
 #include "servers/audio/audio_stream.h"
 #include "scene/3d/camera_shake_3d.h"
+#include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/gpu_particles_3d.h"
@@ -36,6 +37,9 @@ ParticleEffect3D::EventKind ParticleEffect3D::get_event_kind(const Node *p_node)
 	if (Object::cast_to<Decal>(p_node)) {
 		return EVENT_DECAL;
 	}
+	if (Object::cast_to<RadialDamage3D>(p_node)) {
+		return EVENT_DAMAGE;
+	}
 	return EVENT_NONE;
 }
 
@@ -53,6 +57,8 @@ static double get_event_duration(const Node *p_node, ParticleEffect3D::EventKind
 		}
 		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
 			return Object::cast_to<CameraShake3D>(p_node)->get_duration();
+		case ParticleEffect3D::EVENT_DAMAGE:
+			return 0.15; // Instant; a short bar keeps it visible in the timeline.
 		default:
 			return ParticleEffect3D::get_emitter_duration(p_node);
 	}
@@ -407,6 +413,12 @@ void ParticleEffect3D::_update_events() {
 				if (!event.started && local >= 0.0) {
 					event.started = true;
 					Object::cast_to<CameraShake3D>(node)->shake();
+				}
+			} break;
+			case EVENT_DAMAGE: {
+				if (!event.started && local >= 0.0) {
+					event.started = true;
+					Object::cast_to<RadialDamage3D>(node)->apply_damage();
 				}
 			} break;
 			default:
