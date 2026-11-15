@@ -109,6 +109,7 @@ enum ParticleLayoutPanel {
 	PARTICLE_PANEL_PREVIEW = 1,
 	PARTICLE_PANEL_BOTTOM = 2,
 	PARTICLE_PANEL_RIGHT = 3,
+	PARTICLE_PANEL_LIBRARY = 4,
 };
 
 enum ParticleLayoutMenu {
@@ -116,6 +117,7 @@ enum ParticleLayoutMenu {
 	PARTICLE_LAYOUT_PREVIEW = PARTICLE_PANEL_PREVIEW,
 	PARTICLE_LAYOUT_BOTTOM = PARTICLE_PANEL_BOTTOM,
 	PARTICLE_LAYOUT_RIGHT = PARTICLE_PANEL_RIGHT,
+	PARTICLE_LAYOUT_LIBRARY = PARTICLE_PANEL_LIBRARY,
 	PARTICLE_LAYOUT_SHOW_TIMELINE = 10,
 	PARTICLE_LAYOUT_SHOW_LOGIC = 11,
 	PARTICLE_LAYOUT_MAXIMIZE_BOTTOM = 20,
@@ -123,6 +125,9 @@ enum ParticleLayoutMenu {
 	PARTICLE_LAYOUT_RESET = 30,
 };
 
+static const int PARTICLE_LIBRARY_PRESET_BASE = 1000;
+static const int PARTICLE_LIBRARY_RECENT_BASE = 2000;
+static const int PARTICLE_LIBRARY_TOGGLE_PANEL = 3000;
 static const int PARTICLE_BOTTOM_TAB_TIMELINE = 0;
 static const int PARTICLE_BOTTOM_TAB_LOGIC = 1;
 
@@ -704,10 +709,41 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	collect_tracks(effect_root, emitters);
 	Node *edited_emitter = _get_edited_emitter();
 	TreeItem *selected_item = nullptr;
+	if (track_color_icon.is_null()) {
+		// A white bar tinted per row with the same color as its timeline track.
+		Ref<Image> bar = Image::create_empty(MAX(3, int(4 * EDSCALE)), MAX(10, int(16 * EDSCALE)), false, Image::FORMAT_RGBA8);
+		bar->fill(Color(1, 1, 1));
+		track_color_icon = ImageTexture::create_from_image(bar);
+	}
+	const Color detail_color = emitter_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor));
+	int row = 0;
 	for (Node *emitter : emitters) {
 		TreeItem *item = emitter_tree->create_item(root_item);
 		item->set_text(0, emitter->get_name());
-		item->set_icon(0, EditorNode::get_singleton()->get_object_icon(emitter));
+		item->set_icon(0, track_color_icon);
+		item->set_icon_modulate(0, FPSParticleTimeline::get_track_color(emitter, row));
+		row++;
+		String detail;
+		if (GPUParticles3D *gpu_track = Object::cast_to<GPUParticles3D>(emitter)) {
+			detail = vformat(String::utf8("%s \u00B7 %d"), TTR("GPU"), gpu_track->get_amount());
+		} else if (CPUParticles3D *cpu_track = Object::cast_to<CPUParticles3D>(emitter)) {
+			detail = vformat(String::utf8("%s \u00B7 %d"), TTR("CPU"), cpu_track->get_amount());
+		} else if (Object::cast_to<Light3D>(emitter)) {
+			detail = TTR("Light");
+		} else if (Object::cast_to<CameraShake3D>(emitter)) {
+			detail = TTR("Shake");
+		} else if (Object::cast_to<Decal>(emitter)) {
+			detail = TTR("Decal");
+		} else if (emitter->is_class("AudioStreamPlayer3D")) {
+			detail = TTR("Sound");
+		} else {
+			detail = emitter->get_class();
+		}
+		item->set_text(1, detail);
+		item->set_icon(1, EditorNode::get_singleton()->get_object_icon(emitter));
+		item->set_custom_color(1, detail_color);
+		item->set_text_alignment(1, HORIZONTAL_ALIGNMENT_RIGHT);
+		item->set_selectable(1, true);
 		Node3D *track_3d = Object::cast_to<Node3D>(emitter);
 		if (track_3d && !track_3d->is_visible()) {
 			item->set_custom_color(0, emitter_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
@@ -2516,7 +2552,48 @@ void FPSStudioParticleEditorPlugin::_on_effect_activated() {
 	if (!item) {
 		return;
 	}
-	const String path = item->get_metadata(0);
+	_open_library_entry(item->get_metadata(0));
+}
+
+void FPSStudioParticleEditorPlugin::_update_library_menu() {
+	if (!library_menu) {
+		return;
+	}
+	PopupMenu *popup = library_menu->get_popup();
+	popup->clear();
+	popup->add_separator(TTR("FPS Presets"));
+	for (int preset = 0; preset < FPSParticlePresets::PRESET_MAX; preset++) {
+		popup->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_LIBRARY_PRESET_BASE + preset);
+		popup->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+	}
+	popup->add_separator(TTR("Recent Effects"));
+	if (recent_effect_paths.is_empty()) {
+		popup->add_item(TTR("No recent effects"), PARTICLE_LIBRARY_RECENT_BASE - 1);
+		popup->set_item_disabled(-1, true);
+	}
+	for (int i = 0; i < recent_effect_paths.size(); i++) {
+		const String &path = recent_effect_paths[i];
+		popup->add_item(path.get_file().get_basename(), PARTICLE_LIBRARY_RECENT_BASE + i);
+		popup->set_item_tooltip(-1, path);
+	}
+	popup->add_separator();
+	popup->add_check_item(TTR("Show Library Panel"), PARTICLE_LIBRARY_TOGGLE_PANEL);
+	popup->set_item_checked(-1, show_left_panel && show_library_panel);
+	popup->set_item_tooltip(-1, TTR("Show the searchable Effect Library below the emitter list."));
+}
+
+void FPSStudioParticleEditorPlugin::_on_library_menu_id(int p_id) {
+	if (p_id == PARTICLE_LIBRARY_TOGGLE_PANEL) {
+		_set_panel_visible(PARTICLE_PANEL_LIBRARY, !(show_left_panel && show_library_panel));
+	} else if (p_id >= PARTICLE_LIBRARY_RECENT_BASE && p_id - PARTICLE_LIBRARY_RECENT_BASE < recent_effect_paths.size()) {
+		_open_library_entry(recent_effect_paths[p_id - PARTICLE_LIBRARY_RECENT_BASE]);
+	} else if (p_id >= PARTICLE_LIBRARY_PRESET_BASE && p_id - PARTICLE_LIBRARY_PRESET_BASE < FPSParticlePresets::PRESET_MAX) {
+		_open_library_entry(vformat("preset:%d", p_id - PARTICLE_LIBRARY_PRESET_BASE));
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_open_library_entry(const String &p_entry) {
+	const String path = p_entry;
 	if (path.begins_with("preset:")) {
 		const int template_type = PARTICLE_TEMPLATE_PRESET_BASE + path.trim_prefix("preset:").to_int();
 		if (effect_dirty) {
@@ -3899,6 +3976,7 @@ void FPSStudioParticleEditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) 
 	// back on start so a freshly opened workspace is never missing them.
 	show_left_panel = p_layout->get_value("ParticleWorkspace", "show_emitters", true);
 	show_right_panel = p_layout->get_value("ParticleWorkspace", "show_properties", true);
+	show_library_panel = p_layout->get_value("ParticleWorkspace", "show_library", false);
 	show_preview_panel = true;
 	show_bottom_panel = true;
 	if (bottom_tabs) {
@@ -3923,6 +4001,7 @@ void FPSStudioParticleEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) 
 	}
 	p_layout->set_value("ParticleWorkspace", "show_emitters", show_left_panel);
 	p_layout->set_value("ParticleWorkspace", "show_properties", show_right_panel);
+	p_layout->set_value("ParticleWorkspace", "show_library", show_library_panel);
 	const real_t main_extent = main_panel_split->get_size().width;
 	const real_t properties_extent = preview_properties_split->get_size().width;
 	const real_t logic_extent = preview_logic_split->get_size().height;
@@ -3968,6 +4047,12 @@ void FPSStudioParticleEditorPlugin::_set_panel_visible(int p_panel, bool p_visib
 		case PARTICLE_PANEL_RIGHT: {
 			show_right_panel = p_visible;
 		} break;
+		case PARTICLE_PANEL_LIBRARY: {
+			show_library_panel = p_visible;
+			if (p_visible) {
+				show_left_panel = true;
+			}
+		} break;
 		case PARTICLE_PANEL_PREVIEW: {
 			show_preview_panel = p_visible;
 			if (!p_visible) {
@@ -4003,6 +4088,9 @@ void FPSStudioParticleEditorPlugin::_apply_panel_visibility() {
 	}
 	const bool floating = _is_bottom_floating();
 	left_panel_root->set_visible(show_left_panel);
+	if (library_panel_root) {
+		library_panel_root->set_visible(show_library_panel);
+	}
 	right_panel_root->set_visible(show_right_panel);
 	preview_panel_root->set_visible(show_preview_panel);
 	bottom_window_wrapper->set_visible(show_bottom_panel && !floating);
@@ -4023,6 +4111,7 @@ void FPSStudioParticleEditorPlugin::_update_layout_menu() {
 	PopupMenu *popup = layout_menu->get_popup();
 	const bool floating = _is_bottom_floating();
 	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_LEFT), show_left_panel);
+	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_LIBRARY), show_left_panel && show_library_panel);
 	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_PREVIEW), show_preview_panel);
 	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_BOTTOM), show_bottom_panel);
 	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_RIGHT), show_right_panel);
@@ -4037,6 +4126,9 @@ void FPSStudioParticleEditorPlugin::_on_layout_menu_id(int p_id) {
 	switch (p_id) {
 		case PARTICLE_LAYOUT_LEFT: {
 			_set_panel_visible(PARTICLE_PANEL_LEFT, !show_left_panel);
+		} break;
+		case PARTICLE_LAYOUT_LIBRARY: {
+			_set_panel_visible(PARTICLE_PANEL_LIBRARY, !(show_left_panel && show_library_panel));
 		} break;
 		case PARTICLE_LAYOUT_PREVIEW: {
 			_set_panel_visible(PARTICLE_PANEL_PREVIEW, !show_preview_panel);
@@ -4074,6 +4166,7 @@ void FPSStudioParticleEditorPlugin::_reset_panel_layout() {
 	show_right_panel = true;
 	show_preview_panel = true;
 	show_bottom_panel = true;
+	show_library_panel = false;
 	_apply_panel_visibility();
 	for (SplitContainer *split : { main_panel_split, preview_properties_split, preview_logic_split }) {
 		if (split) {
@@ -4228,6 +4321,13 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	open_effect_button = memnew(Button);
 	open_effect_button->set_text(TTR("Open..."));
 	document_toolbar->add_child(open_effect_button);
+	library_menu = memnew(MenuButton);
+	library_menu->set_text(TTR("Library"));
+	library_menu->set_flat(false);
+	library_menu->set_tooltip_text(TTR("Create an effect from an FPS preset or reopen a recent effect."));
+	library_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_library_menu_id));
+	library_menu->get_popup()->connect("about_to_popup", callable_mp(this, &FPSStudioParticleEditorPlugin::_update_library_menu));
+	document_toolbar->add_child(library_menu);
 	save_effect_button = memnew(Button);
 	save_effect_button->set_text(TTR("Save"));
 	save_effect_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_save_scene_pressed));
@@ -4244,7 +4344,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	{
 		PopupMenu *layout_popup = layout_menu->get_popup();
 		layout_popup->add_separator(TTR("Panels"));
-		layout_popup->add_check_item(TTR("Emitters & Library"), PARTICLE_LAYOUT_LEFT);
+		layout_popup->add_check_item(TTR("Emitters"), PARTICLE_LAYOUT_LEFT);
+		layout_popup->add_check_item(TTR("Effect Library"), PARTICLE_LAYOUT_LIBRARY);
 		layout_popup->add_check_item(TTR("Preview"), PARTICLE_LAYOUT_PREVIEW);
 		layout_popup->add_check_item(TTR("Timeline & Logic"), PARTICLE_LAYOUT_BOTTOM);
 		layout_popup->add_check_item(TTR("Properties"), PARTICLE_LAYOUT_RIGHT);
@@ -4314,6 +4415,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	}
 	emitter_tree = memnew(Tree);
 	emitter_tree->set_hide_root(true);
+	emitter_tree->set_columns(2);
+	emitter_tree->set_column_expand(0, true);
+	emitter_tree->set_column_expand(1, false);
+	emitter_tree->set_column_clip_content(0, true);
+	emitter_tree->set_column_custom_minimum_width(1, 72 * EDSCALE);
 	emitter_tree->set_custom_minimum_size(Size2(0, 140) * EDSCALE);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	emitter_tree->set_stretch_ratio(1.4);
@@ -4323,6 +4429,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 
 	// Library of effect files below the emitter list; folded away when not needed.
 	FoldableContainer *library_section = memnew(FoldableContainer);
+	library_panel_root = library_section;
+	library_section->set_visible(show_library_panel);
 	library_section->set_title(TTR("Effect Library"));
 	library_section->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	left_panel->add_child(library_section);

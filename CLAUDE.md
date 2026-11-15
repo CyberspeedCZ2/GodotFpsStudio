@@ -38,6 +38,8 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Známé: s particle `ShaderMaterial` (kód) na emitoru hlásí headless editor při ukončení úniky RID/ObjectDB. Je to i bez vloženého editoru kódu, nejde o regresi; zatím neřešeno.
 - Po spuštění jsou Preview a Timeline vždy vidět (ukládá se jen stav bočních panelů). Posuvník času v transportu má minimální šířku 120 px. Zhuštěné UI se zapne i tehdy, když se široké rozložení nevejde.
 - Uživatel potvrdil, že rozložení v GUI funguje dobře.
+- Effect Library je přesunutá do menu **Library** v horní liště, panel knihovny je ve výchozím stavu skrytý (`show_library` v layoutu). Seznam emitorů má barvy stop (`FPSParticleTimeline::get_track_color`) a sloupec s typem.
+- Inspirace od uživatele: Model workspace (záložky vlevo, svislé záložky vpravo) pro šetření místem.
 
 ## Co se právě řešilo
 Poslední zadání: přepracovat rozložení Particle workspace (zavírání a otevírání panelů, graf bez vytlačení náhledu). Hotovo a pushnuto, čeká se na ruční test v GUI. Potom pokračovat zpětnou vazbou k funkcím Particle (časová osa, události, moduly, náhled).

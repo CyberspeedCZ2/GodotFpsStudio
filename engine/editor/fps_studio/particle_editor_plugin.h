@@ -243,11 +243,15 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Control *bottom_panel_root = nullptr;
 	WindowWrapper *bottom_window_wrapper = nullptr;
 	MenuButton *layout_menu = nullptr;
+	MenuButton *library_menu = nullptr;
+	Control *library_panel_root = nullptr;
+	Ref<Texture2D> track_color_icon;
 	Button *bottom_maximize_button = nullptr;
 	Button *bottom_float_button = nullptr;
 	LocalVector<Button *> layout_icon_buttons;
 	bool show_left_panel = true;
 	bool show_right_panel = true;
+	bool show_library_panel = false;
 	bool show_preview_panel = true;
 	bool show_bottom_panel = true;
 	bool bottom_float_on_return = false;
@@ -420,6 +424,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _restore_panel_layout();
 	void _on_panel_split_drag_ended();
 	void _on_layout_menu_id(int p_id);
+	void _on_library_menu_id(int p_id);
+	void _update_library_menu();
+	void _open_library_entry(const String &p_entry);
 	void _set_panel_visible(int p_panel, bool p_visible);
 	void _apply_panel_visibility();
 	void _update_layout_menu();

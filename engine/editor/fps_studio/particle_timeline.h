@@ -21,6 +21,9 @@ class FPSParticleTimeline : public Control {
 	GDCLASS(FPSParticleTimeline, Control);
 
 public:
+	// Color of a track row; shared with the emitter list so both read alike.
+	static Color get_track_color(Node *p_track, int p_row);
+
 	enum TrackAction {
 		ACTION_DUPLICATE,
 		ACTION_RENAME,

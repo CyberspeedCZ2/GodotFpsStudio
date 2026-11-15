@@ -13,13 +13,14 @@ Při návrhu práce s efekty zohledňujeme také [tutoriál ohně a jisker od Le
 Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 
 - **Horní lišta dokumentu:** název efektu (dvojklik přejmenuje), stav uložení, **New**, **Open...**, **Save** a **Add to Level**.
-- **Vlevo:** seznam stop (emitory i události) s ikonami a tlačítky **Add**, **Duplicate** a **Remove**. Pod ním je sbalovací **Effect Library** se skupinou **FPS Presets** a nedávnými efekty; dvojklik vytvoří efekt z presetu nebo otevře soubor.
+- **Vlevo:** seznam stop (emitory i události) s tlačítky **Add**, **Duplicate** a **Remove**. Každá stopa má barevný proužek ve stejné barvě jako v časové ose a vpravo typ s ikonou (např. `GPU · 14` = GPU emitor se 14 částicemi, `Light`, `Shake`, `Sound`, `Decal`).
+- **Menu Library** v horní liště vytvoří efekt z **FPS presetu** nebo znovu otevře nedávný efekt. Vyhledávací panel **Effect Library** pod seznamem stop je ve výchozím stavu skrytý, aby zbylo místo; zapne se v Library → Show Library Panel nebo v Layout.
 - **Uprostřed:** 3D náhled s menu **View** a transportem (Play/Pause, Restart, čas, statistiky, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
 - **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
 
 Panely jde zavřít a znovu otevřít. Každý panel má v záhlaví křížek a menu **Layout** v horní liště obsahuje:
 
-- přepínače **Emitters & Library**, **Preview**, **Timeline & Logic** a **Properties**,
+- přepínače **Emitters**, **Effect Library**, **Preview**, **Timeline & Logic** a **Properties**,
 - **Open Timeline** / **Open Particle Logic** (otevře spodní panel na dané záložce, i když byl zavřený),
 - **Maximize (Hide Preview)** (spodní panel zabere celý střed; totéž dělá tlačítko vpravo nahoře ve spodním panelu),
 - **Separate Window** (přesune Timeline & Logic do samostatného okna; zavřením okna nebo křížkem v něm se panel vrátí na původní místo),

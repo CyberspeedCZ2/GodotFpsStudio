@@ -22,6 +22,13 @@
 static const double TIMELINE_SNAP = 0.05;
 static const double TIMELINE_MIN_VIEW = 0.1;
 
+Color FPSParticleTimeline::get_track_color(Node *p_track, int p_row) {
+	if (p_track && !ParticleEffect3D::is_emitter(p_track)) {
+		return Color(0.95, 0.78, 0.35);
+	}
+	return Color::from_hsv(Math::fposmod(0.58 + p_row * 0.13, 1.0), 0.55, 0.9);
+}
+
 bool FPSParticleTimeline::is_track(const Node *p_node) {
 	return ParticleEffect3D::is_track(p_node);
 }
@@ -543,7 +550,7 @@ void FPSParticleTimeline::_notification(int p_what) {
 				} else if (row == hover_row) {
 					draw_rect(Rect2(0, y, size.x, _row_height()), Color(font_color, 0.05));
 				}
-				const Color row_color = ParticleEffect3D::is_emitter(track) ? Color::from_hsv(Math::fposmod(0.58 + row * 0.13, 1.0), 0.55, 0.9) : Color(0.95, 0.78, 0.35);
+				const Color row_color = get_track_color(track, row);
 				draw_rect(Rect2(6 * EDSCALE, y + _row_height() * 0.25, 4 * EDSCALE, _row_height() * 0.5), muted ? Color(row_color, 0.3) : row_color);
 				draw_string(font, Point2(16 * EDSCALE, y + _row_height() * 0.66), track->get_name(), HORIZONTAL_ALIGNMENT_LEFT, _name_width() - 66 * EDSCALE, font_size, muted ? dim : (selected ? font_color : Color(font_color, 0.85)));
 				// Visibility and solo toggles.
