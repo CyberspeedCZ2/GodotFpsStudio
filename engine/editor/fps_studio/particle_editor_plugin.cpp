@@ -4343,19 +4343,31 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	layout_menu->set_tooltip_text(TTR("Show, hide, maximize or detach the workspace panels."));
 	{
 		PopupMenu *layout_popup = layout_menu->get_popup();
+		// Editor shortcuts: listed and rebindable in Editor Settings > Shortcuts
+		// under "Particle Workspace". They work while the Particle workspace is
+		// shown (the Layout menu forwards them).
+		const KeyModifierMask alt = KeyModifierMask::ALT;
 		layout_popup->add_separator(TTR("Panels"));
-		layout_popup->add_check_item(TTR("Emitters"), PARTICLE_LAYOUT_LEFT);
-		layout_popup->add_check_item(TTR("Effect Library"), PARTICLE_LAYOUT_LIBRARY);
-		layout_popup->add_check_item(TTR("Preview"), PARTICLE_LAYOUT_PREVIEW);
-		layout_popup->add_check_item(TTR("Timeline & Logic"), PARTICLE_LAYOUT_BOTTOM);
-		layout_popup->add_check_item(TTR("Properties"), PARTICLE_LAYOUT_RIGHT);
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/toggle_emitters", TTRC("Toggle Emitters Panel"), alt | Key::KEY_1), PARTICLE_LAYOUT_LEFT);
+		layout_popup->set_item_text(-1, TTR("Emitters"));
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/toggle_library", TTRC("Toggle Effect Library Panel"), alt | Key::KEY_2), PARTICLE_LAYOUT_LIBRARY);
+		layout_popup->set_item_text(-1, TTR("Effect Library"));
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/toggle_preview", TTRC("Toggle 3D Preview"), alt | Key::KEY_3), PARTICLE_LAYOUT_PREVIEW);
+		layout_popup->set_item_text(-1, TTR("Preview"));
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/toggle_timeline_logic", TTRC("Toggle Timeline & Logic Panel"), alt | Key::KEY_4), PARTICLE_LAYOUT_BOTTOM);
+		layout_popup->set_item_text(-1, TTR("Timeline & Logic"));
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/toggle_properties", TTRC("Toggle Properties Panel"), alt | Key::KEY_5), PARTICLE_LAYOUT_RIGHT);
+		layout_popup->set_item_text(-1, TTR("Properties"));
 		layout_popup->add_separator(TTR("Timeline & Logic"));
-		layout_popup->add_item(TTR("Open Timeline"), PARTICLE_LAYOUT_SHOW_TIMELINE);
-		layout_popup->add_item(TTR("Open Particle Logic"), PARTICLE_LAYOUT_SHOW_LOGIC);
-		layout_popup->add_check_item(TTR("Maximize (Hide Preview)"), PARTICLE_LAYOUT_MAXIMIZE_BOTTOM);
-		layout_popup->add_check_item(TTR("Separate Window"), PARTICLE_LAYOUT_FLOAT_BOTTOM);
+		layout_popup->add_shortcut(ED_SHORTCUT("particle_workspace/open_timeline", TTRC("Open Timeline"), alt | Key::KEY_6), PARTICLE_LAYOUT_SHOW_TIMELINE);
+		layout_popup->add_shortcut(ED_SHORTCUT("particle_workspace/open_particle_logic", TTRC("Open Particle Logic"), alt | Key::KEY_7), PARTICLE_LAYOUT_SHOW_LOGIC);
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/maximize_timeline_logic", TTRC("Maximize Timeline & Logic"), alt | Key::KEY_8), PARTICLE_LAYOUT_MAXIMIZE_BOTTOM);
+		layout_popup->set_item_text(-1, TTR("Maximize (Hide Preview)"));
+		layout_popup->add_check_shortcut(ED_SHORTCUT("particle_workspace/separate_window", TTRC("Timeline & Logic in Separate Window"), alt | Key::KEY_9), PARTICLE_LAYOUT_FLOAT_BOTTOM);
+		layout_popup->set_item_text(-1, TTR("Separate Window"));
 		layout_popup->add_separator();
-		layout_popup->add_item(TTR("Reset Layout"), PARTICLE_LAYOUT_RESET);
+		layout_popup->add_shortcut(ED_SHORTCUT("particle_workspace/reset_layout", TTRC("Reset Particle Layout"), alt | Key::KEY_0), PARTICLE_LAYOUT_RESET);
+		layout_popup->set_item_text(-1, TTR("Reset Layout"));
 		layout_popup->set_hide_on_checkable_item_selection(false);
 		layout_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_layout_menu_id));
 		layout_popup->connect("about_to_popup", callable_mp(this, &FPSStudioParticleEditorPlugin::_update_layout_menu));

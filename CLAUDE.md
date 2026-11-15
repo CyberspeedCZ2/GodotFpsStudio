@@ -39,6 +39,7 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Po spuštění jsou Preview a Timeline vždy vidět (ukládá se jen stav bočních panelů). Posuvník času v transportu má minimální šířku 120 px. Zhuštěné UI se zapne i tehdy, když se široké rozložení nevejde.
 - Uživatel potvrdil, že rozložení v GUI funguje dobře.
 - Effect Library je přesunutá do menu **Library** v horní liště, panel knihovny je ve výchozím stavu skrytý (`show_library` v layoutu). Seznam emitorů má barvy stop (`FPSParticleTimeline::get_track_color`) a sloupec s typem.
+- Zkratky Layout: `particle_workspace/*` přes `ED_SHORTCUT` (Alt+0–9, přenastavitelné v Editor Settings → Shortcuts), přeposílá je MenuButton Layout, takže platí jen v Particle.
 - Inspirace od uživatele: Model workspace (záložky vlevo, svislé záložky vpravo) pro šetření místem.
 
 ## Co se právě řešilo

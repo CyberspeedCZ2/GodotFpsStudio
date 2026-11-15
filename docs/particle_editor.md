@@ -26,6 +26,21 @@ Panely jde zavřít a znovu otevřít. Každý panel má v záhlaví křížek a
 - **Separate Window** (přesune Timeline & Logic do samostatného okna; zavřením okna nebo křížkem v něm se panel vrátí na původní místo),
 - **Reset Layout** (vše zobrazí a vrátí výchozí rozměry).
 
+Všechny položky menu Layout mají editorové zkratky. Fungují, jen když je zobrazené Particle, a dají se přenastavit v **Editor → Editor Settings → Shortcuts** (skupina **Particle Workspace**, hledej „particle“). Výchozí zkratky jsou Option/Alt + číslo:
+
+| Zkratka | Akce |
+| --- | --- |
+| Alt+1 | Emitters |
+| Alt+2 | Effect Library |
+| Alt+3 | 3D náhled (Preview) |
+| Alt+4 | Timeline & Logic |
+| Alt+5 | Properties |
+| Alt+6 | Otevřít Timeline |
+| Alt+7 | Otevřít Particle Logic |
+| Alt+8 | Maximalizovat Timeline & Logic |
+| Alt+9 | Timeline & Logic v samostatném okně |
+| Alt+0 | Reset Layout |
+
 Ve středu je vždy aspoň náhled nebo spodní panel. Náhled má minimální výšku a graf ho už nevytlačí; při přepnutí na Particle Logic s grafem dostane spodní panel aspoň polovinu výšky. Viditelnost bočních panelů (Emitters, Properties) se ukládá do rozložení editoru. Náhled a Timeline jsou po spuštění editoru vždy zobrazené. V užším okně (pod 1200 px) se lišty zhustí: Layout, Duplicate, Remove, Reset View, Pause a Restart jsou jen ikony, statistiky a popisek Speed se skryjí a postranní panely se zúží, aby se celé prostředí vešlo.
 
 ## Vytvoření a ukládání efektu
