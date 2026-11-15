@@ -4271,8 +4271,14 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 			const Basis camera_basis = preview_camera->get_global_transform().basis;
 			preview_camera_target += camera_basis.get_column(0) * (-relative.x * world_per_pixel) + camera_basis.get_column(1) * (relative.y * world_per_pixel);
 		} else {
-			preview_camera_yaw -= relative.x * 0.006;
-			preview_camera_pitch = CLAMP(preview_camera_pitch - relative.y * 0.006, Math::deg_to_rad(-85.0), Math::deg_to_rad(85.0));
+			// Orbit like the 3D viewport: dragging down raises the camera, dragging
+			// right turns the scene with the mouse; honors the editor's orbit
+			// sensitivity and axis inversion settings.
+			const real_t radians_per_pixel = Math::deg_to_rad(real_t(EDITOR_GET("editors/3d/navigation_feel/orbit_sensitivity")));
+			const real_t invert_x = bool(EDITOR_GET("editors/3d/navigation/invert_x_axis")) ? -1.0 : 1.0;
+			const real_t invert_y = bool(EDITOR_GET("editors/3d/navigation/invert_y_axis")) ? -1.0 : 1.0;
+			preview_camera_yaw -= relative.x * radians_per_pixel * invert_x;
+			preview_camera_pitch = CLAMP(preview_camera_pitch + relative.y * radians_per_pixel * invert_y, Math::deg_to_rad(-85.0), Math::deg_to_rad(85.0));
 		}
 		_update_preview_camera();
 		preview_container->accept_event();
