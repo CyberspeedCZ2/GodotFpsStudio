@@ -26,7 +26,7 @@ Panely jde zavřít a znovu otevřít. Každý panel má v záhlaví křížek a
 - **Separate Window** (přesune Timeline & Logic do samostatného okna; zavřením okna nebo křížkem v něm se panel vrátí na původní místo),
 - **Reset Layout** (vše zobrazí a vrátí výchozí rozměry).
 
-Všechny položky menu Layout mají editorové zkratky. Fungují, jen když je zobrazené Particle, a dají se přenastavit v **Editor → Editor Settings → Shortcuts** (skupina **Particle Workspace**, hledej „particle“). Výchozí zkratky jsou Option/Alt + číslo:
+Všechny položky menu Layout mají editorové zkratky. Fungují, jen když je zobrazené Particle, a dají se přenastavit v **Editor → Editor Settings → Shortcuts** (skupina **Particle Workspace**, hledej „particle“). Výchozí zkratky jsou Option/Alt + číslo. Používají fyzické klávesy číselné řady, takže fungují stejně i na české klávesnici:
 
 | Zkratka | Akce |
 | --- | --- |
