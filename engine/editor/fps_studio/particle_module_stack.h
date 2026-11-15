@@ -74,6 +74,7 @@ private:
 	FoldableContainer *module_cards[MODULE_MAX] = {};
 	VBoxContainer *module_contents[MODULE_MAX] = {};
 	Control *module_custom_controls[MODULE_MAX] = {};
+	ObjectID module_custom_control_ids[MODULE_MAX];
 	Vector<PropertyRow> rows;
 	Label *custom_shader_note = nullptr;
 	Label *empty_label = nullptr;
@@ -121,6 +122,7 @@ private:
 	void _on_add_attractor_pressed();
 
 protected:
+	void _notification(int p_what);
 	static void _bind_methods();
 
 public:
@@ -135,5 +137,4 @@ public:
 	void set_module_custom_control(int p_module, Control *p_control);
 
 	FPSParticleModuleStack();
-	~FPSParticleModuleStack();
 };

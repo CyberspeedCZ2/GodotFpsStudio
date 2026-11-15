@@ -941,28 +941,33 @@ void FPSParticleModuleStack::_on_create_material_pressed() {
 	undo_redo->commit_action();
 }
 
-FPSParticleModuleStack::~FPSParticleModuleStack() {
-	// Plugin-owned module controls outlive card rebuilds. Ones that are not in
-	// a card right now (e.g. the emitter uses a custom particle shader, so the
-	// process modules were not built) would otherwise never be freed.
+void FPSParticleModuleStack::_notification(int p_what) {
+	if (p_what != NOTIFICATION_PREDELETE) {
+		return;
+	}
+	// Plugin-owned module controls outlive card rebuilds. One that is not in a
+	// card right now (e.g. the emitter uses a custom particle shader, so the
+	// process modules were not built) would never be freed. Do it here: in
+	// PREDELETE the children still exist, in the destructor they are gone.
 	for (int i = 0; i < MODULE_MAX; i++) {
-		Control *control = module_custom_controls[i];
-		if (!control || control->get_parent()) {
-			continue;
-		}
-		for (int j = i + 1; j < MODULE_MAX; j++) {
-			if (module_custom_controls[j] == control) {
-				module_custom_controls[j] = nullptr;
-			}
-		}
-		memdelete(control);
+		Control *control = Object::cast_to<Control>(ObjectDB::get_instance(module_custom_control_ids[i]));
 		module_custom_controls[i] = nullptr;
+		module_custom_control_ids[i] = ObjectID();
+		if (control && !control->get_parent() && !control->is_queued_for_deletion()) {
+			for (int j = i + 1; j < MODULE_MAX; j++) {
+				if (module_custom_control_ids[j] == control->get_instance_id()) {
+					module_custom_control_ids[j] = ObjectID();
+				}
+			}
+			memdelete(control);
+		}
 	}
 }
 
 void FPSParticleModuleStack::set_module_custom_control(int p_module, Control *p_control) {
 	ERR_FAIL_INDEX(p_module, MODULE_MAX);
 	module_custom_controls[p_module] = p_control;
+	module_custom_control_ids[p_module] = p_control ? p_control->get_instance_id() : ObjectID();
 	if (module_contents[p_module] && p_control && !p_control->get_parent()) {
 		module_contents[p_module]->add_child(p_control);
 		module_contents[p_module]->move_child(p_control, 0);
