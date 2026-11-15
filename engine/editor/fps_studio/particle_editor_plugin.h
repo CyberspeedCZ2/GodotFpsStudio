@@ -10,11 +10,17 @@
 #include "core/math/color.h"
 #include "core/object/object_id.h"
 #include "core/object/ref_counted.h"
+#include "core/templates/hash_map.h"
+#include "core/templates/hash_set.h"
 #include "core/templates/local_vector.h"
 #include "core/templates/vector.h"
 #include "editor/plugins/editor_plugin.h"
 
 #include "vfx_texture_generator.h"
+
+namespace FPSParticlePresets {
+struct TextureRequest;
+}
 
 class Button;
 class Camera3D;
@@ -297,6 +303,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool document_refresh_queued = false;
 	bool preview_sync_queued = false;
 	bool module_stack_editing = false;
+	double preview_loop_start = 0.0; // Timeline loop region (end <= start = none).
+	double preview_loop_end = -1.0;
+	bool preview_restart_queued = false; // Event metadata changed: replay at the current time.
 	double preview_time = 0.0;
 	double preview_duration = 5.0;
 	double preview_time_label_update_accumulator = 0.0;
@@ -348,6 +357,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_type_selected();
 	void _select_texture_type(int p_type, bool p_reset_params);
 	void _rebuild_texture_param_controls();
+	bool _uses_generator_normal_map() const;
 	VFXTextureGenerator::Settings _make_texture_settings(double p_time, double p_life, int p_quality) const;
 	void _on_texture_generator_resolution_selected(int p_index);
 	void _on_texture_generator_output_selected(int p_index);
@@ -392,6 +402,34 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Node *_convert_to_effect_root(Node *p_root);
 	void _assign_level_owners(Node *p_instance, Node *p_owner);
 	void _create_preset_document(int p_preset);
+	void _apply_preset_textures(const Vector<FPSParticlePresets::TextureRequest> &p_textures, bool p_bake);
+
+	// Library / Content Browser thumbnails, rendered one at a time offscreen.
+	struct ThumbnailJob {
+		String key; // "preset:<id>" or the effect path (= the Library item metadata).
+		String path;
+		int preset = -1;
+		bool write_cache = false; // Also write the editor's scene thumbnail (resthumb).
+	};
+	SubViewport *thumbnail_viewport = nullptr;
+	Node3D *thumbnail_root = nullptr;
+	Camera3D *thumbnail_camera = nullptr;
+	ObjectID thumbnail_effect_id;
+	Vector<ThumbnailJob> thumbnail_queue;
+	HashSet<String> thumbnail_queued;
+	HashMap<String, Ref<Texture2D>> thumbnails;
+	HashMap<String, uint64_t> thumbnail_mtimes;
+	ThumbnailJob thumbnail_current;
+	int thumbnail_frames = -1; // -1 = idle.
+	bool library_thumbnails_visible = false;
+	void _ensure_thumbnail_viewport();
+	void _queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache);
+	void _queue_library_thumbnails();
+	void _process_thumbnails();
+	bool _start_thumbnail_job(const ThumbnailJob &p_job);
+	void _finish_thumbnail_job();
+	void _set_library_icon(const String &p_key, const Ref<Texture2D> &p_texture);
+	Ref<Texture2D> _get_cached_effect_thumbnail(const String &p_path);
 	Ref<Texture2D> _bake_preset_texture(const VFXTextureGenerator::Settings &p_settings, const String &p_file_name, int p_resolution, int p_columns, double p_duration);
 	void _on_module_stack_property_edited(const String &p_property);
 	void _on_module_stack_generate_texture();
@@ -441,6 +479,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _save_emitter_scene(const String &p_path);
 	void _load_particle_scene(const String &p_path);
 	void _on_texture_generator_visibility_changed();
+	void _on_timeline_loop_region_changed(double p_start, double p_end);
 	void _request_load_particle_scene(const String &p_path);
 	void _confirm_replace_document();
 	void _add_effect_to_level();

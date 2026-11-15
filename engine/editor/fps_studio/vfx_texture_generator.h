@@ -96,7 +96,16 @@ struct Settings {
 	bool tiling = false;
 	float tiling_mask = 1.0f;
 	int quality = 1; // 0 = draft (fast preview), 1 = final.
+	// Decal types only (see has_height_normal): output a tangent-space
+	// normal map (OpenGL / Godot convention, +Y up) computed from the decal's
+	// own height field (hole depth, chips, cracks, bent metal) instead of the
+	// colour. Alpha stays the decal alpha. Other types ignore it.
+	bool output_normal = false;
+	float normal_strength = 3.0f; // Same scale as the editor's "Normal strength" (0.5..10).
 };
+
+// True for types that can render a height-based normal map (decals).
+bool has_height_normal(int p_type);
 
 // Fills the params of p_settings with the defaults of its type.
 void apply_type_defaults(Settings &r_settings, bool p_colors = true);

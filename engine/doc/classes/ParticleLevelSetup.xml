@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ParticleLevelSetup" inherits="Node" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Prepares particle collision and effect pools when a level starts.
+	</brief_description>
+	<description>
+		Add it to a level scene. When the game starts (not in the editor) it bakes the level's particle collision with [method ParticleEffect3D.prepare_level_collision] and fills the effect pools with [method ParticleEffect3D.prewarm], so the first explosion or impact does not hitch. Pooled effects are added to the level root, a few scenes per frame.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="is_finished" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] once every pool has been filled. The collision bake itself continues on worker threads (see [method ParticleEffect3D.is_level_collision_ready]).
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="collision_mask" type="int" setter="set_collision_mask" getter="get_collision_mask" default="1">
+			Physics layers whose static collision is baked for particles.
+		</member>
+		<member name="effects_per_frame" type="int" setter="set_effects_per_frame" getter="get_effects_per_frame" default="2">
+			How many effect scenes are prewarmed per frame.
+		</member>
+		<member name="impact_table" type="ParticleImpactTable" setter="set_impact_table" getter="get_impact_table">
+			Every effect of this table is prewarmed too.
+		</member>
+		<member name="level_root" type="NodePath" setter="set_level_root" getter="get_level_root" default="NodePath(&quot;&quot;)">
+			The level to bake and to add pooled effects to. If empty, the scene this node belongs to (its owner), else its parent.
+		</member>
+		<member name="prepare_collision" type="bool" setter="set_prepare_collision" getter="is_preparing_collision" default="true">
+			If [code]true[/code], bakes the level's particle collision at start.
+		</member>
+		<member name="prewarm_count" type="int" setter="set_prewarm_count" getter="get_prewarm_count" default="8">
+			Hidden instances created for each effect scene.
+		</member>
+		<member name="prewarm_effects" type="PackedScene[]" setter="set_prewarm_effects" getter="get_prewarm_effects" default="[]">
+			Effect scenes to prewarm.
+		</member>
+	</members>
+	<signals>
+		<signal name="setup_finished">
+			<description>
+				Emitted once every pool has been filled.
+			</description>
+		</signal>
+	</signals>
+</class>

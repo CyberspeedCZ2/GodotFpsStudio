@@ -240,6 +240,8 @@
 #include "scene/3d/fog_volume.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/particle_effect_3d.h"
+#include "scene/3d/particle_impact_table.h"
+#include "scene/3d/particle_level_setup.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
@@ -677,6 +679,10 @@ void register_scene_types() {
 	GDREGISTER_CLASS(GPUParticlesAttractorVectorField3D);
 	GDREGISTER_CLASS(CPUParticles3D);
 	GDREGISTER_CLASS(ParticleEffect3D);
+	GDREGISTER_CLASS(ParticleImpactTable);
+	GDREGISTER_CLASS(ParticleLevelSetup);
+	// Effects playing at once in a running game (0 = unlimited); see ParticleEffect3D.priority.
+	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/particle_effects/max_active_effects", PROPERTY_HINT_RANGE, "0,1024,1,or_greater"), 96);
 	GDREGISTER_CLASS(CameraShake3D);
 	GDREGISTER_CLASS(RadialDamage3D);
 	GDREGISTER_CLASS(Marker3D);

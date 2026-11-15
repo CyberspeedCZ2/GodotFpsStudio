@@ -27,6 +27,7 @@
 #include "scene/gui/foldable_container.h"
 #include "scene/gui/label.h"
 #include "scene/gui/menu_button.h"
+#include "scene/gui/option_button.h"
 #include "scene/gui/popup_menu.h"
 #include "scene/gui/texture_rect.h"
 #include "scene/resources/3d/primitive_meshes.h"
@@ -34,6 +35,8 @@
 #include "scene/resources/particle_process_material.h"
 
 static const char *MODULE_META = "_fps_particle_modules";
+// Draw mesh the emitter had before the Trails module replaced it.
+static const char *PRE_TRAIL_MESH_META = "_pre_trail_mesh";
 
 // Copy / Paste Module clipboard, shared by all stacks.
 static Dictionary module_clipboard;
@@ -132,6 +135,8 @@ Object *FPSParticleModuleStack::_get_target(Target p_target) const {
 			Ref<Mesh> mesh = get_draw_mesh(emitter);
 			return mesh.ptr();
 		}
+		case TARGET_COUNT:
+			break;
 	}
 	return nullptr;
 }
@@ -262,21 +267,45 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 				set_prop(material.ptr(), "use_particle_trails", p_active);
 			}
 			Ref<Mesh> old_mesh = get_draw_mesh(emitter);
-			Ref<PrimitiveMesh> new_mesh;
+			const bool had_saved = emitter->has_meta(PRE_TRAIL_MESH_META);
+			const Variant saved = emitter->get_meta(PRE_TRAIL_MESH_META, Variant());
+			Ref<Mesh> new_mesh;
 			if (p_active) {
 				Ref<RibbonTrailMesh> ribbon;
 				ribbon.instantiate();
 				ribbon->set_size(0.15);
 				ribbon->set_sections(4);
+				if (material.is_valid()) {
+					ribbon->set_material(material);
+				}
 				new_mesh = ribbon;
+				// Remember the original mesh so removing Trails brings it back.
+				if (old_mesh.is_valid() && !Object::cast_to<RibbonTrailMesh>(old_mesh.ptr()) && !Object::cast_to<TubeTrailMesh>(old_mesh.ptr())) {
+					undo_redo->add_do_method(emitter, "set_meta", PRE_TRAIL_MESH_META, old_mesh);
+				}
 			} else {
-				Ref<QuadMesh> quad;
-				quad.instantiate();
-				quad->set_size(Vector2(0.5, 0.5));
-				new_mesh = quad;
+				Ref<Mesh> restored = saved;
+				if (restored.is_valid()) {
+					new_mesh = restored;
+					if (material.is_valid() && Object::cast_to<PrimitiveMesh>(restored.ptr())) {
+						// The material may have changed while trails were on.
+						set_prop(restored.ptr(), "material", material);
+					}
+				} else {
+					Ref<QuadMesh> quad;
+					quad.instantiate();
+					quad->set_size(Vector2(0.5, 0.5));
+					if (material.is_valid()) {
+						quad->set_material(material);
+					}
+					new_mesh = quad;
+				}
+				undo_redo->add_do_method(emitter, "remove_meta", PRE_TRAIL_MESH_META);
 			}
-			if (material.is_valid()) {
-				new_mesh->set_material(material);
+			if (had_saved) {
+				undo_redo->add_undo_method(emitter, "set_meta", PRE_TRAIL_MESH_META, saved);
+			} else {
+				undo_redo->add_undo_method(emitter, "remove_meta", PRE_TRAIL_MESH_META);
 			}
 			set_prop(emitter, "draw_pass_1", new_mesh);
 		} break;
@@ -542,6 +571,8 @@ void FPSParticleModuleStack::_clear() {
 	custom_shader_note = nullptr;
 	collision_size_hint = nullptr;
 	collision_fit_button = nullptr;
+	sub_emitter_picker = nullptr;
+	sub_emitter_warning = nullptr;
 	for (int i = cards->get_child_count() - 1; i >= 0; i--) {
 		Node *child = cards->get_child(i);
 		cards->remove_child(child);
@@ -731,13 +762,40 @@ void FPSParticleModuleStack::_build() {
 		collision->add_child(level_collision_button);
 	}
 
-	_add_row(MODULE_SUB_EMITTER, TARGET_NODE, "sub_emitter", StringName(), TTR("Emitter"));
+	// Sub Emitter: each particle of this emitter spawns particles of another
+	// emitter of the effect (e.g. a spark that puffs on impact).
+	if (VBoxContainer *sub = module_contents[MODULE_SUB_EMITTER]) {
+		HBoxContainer *pick_row = memnew(HBoxContainer);
+		Label *pick_label = memnew(Label);
+		pick_label->set_text(TTR("Spawns"));
+		pick_label->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
+		pick_row->add_child(pick_label);
+		sub_emitter_picker = memnew(OptionButton);
+		sub_emitter_picker->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		sub_emitter_picker->set_clip_text(true);
+		sub_emitter_picker->set_tooltip_text(TTR("The emitter whose particles are spawned. It is driven only by this emitter: its own Emitting is turned off."));
+		sub_emitter_picker->connect(SceneStringName(item_selected), callable_mp(this, &FPSParticleModuleStack::_on_sub_emitter_selected));
+		pick_row->add_child(sub_emitter_picker);
+		sub->add_child(pick_row);
+	}
+	const Vector<int> sub_constant = { ParticleProcessMaterial::SUB_EMITTER_CONSTANT };
+	const Vector<int> sub_end = { ParticleProcessMaterial::SUB_EMITTER_AT_END };
+	const Vector<int> sub_collision = { ParticleProcessMaterial::SUB_EMITTER_AT_COLLISION };
+	const Vector<int> sub_start = { ParticleProcessMaterial::SUB_EMITTER_AT_START };
+	const Vector<int> sub_any = { ParticleProcessMaterial::SUB_EMITTER_CONSTANT, ParticleProcessMaterial::SUB_EMITTER_AT_END, ParticleProcessMaterial::SUB_EMITTER_AT_COLLISION, ParticleProcessMaterial::SUB_EMITTER_AT_START };
 	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_mode", StringName(), TTR("Trigger"));
-	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_frequency", StringName(), TTR("Frequency"));
-	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_end", StringName(), TTR("Amount at End"));
-	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_collision", StringName(), TTR("Amount at Hit"));
-	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_start", StringName(), TTR("Amount at Start"));
-	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_keep_velocity", StringName(), TTR("Keep Velocity"));
+	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_frequency", StringName(), TTR("Per Second"), "sub_emitter_mode", sub_constant);
+	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_end", StringName(), TTR("Amount at End"), "sub_emitter_mode", sub_end);
+	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_collision", StringName(), TTR("Amount at Hit"), "sub_emitter_mode", sub_collision);
+	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_start", StringName(), TTR("Amount at Start"), "sub_emitter_mode", sub_start);
+	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_keep_velocity", StringName(), TTR("Keep Velocity"), "sub_emitter_mode", sub_any);
+	if (VBoxContainer *sub = module_contents[MODULE_SUB_EMITTER]) {
+		sub_emitter_warning = memnew(Label);
+		sub_emitter_warning->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		sub_emitter_warning->add_theme_color_override(SceneStringName(font_color), Color(1.0, 0.72, 0.3));
+		sub_emitter_warning->hide();
+		sub->add_child(sub_emitter_warning);
+	}
 
 	_add_row(MODULE_TRAILS, TARGET_NODE, "trail_lifetime", StringName(), TTR("Trail Length"));
 	_add_row(MODULE_TRAILS, TARGET_MESH, "size", StringName(), TTR("Trail Width"));
@@ -800,6 +858,7 @@ void FPSParticleModuleStack::_build() {
 
 	_update_render_card();
 	_update_collision_hint();
+	_update_sub_emitter_card();
 	_update_visibility();
 	_update_add_menu();
 }
@@ -1024,6 +1083,7 @@ void FPSParticleModuleStack::refresh_values() {
 	header_title->set_text(emitter->get_name());
 	_update_render_card();
 	_update_collision_hint();
+	_update_sub_emitter_card();
 	_update_visibility();
 	_update_add_menu();
 }
@@ -1495,6 +1555,125 @@ void FPSParticleModuleStack::_on_fit_collision_size_pressed() {
 	undo_redo->add_undo_property(gpu, "collision_base_size", gpu->get_collision_base_size());
 	undo_redo->add_do_method(this, "_history_changed", StringName("collision_base_size"));
 	undo_redo->add_undo_method(this, "_history_changed", StringName("collision_base_size"));
+	undo_redo->commit_action();
+}
+
+Node *FPSParticleModuleStack::_get_effect_root() const {
+	Node *node = get_edited_emitter();
+	for (Node *n = node; n; n = n->get_parent()) {
+		if (Object::cast_to<ParticleEffect3D>(n)) {
+			return n;
+		}
+	}
+	return node ? node->get_parent() : nullptr;
+}
+
+static void collect_gpu_emitters(Node *p_node, Vector<Node *> &r_list) {
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		Node *child = p_node->get_child(i);
+		if (Object::cast_to<GPUParticles3D>(child)) {
+			r_list.push_back(child);
+		}
+		collect_gpu_emitters(child, r_list);
+	}
+}
+
+void FPSParticleModuleStack::_collect_sub_emitter_candidates(Vector<Node *> &r_candidates) const {
+	Node *emitter = get_edited_emitter();
+	Node *root = _get_effect_root();
+	if (!emitter || !root) {
+		return;
+	}
+	Vector<Node *> all;
+	collect_gpu_emitters(root, all);
+	for (Node *candidate : all) {
+		if (candidate != emitter) {
+			r_candidates.push_back(candidate);
+		}
+	}
+}
+
+void FPSParticleModuleStack::_update_sub_emitter_card() {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(get_edited_emitter());
+	if (!sub_emitter_picker || !gpu) {
+		return;
+	}
+	Vector<Node *> candidates;
+	_collect_sub_emitter_candidates(candidates);
+	const NodePath path = gpu->get_sub_emitter();
+	Node *current = path.is_empty() ? nullptr : gpu->get_node_or_null(path);
+	sub_emitter_picker->clear();
+	sub_emitter_picker->add_item(TTR("(None)"));
+	sub_emitter_picker->set_item_metadata(0, int64_t(0));
+	int selected = 0;
+	for (Node *candidate : candidates) {
+		sub_emitter_picker->add_item(candidate->get_name());
+		const int index = sub_emitter_picker->get_item_count() - 1;
+		sub_emitter_picker->set_item_metadata(index, int64_t(uint64_t(candidate->get_instance_id())));
+		if (candidate == current) {
+			selected = index;
+		}
+	}
+	if (current && selected == 0) {
+		// Points outside the effect: keep it visible instead of hiding it.
+		sub_emitter_picker->add_item(String(path));
+		selected = sub_emitter_picker->get_item_count() - 1;
+		sub_emitter_picker->set_item_metadata(selected, int64_t(uint64_t(current->get_instance_id())));
+	}
+	sub_emitter_picker->select(selected);
+
+	if (!sub_emitter_warning) {
+		return;
+	}
+	Object *process = _get_target(TARGET_PROCESS);
+	const int mode = process ? int(process->get("sub_emitter_mode")) : 0;
+	String warning;
+	if (!path.is_empty() && !current) {
+		warning = TTR("The sub emitter path is broken; pick the emitter again.");
+	} else if (candidates.is_empty()) {
+		warning = TTR("Add a second GPU emitter to the effect (e.g. a small puff) and pick it here.");
+	} else if (!current) {
+		warning = TTR("Pick the emitter whose particles each particle spawns.");
+	} else if (GPUParticles3D *target = Object::cast_to<GPUParticles3D>(current)) {
+		if (target->is_emitting()) {
+			warning = TTR("The spawned emitter also emits on its own. Pick it again to turn its Emitting off.");
+		} else if (target->has_meta(ParticleEffect3D::META_DELAY) || target->has_meta(ParticleEffect3D::META_DURATION)) {
+			warning = TTR("The spawned emitter has its own timing on the timeline; it is ignored while it is a sub emitter.");
+		}
+		if (mode == ParticleProcessMaterial::SUB_EMITTER_AT_COLLISION && process && int(process->get("collision_mode")) == 0) {
+			warning = TTR("Trigger On Collision needs the Collision module on this emitter.");
+		}
+	}
+	sub_emitter_warning->set_text(warning);
+	sub_emitter_warning->set_visible(!warning.is_empty());
+}
+
+void FPSParticleModuleStack::_on_sub_emitter_selected(int p_index) {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(get_edited_emitter());
+	if (!gpu || !sub_emitter_picker || p_index < 0 || p_index >= sub_emitter_picker->get_item_count()) {
+		return;
+	}
+	const ObjectID target_id = ObjectID(uint64_t(int64_t(sub_emitter_picker->get_item_metadata(p_index))));
+	GPUParticles3D *target = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(target_id));
+	const NodePath path = target ? gpu->get_path_to(target) : NodePath();
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(TTR("Set Sub Emitter"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_property(gpu, "sub_emitter", path);
+	undo_redo->add_undo_property(gpu, "sub_emitter", gpu->get_sub_emitter());
+	if (target) {
+		// A sub emitter is driven by its parent only; on its own it would
+		// emit from the effect origin.
+		undo_redo->add_do_property(target, "emitting", false);
+		undo_redo->add_undo_property(target, "emitting", target->is_emitting());
+		Object *process = _get_target(TARGET_PROCESS);
+		if (process && int(process->get("sub_emitter_mode")) == ParticleProcessMaterial::SUB_EMITTER_DISABLED) {
+			undo_redo->add_do_property(process, "sub_emitter_mode", int(ParticleProcessMaterial::SUB_EMITTER_AT_END));
+			undo_redo->add_undo_property(process, "sub_emitter_mode", int(ParticleProcessMaterial::SUB_EMITTER_DISABLED));
+		}
+	}
+	undo_redo->add_do_method(this, "_history_changed", StringName("sub_emitter"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("sub_emitter"));
 	undo_redo->commit_action();
 }
 

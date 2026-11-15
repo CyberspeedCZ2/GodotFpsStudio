@@ -44,6 +44,8 @@
 #include "scene/3d/light_3d.h"
 #include "scene/resources/curve.h"
 #include "scene/resources/packed_scene.h"
+#include "scene/3d/camera_3d.h"
+#include "core/config/project_settings.h"
 
 bool ParticleEffect3D::is_emitter(const Node *p_node) {
 	return Object::cast_to<GPUParticles3D>(p_node) || Object::cast_to<CPUParticles3D>(p_node);
@@ -199,6 +201,40 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		_collect_emitters(p_node->get_child(i));
 	}
+	if (p_node == this) {
+		_drop_sub_emitter_targets();
+	}
+}
+
+void ParticleEffect3D::_drop_sub_emitter_targets() {
+	// A GPUParticles3D used as another emitter's sub_emitter is driven by that
+	// emitter; the timeline must not turn its own emission on. Its particles
+	// outlive the parent's by its lifetime, which extends the parent's end.
+	for (uint32_t i = 0; i < emitters.size(); i++) {
+		const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(emitters[i].id));
+		if (!gpu || gpu->get_sub_emitter().is_empty()) {
+			continue;
+		}
+		const GPUParticles3D *target = Object::cast_to<GPUParticles3D>(gpu->get_node_or_null(gpu->get_sub_emitter()));
+		if (!target || target == gpu) {
+			continue;
+		}
+		const ObjectID target_id = target->get_instance_id();
+		for (uint32_t j = 0; j < emitters.size(); j++) {
+			if (emitters[j].id != target_id) {
+				continue;
+			}
+			if (emitters[i].visual_end >= 0.0) {
+				emitters[i].visual_end += emitters[j].lifetime;
+			}
+			const_cast<GPUParticles3D *>(target)->set_emitting(false);
+			emitters.remove_at(j);
+			if (j < i) {
+				i--;
+			}
+			break;
+		}
+	}
 }
 
 double ParticleEffect3D::_get_max_lifetime() const {
@@ -237,23 +273,58 @@ void ParticleEffect3D::_play_pending() {
 	}
 }
 
+namespace {
+constexpr int EFFECT_POOL_MAX_FREE = 64;
+HashMap<ObjectID, LocalVector<ObjectID>> effect_pools; // PackedScene -> free effects.
+
+// Effects playing in a running game, counted against
+// rendering/particle_effects/max_active_effects.
+LocalVector<ObjectID> budget_effects;
+uint64_t effect_play_serial = 0;
+constexpr double CULLED_LOOP_RECHECK = 0.5; // Seconds between distance checks of a culled looping effect.
+} // namespace
+
 void ParticleEffect3D::play() {
 	if (!is_inside_tree()) {
 		play_pending = true;
 		return;
 	}
 	play_pending = false;
+	culled = false;
 	emitters.clear();
 	events.clear();
 	_collect_emitters(this);
+	if (_should_skip_play()) {
+		_skip_play();
+		return;
+	}
 	for (EmitterState &state : emitters) {
 		Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id));
 		if (emitter) {
+			// Local space overrides the authored local_coords; the authored value
+			// comes back when the (pooled) effect is played without it.
+			static const StringName authored_meta = "_authored_local_coords";
+			if (local_space) {
+				if (!emitter->has_meta(authored_meta)) {
+					emitter->set_meta(authored_meta, emitter->get("local_coords"));
+				}
+				emitter->set("local_coords", true);
+			} else if (emitter->has_meta(authored_meta)) {
+				emitter->set("local_coords", emitter->get_meta(authored_meta));
+				emitter->remove_meta(authored_meta);
+			}
 			_set_emitter_emitting(emitter, false, true);
 		}
 	}
 	if (!Engine::get_singleton()->is_editor_hint() || editor_preview) {
 		_update_level_collision();
+	}
+	if (!Engine::get_singleton()->is_editor_hint()) {
+		play_serial = ++effect_play_serial;
+		if (!budget_active) {
+			budget_effects.push_back(get_instance_id());
+			budget_active = true;
+		}
 	}
 	elapsed = 0.0;
 	stop_time = 0.0;
@@ -263,9 +334,135 @@ void ParticleEffect3D::play() {
 	_update(0.0);
 }
 
+// --- Budget and distance ----------------------------------------------------
+// Effects with a damage event are gameplay and always play. Others are
+// skipped when the camera is beyond cull_distance, and when the budget is
+// full the oldest effect of the lowest priority (not above this one) is cut
+// off to make room; if every active effect has a higher priority, this one
+// is skipped. A skipped effect emits finished on the next frame (and returns
+// to its pool); a looping one keeps checking and starts once it qualifies.
+
+bool ParticleEffect3D::_should_skip_play() {
+	if (Engine::get_singleton()->is_editor_hint()) {
+		return false;
+	}
+	for (const EventState &event : events) {
+		if (event.kind == EVENT_DAMAGE) {
+			return false;
+		}
+	}
+	if (cull_distance > 0.0) {
+		Viewport *viewport = get_viewport();
+		const Camera3D *camera = viewport ? viewport->get_camera_3d() : nullptr;
+		if (camera && camera->get_global_position().distance_squared_to(get_global_position()) > cull_distance * cull_distance) {
+			return true;
+		}
+	}
+	if (budget_active) {
+		return false; // Already counted (a replay or the next loop).
+	}
+	const int max_active = GLOBAL_GET_CACHED(int, "rendering/particle_effects/max_active_effects");
+	if (max_active <= 0) {
+		return false;
+	}
+	for (uint32_t i = 0; i < budget_effects.size(); i++) {
+		ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(budget_effects[i]));
+		if (!effect || !effect->is_inside_tree() || !effect->playing) {
+			if (effect) {
+				effect->budget_active = false;
+			}
+			budget_effects.remove_at_unordered(i);
+			i--;
+		}
+	}
+	if (int(budget_effects.size()) < max_active) {
+		return false;
+	}
+	ParticleEffect3D *victim = nullptr;
+	for (const ObjectID &id : budget_effects) {
+		ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(id));
+		if (!effect || effect->priority > priority || _has_pending_damage(effect->events)) {
+			continue;
+		}
+		if (!victim || effect->priority < victim->priority || (effect->priority == victim->priority && effect->play_serial < victim->play_serial)) {
+			victim = effect;
+		}
+	}
+	if (!victim) {
+		return true;
+	}
+	victim->_force_finish();
+	return false;
+}
+
+bool ParticleEffect3D::_has_pending_damage(const LocalVector<EventState> &p_events) {
+	for (const EventState &event : p_events) {
+		if (event.kind == EVENT_DAMAGE && !event.started) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void ParticleEffect3D::_silence() {
+	// Emitters off, lights and decals dark (their window has not started).
+	for (const EmitterState &state : emitters) {
+		if (Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id))) {
+			_set_emitter_emitting(emitter, false, false);
+		}
+	}
+	elapsed = -1.0;
+	_update_events();
+	elapsed = 0.0;
+}
+
+void ParticleEffect3D::_skip_play() {
+	_silence();
+	emitters.clear();
+	events.clear();
+	culled = true;
+	playing = true;
+	stopping = false;
+	elapsed = 0.0;
+	set_process_internal(true);
+}
+
+void ParticleEffect3D::_force_finish() {
+	// Cut off at once (budget): clear live particles, darken lights/decals.
+	for (const EmitterState &state : emitters) {
+		if (Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id))) {
+			emitter->call("restart", false);
+			emitter->set("emitting", false);
+		}
+	}
+	elapsed = -1.0;
+	_update_events();
+	_finish();
+}
+
+void ParticleEffect3D::_budget_remove() {
+	if (!budget_active) {
+		return;
+	}
+	budget_active = false;
+	const int64_t index = budget_effects.find(get_instance_id());
+	if (index >= 0) {
+		budget_effects.remove_at_unordered(index);
+	}
+}
+
+int ParticleEffect3D::get_active_effect_count() {
+	int count = 0;
+	for (const ObjectID &id : budget_effects) {
+		const ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(id));
+		if (effect && effect->playing && effect->is_inside_tree()) {
+			count++;
+		}
+	}
+	return count;
+}
+
 namespace {
-constexpr int EFFECT_POOL_MAX_FREE = 64;
-HashMap<ObjectID, LocalVector<ObjectID>> effect_pools; // PackedScene -> free effects.
 
 // Drops effects freed with an earlier level, so size checks count live ones.
 void prune_pool(LocalVector<ObjectID> &r_pool) {
@@ -708,7 +905,7 @@ struct LevelTileBake {
 	uint64_t generation = 0;
 	LevelBakeCancel *cancel = nullptr; // Referenced.
 	WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
-	Vector<Face3> faces; // Shared, world space.
+	Vector<Face3> faces; // World space faces that may touch this tile.
 	AABB tile;
 	Ref<Image> image;
 };
@@ -910,15 +1107,40 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 	state->faces_hash = hash_level_faces(faces);
 
 	const Vector3i count = Vector3i(((bounds.size - Vector3(1, 1, 1) * 0.01) / LEVEL_TILE_CORE).floor()) + Vector3i(1, 1, 1);
+	// Bucket the faces into the tiles they may touch (main thread, one pass),
+	// so each tile task scans only its own faces and empty tiles are skipped.
+	// Tile x spans [x * core - overlap, (x + 1) * core + overlap] from bounds.
+	const int tile_count = count.x * count.y * count.z;
+	LocalVector<Vector<Face3>> buckets;
+	buckets.resize(tile_count);
+	for (const Face3 &face : faces) {
+		const AABB face_aabb = face.get_aabb();
+		const Vector3 from = (face_aabb.position - bounds.position - Vector3(1, 1, 1) * LEVEL_TILE_OVERLAP) / LEVEL_TILE_CORE - Vector3(1, 1, 1);
+		const Vector3 to = (face_aabb.get_end() - bounds.position + Vector3(1, 1, 1) * LEVEL_TILE_OVERLAP) / LEVEL_TILE_CORE;
+		const Vector3i lo = Vector3i(from.ceil()).maxi(0);
+		const Vector3i hi = Vector3i(to.floor()).min(count - Vector3i(1, 1, 1));
+		for (int z = lo.z; z <= hi.z; z++) {
+			for (int y = lo.y; y <= hi.y; y++) {
+				for (int x = lo.x; x <= hi.x; x++) {
+					buckets[(z * count.y + y) * count.x + x].push_back(face);
+				}
+			}
+		}
+	}
 	for (int z = 0; z < count.z; z++) {
 		for (int y = 0; y < count.y; y++) {
 			for (int x = 0; x < count.x; x++) {
+				Vector<Face3> &tile_faces = buckets[(z * count.y + y) * count.x + x];
+				if (tile_faces.size() < 2) {
+					continue; // Nothing to collide with here.
+				}
 				LevelTileBake *bake = memnew(LevelTileBake);
 				bake->manager = state->manager;
 				bake->generation = state->generation;
 				bake->cancel = state->cancel;
 				bake->cancel->refs.ref();
-				bake->faces = faces;
+				bake->faces = tile_faces;
+				tile_faces = Vector<Face3>();
 				const Vector3 core_position = bounds.position + Vector3(x, y, z) * LEVEL_TILE_CORE;
 				bake->tile = AABB(core_position - Vector3(1, 1, 1) * LEVEL_TILE_OVERLAP, Vector3(1, 1, 1) * (LEVEL_TILE_CORE + LEVEL_TILE_OVERLAP * 2.0));
 				state->pending++;
@@ -927,6 +1149,9 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 				bake->task = WorkerThreadPool::get_singleton()->add_native_task(&level_tile_bake_task, bake, false, "Particle level collision tile");
 			}
 		}
+	}
+	if (state->pending == 0) {
+		state->ready = true; // No tile had geometry to bake.
 	}
 	print_verbose(vformat("ParticleEffect3D: baking level particle collision for %s: %d faces, %d tiles in %s.", p_root->get_name(), faces.size(), state->pending, bounds));
 	return true;
@@ -1251,6 +1476,17 @@ void ParticleEffect3D::_update(double p_delta) {
 	if (!playing) {
 		return;
 	}
+	if (culled) {
+		if (!looping) {
+			_finish();
+			return;
+		}
+		elapsed += p_delta;
+		if (elapsed >= CULLED_LOOP_RECHECK) {
+			play(); // Starts once the camera is close enough / there is room.
+		}
+		return;
+	}
 	elapsed += p_delta * speed_scale;
 	double total = 0.0;
 	bool infinite = false;
@@ -1453,6 +1689,8 @@ bool ParticleEffect3D::is_editor_previewing() const {
 void ParticleEffect3D::_finish() {
 	playing = false;
 	stopping = false;
+	culled = false;
+	_budget_remove();
 	set_process_internal(false);
 	if (editor_preview) {
 		_restore_editor_preview();
@@ -1590,6 +1828,9 @@ void ParticleEffect3D::_notification(int p_what) {
 		case NOTIFICATION_CHILD_ORDER_CHANGED: {
 			update_configuration_warnings();
 		} break;
+		case NOTIFICATION_PREDELETE: {
+			_budget_remove();
+		} break;
 		case NOTIFICATION_ENTER_TREE: {
 			// READY fires only once; a reused (pooled) effect that was played
 			// outside the tree starts when it enters it again.
@@ -1601,19 +1842,12 @@ void ParticleEffect3D::_notification(int p_what) {
 			if (play_pending || (autoplay && !Engine::get_singleton()->is_editor_hint())) {
 				play();
 			} else if (!Engine::get_singleton()->is_editor_hint()) {
-				// Without autoplay the effect stays silent until play() is called.
+				// Without autoplay the effect stays silent (emitters off, lights and
+				// decals dark) until play() is called.
 				emitters.clear();
 				events.clear();
 				_collect_emitters(this);
-				for (const EmitterState &state : emitters) {
-					if (Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id))) {
-						_set_emitter_emitting(emitter, false, false);
-					}
-				}
-				// Lights and decals stay dark until the effect plays.
-				elapsed = -1.0;
-				_update_events();
-				elapsed = 0.0;
+				_silence();
 			}
 		} break;
 		case NOTIFICATION_INTERNAL_PROCESS: {
@@ -1666,6 +1900,59 @@ double ParticleEffect3D::get_speed_scale() const {
 	return speed_scale;
 }
 
+void ParticleEffect3D::set_priority(int p_priority) {
+	priority = p_priority;
+}
+
+int ParticleEffect3D::get_priority() const {
+	return priority;
+}
+
+void ParticleEffect3D::set_cull_distance(real_t p_distance) {
+	cull_distance = MAX(real_t(0.0), p_distance);
+}
+
+real_t ParticleEffect3D::get_cull_distance() const {
+	return cull_distance;
+}
+
+void ParticleEffect3D::set_local_space(bool p_enable) {
+	local_space = p_enable;
+}
+
+bool ParticleEffect3D::is_local_space() const {
+	return local_space;
+}
+
+ParticleEffect3D *ParticleEffect3D::spawn_attached(const Ref<PackedScene> &p_scene, Node3D *p_parent, const Transform3D &p_local_transform) {
+	ERR_FAIL_COND_V(p_scene.is_null(), nullptr);
+	ERR_FAIL_NULL_V(p_parent, nullptr);
+	const Transform3D global = p_parent->is_inside_tree() ? p_parent->get_global_transform() * p_local_transform : p_local_transform;
+	ParticleEffect3D *effect = _take_from_pool(p_scene);
+	if (effect) {
+		if (effect->get_parent() != p_parent) {
+			effect->get_parent()->remove_child(effect);
+			p_parent->add_child(effect);
+		}
+	} else {
+		effect = _instantiate_pooled(p_scene, p_parent);
+		if (!effect) {
+			return nullptr;
+		}
+	}
+	if (!effect->local_space) {
+		effect->local_space_from_attach = true; // A later plain spawn() turns it off again.
+	}
+	effect->set_local_space(true);
+	if (effect->is_inside_tree()) {
+		effect->set_global_transform(global);
+	} else {
+		effect->set_transform(p_local_transform);
+	}
+	effect->play();
+	return effect;
+}
+
 ParticleEffect3D *ParticleEffect3D::spawn(const Ref<PackedScene> &p_scene, Node *p_parent, const Transform3D &p_transform) {
 	ERR_FAIL_COND_V(p_scene.is_null(), nullptr);
 	ERR_FAIL_NULL_V(p_parent, nullptr);
@@ -1680,6 +1967,10 @@ ParticleEffect3D *ParticleEffect3D::spawn(const Ref<PackedScene> &p_scene, Node 
 		if (!effect) {
 			return nullptr;
 		}
+	}
+	if (effect->local_space_from_attach) {
+		effect->local_space_from_attach = false;
+		effect->set_local_space(false); // Pooled after spawn_attached(); now free again.
 	}
 	if (effect->is_inside_tree()) {
 		effect->set_global_transform(p_transform);
@@ -1728,11 +2019,23 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("set_emitter_duration", "emitter", "duration"), &ParticleEffect3D::set_emitter_duration);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_emitter_duration", "emitter"), &ParticleEffect3D::get_emitter_duration);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("spawn", "scene", "parent", "transform"), &ParticleEffect3D::spawn);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("spawn_attached", "scene", "parent", "local_transform"), &ParticleEffect3D::spawn_attached, DEFVAL(Transform3D()));
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_active_effect_count"), &ParticleEffect3D::get_active_effect_count);
+	ClassDB::bind_method(D_METHOD("set_priority", "priority"), &ParticleEffect3D::set_priority);
+	ClassDB::bind_method(D_METHOD("get_priority"), &ParticleEffect3D::get_priority);
+	ClassDB::bind_method(D_METHOD("set_cull_distance", "distance"), &ParticleEffect3D::set_cull_distance);
+	ClassDB::bind_method(D_METHOD("get_cull_distance"), &ParticleEffect3D::get_cull_distance);
+	ClassDB::bind_method(D_METHOD("set_local_space", "enable"), &ParticleEffect3D::set_local_space);
+	ClassDB::bind_method(D_METHOD("is_local_space"), &ParticleEffect3D::is_local_space);
 
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "autoplay"), "set_autoplay", "is_autoplay");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "looping"), "set_looping", "is_looping");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_free"), "set_auto_free", "is_auto_free");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "speed_scale", PROPERTY_HINT_RANGE, "0,8,0.01,or_greater"), "set_speed_scale", "get_speed_scale");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "local_space"), "set_local_space", "is_local_space");
+	ADD_GROUP("Budget", "");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "priority", PROPERTY_HINT_RANGE, "-10,10,1,or_less,or_greater"), "set_priority", "get_priority");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull_distance", PROPERTY_HINT_RANGE, "0,500,0.1,or_greater,suffix:m"), "set_cull_distance", "get_cull_distance");
 	ADD_GROUP("Level Collision", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "collide_with_level"), "set_collide_with_level", "is_colliding_with_level");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "level_collision_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_level_collision_mask", "get_level_collision_mask");

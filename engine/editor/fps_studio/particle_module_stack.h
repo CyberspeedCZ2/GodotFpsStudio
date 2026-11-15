@@ -20,6 +20,7 @@ class Label;
 class MenuButton;
 class Material;
 class Mesh;
+class OptionButton;
 class TextureRect;
 
 // Niagara / Source style module stack for one particle emitter. Each module is
@@ -88,6 +89,8 @@ private:
 	Button *edit_texture_button = nullptr;
 	Label *collision_size_hint = nullptr;
 	Button *collision_fit_button = nullptr;
+	OptionButton *sub_emitter_picker = nullptr;
+	Label *sub_emitter_warning = nullptr;
 
 	bool updating = false;
 
@@ -124,6 +127,10 @@ private:
 	void _paste_module(int p_module);
 	void _reset_module(int p_module);
 	void _on_add_attractor_pressed();
+	Node *_get_effect_root() const;
+	void _collect_sub_emitter_candidates(Vector<Node *> &r_candidates) const;
+	void _update_sub_emitter_card();
+	void _on_sub_emitter_selected(int p_index);
 
 protected:
 	void _notification(int p_what);

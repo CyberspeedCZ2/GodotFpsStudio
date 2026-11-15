@@ -25,6 +25,7 @@
 #include "core/object/script_language.h"
 #include "core/object/worker_thread_pool.h"
 #include "core/os/os.h"
+#include "servers/display/display_server.h"
 #include "core/string/print_string.h"
 #include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
@@ -39,6 +40,10 @@
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/curve_editor_plugin.h"
 #include "editor/scene/material_editor_plugin.h"
+#include "core/config/project_settings.h"
+#include "editor/file_system/editor_paths.h"
+#include "editor/inspector/editor_preview_plugins.h"
+#include "editor/inspector/editor_resource_preview.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/shader/text_shader_editor.h"
 #include "editor/themes/editor_scale.h"
@@ -46,6 +51,7 @@
 #include "modules/visual_shader/visual_shader.h"
 #include "modules/visual_shader/vs_nodes/visual_shader_particle_nodes.h"
 #include "scene/3d/camera_3d.h"
+#include "core/templates/sort_array.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
@@ -198,9 +204,18 @@ static Ref<Image> render_vfx_texture_frame(const VFXTextureGenerator::Settings &
 // Generated VFX textures are always used on 3D particles. Writing the 3D
 // import settings up front avoids Godot's "used in 3D" detection, which would
 // otherwise queue a second reimport while ours is still running.
-static void ensure_vfx_texture_import_settings(const String &p_path) {
+static void ensure_vfx_texture_import_settings(const String &p_path, bool p_normal_map = false) {
 	const String import_path = p_path + ".import";
 	if (FileAccess::exists(import_path)) {
+		if (p_normal_map) {
+			// Keep user tuning, but a normal map must be imported as one.
+			Ref<ConfigFile> existing;
+			existing.instantiate();
+			if (existing->load(import_path) == OK && int(existing->get_value("params", "compress/normal_map", 0)) != 1) {
+				existing->set_value("params", "compress/normal_map", 1);
+				existing->save(import_path);
+			}
+		}
 		return; // Keep existing (possibly user-tuned) import settings.
 	}
 	Ref<ConfigFile> config;
@@ -211,6 +226,9 @@ static void ensure_vfx_texture_import_settings(const String &p_path) {
 	config->set_value("params", "compress/high_quality", true); // BPTC/ASTC keeps smooth alpha gradients.
 	config->set_value("params", "mipmaps/generate", true);
 	config->set_value("params", "detect_3d/compress_to", 0);
+	if (p_normal_map) {
+		config->set_value("params", "compress/normal_map", 1); // Enable: RG normal compression, linear.
+	}
 	config->save(import_path);
 }
 
@@ -688,6 +706,11 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 		}
 		TreeItem *item = effects_tree->create_item(category_item);
 		item->set_text(0, name);
+		const String thumbnail_key = vformat("preset:%d", preset);
+		if (thumbnails.has(thumbnail_key)) {
+			item->set_icon(0, thumbnails[thumbnail_key]);
+			item->set_icon_max_width(0, int(40 * EDSCALE));
+		}
 		item->set_tooltip_text(0, FPSParticlePresets::get_preset_description(preset) + "\n" + TTR("Double-click to create a new effect from this preset."));
 		item->set_metadata(0, vformat("preset:%d", preset));
 	}
@@ -706,6 +729,11 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 		item->set_text(0, name);
 		item->set_tooltip_text(0, path);
 		item->set_metadata(0, path);
+		const Ref<Texture2D> thumbnail = _get_cached_effect_thumbnail(path);
+		if (thumbnail.is_valid()) {
+			item->set_icon(0, thumbnail);
+			item->set_icon_max_width(0, int(40 * EDSCALE));
+		}
 		if (path == effect_path) {
 			selected = item;
 		}
@@ -718,6 +746,9 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 		empty_item->set_text(0, TTR("No recent effects"));
 		empty_item->set_selectable(0, false);
 		empty_item->set_custom_color(0, header_color);
+	}
+	if (effects_tree->is_visible_in_tree()) {
+		_queue_library_thumbnails();
 	}
 }
 
@@ -1134,17 +1165,17 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	if (timeline_view) {
 		timeline_view->refresh();
 	}
-	preview_time = 0.0;
+	preview_time = preview_loop_end > preview_loop_start ? preview_loop_start : 0.0;
 	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
 		timeline->set_max(preview_duration);
-		timeline->set_value_no_signal(0.0);
+		timeline->set_value_no_signal(preview_time);
 	}
 	_apply_preview_solo();
 	_apply_preview_event_toggles();
 	_update_preview_bounds();
 	_update_event_radii();
-	_restart_preview_at(0.0);
+	_restart_preview_at(preview_time);
 	_set_preview_playing(preview_playing);
 	if (new_document) {
 		_frame_preview();
@@ -1187,6 +1218,10 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	_update_preview_bounds();
 	_update_event_radii();
 	_set_preview_playing(preview_playing);
+	if (preview_restart_queued) {
+		preview_restart_queued = false;
+		_restart_preview_at(preview_time);
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_update_event_radii() {
@@ -1281,12 +1316,12 @@ void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
 	if (!preview_effect) {
 		return;
 	}
-	preview_time = 0.0;
+	preview_time = preview_loop_end > preview_loop_start ? preview_loop_start : 0.0;
 	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
-		timeline->set_value_no_signal(0.0);
+		timeline->set_value_no_signal(preview_time);
 	}
-	_restart_preview_at(0.0);
+	_restart_preview_at(preview_time);
 	_set_preview_playing(true);
 	_update_time_label();
 }
@@ -1547,7 +1582,17 @@ VFXTextureGenerator::Settings FPSStudioParticleEditorPlugin::_make_texture_setti
 	settings.polar = texture_generator_polar && texture_generator_polar->is_pressed();
 	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(texture_generator_type);
 	settings.tiling = info && info->supports_tiling && texture_generator_tiling && texture_generator_tiling->is_pressed();
+	// Decal types render a real height-based normal map themselves; other
+	// types derive one from the alpha shape in post-processing.
+	if (_uses_generator_normal_map()) {
+		settings.output_normal = true;
+		settings.normal_strength = texture_generator_normal_height_scale ? float(texture_generator_normal_height_scale->get_value()) : 3.0f;
+	}
 	return settings;
+}
+
+bool FPSStudioParticleEditorPlugin::_uses_generator_normal_map() const {
+	return texture_generator_normal_map && texture_generator_normal_map->is_pressed() && VFXTextureGenerator::has_height_normal(texture_generator_type);
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_resolution_selected(int p_index) {
@@ -1933,7 +1978,7 @@ bool FPSStudioParticleEditorPlugin::_export_generated_texture(const String &p_pa
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save generated texture to %s (error %d)."), p_path, save_error));
 		return false;
 	}
-	ensure_vfx_texture_import_settings(p_path);
+	ensure_vfx_texture_import_settings(p_path, texture_generator_normal_map && texture_generator_normal_map->is_pressed());
 	EditorFileSystem::get_singleton()->update_file(p_path);
 	Vector<String> files_to_reimport;
 	files_to_reimport.push_back(p_path);
@@ -2168,15 +2213,17 @@ void FPSStudioParticleEditorPlugin::_regenerate_texture(bool p_preview_only) {
 	const int frame_count = frame_columns * frame_columns;
 	const int fps = MAX(1, int(texture_generator_fps->get_value()));
 	const double duration = frame_columns > 1 ? texture_generator_duration->get_value() : 1.0;
-	const bool toon_enabled = texture_generator_toon->is_pressed();
+	// A generator normal map is final data: no tints, toon steps or derived normals.
+	const bool generator_normal = _uses_generator_normal_map();
+	const bool toon_enabled = !generator_normal && texture_generator_toon->is_pressed();
 	const real_t toon_dark = texture_generator_toon_dark->get_value();
 	const real_t toon_light = texture_generator_toon_light->get_value();
 	const real_t alpha_threshold = texture_generator_alpha_threshold->get_value();
 	const real_t alpha_blur = texture_generator_alpha_blur->get_value();
-	const Color shadows_tint = texture_generator_shadows_tint->get_pick_color();
-	const Color midtones_tint = texture_generator_midtones_tint->get_pick_color();
-	const Color highlights_tint = texture_generator_highlights_tint->get_pick_color();
-	const bool generate_normal_map = texture_generator_normal_map->is_pressed();
+	const Color shadows_tint = generator_normal ? Color(1, 1, 1) : texture_generator_shadows_tint->get_pick_color();
+	const Color midtones_tint = generator_normal ? Color(1, 1, 1) : texture_generator_midtones_tint->get_pick_color();
+	const Color highlights_tint = generator_normal ? Color(1, 1, 1) : texture_generator_highlights_tint->get_pick_color();
+	const bool generate_normal_map = texture_generator_normal_map->is_pressed() && !generator_normal;
 	const real_t normal_height_scale = texture_generator_normal_height_scale->get_value();
 	const bool show_sheet = frame_columns > 1 && texture_generator_show_sheet && texture_generator_show_sheet->is_pressed();
 
@@ -2343,6 +2390,25 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 	undo_redo->commit_action(); // The history callback refreshes the UI.
 }
 
+// Renders a preset texture (a still or a columns x columns sheet) in memory.
+static Ref<Image> render_preset_texture_atlas(const VFXTextureGenerator::Settings &p_settings, int p_resolution, int p_columns, double p_duration) {
+	const int columns = MAX(1, p_columns);
+	const int frame_size = MAX(1, p_resolution / columns);
+	const int frame_count = columns * columns;
+	Ref<Image> atlas = Image::create_empty(frame_size * columns, frame_size * columns, false, Image::FORMAT_RGBA8);
+	for (int frame = 0; frame < frame_count; frame++) {
+		VFXTextureGenerator::Settings settings = p_settings;
+		settings.quality = 1;
+		if (frame_count > 1) {
+			settings.time = float(double(frame) / frame_count * p_duration);
+			settings.life = float(frame) / float(frame_count - 1);
+		}
+		Ref<Image> image = render_vfx_texture_frame(settings, frame_size);
+		atlas->blit_rect(image, Rect2i(0, 0, frame_size, frame_size), Point2i((frame % columns) * frame_size, (frame / columns) * frame_size));
+	}
+	return atlas;
+}
+
 Ref<Texture2D> FPSStudioParticleEditorPlugin::_bake_preset_texture(const VFXTextureGenerator::Settings &p_settings, const String &p_file_name, int p_resolution, int p_columns, double p_duration) {
 	const String directory = "res://vfx_textures";
 	const String path = directory.path_join(p_file_name + ".png");
@@ -2354,19 +2420,7 @@ Ref<Texture2D> FPSStudioParticleEditorPlugin::_bake_preset_texture(const VFXText
 		}
 	}
 	const int columns = MAX(1, p_columns);
-	const int frame_size = p_resolution / columns;
-	const int frame_count = columns * columns;
-	Ref<Image> atlas = Image::create_empty(p_resolution, p_resolution, false, Image::FORMAT_RGBA8);
-	for (int frame = 0; frame < frame_count; frame++) {
-		VFXTextureGenerator::Settings settings = p_settings;
-		settings.quality = 1;
-		if (frame_count > 1) {
-			settings.time = float(double(frame) / frame_count * p_duration);
-			settings.life = float(frame) / float(frame_count - 1);
-		}
-		Ref<Image> image = render_vfx_texture_frame(settings, frame_size);
-		atlas->blit_rect(image, Rect2i(0, 0, frame_size, frame_size), Point2i((frame % columns) * frame_size, (frame / columns) * frame_size));
-	}
+	Ref<Image> atlas = render_preset_texture_atlas(p_settings, p_resolution, columns, p_duration);
 	if (!DirAccess::exists(directory)) {
 		EditorFileSystem::get_singleton()->make_dir_recursive(directory);
 	}
@@ -2411,8 +2465,29 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 	if (!effect) {
 		return;
 	}
-	for (const FPSParticlePresets::TextureRequest &request : textures) {
-		Ref<Texture2D> texture = _bake_preset_texture(request.settings, request.file_name, request.resolution, request.columns, request.sheet_duration);
+	_apply_preset_textures(textures, true);
+	_set_effect_document(effect, String(), true);
+}
+
+void FPSStudioParticleEditorPlugin::_apply_preset_textures(const Vector<FPSParticlePresets::TextureRequest> &p_textures, bool p_bake) {
+	for (const FPSParticlePresets::TextureRequest &request : p_textures) {
+		Ref<Texture2D> texture;
+		if (p_bake) {
+			texture = _bake_preset_texture(request.settings, request.file_name, request.resolution, request.columns, request.sheet_duration);
+		} else {
+			// Thumbnails: reuse a texture already baked into the project, else a
+			// small in-memory render; nothing is written to the project.
+			const String path = String("res://vfx_textures").path_join(request.file_name + ".png");
+			if (ResourceLoader::exists(path, "Texture2D")) {
+				texture = ResourceLoader::load(path, "Texture2D");
+			}
+			if (texture.is_null()) {
+				Ref<Image> atlas = render_preset_texture_atlas(request.settings, MIN(request.resolution, request.columns > 1 ? 256 : 128), request.columns, request.sheet_duration);
+				if (atlas.is_valid()) {
+					texture = ImageTexture::create_from_image(atlas);
+				}
+			}
+		}
 		if (Decal *decal = Object::cast_to<Decal>(request.emitter)) {
 			if (texture.is_valid()) {
 				decal->set_texture(Decal::TEXTURE_ALBEDO, texture);
@@ -2459,8 +2534,287 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 			}
 		}
 	}
-	_set_effect_document(effect, String(), true);
 }
+
+// ---------------------------------------------------------------------------
+// Thumbnails
+
+static String get_effect_thumbnail_cache_path(const String &p_path) {
+	// Same file the editor's scene previewer reads (EditorPackedScenePreviewPlugin).
+	const String cache_base = ProjectSettings::get_singleton()->globalize_path(p_path).md5_text();
+	return EditorPaths::get_singleton()->get_cache_dir().path_join("resthumb-" + cache_base + ".png");
+}
+
+static void strip_thumbnail_nodes(Node *p_node) {
+	for (int i = p_node->get_child_count() - 1; i >= 0; i--) {
+		Node *child = p_node->get_child(i);
+		// No sound, camera shake or damage from a thumbnail.
+		if (child->is_class("CameraShake3D") || child->is_class("RadialDamage3D")) {
+			p_node->remove_child(child);
+			memdelete(child);
+			continue;
+		}
+		if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(child)) {
+			player->set_stream(Ref<AudioStream>());
+		}
+		strip_thumbnail_nodes(child);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_ensure_thumbnail_viewport() {
+	if (thumbnail_viewport) {
+		return;
+	}
+	thumbnail_viewport = memnew(SubViewport);
+	thumbnail_viewport->set_name("ParticleThumbnailViewport");
+	thumbnail_viewport->set_size(Vector2i(128, 128));
+	thumbnail_viewport->set_use_own_world_3d(true);
+	thumbnail_viewport->set_transparent_background(false);
+	thumbnail_viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+	thumbnail_viewport->set_msaa_3d(Viewport::MSAA_4X);
+	add_child(thumbnail_viewport);
+	thumbnail_root = memnew(Node3D);
+	thumbnail_viewport->add_child(thumbnail_root);
+	Ref<Environment> environment;
+	environment.instantiate();
+	environment->set_background(Environment::BG_COLOR);
+	environment->set_bg_color(Color(0.035, 0.046, 0.065));
+	environment->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+	environment->set_ambient_light_color(Color(0.48, 0.53, 0.64));
+	environment->set_ambient_light_energy(0.72);
+	environment->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
+	environment->set_glow_enabled(true);
+	WorldEnvironment *world_environment = memnew(WorldEnvironment);
+	world_environment->set_environment(environment);
+	thumbnail_root->add_child(world_environment);
+	DirectionalLight3D *key_light = memnew(DirectionalLight3D);
+	key_light->set_rotation(Vector3(Math::deg_to_rad(-38.0), Math::deg_to_rad(-26.0), 0.0));
+	key_light->set_param(Light3D::PARAM_ENERGY, 1.45);
+	thumbnail_root->add_child(key_light);
+	thumbnail_camera = memnew(Camera3D);
+	thumbnail_camera->set_fov(50.0);
+	thumbnail_root->add_child(thumbnail_camera);
+	thumbnail_camera->set_current(true);
+}
+
+void FPSStudioParticleEditorPlugin::_queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache) {
+	if (thumbnail_queued.has(p_key) || (thumbnail_frames >= 0 && thumbnail_current.key == p_key)) {
+		return;
+	}
+	if (DisplayServer::get_singleton()->get_name() == "headless") {
+		return; // No renderer to capture from (same rule as EditorResourcePreview).
+	}
+	ThumbnailJob job;
+	job.key = p_key;
+	job.path = p_path;
+	job.preset = p_preset;
+	job.write_cache = p_write_cache;
+	thumbnail_queue.push_back(job);
+	thumbnail_queued.insert(p_key);
+}
+
+Ref<Texture2D> FPSStudioParticleEditorPlugin::_get_cached_effect_thumbnail(const String &p_path) {
+	const uint64_t modified = FileAccess::get_modified_time(p_path);
+	if (thumbnails.has(p_path) && thumbnail_mtimes.has(p_path) && thumbnail_mtimes[p_path] == modified) {
+		return thumbnails[p_path];
+	}
+	// A thumbnail from an earlier session, newer than the effect file.
+	const String cache_path = get_effect_thumbnail_cache_path(p_path);
+	if (FileAccess::exists(cache_path) && FileAccess::get_modified_time(cache_path) >= modified) {
+		Ref<Image> image;
+		image.instantiate();
+		if (image->load(cache_path) == OK) {
+			Ref<Texture2D> texture = ImageTexture::create_from_image(image);
+			thumbnails[p_path] = texture;
+			thumbnail_mtimes[p_path] = modified;
+			return texture;
+		}
+	}
+	return Ref<Texture2D>();
+}
+
+void FPSStudioParticleEditorPlugin::_queue_library_thumbnails() {
+	for (int preset : FPSParticlePresets::get_presets_in_display_order()) {
+		const String key = vformat("preset:%d", preset);
+		if (!thumbnails.has(key)) {
+			_queue_thumbnail(key, String(), preset, false);
+		}
+	}
+	for (const String &path : recent_effect_paths) {
+		if (FileAccess::exists(path) && _get_cached_effect_thumbnail(path).is_null()) {
+			_queue_thumbnail(path, path, -1, true);
+		}
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_set_library_icon(const String &p_key, const Ref<Texture2D> &p_texture) {
+	if (library_menu) {
+		PopupMenu *popup = library_menu->get_popup();
+		int id = -1;
+		if (p_key.begins_with("preset:")) {
+			id = PARTICLE_LIBRARY_PRESET_BASE + p_key.get_slicec(':', 1).to_int();
+		} else {
+			const int index = recent_effect_paths.find(p_key);
+			id = index >= 0 ? PARTICLE_LIBRARY_RECENT_BASE + index : -1;
+		}
+		const int item = id >= 0 ? popup->get_item_index(id) : -1;
+		if (item >= 0) {
+			popup->set_item_icon(item, p_texture);
+			popup->set_item_icon_max_width(item, int(32 * EDSCALE));
+		}
+	}
+	if (!effects_tree || !effects_tree->get_root()) {
+		return;
+	}
+	for (TreeItem *item = effects_tree->get_root(); item; item = item->get_next_in_tree()) {
+		if (item->get_metadata(0).get_type() == Variant::STRING && String(item->get_metadata(0)) == p_key) {
+			item->set_icon(0, p_texture);
+			item->set_icon_max_width(0, int(40 * EDSCALE));
+		}
+	}
+}
+
+bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_job) {
+	Node *effect = nullptr;
+	if (p_job.preset >= 0) {
+		Vector<FPSParticlePresets::TextureRequest> textures;
+		effect = FPSParticlePresets::create_preset(p_job.preset, textures);
+		if (effect) {
+			_apply_preset_textures(textures, false);
+		}
+	} else if (!p_job.path.is_empty() && ResourceLoader::exists(p_job.path, "PackedScene")) {
+		Ref<PackedScene> packed_scene = ResourceLoader::load(p_job.path, "PackedScene");
+		if (packed_scene.is_valid() && packed_scene->can_instantiate()) {
+			effect = packed_scene->instantiate();
+			if (effect && !Object::cast_to<ParticleEffect3D>(effect)) {
+				memdelete(effect); // Only particle effects get a particle thumbnail.
+				effect = nullptr;
+			}
+		}
+	}
+	if (!effect) {
+		return false;
+	}
+	_ensure_thumbnail_viewport();
+	clear_preview_scripts(effect);
+	strip_thumbnail_nodes(effect);
+	apply_preview_defaults(effect, preview_quad);
+	clear_preview_transform_origin(effect);
+	thumbnail_root->add_child(effect);
+	thumbnail_effect_id = effect->get_instance_id();
+
+	// Show the effect at about a third of its run, when most of it is on screen.
+	Vector<Node *> tracks;
+	collect_tracks(effect, tracks);
+	double duration = 0.1;
+	double max_start = 0.0;
+	double max_lifetime = 0.1;
+	bool infinite = false;
+	AABB bounds;
+	bool has_bounds = false;
+	for (Node *track : tracks) {
+		Node3D *track_3d = Object::cast_to<Node3D>(track);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
+		double start, active_end, visual_end;
+		ParticleEffect3D::get_track_window(track, start, active_end, visual_end);
+		max_start = MAX(max_start, start);
+		if (visual_end < 0.0) {
+			infinite = true;
+		} else {
+			duration = MAX(duration, visual_end);
+		}
+		if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(track)) {
+			max_lifetime = MAX(max_lifetime, gpu->get_lifetime());
+			// Visibility boxes are generous; the inner part frames better.
+			AABB box = gpu->get_visibility_aabb();
+			box = AABB(box.get_center() - box.size * 0.3, box.size * 0.6);
+			box = gpu->get_global_transform().xform(box);
+			bounds = has_bounds ? bounds.merge(box) : box;
+			has_bounds = true;
+		} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(track)) {
+			max_lifetime = MAX(max_lifetime, cpu->get_lifetime());
+		}
+	}
+	const double time = infinite ? max_start + max_lifetime * 0.9 : duration * 0.33;
+	if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(effect)) {
+		particle_effect->seek(time);
+	}
+	if (!has_bounds) {
+		bounds = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
+	}
+	const real_t radius = MAX(real_t(0.25), bounds.size.length() * 0.5);
+	const real_t distance = radius / Math::tan(Math::deg_to_rad(real_t(thumbnail_camera->get_fov()) * 0.5));
+	const Vector3 direction = Vector3(0.0, 0.3, 1.0).normalized();
+	thumbnail_camera->look_at_from_position(bounds.get_center() + direction * distance, bounds.get_center(), Vector3(0, 1, 0));
+	thumbnail_camera->set_far(MAX(real_t(100.0), distance * 4.0));
+	thumbnail_viewport->set_update_mode(SubViewport::UPDATE_ALWAYS);
+	return true;
+}
+
+void FPSStudioParticleEditorPlugin::_finish_thumbnail_job() {
+	Ref<Image> image;
+	if (thumbnail_viewport && thumbnail_viewport->get_texture().is_valid()) {
+		image = thumbnail_viewport->get_texture()->get_image();
+	}
+	if (image.is_valid() && !image->is_empty()) {
+		image = image->duplicate();
+		image->convert(Image::FORMAT_RGB8);
+		const Ref<Texture2D> texture = ImageTexture::create_from_image(image);
+		thumbnails[thumbnail_current.key] = texture;
+		if (!thumbnail_current.path.is_empty()) {
+			thumbnail_mtimes[thumbnail_current.key] = FileAccess::get_modified_time(thumbnail_current.path);
+		}
+		_set_library_icon(thumbnail_current.key, texture);
+		if (thumbnail_current.write_cache && !thumbnail_current.path.is_empty()) {
+			// FileSystem dock / Content Browser thumbnail, like the editor writes
+			// for a scene saved from the 3D view.
+			Ref<Image> cache_image = image->duplicate();
+			const int preview_size = MAX(16, int(int(EDITOR_GET("filesystem/file_dialog/thumbnail_size")) * EDSCALE));
+			cache_image->resize(preview_size, preview_size, Image::INTERPOLATE_LANCZOS);
+			post_process_preview(cache_image);
+			if (cache_image->save_png(get_effect_thumbnail_cache_path(thumbnail_current.path)) == OK && EditorResourcePreview::get_singleton()) {
+				EditorResourcePreview::get_singleton()->check_for_invalidation(thumbnail_current.path);
+			}
+		}
+	}
+	if (Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(thumbnail_effect_id))) {
+		effect->get_parent()->remove_child(effect);
+		effect->queue_free();
+	}
+	thumbnail_effect_id = ObjectID();
+	if (thumbnail_viewport) {
+		thumbnail_viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+	}
+	thumbnail_frames = -1;
+}
+
+void FPSStudioParticleEditorPlugin::_process_thumbnails() {
+	// The Library asks for its thumbnails once it is actually on screen.
+	const bool library_visible = effects_tree && effects_tree->is_visible_in_tree();
+	if (library_visible && !library_thumbnails_visible) {
+		_queue_library_thumbnails();
+	}
+	library_thumbnails_visible = library_visible;
+	if (thumbnail_frames >= 0) {
+		// A few rendered frames let the particles simulate up to the seek time.
+		if (++thumbnail_frames >= 4) {
+			_finish_thumbnail_job();
+		}
+		return;
+	}
+	while (!thumbnail_queue.is_empty()) {
+		thumbnail_current = thumbnail_queue[0];
+		thumbnail_queue.remove_at(0);
+		thumbnail_queued.erase(thumbnail_current.key);
+		if (_start_thumbnail_job(thumbnail_current)) {
+			thumbnail_frames = 0;
+			return;
+		}
+	}
+}
+
 
 void FPSStudioParticleEditorPlugin::_assign_level_owners(Node *p_instance, Node *p_owner) {
 	if (p_instance && p_owner) {
@@ -2489,6 +2843,24 @@ void FPSStudioParticleEditorPlugin::_on_timeline_scrub(double p_time) {
 	}
 	if (timeline_view) {
 		timeline_view->set_current_time(clamped);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed(double p_start, double p_end) {
+	preview_loop_start = p_start;
+	preview_loop_end = p_end;
+	if (p_end > p_start && preview_effect && (preview_time < p_start || preview_time > p_end)) {
+		// Jump into the region so the change is visible right away.
+		preview_time = p_start;
+		preview_time_label_update_accumulator = 0.0;
+		if (timeline) {
+			timeline->set_value_no_signal(preview_time);
+		}
+		if (timeline_view) {
+			timeline_view->set_current_time(preview_time);
+		}
+		_restart_preview_at(preview_time);
+		_update_time_label();
 	}
 }
 
@@ -2774,12 +3146,22 @@ void FPSStudioParticleEditorPlugin::_bake_level_particle_collision() {
 	const Vector3 old_size = existing ? existing->get_size() : Vector3();
 	const Transform3D old_transform = existing ? existing->get_transform() : Transform3D();
 	const Ref<Texture3D> old_texture = existing ? existing->get_texture() : Ref<Texture3D>();
+	const GPUParticlesCollisionSDF3D::Resolution old_resolution = existing ? existing->get_resolution() : GPUParticlesCollisionSDF3D::RESOLUTION_128;
+	// Every failure leaves an existing node exactly as it was.
+	auto restore_existing = [&]() {
+		if (existing) {
+			existing->set_resolution(old_resolution);
+			existing->set_size(old_size);
+			existing->set_transform(old_transform);
+		}
+	};
 	if (!existing) {
 		sdf->set_name(node_name);
 		level->add_child(sdf, true); // Temporarily, the bake searches meshes from its parent.
 	}
 	const real_t longest = bounds.get_longest_axis_size();
-	sdf->set_resolution(longest > 80.0 ? GPUParticlesCollisionSDF3D::RESOLUTION_256 : GPUParticlesCollisionSDF3D::RESOLUTION_128);
+	const GPUParticlesCollisionSDF3D::Resolution new_resolution = longest > 80.0 ? GPUParticlesCollisionSDF3D::RESOLUTION_256 : GPUParticlesCollisionSDF3D::RESOLUTION_128;
+	sdf->set_resolution(new_resolution);
 	sdf->set_size(bounds.size);
 	sdf->set_global_transform(Transform3D(Basis(), bounds.get_center()));
 	const Transform3D new_transform = sdf->get_transform();
@@ -2797,8 +3179,7 @@ void FPSStudioParticleEditorPlugin::_bake_level_particle_collision() {
 		if (!existing) {
 			memdelete(sdf);
 		} else {
-			existing->set_size(old_size);
-			existing->set_transform(old_transform);
+			restore_existing();
 		}
 		EditorNode::get_singleton()->show_warning(TTR("No level geometry was found to bake particle collision from."));
 		return;
@@ -2824,6 +3205,8 @@ void FPSStudioParticleEditorPlugin::_bake_level_particle_collision() {
 	if (image->save_exr(data_path, false) != OK) {
 		if (!existing) {
 			memdelete(sdf);
+		} else {
+			restore_existing();
 		}
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save the particle collision data to %s."), data_path));
 		return;
@@ -2840,6 +3223,11 @@ void FPSStudioParticleEditorPlugin::_bake_level_particle_collision() {
 		undo_redo->add_do_reference(sdf);
 		undo_redo->add_undo_method(level, "remove_child", sdf);
 	} else {
+		// The node already holds the new values; restore the old ones first so
+		// the undo snapshot and the do step are both exact.
+		restore_existing();
+		undo_redo->add_do_property(sdf, "resolution", new_resolution);
+		undo_redo->add_undo_property(sdf, "resolution", old_resolution);
 		undo_redo->add_do_property(sdf, "size", bounds.size);
 		undo_redo->add_do_property(sdf, "transform", new_transform);
 		undo_redo->add_do_property(sdf, "texture", texture);
@@ -2953,6 +3341,11 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 		}
 		popup->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_LIBRARY_PRESET_BASE + preset);
 		popup->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+		const String thumbnail_key = vformat("preset:%d", preset);
+		if (thumbnails.has(thumbnail_key)) {
+			popup->set_item_icon(-1, thumbnails[thumbnail_key]);
+			popup->set_item_icon_max_width(-1, int(32 * EDSCALE));
+		}
 	}
 	popup->add_separator(TTR("Recent Effects"));
 	if (recent_effect_paths.is_empty()) {
@@ -2963,7 +3356,13 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 		const String &path = recent_effect_paths[i];
 		popup->add_item(path.get_file().get_basename(), PARTICLE_LIBRARY_RECENT_BASE + i);
 		popup->set_item_tooltip(-1, path);
+		const Ref<Texture2D> thumbnail = _get_cached_effect_thumbnail(path);
+		if (thumbnail.is_valid()) {
+			popup->set_item_icon(-1, thumbnail);
+			popup->set_item_icon_max_width(-1, int(32 * EDSCALE));
+		}
 	}
+	_queue_library_thumbnails(); // Icons fill in while the menu is open.
 	popup->add_separator();
 	popup->add_check_item(TTR("Show Library Panel"), PARTICLE_LIBRARY_TOGGLE_PANEL);
 	popup->set_item_checked(-1, show_left_panel && show_library_panel);
@@ -3158,6 +3557,10 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	_remember_effect(save_path);
 	_update_document_ui();
 	EditorFileSystem::get_singleton()->scan_changes();
+	// New Library / FileSystem thumbnail for the saved version.
+	thumbnails.erase(save_path);
+	thumbnail_mtimes.erase(save_path);
+	_queue_thumbnail(save_path, save_path, -1, true);
 	// Levels that already instance this effect pick up the new version.
 	List<String> saved_paths;
 	saved_paths.push_back(save_path);
@@ -3276,6 +3679,12 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 	if (p_property == "lifetime" || p_property == "one_shot") {
 		_rebuild_preview();
 	} else {
+		// ParticleEffect3D reads timing and event settings (light curve,
+		// flicker, fade, base energy, ...) when it starts playing, so such
+		// edits replay the preview at the current time to show up at once.
+		if (p_property.begins_with("metadata/") || !ParticleEffect3D::is_emitter(emitter)) {
+			preview_restart_queued = true;
+		}
 		_queue_preview_sync();
 	}
 	// The module stack refreshes itself for its own edits.
@@ -4049,6 +4458,53 @@ void FPSStudioParticleEditorPlugin::_update_preview_bounds() {
 	target->add_child(overlay);
 }
 
+// Rough number of live particles of an emitter at preview time p_time:
+// ramps up over one lifetime after the start, holds while emitting and
+// fades over one lifetime after emission ends.
+static double estimate_live_particles(const Node *p_emitter, double p_time) {
+	double start, emission_end, visual_end;
+	ParticleEffect3D::get_emitter_window(p_emitter, start, emission_end, visual_end);
+	const double amount = double(int(p_emitter->get("amount")));
+	const double lifetime = MAX(0.01, double(p_emitter->get("lifetime")));
+	if (p_time < start || (visual_end >= 0.0 && p_time > visual_end)) {
+		return 0.0;
+	}
+	if (bool(p_emitter->get("one_shot"))) {
+		const double explosiveness = CLAMP(double(p_emitter->get("explosiveness")), 0.0, 1.0);
+		const double age = p_time - start;
+		const double spawned = explosiveness >= 0.99 ? 1.0 : CLAMP(age / MAX(0.01, lifetime * (1.0 - explosiveness)), 0.0, 1.0);
+		const double dying = CLAMP((age - lifetime) / lifetime, 0.0, 1.0);
+		return amount * MAX(0.0, spawned - dying);
+	}
+	double fraction = CLAMP((p_time - start) / lifetime, 0.0, 1.0);
+	if (emission_end >= 0.0 && p_time > emission_end) {
+		fraction *= CLAMP(1.0 - (p_time - emission_end) / lifetime, 0.0, 1.0);
+	}
+	return amount * fraction;
+}
+
+// World-space area of one particle quad: mesh face times the average scale.
+static double estimate_particle_area(Node *p_emitter) {
+	const Ref<Mesh> mesh = FPSParticleModuleStack::get_draw_mesh(p_emitter);
+	double face = 1.0;
+	if (mesh.is_valid()) {
+		Vector3 size = mesh->get_aabb().size;
+		real_t axes[3] = { size.x, size.y, size.z };
+		SortArray<real_t> sorter;
+		sorter.sort(axes, 3);
+		face = MAX(0.0001, double(axes[1]) * double(axes[2])); // The two largest axes.
+	}
+	double scale = 1.0;
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_emitter)) {
+		if (ParticleProcessMaterial *process = Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr())) {
+			scale = 0.5 * (process->get_param_min(ParticleProcessMaterial::PARAM_SCALE) + process->get_param_max(ParticleProcessMaterial::PARAM_SCALE));
+		}
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_emitter)) {
+		scale = 0.5 * (cpu->get_param_min(CPUParticles3D::PARAM_SCALE) + cpu->get_param_max(CPUParticles3D::PARAM_SCALE));
+	}
+	return face * scale * scale;
+}
+
 void FPSStudioParticleEditorPlugin::_update_preview_stats() {
 	if (!preview_stats_label) {
 		return;
@@ -4061,24 +4517,65 @@ void FPSStudioParticleEditorPlugin::_update_preview_stats() {
 	Vector<Node *> tracks;
 	collect_tracks(source, tracks);
 	int visible_tracks = 0;
+	int emitters = 0;
 	int max_particles = 0;
+	double live_particles = 0.0;
+	// Overdraw: how many times the particles would cover the whole preview
+	// image (sum of every live particle's share of the screen). Additive and
+	// alpha-blended quads cost fill rate per layer, which dominates on GPUs.
+	double overdraw = 0.0;
+	const double fov = preview_camera ? Math::deg_to_rad(double(preview_camera->get_fov())) : Math::deg_to_rad(70.0);
+	const double tan_half = Math::tan(fov * 0.5);
+	const Vector3 camera_position = preview_camera && preview_camera->is_inside_tree() ? preview_camera->get_global_position() : Vector3(0, 0, preview_camera_distance);
 	for (Node *track : tracks) {
 		Node3D *track_3d = Object::cast_to<Node3D>(track);
 		if (track_3d && !track_3d->is_visible()) {
 			continue;
 		}
 		visible_tracks++;
-		if (ParticleEffect3D::is_emitter(track)) {
-			max_particles += int(track->get("amount"));
+		if (!ParticleEffect3D::is_emitter(track)) {
+			continue;
 		}
+		emitters++;
+		max_particles += int(track->get("amount"));
+		const double live = estimate_live_particles(track, preview_time);
+		live_particles += live;
+		Node3D *preview_track = preview_effect ? Object::cast_to<Node3D>(preview_effect->get_node_or_null(source->get_path_to(track))) : nullptr;
+		const Vector3 position = preview_track && preview_track->is_inside_tree() ? preview_track->get_global_position() : Vector3();
+		const double distance = MAX(0.25, double(camera_position.distance_to(position)));
+		const double view_height = 2.0 * distance * tan_half;
+		const double screen_share = estimate_particle_area(track) / (view_height * view_height * (16.0 / 9.0));
+		overdraw += live * MIN(screen_share, 1.0);
 	}
-	String text = vformat(TTR("%d tracks, %d particles max"), visible_tracks, max_particles);
+	String text = vformat(TTR("%d tracks, ~%d / %d particles"), visible_tracks, int(Math::round(live_particles)), max_particles);
+	text += vformat(TTR(", overdraw %sx"), String::num(overdraw, overdraw < 10.0 ? 1 : 0));
 	if (preview_viewport) {
 		const int draw_calls = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_DRAW_CALLS_IN_FRAME);
 		const int primitives = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_PRIMITIVES_IN_FRAME);
 		text += vformat(TTR(", %d draws, %s tris"), draw_calls, primitives >= 1000 ? String::num(primitives / 1000.0, 1) + "k" : itos(primitives));
 	}
-	preview_stats_label->set_text(text);
+	// Budgets for one effect in a first-person shooter: many can be on screen
+	// at once (impacts during a firefight), so warn early.
+	String warning;
+	bool heavy = false;
+	if (max_particles > 4000 || overdraw > 12.0) {
+		heavy = true;
+		warning = TTR("Heavy effect: reduce Amount or particle size; several of these on screen will cost a lot of GPU time.");
+	} else if (max_particles > 1500 || overdraw > 5.0 || emitters > 8) {
+		warning = TTR("Moderately heavy effect: fine as a one-off, but watch out if it plays often (impacts, muzzle flashes).");
+	}
+	preview_stats_label->set_text(warning.is_empty() ? text : String::utf8("⚠ ") + text);
+	preview_stats_label->set_modulate(Color(1, 1, 1, warning.is_empty() ? 0.6 : 1.0));
+	if (warning.is_empty()) {
+		preview_stats_label->remove_theme_color_override(SceneStringName(font_color));
+	} else {
+		preview_stats_label->add_theme_color_override(SceneStringName(font_color), preview_stats_label->get_theme_color(heavy ? SNAME("error_color") : SNAME("warning_color"), EditorStringName(Editor)));
+	}
+	String tooltip = TTR("Visible tracks, estimated live / maximum particles of visible emitters, estimated overdraw (how many times the particles cover the whole preview image at this camera distance), draw calls and primitives rendered in the preview.");
+	if (!warning.is_empty()) {
+		tooltip += "\n\n" + warning;
+	}
+	preview_stats_label->set_tooltip_text(tooltip);
 }
 
 void FPSStudioParticleEditorPlugin::_on_convert_shader_pressed() {
@@ -4421,13 +4918,22 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_PROCESS && texture_preview_task >= 0) {
 		_poll_texture_preview_task();
 	}
+	if (p_what == NOTIFICATION_PROCESS && (thumbnail_frames >= 0 || !thumbnail_queue.is_empty() || (screen && screen->is_visible_in_tree()))) {
+		_process_thumbnails();
+	}
 	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree() && preview_playing && preview_effect) {
 		const double delta = get_process_delta_time();
 		preview_time += delta * preview_speed;
-		if (preview_time >= preview_duration) {
-			if (preview_loop) {
-				preview_time = Math::fmod(preview_time, preview_duration);
-				_restart_preview_at(0.0);
+		// A loop region on the timeline always loops; otherwise the Loop toggle
+		// decides whether the whole effect repeats.
+		const bool has_region = preview_loop_end > preview_loop_start;
+		const double loop_from = has_region ? preview_loop_start : 0.0;
+		const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_end)) : preview_duration;
+		if (preview_time >= loop_to) {
+			if (preview_loop || has_region) {
+				const double span = MAX(0.01, loop_to - loop_from);
+				preview_time = loop_from + Math::fmod(preview_time - loop_to, span);
+				_restart_preview_at(preview_time);
 			} else {
 				preview_time = preview_duration;
 				_set_preview_playing(false);
@@ -5507,6 +6013,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_view->connect("track_action", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_track_action));
 	timeline_view->connect("play_toggle_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_play_toggle));
 	timeline_view->connect("restart_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_restart_pressed));
+	timeline_view->connect("loop_region_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed));
 	timeline_scroll->add_child(timeline_view);
 	timeline_snap->connect(SceneStringName(toggled), callable_mp(timeline_view, &FPSParticleTimeline::set_snap_enabled));
 	timeline_zoom_out->connect(SceneStringName(pressed), callable_mp(timeline_view, &FPSParticleTimeline::zoom_out));

@@ -1581,8 +1581,14 @@ inline float radial_crack_distance(float x, float y, float r, float a0, float wo
 	return std::fabs(-std::sin(a) * x + std::cos(a) * y);
 }
 
+// Height of the last render_decal sample (relative surface height: holes and
+// cracks below 0, bent metal and wet splatter above). Used for normal maps.
+thread_local float t_decal_height = 0.0f;
+
 void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 	const Settings &s = *c.s;
+	float &h = t_decal_height;
+	h = 0.0f;
 	const V3 &ca = c.color_a;
 	const V3 &cb = c.color_b;
 	const float r = len2(x, y);
@@ -1613,6 +1619,8 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 				const float shade = 0.85f + 0.3f * chunk + (surface == 2 ? 0.2f * grain : 0.0f);
 				color = cb * shade;
 				alpha = a_chip;
+				// Chipped surface sits lower, rough with the chunks / grain.
+				h = -a_chip * (0.25f + 0.15f * chunk + (surface == 2 ? 0.08f * grain : 0.0f));
 			}
 			// Soot / powder burn.
 			if (soot > 0.0f) {
@@ -1635,6 +1643,7 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 				const V3 metal_color = mix3(ca * 2.5f, bright, lit);
 				color = mix3(color, metal_color, rim);
 				alpha = maxf(alpha, rim);
+				h = maxf(h, rim * (0.3f + 0.45f * petals)); // Petals bent outwards.
 			}
 			// Radial cracks (concrete) / splinters (wood).
 			if (cracks > 0 && surface != 1) {
@@ -1669,6 +1678,7 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 					if (line > 0.0f) {
 						color = mix3(color, ca, line);
 						alpha = maxf(alpha, line);
+						h -= 0.45f * line; // Grooves.
 					}
 				}
 			}
@@ -1678,6 +1688,7 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 			if (r < wall_r) {
 				const float wall = smoothstepf(wall_r, hole_r * 0.7f, r);
 				color = mix3(color, ca * 0.6f, wall);
+				h = h + (-1.2f - h) * smoothstepf(wall_r, hole_r * 0.4f, r); // The hole goes in.
 				alpha = maxf(alpha, smoothstepf(wall_r, hole_r, r));
 			}
 			write_flat(r_px, color, alpha, s);
@@ -1719,6 +1730,7 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 			}
 			const float alpha = saturate(density * darkness * 1.25f);
 			const V3 color = mix3(ca, cb, saturate(t * 1.1f - n * 0.25f));
+			h = (n - 0.5f) * 0.35f * alpha; // Flaky char, nearly flat.
 			write_flat(r_px, color, alpha, s);
 			return;
 		}
@@ -1779,6 +1791,7 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 			}
 			float alpha = line * 0.9f;
 			V3 color = ca;
+			h = -0.5f * line;
 			// Crushed frosted zone and hole.
 			if (crushed > 0.0f) {
 				const float cr = maxf(hole * 4.0f, 0.15f) * (0.7f + 0.8f * crushed);
@@ -1787,15 +1800,18 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 				if (frost > alpha) {
 					color = mix3(ca, cb, 0.6f);
 				}
+				h += (n - 0.5f) * 0.3f * frost; // Crushed, faceted glass.
 				alpha = maxf(alpha, saturate(frost));
 			}
 			if (hole > 0.0f) {
 				const float edge = hole * (1.0f + 0.3f * gnoise3(dir.x * 3.0f, dir.y * 3.0f, 0.0f, s.seed + 9u));
 				if (r < edge) {
 					alpha = 0.0f; // Real hole: see-through.
+					h = 0.0f;
 				} else if (r < edge + lw * 3.0f) {
 					color = ca;
 					alpha = 1.0f;
+					h = -0.4f; // Broken edge.
 				}
 			}
 			write_flat(r_px, color, alpha, s);
@@ -1827,6 +1843,7 @@ void render_decal(const FrameContext &c, float x, float y, float *r_px) {
 			const float thick = saturate(field / maxf(size * 0.5f, 1e-3f));
 			const float n = fbm(V3(x * 7.0f, y * 7.0f, 0.0f) + seed_offset(s.seed + 4u), 3, 0.5f, s.seed + 4u) * 0.5f + 0.5f;
 			const V3 color = mix3(cb, ca, saturate(thick * variation * 1.5f + (n - 0.5f) * variation));
+			h = alpha * (0.15f + 0.35f * std::sqrt(thick) + 0.05f * n); // A wet, raised film.
 			write_flat(r_px, color, alpha, s);
 			return;
 		}
@@ -1912,10 +1929,13 @@ void render_pattern(const FrameContext &c, float u, float v, float *r_px) {
 	write_flat(r_px, mix3(c.color_a, c.color_b, value), alpha, s);
 }
 
-void render_pixel(const FrameContext &c, int px, int py, int size, float *r_out) {
+bool is_decal_type(int p_type) {
+	return p_type == TYPE_BULLET_HOLE || p_type == TYPE_SCORCH || p_type == TYPE_GLASS_CRACK || p_type == TYPE_SPLATTER;
+}
+
+// Renders one sample at texture coordinates (u, v) in 0..1, v down.
+void render_uv(const FrameContext &c, float u, float v, float *r_out) {
 	const Settings &s = *c.s;
-	float u = (float(px) + 0.5f) / float(size);
-	float v = (float(py) + 0.5f) / float(size);
 	if (c.info && c.info->supports_tiling) {
 		render_pattern(c, u, v, r_out);
 		return;
@@ -1970,12 +1990,46 @@ void render_pixel(const FrameContext &c, int px, int py, int size, float *r_out)
 	}
 }
 
+void render_pixel(const FrameContext &c, int px, int py, int size, float *r_out) {
+	const float u = (float(px) + 0.5f) / float(size);
+	const float v = (float(py) + 0.5f) / float(size);
+	if (!c.s->output_normal || !is_decal_type(c.s->type)) {
+		render_uv(c, u, v, r_out);
+		return;
+	}
+	// Normal map from the decal height field: central differences over one
+	// pixel, scaled so the strength looks the same at every resolution.
+	float sample[4];
+	const float step = 1.0f / float(size);
+	render_uv(c, u, v, r_out);
+	const float alpha = r_out[3];
+	render_uv(c, u - step, v, sample);
+	const float h_left = t_decal_height;
+	render_uv(c, u + step, v, sample);
+	const float h_right = t_decal_height;
+	render_uv(c, u, v - step, sample);
+	const float h_up = t_decal_height;
+	render_uv(c, u, v + step, sample);
+	const float h_down = t_decal_height;
+	const float k = c.s->normal_strength * float(size) / 512.0f;
+	V3 n(-(h_right - h_left) * k, (h_down - h_up) * k, 1.0f);
+	n = normalize3(n);
+	r_out[0] = n.x * 0.5f + 0.5f;
+	r_out[1] = n.y * 0.5f + 0.5f;
+	r_out[2] = n.z * 0.5f + 0.5f;
+	r_out[3] = alpha;
+}
+
 } // namespace
 
 /* Public API ------------------------------------------------------------- */
 
 int get_type_count() {
 	return TYPE_COUNT;
+}
+
+bool has_height_normal(int p_type) {
+	return is_decal_type(p_type);
 }
 
 const TypeInfo *get_type_info_by_index(int p_index) {

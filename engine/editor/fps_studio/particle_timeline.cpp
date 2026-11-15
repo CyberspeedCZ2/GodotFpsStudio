@@ -167,10 +167,14 @@ void FPSParticleTimeline::set_snap_enabled(bool p_enabled) {
 
 void FPSParticleTimeline::set_effect(Node *p_effect) {
 	const ObjectID new_id = p_effect ? p_effect->get_instance_id() : ObjectID();
-	if (new_id != effect_id) {
+	const bool changed = new_id != effect_id;
+	if (changed) {
 		user_zoomed = false;
 	}
 	effect_id = new_id;
+	if (changed) {
+		set_loop_region(0.0, -1.0); // The loop region belongs to the previous effect.
+	}
 	refresh();
 }
 
@@ -211,7 +215,7 @@ Size2 FPSParticleTimeline::get_minimum_size() const {
 
 String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 	if (p_pos.y < _ruler_height()) {
-		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.");
+		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("Shift + drag sets the preview loop region; I / O set its start / end at the playhead, Alt + I or right-click clears it.");
 	}
 	const int row = _row_at(p_pos.y);
 	Node *track = _track_at_row(row);
@@ -234,7 +238,44 @@ String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 	return text + "\n\n" + TTR("Drag the bar to change the start, its right edge to change the length (Shift: no snapping). Double-click resets the length. Right-click for more.");
 }
 
+void FPSParticleTimeline::_set_loop_region_internal(double p_start, double p_end) {
+	if (p_end >= 0.0 && p_end - p_start < TIMELINE_SNAP) {
+		p_end = -1.0; // Too short to loop; treat as cleared.
+	}
+	if (p_end < 0.0) {
+		p_start = 0.0;
+		p_end = -1.0;
+	}
+	if (Math::is_equal_approx(p_start, loop_start) && Math::is_equal_approx(p_end, loop_end)) {
+		return;
+	}
+	loop_start = p_start;
+	loop_end = p_end;
+	queue_redraw();
+	emit_signal(SNAME("loop_region_changed"), loop_start, loop_end);
+}
+
+void FPSParticleTimeline::set_loop_region(double p_start, double p_end) {
+	_set_loop_region_internal(MAX(0.0, MIN(p_start, p_end < 0.0 ? p_start : p_end)), p_end < 0.0 ? -1.0 : MAX(p_start, p_end));
+}
+
 void FPSParticleTimeline::_on_context_menu_id(int p_id) {
+	switch (p_id) {
+		case RULER_LOOP_START: {
+			const double end = has_loop_region() ? loop_end : content_length;
+			set_loop_region(context_time, MAX(end, context_time + TIMELINE_SNAP));
+			return;
+		}
+		case RULER_LOOP_END: {
+			const double start = has_loop_region() ? loop_start : 0.0;
+			set_loop_region(MIN(start, context_time), context_time);
+			return;
+		}
+		case RULER_LOOP_CLEAR: {
+			set_loop_region(0.0, -1.0);
+			return;
+		}
+	}
 	Node *track = Object::cast_to<Node>(ObjectDB::get_instance(context_track));
 	if (!track) {
 		return;
@@ -271,6 +312,15 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			emit_signal(SNAME("track_action"), selected, ACTION_TOGGLE_VISIBLE);
 		} else if (code == Key::S && !command && selected) {
 			emit_signal(SNAME("track_action"), selected, ACTION_SOLO);
+		} else if (code == Key::I && !command) {
+			// Loop in/out at the playhead (Alt+I clears).
+			if (key->is_alt_pressed()) {
+				set_loop_region(0.0, -1.0);
+			} else {
+				set_loop_region(current_time, MAX(has_loop_region() ? loop_end : content_length, current_time + TIMELINE_SNAP));
+			}
+		} else if (code == Key::O && !command) {
+			set_loop_region(MIN(has_loop_region() ? loop_start : 0.0, current_time), current_time);
 		} else {
 			return;
 		}
@@ -322,6 +372,20 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			accept_event();
 			return;
 		}
+		if (mb->get_button_index() == MouseButton::RIGHT && mb->is_pressed() && pos.y < _ruler_height() && pos.x >= _name_width()) {
+			context_time = _snap(MAX(0.0, _x_to_time(pos.x)), mb->is_shift_pressed());
+			context_track = ObjectID();
+			context_menu->clear();
+			context_menu->add_item(TTR("Set Loop Start Here"), RULER_LOOP_START, Key::I);
+			context_menu->add_item(TTR("Set Loop End Here"), RULER_LOOP_END, Key::O);
+			context_menu->add_item(TTR("Clear Loop Region"), RULER_LOOP_CLEAR, KeyModifierMask::ALT | Key::I);
+			context_menu->set_item_disabled(-1, !has_loop_region());
+			context_menu->set_position(get_screen_position() + pos);
+			context_menu->reset_size();
+			context_menu->popup();
+			accept_event();
+			return;
+		}
 		if (mb->get_button_index() == MouseButton::RIGHT && mb->is_pressed()) {
 			Node *track = _track_at_row(_row_at(pos.y));
 			if (track) {
@@ -352,8 +416,14 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			grab_focus();
 			if (pos.y < _ruler_height()) {
 				if (pos.x >= _name_width()) {
-					drag_mode = DRAG_SCRUB;
-					emit_signal(SNAME("scrub_requested"), MAX(0.0, _x_to_time(pos.x)));
+					if (mb->is_shift_pressed()) {
+						// Shift+drag on the ruler draws the loop region.
+						drag_mode = DRAG_LOOP;
+						drag_loop_anchor = _snap(MAX(0.0, _x_to_time(pos.x)), false);
+					} else {
+						drag_mode = DRAG_SCRUB;
+						emit_signal(SNAME("scrub_requested"), MAX(0.0, _x_to_time(pos.x)));
+					}
 				}
 				accept_event();
 				return;
@@ -441,6 +511,12 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			accept_event();
 			return;
 		}
+		if (drag_mode == DRAG_LOOP) {
+			const double t = _snap(MAX(0.0, time), false);
+			set_loop_region(MIN(drag_loop_anchor, t), MAX(drag_loop_anchor, t));
+			accept_event();
+			return;
+		}
 		Node *track = Object::cast_to<Node>(ObjectDB::get_instance(drag_track));
 		if (drag_mode == DRAG_MOVE && track) {
 			ParticleEffect3D::set_emitter_delay(track, MAX(0.0, _snap(drag_old_delay + time - drag_start_time, mm->is_shift_pressed())));
@@ -467,7 +543,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 				shape = CURSOR_DRAG;
 			}
 		} else if (pos.y < _ruler_height() && pos.x >= _name_width()) {
-			shape = CURSOR_IBEAM;
+			shape = mm->is_shift_pressed() ? CURSOR_HSPLIT : CURSOR_IBEAM;
 		}
 		set_default_cursor_shape(shape);
 		if (row != hover_row) {
@@ -508,6 +584,20 @@ void FPSParticleTimeline::_notification(int p_what) {
 				}
 			}
 			draw_rect(Rect2(_name_width(), 0, size.x - _name_width(), _ruler_height()), Color(0, 0, 0, 0.25));
+			if (has_loop_region()) {
+				const real_t lx0 = MAX(_name_width(), _time_to_x(loop_start));
+				const real_t lx1 = MIN(size.x, _time_to_x(loop_end));
+				if (lx1 > lx0) {
+					const Color loop_color(0.35, 0.75, 1.0);
+					draw_rect(Rect2(lx0, 0, lx1 - lx0, _ruler_height()), Color(loop_color, 0.35));
+					draw_rect(Rect2(lx0, _ruler_height(), lx1 - lx0, size.y - _ruler_height()), Color(loop_color, 0.06));
+					for (real_t edge : { real_t(_time_to_x(loop_start)), real_t(_time_to_x(loop_end)) }) {
+						if (edge >= _name_width() && edge <= size.x) {
+							draw_line(Point2(edge, 0), Point2(edge, size.y), Color(loop_color, 0.7), 1.5 * EDSCALE);
+						}
+					}
+				}
+			}
 			const int decimals = step < 0.05 ? 3 : (step < 0.1 ? 2 : (step < 1.0 ? 1 : 0));
 			for (double t = Math::floor(MAX(0.0, view_start) / step) * step; t <= view_start + view_length + 0.0001; t += step) {
 				const real_t x = _time_to_x(t);
@@ -638,6 +728,7 @@ void FPSParticleTimeline::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("track_action", PropertyInfo(Variant::OBJECT, "track"), PropertyInfo(Variant::INT, "action")));
 	ADD_SIGNAL(MethodInfo("play_toggle_requested"));
 	ADD_SIGNAL(MethodInfo("restart_requested"));
+	ADD_SIGNAL(MethodInfo("loop_region_changed", PropertyInfo(Variant::FLOAT, "start"), PropertyInfo(Variant::FLOAT, "end")));
 }
 
 FPSParticleTimeline::FPSParticleTimeline() {

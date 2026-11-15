@@ -89,6 +89,13 @@ private:
 	bool editor_preview = false;
 	HashMap<ObjectID, int> editor_saved_fps;
 	ObjectID pool_scene_id; // Set by spawn(): finished instances return to this scene's pool.
+	int priority = 0;
+	real_t cull_distance = 0.0;
+	bool local_space = false;
+	bool local_space_from_attach = false;
+	bool budget_active = false; // In the list of effects counted by the budget.
+	bool culled = false; // Skipped by distance or budget; finishes next frame.
+	uint64_t play_serial = 0; // Play order, oldest effects are recycled first.
 
 	bool playing = false;
 	bool stopping = false;
@@ -100,11 +107,18 @@ private:
 	HashMap<ObjectID, EventBase> event_bases;
 
 	void _collect_emitters(Node *p_node);
+	void _drop_sub_emitter_targets();
 	void _update_events();
 	static void _set_emitter_emitting(Node *p_emitter, bool p_emitting, bool p_restart);
 	double _get_max_lifetime() const;
 	void _update(double p_delta);
 	void _finish();
+	void _silence();
+	void _skip_play();
+	bool _should_skip_play();
+	void _budget_remove();
+	void _force_finish();
+	static bool _has_pending_damage(const LocalVector<EventState> &p_events);
 	void _play_pending();
 	void _restore_editor_preview();
 	void _ensure_editor_level_collision(Node *p_root, uint32_t p_mask);
@@ -133,6 +147,18 @@ public:
 	bool is_colliding_with_level() const;
 	void set_level_collision_mask(uint32_t p_mask);
 	uint32_t get_level_collision_mask() const;
+	// Budget: higher priority effects recycle lower ones when the project
+	// setting rendering/particle_effects/max_active_effects is reached.
+	void set_priority(int p_priority);
+	int get_priority() const;
+	// Not played (finishes at once) when the camera is farther away; 0 = always.
+	void set_cull_distance(real_t p_distance);
+	real_t get_cull_distance() const;
+	// Emitters simulate in the effect's space (local_coords), so an effect
+	// attached to a moving node (a weapon muzzle) moves its particles with it.
+	void set_local_space(bool p_enable);
+	bool is_local_space() const;
+	static int get_active_effect_count();
 	// Bakes the static physics shapes around the effect into a transient
 	// GPUParticlesCollisionSDF3D, so emitters with collision bounce off walls
 	// without hand-placed particle colliders. Called by play() at runtime.
@@ -195,6 +221,10 @@ public:
 	// the same scene (up to 64 waiting per scene), so rapid fire does not
 	// instantiate a scene per shot.
 	static ParticleEffect3D *spawn(const Ref<PackedScene> &p_scene, Node *p_parent, const Transform3D &p_transform);
+	// Like spawn(), but p_transform is local to p_parent (e.g. a muzzle
+	// Marker3D) and the emitters simulate in local space, so the effect follows
+	// the parent while it plays.
+	static ParticleEffect3D *spawn_attached(const Ref<PackedScene> &p_scene, Node3D *p_parent, const Transform3D &p_local_transform = Transform3D());
 	// Creates p_count hidden instances in advance (e.g. at level load).
 	static int prewarm(const Ref<PackedScene> &p_scene, Node *p_parent, int p_count);
 	static int get_pooled_count(const Ref<PackedScene> &p_scene);

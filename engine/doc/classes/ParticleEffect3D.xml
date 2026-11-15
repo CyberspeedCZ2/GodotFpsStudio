@@ -77,6 +77,12 @@
 				Returns [code]true[/code] when the shared level collision (see [method prepare_level_collision]) of the world containing [param node_in_world] has finished baking.
 			</description>
 		</method>
+		<method name="get_active_effect_count" qualifiers="static">
+			<return type="int" />
+			<description>
+				Returns how many effects are playing in the running game, counted against [member ProjectSettings.rendering/particle_effects/max_active_effects].
+			</description>
+		</method>
 		<method name="get_elapsed_time" qualifiers="const">
 			<return type="float" />
 			<description>
@@ -170,6 +176,15 @@
 				Plays [param scene] (whose root must be a [ParticleEffect3D]) under [param parent] at the global [param transform] with [member auto_free] enabled. A finished instance of the same scene waiting in the pool is reused (and moved to [param parent] if needed); otherwise the scene is instantiated. When the effect finishes it returns to the pool instead of being freed, and connections to [signal finished] made for this use are removed. See [method prewarm].
 			</description>
 		</method>
+		<method name="spawn_attached" qualifiers="static">
+			<return type="ParticleEffect3D" />
+			<param index="0" name="scene" type="PackedScene" />
+			<param index="1" name="parent" type="Node3D" />
+			<param index="2" name="local_transform" type="Transform3D" default="Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)" />
+			<description>
+				Like [method spawn], but [param local_transform] is relative to [param parent] (for example a muzzle [Marker3D] on a weapon) and [member local_space] is enabled, so the effect and its particles follow the parent while it plays.
+			</description>
+		</method>
 		<method name="update_level_collision">
 			<return type="void" />
 			<description>
@@ -193,11 +208,20 @@
 		<member name="collide_with_level" type="bool" setter="set_collide_with_level" getter="is_colliding_with_level" default="true">
 			If [code]true[/code], emitters whose process material has collision enabled bounce off static level geometry while the game runs. GPU particles only collide with [GPUParticlesCollision3D] nodes, so when the effect plays it bakes the [StaticBody3D] (and CSG) collision shapes inside its emitters' [member GPUParticles3D.visibility_aabb] into a transient [GPUParticlesCollisionSDF3D]. The bake is limited to a narrow band around the faces and runs immediately (on a worker thread for very large geometry); it is shared by effects replayed at the same place. Characters and rigid bodies are left out. Emitters with collision also get a higher [member GPUParticles3D.fixed_fps] so fast particles do not pass through thin walls (see [method apply_collision_substeps]).
 		</member>
+		<member name="cull_distance" type="float" setter="set_cull_distance" getter="get_cull_distance" default="0.0">
+			If greater than [code]0[/code], [method play] skips the effect when the current [Camera3D] is farther away: it emits [signal finished] on the next frame (and returns to its pool). A looping effect keeps checking every 0.5 seconds and starts once the camera comes closer. Effects with a [RadialDamage3D] event always play.
+		</member>
 		<member name="level_collision_mask" type="int" setter="set_level_collision_mask" getter="get_level_collision_mask" default="1">
 			The physics layers baked for [member collide_with_level].
 		</member>
+		<member name="local_space" type="bool" setter="set_local_space" getter="is_local_space" default="false">
+			If [code]true[/code], [method play] sets [code]local_coords[/code] on every emitter, so particles move with the effect. Use it for effects attached to moving nodes, such as muzzle flashes. See [method spawn_attached].
+		</member>
 		<member name="looping" type="bool" setter="set_looping" getter="is_looping" default="false">
 			If [code]true[/code], a finite effect starts again when it finishes.
+		</member>
+		<member name="priority" type="int" setter="set_priority" getter="get_priority" default="0">
+			When [member ProjectSettings.rendering/particle_effects/max_active_effects] effects are already playing, [method play] cuts off the oldest playing effect with the lowest priority not above this one. If every playing effect has a higher priority, this effect is skipped like with [member cull_distance]. Effects with a pending [RadialDamage3D] event are never cut off or skipped.
 		</member>
 		<member name="speed_scale" type="float" setter="set_speed_scale" getter="get_speed_scale" default="1.0">
 			Scales the effect timeline (delays and durations). It does not change the emitters' own simulation speed.

@@ -40,6 +40,12 @@ private:
 		DRAG_MOVE,
 		DRAG_RESIZE,
 		DRAG_PAN,
+		DRAG_LOOP,
+	};
+	enum RulerAction {
+		RULER_LOOP_START = 100,
+		RULER_LOOP_END,
+		RULER_LOOP_CLEAR,
 	};
 
 	ObjectID effect_id;
@@ -63,6 +69,11 @@ private:
 	int hover_row = -1;
 	PopupMenu *context_menu = nullptr;
 	ObjectID context_track;
+	// Preview loop region (editor only, not saved in the effect); end < 0 = none.
+	double loop_start = 0.0;
+	double loop_end = -1.0;
+	double drag_loop_anchor = 0.0;
+	double context_time = 0.0;
 
 	real_t _name_width() const;
 	real_t _ruler_height() const;
@@ -80,6 +91,7 @@ private:
 	void _clamp_view();
 	double _snap(double p_value, bool p_shift) const;
 	void _on_context_menu_id(int p_id);
+	void _set_loop_region_internal(double p_start, double p_end);
 
 protected:
 	void _notification(int p_what);
@@ -99,6 +111,11 @@ public:
 	void zoom_out();
 	void fit_view();
 	void refresh();
+	// Loop region of the preview; p_end < 0 clears it. Emits loop_region_changed.
+	void set_loop_region(double p_start, double p_end);
+	bool has_loop_region() const { return loop_end > loop_start; }
+	double get_loop_start() const { return loop_start; }
+	double get_loop_end() const { return loop_end; }
 
 	virtual Size2 get_minimum_size() const override;
 	virtual String get_tooltip(const Point2 &p_pos) const override;

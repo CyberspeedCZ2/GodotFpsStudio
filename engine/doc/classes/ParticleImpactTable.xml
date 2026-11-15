@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ParticleImpactTable" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Picks the impact effect for the surface that was hit.
+	</brief_description>
+	<description>
+		Maps surface names (for example [code]concrete[/code], [code]metal[/code], [code]wood[/code], [code]glass[/code], [code]water[/code], [code]flesh[/code]) to [ParticleEffect3D] scenes. A weapon only reports the hit and the table plays the matching effect with its decal and sound:
+		[codeblock]
+		var hit = get_world_3d().direct_space_state.intersect_ray(query)
+		if hit:
+		    impact_table.spawn_from_hit(get_tree().current_scene, hit)
+		[/codeblock]
+		The surface of a collider is found in this order (see [method get_surface]): a [code]surface[/code] metadata on the collider or one of its three nearest ancestors; a [code]surface[/code] metadata on its [PhysicsMaterial], else the material's [member Resource.resource_name]; a node group named like one of the [member effects] keys. Without a match, [member default_effect] is used. Surface names are not case sensitive.
+		Effects are oriented with their +Y axis along the surface normal, as the impact presets of the Particle workspace are authored, and are played with [method ParticleEffect3D.spawn], so they are pooled.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_all_effects" qualifiers="const">
+			<return type="PackedScene[]" />
+			<description>
+				Returns every effect scene of the table, including [member default_effect]. Used by [ParticleLevelSetup] to prewarm them.
+			</description>
+		</method>
+		<method name="get_effect" qualifiers="const">
+			<return type="PackedScene" />
+			<param index="0" name="surface" type="StringName" />
+			<description>
+				Returns the effect for [param surface], or [member default_effect].
+			</description>
+		</method>
+		<method name="get_surface" qualifiers="const">
+			<return type="StringName" />
+			<param index="0" name="collider" type="Object" />
+			<description>
+				Returns the surface name of [param collider], or an empty [StringName] when nothing matches.
+			</description>
+		</method>
+		<method name="set_effect">
+			<return type="void" />
+			<param index="0" name="surface" type="StringName" />
+			<param index="1" name="effect" type="PackedScene" />
+			<description>
+				Sets the effect for [param surface]; [code]null[/code] removes the entry.
+			</description>
+		</method>
+		<method name="spawn" qualifiers="const">
+			<return type="ParticleEffect3D" />
+			<param index="0" name="parent" type="Node" />
+			<param index="1" name="position" type="Vector3" />
+			<param index="2" name="normal" type="Vector3" />
+			<param index="3" name="collider" type="Object" default="null" />
+			<description>
+				Plays the effect for the surface of [param collider] under [param parent] at [param position], with +Y along [param normal] and moved [member surface_offset] off the surface. Returns the effect, or [code]null[/code] if the table has no effect for it.
+			</description>
+		</method>
+		<method name="spawn_from_hit" qualifiers="const">
+			<return type="ParticleEffect3D" />
+			<param index="0" name="parent" type="Node" />
+			<param index="1" name="hit" type="Dictionary" />
+			<description>
+				Like [method spawn], using the [code]position[/code], [code]normal[/code] and [code]collider[/code] of a [method PhysicsDirectSpaceState3D.intersect_ray] result.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="default_effect" type="PackedScene" setter="set_default_effect" getter="get_default_effect">
+			Effect for surfaces without an entry in [member effects].
+		</member>
+		<member name="effects" type="Dictionary" setter="set_effects" getter="get_effects" default="{}">
+			Surface name to [PackedScene] of a [ParticleEffect3D].
+		</member>
+		<member name="random_roll" type="bool" setter="set_random_roll" getter="is_random_roll" default="true">
+			If [code]true[/code], every impact is rotated randomly around the normal, so repeated bullet holes and debris do not look identical.
+		</member>
+		<member name="surface_offset" type="float" setter="set_surface_offset" getter="get_surface_offset" default="0.01">
+			Distance the effect is moved off the surface along the normal.
+		</member>
+	</members>
+</class>

@@ -174,6 +174,36 @@ func _on_hit(position: Vector3, normal: Vector3) -> void:
 - Připojení na signál `finished` platí jen pro jedno použití; při návratu do zásobníku se odpojí (kromě `CONNECT_PERSIST`).
 - `ParticleEffect3D.clear_pool()` zásobník uvolní (např. při změně levelu; efekty pod uvolněnou scénou zmizí s ní).
 
+### Tabulka zásahů podle materiálu (`ParticleImpactTable`)
+
+Resource, který přiřadí povrchu efekt: v Inspectoru slovník `effects` (název povrchu → scéna efektu) a `default_effect` pro ostatní povrchy. Zbraň pak jen předá výsledek raycastu:
+
+```gdscript
+@export var impacts: ParticleImpactTable
+
+func _fire(query: PhysicsRayQueryParameters3D) -> void:
+    var hit := get_world_3d().direct_space_state.intersect_ray(query)
+    if hit:
+        impacts.spawn_from_hit(get_tree().current_scene, hit)
+```
+
+Povrch se hledá v tomto pořadí: metadata `surface` na kolideru nebo na jednom z jeho 3 nejbližších předků → metadata `surface` na jeho `PhysicsMaterial`, jinak název (`resource_name`) materiálu → skupina uzlu pojmenovaná jako klíč tabulky → `default_effect`. Velikost písmen nerozhoduje. Efekt míří +Y do normály povrchu (tak jsou postavené presety zásahů), `random_roll` ho náhodně pootočí kolem normály a `surface_offset` ho odsune od povrchu.
+
+### Rozpočet a vzdálenost
+
+- **Project Settings → `rendering/particle_effects/max_active_effects`** (výchozí 96, 0 = bez limitu): kolik efektů hraje zároveň. Když je plno, nový efekt ukončí nejstarší hrající efekt s nejnižší prioritou, která není vyšší než jeho vlastní (`priority`). Mají-li všechny hrající efekty vyšší prioritu, nový se nepřehraje.
+- **`cull_distance`** na efektu (0 = vždy): dál od kamery se efekt nepřehraje. Nepřehraný efekt vyšle `finished` v dalším snímku a vrátí se do zásobníku. Smyčkový efekt kontroluje vzdálenost každou půl sekundu a rozjede se, až se kamera přiblíží.
+- Efekty s událostí poškození (`RadialDamage3D`) hrají vždy, protože jde o hratelnost.
+- `ParticleEffect3D.get_active_effect_count()` vrátí počet hrajících efektů.
+
+### Příprava levelu (`ParticleLevelSetup`)
+
+Uzel, který se vloží do levelu. Při startu hry (ne v editoru) napeče kolizi částic celého levelu (`prepare_collision`, `collision_mask`) a naplní zásobníky efektů z `prewarm_effects` a ze všech efektů přiřazené `impact_table` (`prewarm_count` instancí na scénu, `effects_per_frame` scén za snímek). Po naplnění vyšle `setup_finished`.
+
+### Efekty připojené ke zbrani
+
+`ParticleEffect3D.spawn_attached(MUZZLE, $Muzzle, Transform3D())` přehraje efekt jako potomka uzlu (např. `Marker3D` na hlavni) s lokální transformací a zapne `local_space`, takže emitory simulují v prostoru efektu (`local_coords`) a záblesk i jiskry se při otáčení kamery neopožďují. `local_space` jde zapnout i ručně na kořeni efektu.
+
 ## Particle Logic
 
 **Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře jeho kód přímo v záložce **Particle Logic** (stejný editor kódu jako Godotův Shader Editor, se zvýrazněním a kontrolou chyb). Změny kódu se projeví v náhledu hned. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.
