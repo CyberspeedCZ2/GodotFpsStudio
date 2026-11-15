@@ -32,6 +32,17 @@ enum Preset {
 	PRESET_BLOOD_HIT,
 	PRESET_SMOKE_PLUME,
 	PRESET_FIRE,
+	// Appended (ids stay stable); shown grouped by get_preset_category().
+	PRESET_WOOD_IMPACT,
+	PRESET_WATER_SPLASH,
+	PRESET_GLASS_SHATTER,
+	PRESET_ELECTRIC_SPARKS,
+	PRESET_STEAM_LEAK,
+	PRESET_SMOKE_GRENADE,
+	PRESET_SIGNAL_FLARE,
+	PRESET_DUST_LANDING,
+	PRESET_AMBIENT_DUST,
+	PRESET_BULLET_TRACER,
 	PRESET_MAX,
 };
 
@@ -47,6 +58,9 @@ struct TextureRequest {
 
 String get_preset_name(int p_preset);
 String get_preset_description(int p_preset);
+String get_preset_category(int p_preset);
+// All presets grouped by category (Weapons, Impacts, Explosions & Fire, Environment).
+Vector<int> get_presets_in_display_order();
 // Builds the effect. Texture requests reference emitters of the new effect.
 ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures);
 

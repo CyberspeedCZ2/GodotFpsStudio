@@ -84,7 +84,9 @@ EmitterBuilder add_emitter(ParticleEffect3D *p_effect, const String &p_name, int
 	emitter->set_one_shot(p_one_shot);
 	emitter->set_explosiveness_ratio(p_explosiveness);
 	emitter->set_visibility_aabb(AABB(Vector3(-8, -8, -8), Vector3(16, 16, 16)));
-	emitter->set_draw_order(GPUParticles3D::DRAW_ORDER_VIEW_DEPTH);
+	// Additive particles look the same in any order; only alpha blended
+	// particles pay for depth sorting.
+	emitter->set_draw_order(p_blend == BLEND_ADD ? GPUParticles3D::DRAW_ORDER_INDEX : GPUParticles3D::DRAW_ORDER_VIEW_DEPTH);
 	if (p_align_to_velocity) {
 		emitter->set_transform_align(GPUParticles3D::TRANSFORM_ALIGN_Z_BILLBOARD_Y_TO_VELOCITY);
 	}
@@ -184,6 +186,28 @@ void add_camera_shake(ParticleEffect3D *p_effect, real_t p_strength, double p_du
 	shake->set_owner(p_effect);
 }
 
+// Collision against level walls and floors (ParticleEffect3D bakes the
+// physics collision automatically in the game).
+void enable_collision(EmitterBuilder &r_builder, real_t p_bounce, real_t p_friction) {
+	r_builder.process->set_collision_mode(ParticleProcessMaterial::COLLISION_RIGID);
+	r_builder.process->set_collision_bounce(p_bounce);
+	r_builder.process->set_collision_friction(p_friction);
+	r_builder.node->set_collision_base_size(ParticleEffect3D::get_suggested_collision_size(r_builder.node));
+}
+
+AudioStreamPlayer3D *add_sound_slot(ParticleEffect3D *p_effect, real_t p_unit_size, real_t p_max_distance, double p_delay = 0.0) {
+	// Empty sound track: pick or drop a sound in the editor.
+	AudioStreamPlayer3D *sound = memnew(AudioStreamPlayer3D);
+	sound->set_name("Sound");
+	sound->set_unit_size(p_unit_size);
+	sound->set_max_distance(p_max_distance);
+	sound->set_meta(ParticleEffect3D::META_PITCH_RANDOM, 0.08);
+	ParticleEffect3D::set_emitter_delay(sound, p_delay);
+	p_effect->add_child(sound, true);
+	sound->set_owner(p_effect);
+	return sound;
+}
+
 void build_muzzle_flash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
 	// Muzzle points along -Z (Godot forward).
 	EmitterBuilder flash = add_emitter(p_effect, "Flash", 2, 0.07, true, 1.0, 0.7, BLEND_ADD);
@@ -240,6 +264,7 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	EmitterBuilder debris = add_emitter(p_effect, "Sparks", 48, 1.3, true, 0.95, 0.18, BLEND_ADD, true);
 	debris.set("spread", 180.0).set("initial_velocity", Vector2(7.0, 15.0)).set("gravity", Vector3(0, -9.8, 0)).set("damping", Vector2(0.5, 1.5)).set("scale", Vector2(0.5, 1.2));
 	debris.process->set_color_ramp(make_ramp({ { 0.0f, Color(1.0, 0.92, 0.6, 1.0) }, { 0.5f, Color(1.0, 0.5, 0.12, 1.0) }, { 1.0f, Color(0.6, 0.12, 0.02, 0.0) } }));
+	enable_collision(debris, 0.25, 0.4);
 	r_textures.push_back(make_texture(debris.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
 
 	EmitterBuilder shockwave = add_emitter(p_effect, "Shockwave", 1, 0.45, true, 1.0, 1.0, BLEND_ADD);
@@ -265,14 +290,7 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
 	add_camera_shake(p_effect, 0.85, 0.75, 6.0, 35.0, 0.0);
 	{
-		// Empty sound track: pick or drop the explosion sound in the editor.
-		AudioStreamPlayer3D *sound = memnew(AudioStreamPlayer3D);
-		sound->set_name("Sound");
-		sound->set_unit_size(12.0);
-		sound->set_max_distance(120.0);
-		sound->set_meta(ParticleEffect3D::META_PITCH_RANDOM, 0.08);
-		p_effect->add_child(sound, true);
-		sound->set_owner(p_effect);
+		add_sound_slot(p_effect, 12.0, 120.0);
 		RadialDamage3D *damage = memnew(RadialDamage3D);
 		damage->set_name("Damage");
 		damage->set_damage(90.0);
@@ -384,6 +402,260 @@ void build_fire(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	add_light(p_effect, "FireLight", Color(1.0, 0.55, 0.22), 2.5, 6.0, 0.0, 0.0, 0.45, Vector3(0, 0.45, 0));
 }
 
+
+const Color WHITE_TINT_A(0.72, 0.72, 0.72);
+const Color WHITE_TINT_B(1.0, 1.0, 1.0);
+
+void build_wood_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	EmitterBuilder dust = add_emitter(p_effect, "Dust", 5, 1.0, true, 0.9, 0.4, BLEND_ALPHA);
+	dust.set("direction", Vector3(0, 1, 0)).set("spread", 30.0).set("initial_velocity", Vector2(0.8, 2.0)).set("damping", Vector2(2.5, 3.5)).set("gravity", Vector3(0, -0.3, 0));
+	dust.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-40, 40)).set("color", Color(0.55, 0.42, 0.28, 0.6));
+	dust.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
+	dust.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	r_textures.push_back(make_texture(dust.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
+
+	EmitterBuilder splinters = add_emitter(p_effect, "Splinters", 12, 0.9, true, 1.0, 0.07, BLEND_ALPHA, true);
+	splinters.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(2.5, 6.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.5, 1.3));
+	splinters.set("color", Color(0.62, 0.45, 0.26, 1.0));
+	splinters.material->set_proximity_fade_enabled(false);
+	TextureRequest splinter_texture = make_texture(splinters.node, VFXTextureGenerator::TYPE_SPARK, "wood_splinter", 128);
+	set_colors(splinter_texture, WHITE_TINT_A, WHITE_TINT_B);
+	set_param(splinter_texture, "glow", 0.1f);
+	set_param(splinter_texture, "flicker", 0.0f);
+	r_textures.push_back(splinter_texture);
+}
+
+void build_water_splash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// Water surface normal is +Y.
+	EmitterBuilder droplets = add_emitter(p_effect, "Droplets", 40, 0.9, true, 0.95, 0.07, BLEND_ALPHA, true);
+	droplets.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.08);
+	droplets.set("direction", Vector3(0, 1, 0)).set("spread", 18.0).set("initial_velocity", Vector2(2.5, 6.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.5, 1.2));
+	droplets.set("color", Color(0.85, 0.93, 1.0, 0.85));
+	droplets.material->set_proximity_fade_enabled(false);
+	TextureRequest drop_texture = make_texture(droplets.node, VFXTextureGenerator::TYPE_SPARK, "water_droplet", 128);
+	set_colors(drop_texture, WHITE_TINT_A, WHITE_TINT_B);
+	set_param(drop_texture, "glow", 0.3f);
+	set_param(drop_texture, "flicker", 0.0f);
+	r_textures.push_back(drop_texture);
+
+	EmitterBuilder mist = add_emitter(p_effect, "Mist", 6, 1.2, true, 0.9, 0.7, BLEND_ALPHA);
+	mist.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(0.5, 1.5)).set("damping", Vector2(2.0, 3.0)).set("angle", RANDOM_ANGLE);
+	mist.set("color", Color(0.9, 0.95, 1.0, 0.35));
+	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
+	mist.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest mist_texture = make_texture(mist.node, VFXTextureGenerator::TYPE_SMOKE, "white_puff", 256);
+	set_colors(mist_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(mist_texture);
+
+	// Flat ripple ring lying on the water.
+	EmitterBuilder ripple = add_emitter(p_effect, "Ripple", 2, 1.0, true, 0.7, 1.0, BLEND_ALPHA);
+	Ref<QuadMesh> flat = ripple.node->get_draw_pass_mesh(0);
+	flat->set_orientation(PlaneMesh::FACE_Y);
+	ripple.material->set_billboard_mode(BaseMaterial3D::BILLBOARD_DISABLED);
+	ripple.material->set_proximity_fade_enabled(false);
+	ripple.node->set_position(Vector3(0, 0.02, 0));
+	ripple.set("scale", Vector2(1.5, 2.2)).set("color", Color(0.9, 0.96, 1.0, 0.6));
+	ripple.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.2), Vector2(1, 1.0) }));
+	ripple.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest ripple_texture = make_texture(ripple.node, VFXTextureGenerator::TYPE_WAVE_RING, "water_ripple", 256);
+	set_param(ripple_texture, "progress", 0.85f);
+	set_param(ripple_texture, "animate_progress", 0.0f);
+	set_colors(ripple_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(ripple_texture);
+
+	add_sound_slot(p_effect, 4.0, 40.0);
+}
+
+void build_glass_shatter(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// The pane faces +Z; shards fly out along +Z and bounce on the floor.
+	EmitterBuilder shards = add_emitter(p_effect, "Shards", 40, 2.5, true, 1.0, 0.09, BLEND_ALPHA);
+	shards.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_BOX)).set("emission_box_extents", Vector3(0.5, 0.5, 0.02));
+	shards.set("direction", Vector3(0, 0.2, 1)).set("spread", 45.0).set("initial_velocity", Vector2(1.0, 4.0)).set("gravity", Vector3(0, -9.8, 0));
+	shards.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-720, 720)).set("scale", Vector2(0.4, 1.4)).set("color", Color(0.8, 0.92, 1.0, 0.7));
+	shards.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.8, 1), Vector2(1, 0) }));
+	shards.material->set_proximity_fade_enabled(false);
+	enable_collision(shards, 0.35, 0.6);
+	TextureRequest shard_texture = make_texture(shards.node, VFXTextureGenerator::TYPE_FLASH, "glass_shard", 128);
+	set_param(shard_texture, "rays", 3);
+	set_param(shard_texture, "streak", 0.0f);
+	set_colors(shard_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(shard_texture);
+
+	EmitterBuilder glints = add_emitter(p_effect, "Glints", 12, 0.5, true, 0.9, 0.12, BLEND_ADD);
+	glints.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_BOX)).set("emission_box_extents", Vector3(0.5, 0.5, 0.02));
+	glints.set("direction", Vector3(0, 0, 1)).set("spread", 50.0).set("initial_velocity", Vector2(1.0, 3.0)).set("gravity", Vector3(0, -4.0, 0));
+	glints.set("color", Color(0.85, 0.95, 1.0, 1.0));
+	glints.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest glint_texture = make_texture(glints.node, VFXTextureGenerator::TYPE_FLASH, "impact_glow", 128);
+	set_param(glint_texture, "rays", 4);
+	set_param(glint_texture, "streak", 0.0f);
+	r_textures.push_back(glint_texture);
+
+	add_sound_slot(p_effect, 5.0, 50.0);
+}
+
+void build_electric_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// A broken cable: repeating bursts of blue-white sparks with a flickering light.
+	EmitterBuilder sparks = add_emitter(p_effect, "Sparks", 24, 0.7, false, 0.95, 0.1, BLEND_ADD, true);
+	sparks.set("direction", Vector3(0, -0.3, 0)).set("spread", 70.0).set("initial_velocity", Vector2(2.0, 6.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.4, 1.0));
+	sparks.process->set_color_ramp(make_ramp({ { 0.0f, Color(0.9, 0.95, 1.0, 1.0) }, { 0.4f, Color(0.5, 0.75, 1.0, 1.0) }, { 1.0f, Color(0.2, 0.35, 1.0, 0.0) } }));
+	enable_collision(sparks, 0.3, 0.2);
+	TextureRequest spark_texture = make_texture(sparks.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak_blue", 128);
+	set_colors(spark_texture, Color(0.4, 0.6, 1.0), Color(0.9, 0.95, 1.0));
+	r_textures.push_back(spark_texture);
+
+	EmitterBuilder arc = add_emitter(p_effect, "Arc", 2, 0.12, false, 0.5, 0.5, BLEND_ADD);
+	arc.set("angle", RANDOM_ANGLE).set("scale", Vector2(0.7, 1.2));
+	arc.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest arc_texture = make_texture(arc.node, VFXTextureGenerator::TYPE_ELECTRIC_ARC, "electric_arc", 256);
+	r_textures.push_back(arc_texture);
+
+	add_light(p_effect, "ArcLight", Color(0.55, 0.75, 1.0), 2.0, 4.0, 0.0, 0.0, 0.9, Vector3(0, 0.05, 0));
+	add_sound_slot(p_effect, 3.0, 25.0);
+}
+
+void build_steam_leak(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// Jet along +Z from a broken pipe.
+	EmitterBuilder steam = add_emitter(p_effect, "Steam", 40, 1.6, false, 0.0, 0.6, BLEND_ALPHA);
+	steam.set("direction", Vector3(0, 0, 1)).set("spread", 6.0).set("initial_velocity", Vector2(4.0, 6.0)).set("damping", Vector2(3.0, 4.0)).set("gravity", Vector3(0, 0.8, 0));
+	steam.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-30, 30)).set("color", Color(0.95, 0.97, 1.0, 0.35));
+	steam.set("turbulence_enabled", true).set("turbulence_noise_strength", 0.5).set("turbulence_noise_scale", 2.5);
+	steam.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(1, 1.5) }, 1.5f));
+	steam.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
+	steam.node->set("preprocess", 2.0);
+	TextureRequest steam_texture = make_texture(steam.node, VFXTextureGenerator::TYPE_SMOKE, "white_puff", 256);
+	set_colors(steam_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(steam_texture);
+	add_sound_slot(p_effect, 3.0, 25.0);
+}
+
+void build_smoke_grenade(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// Thick smoke screen for ~8 s that fills the room and stays off walls.
+	EmitterBuilder smoke = add_emitter(p_effect, "Smoke", 48, 7.0, false, 0.0, 3.0, BLEND_ALPHA);
+	ParticleEffect3D::set_emitter_duration(smoke.node, 8.0);
+	smoke.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.2);
+	smoke.set("direction", Vector3(0, 1, 0)).set("spread", 80.0).set("initial_velocity", Vector2(1.0, 2.5)).set("damping", Vector2(0.5, 0.9)).set("gravity", Vector3(0, 0.05, 0));
+	smoke.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-8, 8)).set("scale", Vector2(0.9, 1.3)).set("color", Color(0.72, 0.72, 0.7, 0.85));
+	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.3), Vector2(0.4, 1.0), Vector2(1, 1.3) }, 1.3f));
+	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(0.75, 0.9), Vector2(1, 0) }));
+	enable_collision(smoke, 0.0, 1.0);
+	r_textures.push_back(make_texture(smoke.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
+	add_sound_slot(p_effect, 3.0, 30.0);
+}
+
+void build_signal_flare(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	EmitterBuilder core = add_emitter(p_effect, "Core", 6, 0.15, false, 0.0, 0.6, BLEND_ADD);
+	core.set("angle", RANDOM_ANGLE).set("scale", Vector2(0.7, 1.2)).set("color", Color(1.0, 0.25, 0.15, 1.0));
+	core.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest core_texture = make_texture(core.node, VFXTextureGenerator::TYPE_FLASH, "flare_core", 128);
+	set_param(core_texture, "rays", 6);
+	set_param(core_texture, "streak", 0.3f);
+	set_colors(core_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(core_texture);
+
+	EmitterBuilder sparks = add_emitter(p_effect, "Sparks", 20, 0.8, false, 0.0, 0.08, BLEND_ADD, true);
+	sparks.set("direction", Vector3(0, 1, 0)).set("spread", 60.0).set("initial_velocity", Vector2(1.0, 3.0)).set("gravity", Vector3(0, -6.0, 0));
+	sparks.process->set_color_ramp(make_ramp({ { 0.0f, Color(1.0, 0.85, 0.7, 1.0) }, { 1.0f, Color(1.0, 0.15, 0.05, 0.0) } }));
+	enable_collision(sparks, 0.3, 0.3);
+	r_textures.push_back(make_texture(sparks.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
+
+	EmitterBuilder smoke = add_emitter(p_effect, "Smoke", 18, 3.5, false, 0.0, 1.0, BLEND_ALPHA);
+	smoke.set("direction", Vector3(0, 1, 0)).set("spread", 10.0).set("initial_velocity", Vector2(0.6, 1.0)).set("gravity", Vector3(0, 0.3, 0)).set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-15, 15));
+	smoke.set("turbulence_enabled", true).set("turbulence_noise_strength", 0.4).set("turbulence_noise_scale", 3.0);
+	smoke.process->set_color_ramp(make_ramp({ { 0.0f, Color(0.9, 0.3, 0.25, 0.0) }, { 0.15f, Color(0.85, 0.35, 0.3, 0.6) }, { 1.0f, Color(0.7, 0.55, 0.55, 0.0) } }));
+	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.3), Vector2(1, 1.0) }));
+	smoke.node->set("preprocess", 3.0);
+	TextureRequest smoke_texture = make_texture(smoke.node, VFXTextureGenerator::TYPE_SMOKE, "white_puff", 256);
+	set_colors(smoke_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(smoke_texture);
+
+	add_light(p_effect, "FlareLight", Color(1.0, 0.2, 0.12), 3.0, 9.0, 0.0, 0.0, 0.35, Vector3(0, 0.1, 0));
+	add_sound_slot(p_effect, 2.0, 20.0);
+}
+
+void build_dust_landing(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// Flat ring of dust along the ground (landing, heavy footstep, body fall).
+	EmitterBuilder dust = add_emitter(p_effect, "Dust", 14, 1.2, true, 0.95, 0.6, BLEND_ALPHA);
+	dust.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.2);
+	dust.set("direction", Vector3(1, 0, 0)).set("spread", 180.0).set("flatness", 1.0).set("initial_velocity", Vector2(1.5, 3.0)).set("damping", Vector2(3.5, 4.5)).set("gravity", Vector3(0, 0.15, 0));
+	dust.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-30, 30)).set("color", Color(0.6, 0.55, 0.48, 0.5));
+	dust.node->set_position(Vector3(0, 0.1, 0));
+	dust.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
+	dust.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
+	r_textures.push_back(make_texture(dust.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
+}
+
+void build_ambient_dust(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// Slowly drifting motes in a 6 x 3 x 6 m volume, visible in light shafts.
+	EmitterBuilder motes = add_emitter(p_effect, "Motes", 80, 8.0, false, 0.0, 0.025, BLEND_ADD);
+	motes.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_BOX)).set("emission_box_extents", Vector3(3.0, 1.5, 3.0));
+	motes.set("spread", 180.0).set("initial_velocity", Vector2(0.02, 0.08)).set("gravity", Vector3(0, -0.01, 0)).set("scale", Vector2(0.5, 1.2));
+	motes.set("turbulence_enabled", true).set("turbulence_noise_strength", 0.15).set("turbulence_noise_scale", 4.0);
+	motes.set("color", Color(1.0, 0.95, 0.85, 0.6));
+	motes.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.2, 1), Vector2(0.8, 1), Vector2(1, 0) }));
+	motes.material->set_proximity_fade_enabled(false);
+	motes.node->set_position(Vector3(0, 1.5, 0));
+	motes.node->set("preprocess", 8.0);
+	TextureRequest mote_texture = make_texture(motes.node, VFXTextureGenerator::TYPE_FLASH, "dust_mote", 64);
+	set_param(mote_texture, "rays", 0);
+	set_param(mote_texture, "streak", 0.0f);
+	set_colors(mote_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(mote_texture);
+}
+
+void build_bullet_tracer(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// One fast streak along -Z (weapon forward); spawn it at the muzzle.
+	EmitterBuilder tracer = add_emitter(p_effect, "Tracer", 1, 0.15, true, 1.0, 0.05, BLEND_ADD, true);
+	Ref<QuadMesh> streak = tracer.node->get_draw_pass_mesh(0);
+	streak->set_size(Vector2(0.05, 2.0));
+	tracer.set("direction", Vector3(0, 0, -1)).set("spread", 0.0).set("initial_velocity", Vector2(250.0, 250.0));
+	tracer.process->set_color_ramp(make_ramp({ { 0.0f, Color(1.0, 0.95, 0.7, 1.0) }, { 1.0f, Color(1.0, 0.6, 0.2, 0.6) } }));
+	tracer.node->set_visibility_aabb(AABB(Vector3(-1, -1, -40), Vector3(2, 2, 41)));
+	r_textures.push_back(make_texture(tracer.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
+}
+
+// Visibility bounds from the motion instead of a fixed 16 m cube: tighter
+// culling, and a smaller (finer) level collision bake.
+void fit_visibility_aabb(GPUParticles3D *p_emitter) {
+	const AABB default_aabb(Vector3(-8, -8, -8), Vector3(16, 16, 16));
+	if (p_emitter->get_visibility_aabb() != default_aabb) {
+		return; // Set explicitly by the preset.
+	}
+	const Ref<ParticleProcessMaterial> process = p_emitter->get_process_material();
+	if (process.is_null()) {
+		return;
+	}
+	const real_t life = p_emitter->get_lifetime();
+	const real_t speed = process->get_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY);
+	const real_t damping = process->get_param_min(ParticleProcessMaterial::PARAM_DAMPING);
+	real_t travel = speed * life;
+	if (damping > 0.0) {
+		travel = MIN(travel, speed * speed / (2.0 * damping));
+	}
+	const real_t fall = 0.5 * process->get_gravity().length() * life * life;
+	real_t emission = 0.0;
+	if (process->get_emission_shape() == ParticleProcessMaterial::EMISSION_SHAPE_SPHERE || process->get_emission_shape() == ParticleProcessMaterial::EMISSION_SHAPE_SPHERE_SURFACE) {
+		emission = process->get_emission_sphere_radius();
+	} else if (process->get_emission_shape() == ParticleProcessMaterial::EMISSION_SHAPE_BOX) {
+		emission = process->get_emission_box_extents().length();
+	}
+	real_t size = 0.5;
+	if (const QuadMesh *quad = Object::cast_to<QuadMesh>(p_emitter->get_draw_pass_mesh(0).ptr())) {
+		size = MAX(quad->get_size().x, quad->get_size().y) * process->get_param_max(ParticleProcessMaterial::PARAM_SCALE) * 1.5;
+	}
+	const real_t turbulence = process->get_turbulence_enabled() ? process->get_turbulence_noise_strength() * life : 0.0;
+	// Spread in every direction, falling (or rising) only along gravity.
+	// Capped: farther particles are small and short-lived, and a huge box
+	// would make the level collision bake coarse.
+	const real_t extent = CLAMP(emission + MIN(travel, real_t(10.0)) + size + turbulence + 0.25, real_t(0.5), real_t(12.0));
+	AABB aabb(Vector3(-extent, -extent, -extent), Vector3(extent, extent, extent) * 2.0);
+	const Vector3 gravity = process->get_gravity();
+	if (gravity.length() > 0.001) {
+		aabb.expand_to(gravity.normalized() * (extent + MIN(fall, real_t(10.0))));
+	}
+	p_emitter->set_visibility_aabb(aabb);
+}
+
 } // namespace
 
 String get_preset_name(int p_preset) {
@@ -402,8 +674,62 @@ String get_preset_name(int p_preset) {
 			return "Smoke Plume";
 		case PRESET_FIRE:
 			return "Fire";
+		case PRESET_WOOD_IMPACT:
+			return "Bullet Impact (Wood)";
+		case PRESET_WATER_SPLASH:
+			return "Water Splash";
+		case PRESET_GLASS_SHATTER:
+			return "Glass Shatter";
+		case PRESET_ELECTRIC_SPARKS:
+			return "Electric Sparks";
+		case PRESET_STEAM_LEAK:
+			return "Steam Leak";
+		case PRESET_SMOKE_GRENADE:
+			return "Smoke Grenade";
+		case PRESET_SIGNAL_FLARE:
+			return "Signal Flare";
+		case PRESET_DUST_LANDING:
+			return "Dust Puff (Landing)";
+		case PRESET_AMBIENT_DUST:
+			return "Ambient Dust";
+		case PRESET_BULLET_TRACER:
+			return "Bullet Tracer";
 	}
 	return String();
+}
+
+String get_preset_category(int p_preset) {
+	switch (p_preset) {
+		case PRESET_MUZZLE_FLASH:
+		case PRESET_BULLET_TRACER:
+			return "Weapons";
+		case PRESET_BULLET_IMPACT:
+		case PRESET_WOOD_IMPACT:
+		case PRESET_IMPACT_SPARKS:
+		case PRESET_BLOOD_HIT:
+		case PRESET_GLASS_SHATTER:
+		case PRESET_WATER_SPLASH:
+			return "Impacts";
+		case PRESET_EXPLOSION:
+		case PRESET_FIRE:
+		case PRESET_SMOKE_GRENADE:
+		case PRESET_SIGNAL_FLARE:
+			return "Explosions & Fire";
+	}
+	return "Environment";
+}
+
+Vector<int> get_presets_in_display_order() {
+	Vector<int> order;
+	const char *categories[] = { "Weapons", "Impacts", "Explosions & Fire", "Environment" };
+	for (const char *category : categories) {
+		for (int preset = 0; preset < PRESET_MAX; preset++) {
+			if (get_preset_category(preset) == category) {
+				order.push_back(preset);
+			}
+		}
+	}
+	return order;
 }
 
 String get_preset_description(int p_preset) {
@@ -422,6 +748,26 @@ String get_preset_description(int p_preset) {
 			return "Continuous rising smoke column with turbulence.";
 		case PRESET_FIRE:
 			return "Continuous animated flames, embers and smoke.";
+		case PRESET_WOOD_IMPACT:
+			return "Wood dust and splinters along +Y (surface normal).";
+		case PRESET_WATER_SPLASH:
+			return "Droplet column, mist and a flat ripple on the water (+Y), with a sound slot.";
+		case PRESET_GLASS_SHATTER:
+			return "Glass shards that tumble and bounce off the floor, glints and a sound slot; the pane faces +Z.";
+		case PRESET_ELECTRIC_SPARKS:
+			return "Repeating blue sparks that bounce, electric arc, flickering light and a sound slot.";
+		case PRESET_STEAM_LEAK:
+			return "Continuous steam jet along +Z with turbulence and a sound slot.";
+		case PRESET_SMOKE_GRENADE:
+			return "Thick smoke screen for 8 seconds that fills the room and stays off walls, with a sound slot.";
+		case PRESET_SIGNAL_FLARE:
+			return "Red burning flare: core, bouncing sparks, red smoke, flickering light and a sound slot.";
+		case PRESET_DUST_LANDING:
+			return "Flat ring of dust along the ground for landings and heavy steps.";
+		case PRESET_AMBIENT_DUST:
+			return "Slowly drifting dust motes in a 6 x 3 x 6 m volume.";
+		case PRESET_BULLET_TRACER:
+			return "One fast glowing streak along -Z; spawn it at the muzzle.";
 	}
 	return String();
 }
@@ -476,6 +822,41 @@ ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures
 		case PRESET_FIRE:
 			build_fire(effect, r_textures);
 			break;
+		case PRESET_WOOD_IMPACT:
+			build_wood_impact(effect, r_textures);
+			break;
+		case PRESET_WATER_SPLASH:
+			build_water_splash(effect, r_textures);
+			break;
+		case PRESET_GLASS_SHATTER:
+			build_glass_shatter(effect, r_textures);
+			break;
+		case PRESET_ELECTRIC_SPARKS:
+			build_electric_sparks(effect, r_textures);
+			break;
+		case PRESET_STEAM_LEAK:
+			build_steam_leak(effect, r_textures);
+			break;
+		case PRESET_SMOKE_GRENADE:
+			build_smoke_grenade(effect, r_textures);
+			break;
+		case PRESET_SIGNAL_FLARE:
+			build_signal_flare(effect, r_textures);
+			break;
+		case PRESET_DUST_LANDING:
+			build_dust_landing(effect, r_textures);
+			break;
+		case PRESET_AMBIENT_DUST:
+			build_ambient_dust(effect, r_textures);
+			break;
+		case PRESET_BULLET_TRACER:
+			build_bullet_tracer(effect, r_textures);
+			break;
+	}
+	for (int i = 0; i < effect->get_child_count(); i++) {
+		if (GPUParticles3D *emitter = Object::cast_to<GPUParticles3D>(effect->get_child(i))) {
+			fit_visibility_aabb(emitter);
+		}
 	}
 	return effect;
 }

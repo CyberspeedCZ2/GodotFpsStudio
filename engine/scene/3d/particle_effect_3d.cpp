@@ -403,8 +403,27 @@ static constexpr float LEVEL_COLLISION_BAND = 1.5;
 static constexpr float LEVEL_COLLISION_THICKNESS = 1.5;
 static constexpr int LEVEL_COLLISION_MAX_FPS = 240;
 
+// Cells along the longest axis: about 15 cm cells for small effects (an
+// impact bakes 32^3 instead of 64^3), at most 64 for big ones.
+static int get_level_collision_subdiv(const AABB &p_region) {
+	const real_t longest = p_region.get_longest_axis_size();
+	if (longest <= 16 * 0.15) {
+		return 16;
+	}
+	if (longest <= 32 * 0.15) {
+		return 32;
+	}
+	return 64;
+}
+
+static float get_level_collision_band(const AABB &p_region) {
+	const float cell = p_region.get_longest_axis_size() / get_level_collision_subdiv(p_region);
+	return CLAMP(cell * 6.0f, 0.6f, LEVEL_COLLISION_BAND);
+}
+
 static void configure_level_collision_baker(GPUParticlesCollisionSDF3D *p_baker, const AABB &p_region) {
-	p_baker->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+	const int subdiv = get_level_collision_subdiv(p_region);
+	p_baker->set_resolution(subdiv == 16 ? GPUParticlesCollisionSDF3D::RESOLUTION_16 : (subdiv == 32 ? GPUParticlesCollisionSDF3D::RESOLUTION_32 : GPUParticlesCollisionSDF3D::RESOLUTION_64));
 	p_baker->set_size(p_region.size);
 	p_baker->set_thickness(LEVEL_COLLISION_THICKNESS);
 }
@@ -448,11 +467,11 @@ bool ParticleEffect3D::_get_level_collision_region(AABB &r_region) const {
 		return false;
 	}
 	r_region = r_region.grow(0.5);
-	// Keep the SDF resolution useful: limit the baked area around the effect.
-	const Vector3 center = r_region.get_center();
-	r_region.size = r_region.size.min(Vector3(64, 64, 64));
-	r_region.position = center - r_region.size * 0.5;
-	return true;
+	// Keep the SDF fine (cells <= ~0.3 m): bake at most 20 m around the
+	// effect, where particles hit walls while they are still visible.
+	const AABB around_effect(get_global_position() - Vector3(10, 10, 10), Vector3(20, 20, 20));
+	r_region = r_region.intersection(around_effect);
+	return r_region.has_volume();
 }
 
 void ParticleEffect3D::update_level_collision() {
@@ -538,7 +557,7 @@ Ref<Texture3D> sdf_image_to_texture(const Ref<Image> &p_image) {
 
 void level_collision_bake_task(void *p_userdata) {
 	LevelCollisionBake *bake = static_cast<LevelCollisionBake *>(p_userdata);
-	bake->image = bake->baker->bake_faces(bake->faces, LEVEL_COLLISION_BAND);
+	bake->image = bake->baker->bake_faces(bake->faces, get_level_collision_band(bake->region));
 	callable_mp_static(&ParticleEffect3D::_level_collision_bake_done).call_deferred(int64_t(p_userdata));
 }
 } // namespace
@@ -599,7 +618,7 @@ void ParticleEffect3D::_update_level_collision() {
 	const Vector3 size = (region.size + Vector3(1, 1, 1)).ceil();
 	region = AABB(center - size * 0.5, size);
 
-	const real_t shell = region.get_longest_axis_size() / 64.0 * LEVEL_COLLISION_THICKNESS;
+	const real_t shell = region.get_longest_axis_size() / get_level_collision_subdiv(region) * LEVEL_COLLISION_THICKNESS;
 	for (const EmitterState &state : emitters) {
 		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(state.id));
 		if (emitter_uses_collision(gpu)) {
@@ -693,7 +712,7 @@ void ParticleEffect3D::_update_level_collision() {
 	if (faces.size() <= LEVEL_COLLISION_SYNC_FACES) {
 		GPUParticlesCollisionSDF3D *baker = memnew(GPUParticlesCollisionSDF3D);
 		configure_level_collision_baker(baker, region);
-		const Ref<Image> image = baker->bake_faces(faces, LEVEL_COLLISION_BAND);
+		const Ref<Image> image = baker->bake_faces(faces, get_level_collision_band(region));
 		const Ref<Texture3D> texture = sdf_image_to_texture(image);
 		memdelete(baker);
 		if (OS::get_singleton()->is_stdout_verbose() && texture.is_valid()) {

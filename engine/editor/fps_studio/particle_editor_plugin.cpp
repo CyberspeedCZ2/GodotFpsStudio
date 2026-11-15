@@ -671,12 +671,22 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 	presets->set_text(0, TTR("FPS Presets"));
 	presets->set_selectable(0, false);
 	presets->set_custom_color(0, header_color);
-	for (int preset = 0; preset < FPSParticlePresets::PRESET_MAX; preset++) {
+	String current_category;
+	TreeItem *category_item = nullptr;
+	for (int preset : FPSParticlePresets::get_presets_in_display_order()) {
 		const String name = FPSParticlePresets::get_preset_name(preset);
-		if (!filter.is_empty() && !name.to_lower().contains(filter)) {
+		const String category = FPSParticlePresets::get_preset_category(preset);
+		if (!filter.is_empty() && !name.to_lower().contains(filter) && !category.to_lower().contains(filter)) {
 			continue;
 		}
-		TreeItem *item = effects_tree->create_item(presets);
+		if (category != current_category || !category_item) {
+			current_category = category;
+			category_item = effects_tree->create_item(presets);
+			category_item->set_text(0, TTRGET(category));
+			category_item->set_selectable(0, false);
+			category_item->set_custom_color(0, header_color);
+		}
+		TreeItem *item = effects_tree->create_item(category_item);
 		item->set_text(0, name);
 		item->set_tooltip_text(0, FPSParticlePresets::get_preset_description(preset) + "\n" + TTR("Double-click to create a new effect from this preset."));
 		item->set_metadata(0, vformat("preset:%d", preset));
@@ -2843,8 +2853,13 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 	}
 	PopupMenu *popup = library_menu->get_popup();
 	popup->clear();
-	popup->add_separator(TTR("FPS Presets"));
-	for (int preset = 0; preset < FPSParticlePresets::PRESET_MAX; preset++) {
+	String current_category;
+	for (int preset : FPSParticlePresets::get_presets_in_display_order()) {
+		const String category = FPSParticlePresets::get_preset_category(preset);
+		if (category != current_category) {
+			current_category = category;
+			popup->add_separator(TTRGET(category));
+		}
 		popup->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_LIBRARY_PRESET_BASE + preset);
 		popup->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
 	}
@@ -4727,10 +4742,23 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	new_effect_menu->get_popup()->add_item(TTR("Burst"), PARTICLE_TEMPLATE_BURST);
 	new_effect_menu->get_popup()->add_item(TTR("Fountain"), PARTICLE_TEMPLATE_FOUNTAIN);
 	new_effect_menu->get_popup()->add_item(TTR("Smoke"), PARTICLE_TEMPLATE_SMOKE);
-	new_effect_menu->get_popup()->add_separator(TTR("FPS Presets"));
-	for (int preset = 0; preset < FPSParticlePresets::PRESET_MAX; preset++) {
-		new_effect_menu->get_popup()->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_TEMPLATE_PRESET_BASE + preset);
-		new_effect_menu->get_popup()->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+	{
+		// FPS presets in a submenu grouped by category, so the menu stays short.
+		PopupMenu *presets_menu = memnew(PopupMenu);
+		presets_menu->set_name("FPSPresets");
+		String current_category;
+		for (int preset : FPSParticlePresets::get_presets_in_display_order()) {
+			const String category = FPSParticlePresets::get_preset_category(preset);
+			if (category != current_category) {
+				current_category = category;
+				presets_menu->add_separator(TTRGET(category));
+			}
+			presets_menu->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_TEMPLATE_PRESET_BASE + preset);
+			presets_menu->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+		}
+		presets_menu->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_new_effect_menu_pressed));
+		new_effect_menu->get_popup()->add_separator();
+		new_effect_menu->get_popup()->add_submenu_node_item(TTR("FPS Presets"), presets_menu);
 	}
 	new_effect_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_new_effect_menu_pressed));
 	document_toolbar->add_child(new_effect_menu);

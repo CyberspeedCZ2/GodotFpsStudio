@@ -120,15 +120,29 @@ Načasování se ukládá jako metadata emitoru (`particle_effect_delay`, `parti
 
 ## FPS presety
 
-| Preset | Emitory |
-| --- | --- |
-| Muzzle Flash | záblesk, plamenné jazyky, jiskry a kouř (směr −Z) |
-| Explosion | záblesk, objemová ohnivá koule jako sprite sheet 8×8 s životním cyklem, jiskry, rázová vlna, zpožděný kouř |
-| Bullet Impact (Dust) | prachový obláček, úlomky a několik jisker (normála +Y) |
-| Impact Sparks (Metal) | jiskry s krátkou září (normála +Y) |
-| Blood Hit | krvavá mlha a kapky (směr +Z) |
-| Smoke Plume | nepřetržitý stoupající sloup kouře s turbulencí |
-| Fire | animované plameny (sheet 4×4), jiskry a kouř |
+Presety jsou v menu **Library**, v panelu knihovny a v **New → FPS Presets**, seskupené do kategorií. „Kolize“ znamená zapnutý modul Collision (ve hře se částice odrážejí od stěn levelu), „zvuk“ prázdnou stopu Sound pro vlastní soubor.
+
+| Kategorie | Preset | Obsah |
+| --- | --- | --- |
+| Weapons | Muzzle Flash | záblesk, plamenné jazyky, jiskry a kouř (směr −Z) |
+| Weapons | Bullet Tracer | jeden rychlý zářící pruh podél −Z (spawn u ústí hlavně) |
+| Impacts | Bullet Impact (Dust) | prachový obláček, úlomky a několik jisker (normála +Y) |
+| Impacts | Bullet Impact (Wood) | hnědý prach a třísky (normála +Y) |
+| Impacts | Impact Sparks (Metal) | jiskry s krátkou září (normála +Y) |
+| Impacts | Blood Hit | krvavá mlha a kapky (směr +Z) |
+| Impacts | Glass Shatter | střepy, které se točí a odrážejí od podlahy (kolize), záblesky, zvuk; tabule čelem k +Z |
+| Impacts | Water Splash | sloupec kapek, mlha a plochý kruh na hladině (+Y), zvuk |
+| Explosions & Fire | Explosion | záblesk, ohnivá koule (sheet 8×8), jiskry s kolizí, rázová vlna, kouř, světlo, otřes, zvuk, zranění |
+| Explosions & Fire | Fire | animované plameny (sheet 4×4), jiskry, kouř a mihotavé světlo |
+| Explosions & Fire | Smoke Grenade | hustá kouřová clona na 8 s, která vyplní místnost a drží se od stěn (kolize), zvuk |
+| Explosions & Fire | Signal Flare | červené jádro, jiskry s kolizí, červený kouř, mihotavé světlo, zvuk |
+| Environment | Smoke Plume | nepřetržitý stoupající sloup kouře s turbulencí |
+| Environment | Steam Leak | proud páry podél +Z s turbulencí, zvuk |
+| Environment | Electric Sparks | opakované modré jiskry s kolizí, elektrický oblouk, blikající světlo, zvuk |
+| Environment | Dust Puff (Landing) | plochý prstenec prachu po zemi (dopad, těžký krok) |
+| Environment | Ambient Dust | pomalu poletující prach v prostoru 6 × 3 × 6 m |
+
+Presety si spočítají `visibility_aabb` podle rychlosti, gravitace a doby života (pád jen ve směru gravitace), místo jednotné krychle 16 m. Aditivní emitory se neřadí podle hloubky (`DRAW_ORDER_INDEX`), řazení platí jen pro průhledné.
 
 Textury presetů vytvoří generátor do `res://vfx_textures/` a vedle nich uloží recepty. Existující soubor se znovu použije, takže presety sdílí např. `smoke_puff.png` a další vytvoření je rychlé. Vlastní úprava takové textury se projeví ve všech efektech, které ji používají.
 
