@@ -54,6 +54,7 @@ struct TextureRequest {
 	int columns = 1; // 1 = single texture, otherwise a columns x columns sheet.
 	double sheet_duration = 1.0; // Seconds covered by the sheet frames.
 	bool lifecycle = false; // Sheet plays once over the particle life.
+	bool random_frame = false; // Each particle shows one random frame (variants, no animation).
 };
 
 String get_preset_name(int p_preset);

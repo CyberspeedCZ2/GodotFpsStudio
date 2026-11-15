@@ -2389,7 +2389,17 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 			base_material->set_particles_anim_h_frames(request.columns);
 			base_material->set_particles_anim_v_frames(request.columns);
 			base_material->set_particles_anim_loop(!request.lifecycle);
-			if (!request.lifecycle) {
+			if (request.random_frame) {
+				// Variants: a random frame per particle that does not change.
+				base_material->set_particles_anim_loop(false);
+				if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(request.emitter)) {
+					Ref<Material> process = gpu->get_process_material();
+					if (process.is_valid()) {
+						process->set("anim_speed", Vector2(0.0, 0.0));
+						process->set("anim_offset", Vector2(0.0, 1.0));
+					}
+				}
+			} else if (!request.lifecycle) {
 				const double lifetime = double(request.emitter->get("lifetime"));
 				const double speed = MAX(0.01, lifetime / MAX(0.01, request.sheet_duration));
 				if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(request.emitter)) {

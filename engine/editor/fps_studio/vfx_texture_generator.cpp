@@ -304,7 +304,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 20;
+constexpr int TYPE_COUNT = 21;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -360,6 +360,18 @@ struct TypeTable {
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 120.0f, "Direction of the key light.");
 			add_param(t, "shadow", "Shadow", 0.0f, 1.0f, 0.01f, 0.75f, "Self-shadowing strength.");
 			add_param(t, "ambient", "Ambient", 0.0f, 1.0f, 0.01f, 0.2f, "Ambient light filling the shadows.");
+			types[i++] = t;
+		}
+		{
+			TypeInfo t = make_type(TYPE_SOFT_SMOKE, "Soft Smoke (Particles)", "Smoke & Clouds", "Soft smoke puff for particles: no hard outline, alpha fades smoothly from the centre so overlapping particles merge into one cloud. Fast 2D; use a 4x4 sheet for random variants.", 0.36f, 0.36f, 0.37f, 0.8f, 0.79f, 0.77f, "Shadow color", "Lit color", false, false);
+			add_param(t, "radius", "Radius", 0.3f, 0.95f, 0.01f, 0.85f, "Size of the puff. Stays inside the frame.");
+			add_param(t, "softness", "Softness", 0.0f, 1.0f, 0.01f, 0.7f, "How gradually the puff fades towards its edge.");
+			add_param(t, "wisps", "Wisps", 0.0f, 1.0f, 0.01f, 0.55f, "Breaks the puff into wisps with noise.");
+			add_param(t, "noise_scale", "Noise scale", 0.5f, 8.0f, 0.05f, 2.6f, "Size of the wisps.");
+			add_param(t, "detail", "Detail", 0.25f, 0.75f, 0.01f, 0.5f, "Strength of fine detail.");
+			add_param(t, "density", "Density", 0.2f, 2.0f, 0.01f, 0.9f, "Opacity of the puff.");
+			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 110.0f, "Direction of the soft key light.");
+			add_param(t, "shading", "Shading", 0.0f, 1.0f, 0.01f, 0.4f, "Contrast of the lighting. Low values keep particles from looking like separate balls.");
 			types[i++] = t;
 		}
 		{
@@ -1467,6 +1479,51 @@ void render_2d(const FrameContext &c, float x, float y, float *r_px) {
 }
 
 
+void render_soft_smoke(const FrameContext &c, float x, float y, float *r_px) {
+	const Settings &s = *c.s;
+	const float radius = param(c, 0);
+	const float softness = param(c, 1);
+	const float wisps = param(c, 2);
+	const float scale = param(c, 3);
+	const float gain = param(c, 4);
+	const float density = param(c, 5);
+	const float light_angle = param(c, 6) * PI / 180.0f;
+	const float shading = param(c, 7);
+	const float r = len2(x, y) / radius;
+	if (r >= 1.0f) {
+		write_flat(r_px, c.color_b, 0.0f, s);
+		return;
+	}
+	const int octaves = s.quality > 0 ? 5 : 3;
+	const V3 offset = seed_offset(s.seed);
+	auto noise = [&](float px, float py) -> float {
+		const V3 q = V3(px * scale, py * scale, c.t * 0.15f) + offset;
+		const float wx = fbm(q * 0.5f + V3(1.7f, 9.2f, 0.0f), 2, 0.5f, s.seed + 11u);
+		const float wy = fbm(q * 0.5f + V3(8.3f, 2.8f, 0.0f), 2, 0.5f, s.seed + 12u);
+		return fbm(q + V3(wx, wy, 0.0f) * 0.8f, octaves, gain, s.seed) * 0.5f + 0.5f;
+	};
+	const float n = noise(x, y);
+	// Smooth radial profile: opaque-ish centre, long transparent fade.
+	const float falloff = 1.0f - r;
+	const float profile = std::pow(smoothstepf(0.0f, 1.0f, falloff), 0.25f + 0.9f * softness);
+	// Wisps: contrasty noise that thins the puff, strongest towards the edge.
+	const float w = smoothstepf(0.25f, 0.85f, n);
+	float d = profile * mixf(1.0f, w * 1.6f, wisps * (0.55f + 0.45f * (1.0f - profile)));
+	const float alpha = saturate(d * density * 1.9f);
+	// Soft lighting from a rounded puff normal bent by the noise.
+	const float e = 0.02f;
+	const float gx = (noise(x + e, y) - n) / e;
+	const float gy = (noise(x, y + e) - n) / e;
+	const float nx = x / radius - gx * 0.04f * wisps;
+	const float ny = y / radius - gy * 0.04f * wisps;
+	const float nz = std::sqrt(maxf(1.0f - minf(r * r, 1.0f), 0.0f)) + 0.35f;
+	const V3 normal = normalize3(V3(nx, ny, nz));
+	const V3 light = normalize3(V3(std::cos(light_angle), std::sin(light_angle), 0.8f));
+	const float lambert = dot3(normal, light) * 0.5f + 0.5f;
+	const float lit = saturate(mixf(0.6f, lambert, shading) + (n - 0.5f) * 0.25f * shading);
+	write_flat(r_px, mix3(c.color_a, c.color_b, lit), alpha, s);
+}
+
 /* Decals ----------------------------------------------------------------- */
 // Non-emissive albedo + alpha for Decal nodes. Outside the mark alpha is 0.
 
@@ -1854,6 +1911,9 @@ void render_pixel(const FrameContext &c, int px, int py, int size, float *r_out)
 			break;
 		case TYPE_CLOUD:
 			render_smoke(c, x, y, r_out, true);
+			break;
+		case TYPE_SOFT_SMOKE:
+			render_soft_smoke(c, x, y, r_out);
 			break;
 		case TYPE_BULLET_HOLE:
 		case TYPE_SCORCH:

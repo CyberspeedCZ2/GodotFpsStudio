@@ -41,6 +41,9 @@ enum TypeID {
 	TYPE_SCORCH = 17,
 	TYPE_GLASS_CRACK = 18,
 	TYPE_SPLATTER = 19,
+	// Soft particle smoke: analytic 2D, alpha fades smoothly from the centre
+	// so overlapping particles merge into one volume.
+	TYPE_SOFT_SMOKE = 20,
 };
 
 static constexpr int MAX_PARAMS = 10;
