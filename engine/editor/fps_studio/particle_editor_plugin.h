@@ -55,6 +55,8 @@ class TextureRect;
 class VisualShader;
 class VisualShaderEditor;
 class WindowWrapper;
+class TextShaderEditor;
+class Shader;
 class VBoxContainer;
 class Image;
 class ImageTexture;
@@ -207,6 +209,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *particle_logic_status = nullptr;
 	Label *particle_logic_hint = nullptr;
 	VisualShaderEditor *particle_graph_editor = nullptr;
+	TextShaderEditor *particle_code_editor = nullptr;
 	Button *play_button = nullptr;
 	Button *restart_button = nullptr;
 	HSlider *timeline = nullptr;
@@ -248,6 +251,12 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool show_preview_panel = true;
 	bool show_bottom_panel = true;
 	bool bottom_float_on_return = false;
+	bool compact_layout = false;
+	Button *duplicate_emitter_button = nullptr;
+	Button *remove_emitter_button = nullptr;
+	Button *reset_view_button = nullptr;
+	Button *texture_generator_button = nullptr;
+	Label *speed_label = nullptr;
 	Button *modules_mode_button = nullptr;
 
 	ObjectID effect_root_id;
@@ -415,6 +424,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _update_layout_menu();
 	void _reset_panel_layout();
 	void _toggle_bottom_maximized();
+	void _on_bottom_close_pressed();
+	void _apply_compact_layout();
 	void _toggle_bottom_floating();
 	void _on_bottom_window_visibility_changed(bool p_visible);
 	void _on_bottom_tab_changed(int p_tab);
@@ -424,6 +435,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_particle_graph_button_pressed();
 	void _create_particle_graph();
 	Ref<VisualShader> _get_particle_visual_shader(Node *p_emitter) const;
+	Ref<Shader> _get_particle_code_shader(Node *p_emitter) const;
+	void _hide_code_editor_files_toggle();
 	void _update_time_label();
 	void _mark_document_dirty();
 

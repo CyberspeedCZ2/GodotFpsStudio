@@ -38,6 +38,7 @@
 #include "editor/scene/curve_editor_plugin.h"
 #include "editor/scene/material_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
+#include "editor/shader/text_shader_editor.h"
 #include "editor/themes/editor_scale.h"
 #include "modules/visual_shader/editor/visual_shader_editor_plugin.h"
 #include "modules/visual_shader/visual_shader.h"
@@ -60,6 +61,7 @@
 #include "scene/gui/check_button.h"
 #include "scene/gui/color_picker.h"
 #include "scene/gui/dialogs.h"
+#include "scene/gui/flow_container.h"
 #include "scene/gui/foldable_container.h"
 #include "scene/gui/grid_container.h"
 #include "scene/gui/label.h"
@@ -769,7 +771,20 @@ void FPSStudioParticleEditorPlugin::_update_document_ui() {
 }
 
 void FPSStudioParticleEditorPlugin::_update_document_toolbar_layout() {
-	const bool compact = screen && screen->get_size().x < 1200.0 * EDSCALE;
+	// Measure the space the editor really gives the workspace: the screen
+	// itself can be stretched beyond the window by its minimum size.
+	real_t available = screen ? screen->get_size().x : 0.0;
+	if (screen && screen->is_inside_tree()) {
+		if (Control *parent = screen->get_parent_control()) {
+			available = MIN(available, parent->get_size().x);
+		}
+		available = MIN(available, screen->get_viewport()->get_visible_rect().size.x - screen->get_global_position().x);
+	}
+	const bool compact = screen && available > 0.0 && available < 1200.0 * EDSCALE;
+	if (compact != compact_layout) {
+		compact_layout = compact;
+		_apply_compact_layout();
+	}
 	if (document_path_label) {
 		document_path_label->set_visible(!compact);
 	}
@@ -781,6 +796,68 @@ void FPSStudioParticleEditorPlugin::_update_document_toolbar_layout() {
 	}
 	if (add_to_level_button) {
 		add_to_level_button->set_text(compact ? TTR("Add") : TTR("Add to Level"));
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_apply_compact_layout() {
+	if (!screen) {
+		return;
+	}
+	const bool compact = compact_layout;
+	const bool themed = screen->is_inside_tree();
+	auto icon = [&](Control *p_control, const char *p_name) -> Ref<Texture2D> {
+		return (compact && themed) ? p_control->get_editor_theme_icon(StringName(p_name)) : Ref<Texture2D>();
+	};
+	if (layout_menu) {
+		layout_menu->set_text(compact ? String() : TTR("Layout"));
+		layout_menu->set_button_icon(themed ? layout_menu->get_editor_theme_icon(SNAME("Panels3")) : Ref<Texture2D>());
+	}
+	if (duplicate_emitter_button) {
+		duplicate_emitter_button->set_text(compact ? String() : TTR("Duplicate"));
+		duplicate_emitter_button->set_button_icon(icon(duplicate_emitter_button, "Duplicate"));
+	}
+	if (remove_emitter_button) {
+		remove_emitter_button->set_text(compact ? String() : TTR("Remove"));
+		remove_emitter_button->set_button_icon(icon(remove_emitter_button, "Remove"));
+		remove_emitter_button->set_tooltip_text(TTR("Remove the selected emitter."));
+	}
+	if (reset_view_button) {
+		reset_view_button->set_text(compact ? String() : TTR("Reset View"));
+		reset_view_button->set_button_icon(icon(reset_view_button, "CenterView"));
+	}
+	if (texture_generator_button) {
+		texture_generator_button->set_text(compact ? TTR("Textures...") : TTR("Texture Generator..."));
+	}
+	if (restart_button) {
+		restart_button->set_text(compact ? String() : TTR("Restart"));
+		restart_button->set_button_icon(icon(restart_button, "PlayStart"));
+		restart_button->set_tooltip_text(TTR("Restart the preview from the beginning."));
+	}
+	if (play_button) {
+		play_button->set_text(compact ? String() : (preview_playing ? TTR("Pause") : TTR("Play")));
+		play_button->set_button_icon(icon(play_button, preview_playing ? "Pause" : "Play"));
+	}
+	if (speed_label) {
+		speed_label->set_visible(!compact);
+	}
+	if (preview_stats_label) {
+		preview_stats_label->set_visible(!compact);
+	}
+	if (time_label) {
+		const Size2 time_size = Size2(compact ? 110 : 150, 0) * EDSCALE;
+		time_label->set_custom_minimum_size(time_size);
+		if (Control *time_container = time_label->get_parent_control()) {
+			time_container->set_custom_minimum_size(time_size);
+		}
+	}
+	if (timeline_time_label) {
+		timeline_time_label->set_custom_minimum_size(Size2(compact ? 100 : 130, 0) * EDSCALE);
+	}
+	if (right_panel_root) {
+		right_panel_root->set_custom_minimum_size(Size2(compact ? 270 : 360, 0) * EDSCALE);
+	}
+	if (left_panel_root) {
+		left_panel_root->set_custom_minimum_size(Size2(compact ? 190 : 220, 0) * EDSCALE);
 	}
 }
 
@@ -809,6 +886,9 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 		}
 		if (particle_graph_editor) {
 			particle_graph_editor->edit_shader(Ref<Shader>());
+		}
+		if (particle_code_editor) {
+			particle_code_editor->edit_shader(Ref<Shader>());
 		}
 		if (previous->is_inside_tree()) {
 			previous->queue_free();
@@ -993,7 +1073,10 @@ void FPSStudioParticleEditorPlugin::_set_preview_playing(bool p_playing) {
 	preview_playing = p_playing;
 	if (play_button) {
 		play_button->set_pressed_no_signal(preview_playing);
-		play_button->set_text(preview_playing ? TTR("Pause") : TTR("Play"));
+		play_button->set_text(compact_layout ? String() : (preview_playing ? TTR("Pause") : TTR("Play")));
+		if (play_button->is_inside_tree()) {
+			play_button->set_button_icon(compact_layout ? play_button->get_editor_theme_icon(preview_playing ? SNAME("Pause") : SNAME("Play")) : Ref<Texture2D>());
+		}
 	}
 	if (timeline_play_button && timeline_play_button->is_inside_tree()) {
 		timeline_play_button->set_button_icon(timeline_play_button->get_editor_theme_icon(preview_playing ? SNAME("Pause") : SNAME("Play")));
@@ -2707,6 +2790,43 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 	}
 }
 
+static bool hide_files_toggle_button(Node *p_node, const String &p_tooltip_prefix) {
+	if (Button *button = Object::cast_to<Button>(p_node)) {
+		if (button->get_tooltip_text().begins_with(p_tooltip_prefix)) {
+			button->hide();
+			return true;
+		}
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		if (hide_files_toggle_button(p_node->get_child(i), p_tooltip_prefix)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+void FPSStudioParticleEditorPlugin::_hide_code_editor_files_toggle() {
+	if (particle_code_editor) {
+		hide_files_toggle_button(particle_code_editor, TTR("Toggle Files Panel"));
+	}
+}
+
+Ref<Shader> FPSStudioParticleEditorPlugin::_get_particle_code_shader(Node *p_emitter) const {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_emitter);
+	if (!gpu) {
+		return Ref<Shader>();
+	}
+	ShaderMaterial *shader_material = Object::cast_to<ShaderMaterial>(gpu->get_process_material().ptr());
+	if (!shader_material) {
+		return Ref<Shader>();
+	}
+	Ref<Shader> shader = shader_material->get_shader();
+	if (shader.is_null() || Object::cast_to<VisualShader>(shader.ptr()) || shader->get_mode() != Shader::MODE_PARTICLES) {
+		return Ref<Shader>();
+	}
+	return shader;
+}
+
 Ref<VisualShader> FPSStudioParticleEditorPlugin::_get_particle_visual_shader(Node *p_emitter) const {
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_emitter);
 	if (!gpu) {
@@ -2736,8 +2856,9 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	if (convert_shader_button) {
 		convert_shader_button->set_disabled(!gpu || !Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
 	}
+	Ref<Shader> code_shader = _get_particle_code_shader(emitter);
 	particle_graph_button->set_text(TTR("Create Node Graph"));
-	particle_graph_button->set_visible(!visual_shader.is_valid());
+	particle_graph_button->set_visible(!visual_shader.is_valid() && code_shader.is_null());
 	if (!emitter) {
 		particle_logic_status->set_text(TTR("No emitter selected"));
 	} else if (!ParticleEffect3D::is_emitter(emitter)) {
@@ -2746,6 +2867,8 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 		particle_logic_status->set_text(TTR("CPU - Built-in simulation"));
 	} else if (visual_shader.is_valid()) {
 		particle_logic_status->set_text(TTR("GPU - Particle VisualShader"));
+	} else if (code_shader.is_valid()) {
+		particle_logic_status->set_text(TTR("GPU - Particle Shader Code (changes apply live, Undo restores the modules)"));
 	} else {
 		particle_logic_status->set_text(TTR("GPU - ParticleProcessMaterial"));
 	}
@@ -2767,13 +2890,38 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 		particle_graph_editor->edit_shader(Ref<Shader>());
 		particle_graph_editor->hide();
 	}
-	if (particle_logic_hint) {
-		particle_logic_hint->set_visible(!visual_shader.is_valid());
+	if (code_shader.is_valid()) {
+		if (!particle_code_editor && particle_logic_content) {
+			particle_code_editor = memnew(TextShaderEditor);
+			// The editor expects the Shader Editor's file list; give it a hidden
+			// stand-in and hide the then meaningless "Toggle Files Panel" button.
+			Control *files_stand_in = memnew(Control);
+			files_stand_in->hide();
+			particle_code_editor->add_child(files_stand_in);
+			particle_code_editor->set_toggle_list_control(files_stand_in);
+			particle_code_editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+			particle_code_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+			// Size it only inside the tree: a resize starts its preview timer.
+			particle_logic_content->add_child(particle_code_editor);
+			particle_code_editor->set_custom_minimum_size(Size2(0, 120) * EDSCALE);
+			callable_mp(this, &FPSStudioParticleEditorPlugin::_hide_code_editor_files_toggle).call_deferred();
+		}
+		if (particle_code_editor) {
+			particle_code_editor->edit_shader(code_shader);
+			particle_code_editor->show();
+		}
+	} else if (particle_code_editor) {
+		particle_code_editor->edit_shader(Ref<Shader>());
+		particle_code_editor->hide();
 	}
-	if (visual_shader.is_valid()) {
+	if (particle_logic_hint) {
+		particle_logic_hint->set_visible(!visual_shader.is_valid() && code_shader.is_null());
+	}
+	Ref<Shader> watched_shader = visual_shader.is_valid() ? Ref<Shader>(visual_shader) : code_shader;
+	if (watched_shader.is_valid()) {
 		const Callable changed_callable = callable_mp(this, &FPSStudioParticleEditorPlugin::_on_curve_changed);
-		if (!visual_shader->is_connected(SNAME("changed"), changed_callable)) {
-			visual_shader->connect(SNAME("changed"), changed_callable);
+		if (!watched_shader->is_connected(SNAME("changed"), changed_callable)) {
+			watched_shader->connect(SNAME("changed"), changed_callable);
 		}
 	}
 }
@@ -3440,9 +3588,8 @@ void FPSStudioParticleEditorPlugin::_on_convert_shader_pressed() {
 	if (module_stack) {
 		module_stack->edit(gpu);
 	}
-	if (shader_material->get_shader().is_valid()) {
-		EditorNode::get_singleton()->push_item(shader_material->get_shader().ptr());
-	}
+	_update_particle_graph_controls();
+	_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
 }
 
 void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
@@ -3460,6 +3607,7 @@ void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
 	for (Button *button : layout_icon_buttons) {
 		button->set_button_icon(button->get_editor_theme_icon(StringName(String(button->get_meta("icon_name")))));
 	}
+	_apply_compact_layout();
 }
 
 void FPSStudioParticleEditorPlugin::_apply_preview_solo() {
@@ -3694,6 +3842,13 @@ void FPSStudioParticleEditorPlugin::_bind_methods() {
 void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
 	if (p_visible) {
 		callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons).call_deferred();
+		if (screen && screen->is_inside_tree()) {
+			const Callable layout_callable = callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout);
+			if (!screen->get_viewport()->is_connected(SNAME("size_changed"), layout_callable)) {
+				screen->get_viewport()->connect(SNAME("size_changed"), layout_callable, CONNECT_DEFERRED);
+			}
+			layout_callable.call_deferred();
+		}
 	}
 	// A detached Timeline & Logic window belongs to this workspace: dock it
 	// while another workspace is active and detach it again on return.
@@ -3921,6 +4076,17 @@ void FPSStudioParticleEditorPlugin::_reset_panel_layout() {
 	}
 }
 
+void FPSStudioParticleEditorPlugin::_on_bottom_close_pressed() {
+	// In the separate window the close button returns the panel to its
+	// place in the workspace; docked, it hides the panel.
+	if (_is_bottom_floating()) {
+		bottom_window_wrapper->set_window_enabled(false);
+		_apply_panel_visibility();
+		return;
+	}
+	_set_panel_visible(PARTICLE_PANEL_BOTTOM, false);
+}
+
 void FPSStudioParticleEditorPlugin::_toggle_bottom_maximized() {
 	if (_is_bottom_floating()) {
 		return;
@@ -3970,7 +4136,9 @@ void FPSStudioParticleEditorPlugin::_show_bottom_tab(int p_tab) {
 void FPSStudioParticleEditorPlugin::_on_bottom_tab_changed(int p_tab) {
 	// A node graph needs room: give Particle Logic about half of the column
 	// when it is shown, but never shrink a panel the user made larger.
-	if (p_tab == PARTICLE_BOTTOM_TAB_LOGIC && particle_graph_editor && particle_graph_editor->is_visible()) {
+	const bool has_graph = particle_graph_editor && particle_graph_editor->is_visible();
+	const bool has_code = particle_code_editor && particle_code_editor->is_visible();
+	if (p_tab == PARTICLE_BOTTOM_TAB_LOGIC && (has_graph || has_code)) {
 		callable_mp(this, &FPSStudioParticleEditorPlugin::_ensure_bottom_panel_share).call_deferred(0.5);
 	}
 }
@@ -4010,6 +4178,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	EditorNode::get_singleton()->get_editor_main_screen()->get_control()->add_child(workspace);
 	workspace->hide();
 	workspace->connect(SceneStringName(theme_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons));
+	workspace->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout));
 
 	HBoxContainer *document_toolbar = memnew(HBoxContainer);
 	document_toolbar->set_custom_minimum_size(Size2(0, 34) * EDSCALE);
@@ -4116,12 +4285,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_menu->get_popup()->add_item(TTR("Decal"), PARTICLE_EVENT_DECAL);
 	add_emitter_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_menu_pressed));
 	emitter_header->add_child(add_emitter_menu);
-	Button *duplicate_emitter_button = memnew(Button);
+	duplicate_emitter_button = memnew(Button);
 	duplicate_emitter_button->set_text(TTR("Duplicate"));
 	duplicate_emitter_button->set_tooltip_text(TTR("Duplicate the selected emitter with its own materials (Ctrl/Cmd+D in the timeline)."));
 	duplicate_emitter_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_duplicate_emitter_pressed));
 	emitter_header->add_child(duplicate_emitter_button);
-	Button *remove_emitter_button = memnew(Button);
+	remove_emitter_button = memnew(Button);
 	remove_emitter_button->set_text(TTR("Remove"));
 	remove_emitter_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_remove_selected_emitter));
 	emitter_header->add_child(remove_emitter_button);
@@ -4191,7 +4360,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	selection_label->set_clip_text(true);
 	selection_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_toolbar->add_child(selection_label);
-	Button *reset_view_button = memnew(Button);
+	reset_view_button = memnew(Button);
 	reset_view_button->set_text(TTR("Reset View"));
 	reset_view_button->set_tooltip_text(TTR("Frame the full particle effect in the preview."));
 	reset_view_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_reset_view_pressed));
@@ -4219,7 +4388,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_view_menu_id));
 	}
 	preview_toolbar->add_child(preview_view_menu);
-	Button *texture_generator_button = memnew(Button);
+	texture_generator_button = memnew(Button);
 	texture_generator_button->set_text(TTR("Texture Generator..."));
 	texture_generator_button->set_tooltip_text(TTR("Create and export a procedural VFX texture for a particle emitter."));
 	texture_generator_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_pressed));
@@ -4340,8 +4509,12 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_stats_label->set_modulate(Color(1, 1, 1, 0.6));
 	preview_stats_label->set_tooltip_text(TTR("Visible tracks, maximum particles of visible emitters, draw calls and primitives rendered in the preview."));
 	preview_stats_label->set_mouse_filter(Control::MOUSE_FILTER_PASS);
+	preview_stats_label->set_clip_text(true);
+	preview_stats_label->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+	preview_stats_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	preview_stats_label->set_stretch_ratio(0.8);
 	transport->add_child(preview_stats_label);
-	Label *speed_label = memnew(Label);
+	speed_label = memnew(Label);
 	speed_label->set_text(TTR("Speed"));
 	transport->add_child(speed_label);
 	speed_spin = memnew(SpinBox);
@@ -4402,7 +4575,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		close_bottom->set_flat(true);
 		close_bottom->set_tooltip_text(TTR("Hide Timeline & Logic (reopen it from Layout)."));
 		close_bottom->set_meta("icon_name", "Close");
-		close_bottom->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_set_panel_visible).bind(int(PARTICLE_PANEL_BOTTOM), false));
+		close_bottom->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_bottom_close_pressed));
 		bottom_actions->add_child(close_bottom);
 		layout_icon_buttons.push_back(close_bottom);
 	}
@@ -4490,7 +4663,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	VBoxContainer *logic_content = memnew(VBoxContainer);
 	particle_logic_content = logic_content;
 	logic_panel->add_child(logic_content);
-	HBoxContainer *logic_header = memnew(HBoxContainer);
+	// Wraps onto a second row in narrow layouts instead of widening the workspace.
+	HFlowContainer *logic_header = memnew(HFlowContainer);
 	logic_content->add_child(logic_header);
 	Label *logic_title = memnew(Label);
 	logic_title->set_text(TTR("Particle Logic"));
@@ -4499,6 +4673,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_logic_status = memnew(Label);
 	particle_logic_status->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	particle_logic_status->set_clip_text(true);
+	particle_logic_status->set_custom_minimum_size(Size2(160, 0) * EDSCALE);
+	particle_logic_status->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
 	logic_header->add_child(particle_logic_status);
 	convert_shader_button = memnew(Button);
 	convert_shader_button->set_text(TTR("Convert to Shader Code"));

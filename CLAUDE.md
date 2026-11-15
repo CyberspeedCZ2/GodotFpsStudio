@@ -33,6 +33,9 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 ### Rozložení Particle workspace (2026-11-15)
 - Panely Emitters, Preview, Timeline & Logic a Properties jdou zavřít křížkem a znovu otevřít přes menu **Layout**. Spodní panel jde maximalizovat (skryje náhled) nebo oddělit do vlastního okna (`WindowWrapper`). Viditelnost panelů se ukládá do `get_window_layout`.
 - Graf VisualShader se edituje jen inline v Particle Logic, tlačítko „Open in Shader Editor“ je pryč. Náhled má minimální výšku 140 px.
+- Křížek v odděleném okně vrací panel zpět (dřív ho skryl). Pod 1200 px šířky se UI zhušťuje (`_apply_compact_layout`), záhlaví Particle Logic je `HFlowContainer`.
+- Convert to Shader Code otevírá kód inline v Particle Logic (`TextShaderEditor`, tlačítko Toggle Files Panel je skryté). Godotův Script editor shadery neumí, proto ne záložka Script.
+- Známé: s particle `ShaderMaterial` (kód) na emitoru hlásí headless editor při ukončení úniky RID/ObjectDB. Je to i bez vloženého editoru kódu, nejde o regresi; zatím neřešeno.
 - Ověřeno headless testem (`addons/lt/plugin.gd` ve scratchpadu), ručně v GUI zatím ne.
 
 ## Co se právě řešilo

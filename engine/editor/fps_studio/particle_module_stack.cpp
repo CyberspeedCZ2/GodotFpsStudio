@@ -568,7 +568,7 @@ void FPSParticleModuleStack::_build() {
 	}
 	if (!has_process && gpu) {
 		custom_shader_note = memnew(Label);
-		custom_shader_note->set_text(TTR("This emitter uses a custom particle shader. Edit its logic in the Particle Logic graph below; spawn, motion and color modules are unavailable."));
+		custom_shader_note->set_text(TTR("This emitter uses a custom particle shader. Edit its logic in the Particle Logic tab (node graph or shader code); spawn, motion and color modules are unavailable."));
 		custom_shader_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 		cards->add_child(custom_shader_note);
 		cards->move_child(custom_shader_note, 1);

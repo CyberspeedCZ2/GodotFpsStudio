@@ -22,10 +22,10 @@ Panely jde zavřít a znovu otevřít. Každý panel má v záhlaví křížek a
 - přepínače **Emitters & Library**, **Preview**, **Timeline & Logic** a **Properties**,
 - **Open Timeline** / **Open Particle Logic** (otevře spodní panel na dané záložce, i když byl zavřený),
 - **Maximize (Hide Preview)** (spodní panel zabere celý střed; totéž dělá tlačítko vpravo nahoře ve spodním panelu),
-- **Separate Window** (přesune Timeline & Logic do samostatného okna, zavřením okna se panel vrátí zpět),
+- **Separate Window** (přesune Timeline & Logic do samostatného okna; zavřením okna nebo křížkem v něm se panel vrátí na původní místo),
 - **Reset Layout** (vše zobrazí a vrátí výchozí rozměry).
 
-Ve středu je vždy aspoň náhled nebo spodní panel. Náhled má minimální výšku a graf ho už nevytlačí; při přepnutí na Particle Logic s grafem dostane spodní panel aspoň polovinu výšky. Viditelnost panelů se ukládá do rozložení editoru.
+Ve středu je vždy aspoň náhled nebo spodní panel. Náhled má minimální výšku a graf ho už nevytlačí; při přepnutí na Particle Logic s grafem dostane spodní panel aspoň polovinu výšky. Viditelnost panelů se ukládá do rozložení editoru. V užším okně (pod 1200 px) se lišty zhustí: Layout, Duplicate, Remove, Reset View, Pause a Restart jsou jen ikony, statistiky a popisek Speed se skryjí a postranní panely se zúží, aby se celé prostředí vešlo.
 
 ## Vytvoření a ukládání efektu
 
@@ -124,7 +124,7 @@ func _on_hit(position: Vector3, normal: Vector3) -> void:
 
 ## Particle Logic
 
-**Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře ho v Shader Editoru pro vlastní logiku v kódu. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.
+**Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře jeho kód přímo v záložce **Particle Logic** (stejný editor kódu jako Godotův Shader Editor, se zvýrazněním a kontrolou chyb). Změny kódu se projeví v náhledu hned. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.
 
 Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf v záložce **Particle Logic**. Nahrazení materiálu se nejprve potvrdí a jde vrátit přes Undo. Graf se upravuje přímo v této záložce (bez otevírání Godotova Shader Editoru); pro víc místa použij maximalizaci nebo samostatné okno. `VisualShader` je výpočet jednoho emitoru, neřídí hierarchii ani načasování efektu. CPU particles shaderový graf nemají.
 
