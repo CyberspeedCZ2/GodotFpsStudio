@@ -149,6 +149,25 @@ static Ref<Image> render_vfx_texture_frame(const VFXTextureGenerator::Settings &
 	return Image::create_from_data(p_size, p_size, false, Image::FORMAT_RGBA8, bytes);
 }
 
+// Generated VFX textures are always used on 3D particles. Writing the 3D
+// import settings up front avoids Godot's "used in 3D" detection, which would
+// otherwise queue a second reimport while ours is still running.
+static void ensure_vfx_texture_import_settings(const String &p_path) {
+	const String import_path = p_path + ".import";
+	if (FileAccess::exists(import_path)) {
+		return; // Keep existing (possibly user-tuned) import settings.
+	}
+	Ref<ConfigFile> config;
+	config.instantiate();
+	config->set_value("remap", "importer", "texture");
+	config->set_value("remap", "type", "CompressedTexture2D");
+	config->set_value("params", "compress/mode", 2); // VRAM Compressed.
+	config->set_value("params", "compress/high_quality", true); // BPTC/ASTC keeps smooth alpha gradients.
+	config->set_value("params", "mipmaps/generate", true);
+	config->set_value("params", "detect_3d/compress_to", 0);
+	config->save(import_path);
+}
+
 static void process_particle_texture_frame(const Ref<Image> &p_image, real_t p_alpha_threshold, real_t p_alpha_blur, bool p_toon_enabled, real_t p_toon_dark, real_t p_toon_light, const Color &p_shadows_tint, const Color &p_midtones_tint, const Color &p_highlights_tint, bool p_generate_normal_map, real_t p_normal_height_scale, bool p_show_alpha) {
 	if (p_image.is_null()) {
 		return;
@@ -1524,6 +1543,7 @@ bool FPSStudioParticleEditorPlugin::_export_generated_texture(const String &p_pa
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save generated texture to %s (error %d)."), p_path, save_error));
 		return false;
 	}
+	ensure_vfx_texture_import_settings(p_path);
 	EditorFileSystem::get_singleton()->update_file(p_path);
 	Vector<String> files_to_reimport;
 	files_to_reimport.push_back(p_path);
@@ -1955,6 +1975,7 @@ Ref<Texture2D> FPSStudioParticleEditorPlugin::_bake_preset_texture(const VFXText
 	if (atlas->save_png(path) != OK) {
 		return Ref<Texture2D>();
 	}
+	ensure_vfx_texture_import_settings(path);
 	EditorFileSystem::get_singleton()->update_file(path);
 	Vector<String> files;
 	files.push_back(path);
