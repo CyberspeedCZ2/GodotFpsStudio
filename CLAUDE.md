@@ -2,71 +2,47 @@
 
 Trvalá pravidla projektu jsou v [AGENTS.md](AGENTS.md) (build jen `./tools/build_macos.sh`, GUI editoru nespouštět bez žádosti, žádné ZIP archivy, zachovat UniBuilder, po kontrole diffu commit + push). Tento soubor zachycuje, kde práce skončila.
 
-Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední commit `f4813a02`).
+Stav k 2026-11-15, větev `codex/black-default-fps-level` (vše pushnuto, poslední commit `8dd65663`). Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, CameraShake3D, RadialDamage3D).
+
+## Kde jsme skončili
+Particle workspace je funkčně hotový pro FPS hru na motivy HL2. Poslední práce: kouř podle Source/UE5 (měkký flipbook, osvětlení, různé velikosti, odpor jen na začátku života). Uživatel chce kouř dál ladit sám v GUI („hodně bude záležet, jak to nastavím“), takže do kouře nesahat bez žádosti. Čeká se na další zpětnou vazbu z GUI.
 
 ## Hotovo
 
-### VFX Texture Generator
-- Samostatný modul `engine/editor/fps_studio/vfx_texture_generator.cpp/.h` bez závislostí na editoru, vždy kompilovaný s `-O3` (viz `engine/editor/fps_studio/SCsub`; dev build je jinak `-O0`).
-- Vlastní objemový renderer (Fire, Smoke, Cloud, Explosion, Explosion Ring), HDR emise pro energetické efekty, periodické vzory (Caustics, Noise). Žádný přepis cizích shaderů (EffectTextureMaker ani Shadertoy).
-- Asynchronní náhled přes `WorkerThreadPool` s adaptivním rozlišením, bez per-pixel jitteru (sdílené hloubkové řezy + podkroky podle optické hustoty).
-- Nové UI (galerie typů, náhled s pozadím, inspektor ve sbalovacích sekcích), parametry podle typu, recepty `.cfg` v3.
-- Uživatel potvrdil, že generátor vypadá dobře a je dost rychlý.
+### VFX Texture Generator (`engine/editor/fps_studio/vfx_texture_generator.*`)
+- Samostatný modul bez závislostí na editoru, vždy kompilovaný s `-O3` (`engine/editor/fps_studio/SCsub`; dev build je jinak `-O0`). Asynchronní náhled přes `WorkerThreadPool`, recepty `.cfg` v3. Uživatel potvrdil vzhled i rychlost.
+- Typy: objemové (Fire, Smoke, Cloud, Explosion, Explosion Ring), energetické HDR, vzory (Caustics, Noise).
+- **Soft Smoke (Particles)** TYPE 20 (`render_soft_smoke`, 2D): měkký obláček bez siluety, parametry `billows` (osvětlené chuchvalce uvnitř) a `lifecycle` (flipbook: mírně naroste, roztrhá se, zřídne).
+- **Decals** TYPE 16–19 (`render_decal`, `write_flat`): Bullet Hole (surface 0 beton, 1 kov s lístky, 2 dřevo), Scorch / Burn Mark, Glass Crack, Splatter. Apply na stopu Decal nastaví `texture_albedo`/`texture_normal`; karta Decal má Generate Decal Texture...
+- ID typů jsou uložená v receptech, nikdy je nepřečíslovat (nové jen na konec).
 
-### Particle workspace (inspirace UE5 Niagara a HL2)
-- `particle_module_stack.cpp` — zásobník modulů s nativními editory vlastností, presety modulů (menu ⋮), Copy/Paste/Reset, křivky přes život, moduly Trails a Attractors, karty událostí. Undo jde do globální historie (`create_action_for_history` + `force_fixed_history`).
-- `particle_timeline.cpp` — časová osa 2.0: zoom/posun, ztlumení a solo stop, kontextové menu, zkratky, duplikace emitoru s vlastními zdroji.
-- `particle_presets.cpp` — 17 FPS presetů ve 4 kategoriích (`get_preset_category`, `get_presets_in_display_order`; nové jsou přidané na konec enumu kvůli stabilním id): Weapons, Impacts, Explosions & Fire, Environment. `fit_visibility_aabb` počítá hranice z pohybu, aditivní emitory bez řazení, textury pečené do `res://vfx_textures/` s recepty `.vfx.cfg`.
-- Generátor napojený v modulu Render (Apply uloží PNG + recept vedle efektu, zapíše `.import` s 3D nastavením, přiřadí emitoru s Undo).
-- Náhled 2.0: menu View (Studio/Daylight/Night/Interior, Glow, hranice emitoru, kolizní podlaha), statistiky, Convert to Shader Code.
+### Particle workspace (`engine/editor/fps_studio/particle_*`)
+- Zásobník modulů (`particle_module_stack.cpp`), časová osa 2.0 (`particle_timeline.cpp`), náhled 2.0, Convert to Shader Code inline v Particle Logic. Undo jde do globální historie.
+- Rozložení: panely zavíratelné, menu Layout, zkratky Alt+0–9 (fyzické klávesy kvůli české klávesnici), Library v horní liště, zhuštěné UI pod 1200 px, barvy z motivu editoru (`_apply_workspace_theme`, pozor na re-entry přes `applying_workspace_theme`). Uživatel potvrdil, že rozložení funguje.
+- Náhled: View menu (prostředí, Glow, Emitter Bounds, Floor, Damage & Shake Radius, **Sound**, **Camera Shake**, Collision Test Walls). SubViewport náhledu je 3D posluchač zvuku.
+- **17 presetů ve 4 kategoriích** (`particle_presets.cpp`, `get_preset_category`, `get_presets_in_display_order`; nové jen na konec enumu): Weapons, Impacts, Explosions & Fire, Environment. `fit_visibility_aabb` počítá hranice z pohybu, aditivní emitory bez řazení. Decaly: Explosion spálenina, zásahy díra podle materiálu, Blood Hit krev na zdi. Kolize zapnutá u jisker Explosion, úlomků/třísek/jisker zásahů, střepů, elektrických jisker a jisker světlice, kouře granátu.
+- Kouř v presetech přes `make_soft_smoke(EmitterBuilder&)`: flipbook `smoke_soft_life.png` 4×4 přes život, per-vertex lit, široké Scale, rotace, ±30 % životnost. Výbuch: postupné vypouštění, křivka `PARAM_DAMPING` (odpor jen první třetinu života). **V Godotu damping brzdí i gravitaci**, takže stálý odpor větší než vztlak kouř nikdy nezvedne.
+- Modul Collision: `collision_base_size` je poloměr kolize (částice se zastaví v té vzdálenosti); nastaví se z velikosti meshe (`get_suggested_collision_size`), karta varuje a má Fit Particle Size.
+- Level editor: `ParticleEffectLevelPreviewPlugin` (`particle_level_preview_plugin.*`, registrace v `engine/editor/register_editor_types.cpp`) přidá při výběru efektu Preview Effect / Stop do lišty 3D. `editor_preview_play/stop`, kolize přes sdílené dlaždice (`_ensure_editor_level_collision`, přepeče jen při změně hashe geometrie), `_restore_editor_preview` vrací světla, decaly, pitch, `fixed_fps`, `emitting` (po dohrání, Stop a v `NOTIFICATION_EDITOR_PRE_SAVE`).
 
-### Runtime (engine/scene/3d)
-- `ParticleEffect3D` — kořen efektů: zpoždění/délka emitorů v metadatech, `play`/`stop`/`seek`, `finished`, `looping`, `auto_free`, statický `spawn()`; časované události Light3D, AudioStreamPlayer3D, CameraShake3D, Decal; skryté stopy jsou ztlumené; varování bez emitorů.
-- `CameraShake3D` — otřes aktivní kamery přes `h_offset`/`v_offset`.
-- Docs: `engine/doc/classes/ParticleEffect3D.xml`, `CameraShake3D.xml`; uživatelská dokumentace `docs/particle_editor.md`, roadmapa `docs/particle_workspace_plan.md`.
+### Runtime (`engine/scene/3d`)
+- `ParticleEffect3D`: časování emitorů v metadatech, `play/stop/seek`, události Light, Sound, CameraShake, Decal, Damage.
+- **Kolize částic s levelem bez kolizních boxů**: první kolizní efekt spustí `prepare_level_collision` (StaticBody3D/CSG tvary → dlaždice SDF 16+2×2 m, 64³ na WorkerThreadPool; v úlohách sériový `bake_faces(..., false)`, jinak deadlock vnořených skupinových úloh). Než jsou hotové, efekt si napeče vlastní oblast (max 20 m, rozlišení 16/32/64, pás 0,6–1,5 m, vysoká priorita) s cache. Emitory s kolizí dostanou vyšší `fixed_fps` proti tunelování (`apply_collision_substeps`). Kolize i u shaderů s `COLLIDED`. `GPUParticlesCollisionSDF3D::bake_faces` je nové API, `gpu_particles_collision_3d.cpp` se kompiluje s `-O3` (`engine/scene/3d/SCsub`).
+- **Pooling**: `spawn()` vrací dohrané efekty do zásobníku podle PackedScene (max 64), `prewarm`, `clear_pool`, `get_pooled_count`; odpojí `finished`.
+- `CameraShake3D` 2.0 přes `Camera3D::add_shake_offset` (aditivní, neukládá se). `RadialDamage3D`: útlum, krytí 9 paprsky, `take_damage` s 1–3 argumenty, impulz RigidBody3D.
 
-### Opravené chyby
-- Pád hry: smyčka prázdného `ParticleEffect3D` (nekonečná rekurze).
-- Add to Level u neuloženého efektu zahazoval emitory při uložení levelu.
-- Dvojitý reimport vygenerovaných textur („Task 'reimport' already exists“).
-
-### Rozložení Particle workspace (2026-11-15)
-- Panely Emitters, Preview, Timeline & Logic a Properties jdou zavřít křížkem a znovu otevřít přes menu **Layout**. Spodní panel jde maximalizovat (skryje náhled) nebo oddělit do vlastního okna (`WindowWrapper`). Viditelnost panelů se ukládá do `get_window_layout`.
-- Graf VisualShader se edituje jen inline v Particle Logic, tlačítko „Open in Shader Editor“ je pryč. Náhled má minimální výšku 140 px.
-- Křížek v odděleném okně vrací panel zpět (dřív ho skryl). Pod 1200 px šířky se UI zhušťuje (`_apply_compact_layout`), záhlaví Particle Logic je `HFlowContainer`.
-- Convert to Shader Code otevírá kód inline v Particle Logic (`TextShaderEditor`, tlačítko Toggle Files Panel je skryté). Godotův Script editor shadery neumí, proto ne záložka Script.
-- Úniky při ukončení opraveny (2026-11-15): náhledové slunce a prostředí 3D editoru (`~Node3DEditor`, ve forku výchozí vypnuté, nikdy nepřipojené) a ovládací prvky karet modulů, které vlastní plugin a u emitoru se shaderem zůstanou bez rodiče (`~FPSParticleModuleStack`). Opraven i pád `_build` u emitoru se shaderem (karta Collision neexistuje).
-- Po spuštění jsou Preview a Timeline vždy vidět (ukládá se jen stav bočních panelů). Posuvník času v transportu má minimální šířku 120 px. Zhuštěné UI se zapne i tehdy, když se široké rozložení nevejde.
-- Uživatel potvrdil, že rozložení v GUI funguje dobře.
-- Effect Library je přesunutá do menu **Library** v horní liště, panel knihovny je ve výchozím stavu skrytý (`show_library` v layoutu). Seznam emitorů má barvy stop (`FPSParticleTimeline::get_track_color`) a sloupec s typem.
-- Zkratky Layout: `particle_workspace/*` přes `ED_SHORTCUT` (Alt+0–9 jako **fyzické** klávesy kvůli české klávesnici, kde je na „1“ znak „+“; přenastavitelné v Editor Settings → Shortcuts), přeposílá je MenuButton Layout, takže platí jen v Particle.
-- Vzhled: `_apply_workspace_theme` (barvy z motivu editoru: `background` pro pozadí, `base_color` pro panely, `accent_color` pro výběr a vybranou záložku). Pozor na re-entry: override na kořeni vyvolá theme_changed → hlídá `applying_workspace_theme` (bez něj se editor zasekl).
-- CameraShake3D 2.0: rotační trauma otřes přes nový `Camera3D::add_shake_offset` (aditivní, neukládá se), `inner_radius`, `max_rotation_degrees`, `max_offset`, čekání až 0,5 s na kameru, signál `shake_started`. Ověřeno headless runtime testem (`shake_test*.gd` ve scratchpadu).
-- Ve hře: uzel `Explosion` ve `fps_level.tscn` je stará vložená kopie bez LightFlash/CameraShake; uživatel ho má nahradit (efekt uložit jako .tscn a znovu Add to Level). Herní repo needitovat bez žádosti.
-- RadialDamage3D (`engine/scene/3d/radial_damage_3d.*`, událost EVENT_DAMAGE): zranění s útlumem, krytí 9 paprsky (poměrně), `take_damage` voláno s počtem argumentů podle metody (hráč má 1, NPC 3), impulz pro RigidBody3D. Ověřeno headless (`damage_test.gd`). Kruhy dosahu: `particle_event_gizmos.*` (gizmo v Level + náhled, View → Damage & Shake Radius). View → Floor (výchozí vypnuto).
-- Zvuk: preset Explosion má prázdnou stopu Sound; audio soubor jde přetáhnout na seznam emitorů (`_drop_on_emitter_tree`, headless neověřeno). Kolize: tlačítko Add Collision to Level v modulu Collision peče `ParticleCollision` (SDF) z meshů levelu bez CharacterBody/RigidBody/efektů (ověřeno headless); View → Collision Test Walls v náhledu; výchozí collision_base_size 0,25.
-- Zvuk v náhledu: SubViewport náhledu je 3D posluchač (`set_as_audio_listener_3d`), bez toho AudioStreamPlayer3D mlčel. View → Sound a View → Camera Shake vypínají zvuk a otřes jen v kopii náhledu (`_apply_preview_event_toggles`, ověřeno headless).
-- Kolize se stěnami bez kolizních boxů: `ParticleEffect3D` (skupina Level Collision, `collide_with_level`) při `play()` za běhu hry dotazem na fyziku najde StaticBody3D/CSG tvary v `visibility_aabb` emitorů s kolizí, převede je na trojúhelníky a hned (úzký pás 1,5 m, ~15 ms; nad 20k trojúhelníků na pozadí) napeče přechodný `GPUParticlesCollisionSDF3D` (`bake_faces`, nový v `gpu_particles_collision_3d`, soubor kompilován s -O3). Sdílená LRU cache 16 záznamů, mazaná v `unregister_scene_types`. Ověřeno headless (`col_test.gd`, ~130 ms na pozadí, 0,3 ms hlavní vlákno) i na `fps_level.tscn` (56 trojúhelníků). Emitory s kolizí dostanou vyšší `fixed_fps` proti tunelování (`apply_collision_substeps`, i v náhledu); kolize se pozná i u shaderů s `COLLIDED`. `collision_base_size` je poloměr kolize (částice se zastaví v té vzdálenosti); modul ho nastaví z velikosti meshe (`get_suggested_collision_size`), karta varuje a má Fit Particle Size. SDF je ověřené vzorkováním (`sdf_probe.gd`, meta `_debug_sdf_image` jen s --verbose).
-- Kolizní oblast je nejvýš 20 m kolem efektu, rozlišení SDF 16/32/64 podle velikosti (buňka ~0,15–0,31 m), pás `clamp(6 buněk, 0,6, 1,5 m)`.
-- Test všech presetů: doplněk `addons/lt` vytvoří přes menu Library všech 17 a potvrzuje dialog „Discard“.
-- Sdílená kolize levelu: `ParticleEffect3D::prepare_level_collision` (strom → tvary StaticBody3D/CSG → dlaždice 16+2×2 m, 64³, úlohy WorkerThreadPool se sériovým `bake_faces(..., false)`, jinak deadlock vnořených skupinových úloh). Spustí ji první kolizní efekt; po `is_level_collision_ready` efekty nepečou. Okamžité pečení má vysokou prioritu. Test `level_test.gd`, na herním levelu `gametest/game_level_test.gd` (skript mimo herní repo).
-- Pooling: `spawn()` vrací dohrané efekty do zásobníku podle PackedScene (max 64), bez skrývání (skrývání zpomalovalo), `prewarm`, `clear_pool`, odpojí `finished`. Test `pool_test.gd`, měření na `Explosion_01.tscn` uživatele v `gametest/pool_game.gd` (jen čtení).
-- Generátor: kategorie Decals (TYPE_BULLET_HOLE 16, TYPE_SCORCH 17, TYPE_GLASS_CRACK 18, TYPE_SPLATTER 19, `render_decal`, `write_flat`). Apply na stopu Decal nastaví `texture_albedo`/`texture_normal`; presety Explosion, zásahy a Blood Hit mají decal události. Rychlé ladění vzhledu: samostatný build `scratchpad/gen` (clang++ main.cpp + vfx_texture_generator.cpp, `sheet.py`).
-- Level editor: `ParticleEffectLevelPreviewPlugin` (`particle_level_preview_plugin.*`, registrace v `register_editor_types.cpp`) přidá při výběru efektu do lišty 3D Preview Effect/Stop → `editor_preview_play/stop`. Kolize přes `_ensure_editor_level_collision` (hash trojúhelníků, přepeče jen při změně). `_restore_editor_preview` vrací světla, decaly, pitch, `fixed_fps`, `emitting` (po dohrání, Stop, `NOTIFICATION_EDITOR_PRE_SAVE`).
-- Kouř: TYPE_SOFT_SMOKE 20 (`render_soft_smoke`, 2D, parametry billows a lifecycle). Presety přes `make_soft_smoke(EmitterBuilder&)`: flipbook `smoke_soft_life.png` 4×4 přes život, per-vertex lit, široké Scale, rotace, lifetime randomness. Výbuch: křivka PARAM_DAMPING (odpor jen na začátku, jinak vztlak nestoupne; v Godotu damping brzdí i gravitaci). Rychlá kontrola vzhledu: `scratchpad/sim.py` (hrubá simulace v PIL).
-- Headless editor testy spouštěj s `--language en` (izolované nastavení jinak přepne editor do češtiny).
-- Inspirace od uživatele: Model workspace (záložky vlevo, svislé záložky vpravo) pro šetření místem.
-
-## Co se právě řešilo
-Poslední zadání: přepracovat rozložení Particle workspace (zavírání a otevírání panelů, graf bez vytlačení náhledu). Hotovo a pushnuto, čeká se na ruční test v GUI. Potom pokračovat zpětnou vazbou k funkcím Particle (časová osa, události, moduly, náhled).
+### Opravené chyby (výběr)
+- Pád editoru při ukončení v zásobníku modulů (dvojité uvolnění): úklid ovládacích prvků vlastněných pluginem je v `NOTIFICATION_PREDELETE` přes ObjectID, ne v destruktoru (potomci jsou v destruktoru už uvolnění).
+- Úniky při ukončení: náhledové slunce/prostředí `Node3DEditor` (ve forku vypnuté, nikdy nepřipojené) a prvky karet modulů u emitoru se shaderem.
+- Pád `_build` u emitoru se shaderem (karta Collision neexistuje).
+- Dřívější: smyčka prázdného efektu, Add to Level u neuloženého efektu, dvojitý reimport textur.
 
 ## Ověření a jeho hranice
-- **Headless testy spouštěj s `HOME=<scratchpad>/home`.** Jinak zapisují do skutečného nastavení editoru uživatele (`~/Library/Application Support/godotfpsstudio/editor_settings-4.7.tres`). Test přenastavení zkratky tam jednou omylem uložil ⌥Q; záznam byl ručně odstraněn.
-- Headless testy jsou editorový doplněk v dočasném projektu ve scratchpadu (`addons/fxtest/plugin.gd`, režimy `FXTEST=1|presets|timeline|level|events|modules|preview`) a skripty `rt.gd`/`ev.gd` pro runtime. Nejsou součástí repozitáře; při ztrátě scratchpadu je napiš znovu.
-- Ručně v GUI zatím **neověřeno**: vzhled nového UI, zkratky časové osy, záblesky světla a otřes kamery v náhledu i ve hře, Convert to Shader Code (headless renderer vrací prázdný kód shaderu, převod je proto chráněný pojistkou).
-- Herní projekt `/Users/davidsoudil/Projects/Godot/project-hl-2-inspiration` se s aktuálním buildem headless spustí bez chyb. V jeho `Levels/Test_levels/fps_level.tscn` může zůstat starý prázdný uzel `Explosion`; uživatel ho má smazat a přidat efekt znovu (ideálně uložený jako `.tscn`).
+- **Headless testy spouštěj s `HOME=<scratchpad>/home` a `--language en`.** Jinak zapisují do skutečného nastavení editoru uživatele (jednou tam omylem skončila zkratka ⌥Q, ručně odstraněno).
+- Testovací projekt ve scratchpadu (`scratchpad/proj`, není v repozitáři): doplněk `addons/lt/plugin.gd` (zálohy `plugin_presets.gd.bak` = všech 17 presetů přes Library s potvrzením „Discard“, `plugin_leak.gd.bak` = úniky se shaderem), runtime skripty `col_test.gd`, `level_test.gd`, `pool_test.gd`, `sdf_probe.gd`, `damage_test.gd`, `shake_test*.gd`. Na herním levelu skripty v `scratchpad/gametest/` (spouštěné přes `-s`, herní repo se nemění). Vzhled textur: samostatný build `scratchpad/gen` (clang++ `main.cpp` + `vfx_texture_generator.cpp`, `sheet.py`), kouř `scratchpad/sim.py`. Při ztrátě scratchpadu je napiš znovu.
+- Ručně v GUI zatím **neověřeno**: decaly a nový kouř ve hře, Preview Effect v Level editoru, tlačítko Fit Particle Size, přetažení zvuku na seznam emitorů, Convert to Shader Code, zkratky časové osy.
+- Herní projekt `/Users/davidsoudil/Projects/Godot/project-hl-2-inspiration` (needitovat bez žádosti): level `Levels/Test_levels/fps_level.tscn` už nemá uzel Explosion, uživatel má efekt `Scenes/Effects/Explosion_01.tscn` (smyčka zapnutá, starý kouř a stará velikost kolize; nové presety mají opravené hodnoty). Efekty vytvořené před změnami je potřeba vytvořit znovu z Library.
 
 ## Další na řadě
-1. Zapracovat zpětnou vazbu uživatele z ručního testu nových funkcí v GUI.
-2. Ručně ověřit Convert to Shader Code a události ve hře (případně opravit).
-3. Možná rozšíření, pokud o ně uživatel požádá: převod modulů do Visual Shader grafu (dnes jen šablona Create Node Graph), oblast smyčky v časové ose, decal textury v generátoru (např. spálenina), další typy z EffectTextureMakeru (CellNoise, MarbleNoise).
+1. Zpětná vazba uživatele z GUI (kouř ladí sám).
+2. Možná rozšíření, pokud o ně požádá: normal mapy pro decaly z generátoru, převod modulů do Visual Shader grafu, oblast smyčky v časové ose, další typy z EffectTextureMakeru (CellNoise, MarbleNoise), automatické `prewarm` / `prepare_level_collision` při načtení levelu v herním projektu.
