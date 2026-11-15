@@ -158,7 +158,7 @@ Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emit
 Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport` s vlastním prostředím, světly, kamerou a mřížkou. Chybějící draw mesh nebo process material doplní pouze náhledová kopie.
 
 - Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** efekt znovu orámuje.
-- Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru) a **Floor Collision** (kolizní podlaha pro modul Collision).
+- Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru), **Floor** (viditelná podlaha, výchozí vypnuto), **Damage & Shake Radius** (kruhy dosahu, výchozí zapnuto) a **Floor Collision** (kolizní podlaha pro modul Collision).
 - Statistiky v transportu: viditelné stopy, maximum částic, draw cally a trojúhelníky náhledu.
 - **Play/Pause**, **Restart**, časový posuvník, **Speed** a **Loop** ovládají simulaci. Posun na jiný čas restartuje efekt a přehraje ho dopředu (`ParticleEffect3D.seek`); jde o přiblížení, ne přesnou rekonstrukci stavu.
 - Změna načasování na časové ose zachová polohu kamery.
