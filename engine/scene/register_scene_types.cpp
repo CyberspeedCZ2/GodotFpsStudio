@@ -1348,6 +1348,8 @@ void unregister_scene_types() {
 
 	SceneDebugger::deinitialize();
 
+	ParticleEffect3D::clear_level_collision_cache();
+
 	if constexpr (GD_IS_CLASS_ENABLED(TextureLayered)) {
 		ResourceLoader::remove_resource_format_loader(resource_loader_texture_layered);
 		resource_loader_texture_layered.unref();

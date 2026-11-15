@@ -157,12 +157,15 @@ Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emit
 
 ## Kolize částic se stěnami
 
-GPU částice nenarážejí na fyzikální tělesa (StaticBody, CharacterBody), jen na kolizní uzly částic (`GPUParticlesCollision*`). Postup, aby se kouř odrážel od stěn:
+GPU částice samy o sobě nenarážejí na fyzikální tělesa, jen na kolizní uzly částic (`GPUParticlesCollision*`). `ParticleEffect3D` to ve hře řeší automaticky: když se přehraje, najde statickou fyzikální kolizi kolem sebe (`StaticBody3D`, včetně kolizí UniBuilderu, a CSG) a na pozadí z ní napeče dočasný `GPUParticlesCollisionSDF3D`. Žádné kolizní boxy do místností přidávat nemusíš.
 
-1. Emitoru zapni modul **Collision** (+ Module → Collision). **Mode** Rigid, **Bounce** u kouře nízko (0–0,2), **Friction** 0,1–0,5. **Particle Size** je poloměr částice pro kolizi; modul ho nastaví na 0,25 m, u velkých obláčků kouře ho zvyš na 0,4–0,8, jinak částice zapadají do stěn.
+1. Emitoru, který se má odrážet (např. **Smoke**), zapni modul **Collision** (+ Module → Collision). Kolize platí jen pro emitory s tímto modulem. **Mode** Rigid, **Bounce** u kouře nízko (0–0,2), **Friction** 0,1–0,5. **Particle Size** je poloměr částice pro kolizi; modul ho nastaví na 0,25 m, u velkých obláčků kouře ho zvyš na 0,4–0,8, jinak částice zapadají do stěn.
 2. Odraz vyladíš v náhledu přes **View → Collision Test Walls**.
-3. V kartě Collision klikni **Add Collision to Level**. Do otevřeného levelu se přidá uzel `ParticleCollision` (`GPUParticlesCollisionSDF3D`) napečený z viditelných meshů levelu. Hráč, pohyblivá tělesa a efekty se nepečou. Data se uloží vedle levelu (`<level>.ParticleCollision_data.exr`). Level pak ulož.
-4. Po změně geometrie levelu klikni znovu (přepeče stejný uzel, jde vrátit přes Undo).
+3. Ve hře to funguje samo. Kořen efektu má skupinu **Level Collision**: `collide_with_level` (výchozí zapnuto) a `level_collision_mask` (fyzikální vrstvy stěn, výchozí 1).
+
+Jak to funguje: pečená oblast je součet `visibility_aabb` emitorů s kolizí (nejvýš 64 m na osu), rozlišení 64 buněk na nejdelší osu. Pečení běží na pozadí (hlavní vlákno ~0,3 ms), kolize se objeví zhruba za desetinu sekundy; efekt, který se přehraje znovu na stejném místě, použije sdílenou cache. Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()`.
+
+Volitelně: tlačítko **Add Collision to Level** v kartě Collision přidá do levelu trvalý uzel `ParticleCollision` napečený z meshů, aby byla kolize vidět i ve viewportu Level editoru. Data se uloží vedle levelu (`<level>.ParticleCollision_data.exr`), level pak ulož.
 
 ## 3D náhled a simulace
 

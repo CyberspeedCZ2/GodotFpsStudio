@@ -16,6 +16,24 @@
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/gpu_particles_3d.h"
+#include "core/math/convex_hull.h"
+#include "core/object/callable_mp.h"
+#include "core/object/worker_thread_pool.h"
+#include "scene/3d/gpu_particles_collision_3d.h"
+#include "scene/3d/physics/collision_object_3d.h"
+#include "scene/3d/physics/static_body_3d.h"
+#include "scene/resources/3d/box_shape_3d.h"
+#include "scene/resources/3d/capsule_shape_3d.h"
+#include "scene/resources/3d/concave_polygon_shape_3d.h"
+#include "scene/resources/3d/convex_polygon_shape_3d.h"
+#include "scene/resources/3d/cylinder_shape_3d.h"
+#include "scene/resources/3d/height_map_shape_3d.h"
+#include "scene/resources/3d/primitive_meshes.h"
+#include "scene/resources/3d/sphere_shape_3d.h"
+#include "scene/resources/3d/world_boundary_shape_3d.h"
+#include "scene/resources/3d/world_3d.h"
+#include "scene/resources/image_texture.h"
+#include "servers/physics_3d/physics_server_3d.h"
 #include "scene/3d/light_3d.h"
 #include "scene/resources/curve.h"
 #include "scene/resources/packed_scene.h"
@@ -211,12 +229,420 @@ void ParticleEffect3D::play() {
 			_set_emitter_emitting(emitter, false, true);
 		}
 	}
+	if (!Engine::get_singleton()->is_editor_hint()) {
+		_update_level_collision();
+	}
 	elapsed = 0.0;
 	stop_time = 0.0;
 	stopping = false;
 	playing = true;
 	set_process_internal(true);
 	_update(0.0);
+}
+
+// --- Level collision --------------------------------------------------------
+// GPU particles ignore physics bodies; they only collide with
+// GPUParticlesCollision3D nodes. To make "collision" just work against walls
+// that already have physics collision, the effect bakes the static shapes
+// around it into a transient SDF collider when it plays.
+
+static void push_face(Vector<Face3> &r_faces, const Transform3D &p_xform, const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c) {
+	r_faces.push_back(Face3(p_xform.xform(p_a), p_xform.xform(p_b), p_xform.xform(p_c)));
+}
+
+static void push_oriented_face(Vector<Face3> &r_faces, const Transform3D &p_xform, const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c, const Vector3 &p_normal) {
+	if (Face3(p_a, p_b, p_c).get_plane().normal.dot(p_normal) < 0.0) {
+		push_face(r_faces, p_xform, p_a, p_c, p_b);
+	} else {
+		push_face(r_faces, p_xform, p_a, p_b, p_c);
+	}
+}
+
+static void push_mesh_faces(Vector<Face3> &r_faces, const Transform3D &p_xform, const Ref<Mesh> &p_mesh) {
+	if (p_mesh.is_null()) {
+		return;
+	}
+	const Vector<Face3> faces = p_mesh->get_faces();
+	for (const Face3 &face : faces) {
+		push_face(r_faces, p_xform, face.vertex[0], face.vertex[1], face.vertex[2]);
+	}
+}
+
+static void push_shape_faces(Vector<Face3> &r_faces, const Transform3D &p_xform, const Ref<Shape3D> &p_shape) {
+	if (const BoxShape3D *box = Object::cast_to<BoxShape3D>(p_shape.ptr())) {
+		Ref<BoxMesh> mesh;
+		mesh.instantiate();
+		mesh->set_size(box->get_size());
+		push_mesh_faces(r_faces, p_xform, mesh);
+	} else if (const SphereShape3D *sphere = Object::cast_to<SphereShape3D>(p_shape.ptr())) {
+		Ref<SphereMesh> mesh;
+		mesh.instantiate();
+		mesh->set_radius(sphere->get_radius());
+		mesh->set_height(sphere->get_radius() * 2.0);
+		mesh->set_radial_segments(16);
+		mesh->set_rings(8);
+		push_mesh_faces(r_faces, p_xform, mesh);
+	} else if (const CapsuleShape3D *capsule = Object::cast_to<CapsuleShape3D>(p_shape.ptr())) {
+		Ref<CapsuleMesh> mesh;
+		mesh.instantiate();
+		mesh->set_radius(capsule->get_radius());
+		mesh->set_height(capsule->get_height());
+		mesh->set_radial_segments(16);
+		mesh->set_rings(4);
+		push_mesh_faces(r_faces, p_xform, mesh);
+	} else if (const CylinderShape3D *cylinder = Object::cast_to<CylinderShape3D>(p_shape.ptr())) {
+		Ref<CylinderMesh> mesh;
+		mesh.instantiate();
+		mesh->set_top_radius(cylinder->get_radius());
+		mesh->set_bottom_radius(cylinder->get_radius());
+		mesh->set_height(cylinder->get_height());
+		mesh->set_radial_segments(16);
+		mesh->set_rings(1);
+		push_mesh_faces(r_faces, p_xform, mesh);
+	} else if (const ConvexPolygonShape3D *convex = Object::cast_to<ConvexPolygonShape3D>(p_shape.ptr())) {
+		Geometry3D::MeshData hull;
+		if (ConvexHullComputer::convex_hull(convex->get_points(), hull) != OK) {
+			return;
+		}
+		for (const Geometry3D::MeshData::Face &face : hull.faces) {
+			for (uint32_t i = 2; i < face.indices.size(); i++) {
+				push_oriented_face(r_faces, p_xform, hull.vertices[face.indices[0]], hull.vertices[face.indices[i - 1]], hull.vertices[face.indices[i]], face.plane.normal);
+			}
+		}
+	} else if (const ConcavePolygonShape3D *concave = Object::cast_to<ConcavePolygonShape3D>(p_shape.ptr())) {
+		const Vector<Vector3> faces = concave->get_faces();
+		for (int i = 0; i + 2 < faces.size(); i += 3) {
+			push_face(r_faces, p_xform, faces[i], faces[i + 1], faces[i + 2]);
+		}
+	} else if (const HeightMapShape3D *height_map = Object::cast_to<HeightMapShape3D>(p_shape.ptr())) {
+		const int width = height_map->get_map_width();
+		const int depth = height_map->get_map_depth();
+		const Vector<real_t> data = height_map->get_map_data();
+		if (width < 2 || depth < 2 || data.size() < width * depth) {
+			return;
+		}
+		const Vector3 offset((width - 1) * 0.5, 0.0, (depth - 1) * 0.5);
+		for (int z = 0; z + 1 < depth; z++) {
+			for (int x = 0; x + 1 < width; x++) {
+				const Vector3 a = Vector3(x, data[z * width + x], z) - offset;
+				const Vector3 b = Vector3(x + 1, data[z * width + x + 1], z) - offset;
+				const Vector3 c = Vector3(x, data[(z + 1) * width + x], z + 1) - offset;
+				const Vector3 d = Vector3(x + 1, data[(z + 1) * width + x + 1], z + 1) - offset;
+				push_oriented_face(r_faces, p_xform, a, b, c, Vector3(0, 1, 0));
+				push_oriented_face(r_faces, p_xform, b, d, c, Vector3(0, 1, 0));
+			}
+		}
+	} else if (const WorldBoundaryShape3D *boundary = Object::cast_to<WorldBoundaryShape3D>(p_shape.ptr())) {
+		const Plane plane = boundary->get_plane();
+		const Vector3 center = plane.get_center();
+		Vector3 tangent = plane.normal.cross(Math::abs(plane.normal.y) < 0.9 ? Vector3(0, 1, 0) : Vector3(1, 0, 0)).normalized() * 500.0;
+		const Vector3 bitangent = plane.normal.cross(tangent);
+		const Vector3 a = center - tangent - bitangent;
+		const Vector3 b = center + tangent - bitangent;
+		const Vector3 c = center + tangent + bitangent;
+		const Vector3 d = center - tangent + bitangent;
+		push_oriented_face(r_faces, p_xform, a, b, c, plane.normal);
+		push_oriented_face(r_faces, p_xform, a, c, d, plane.normal);
+	}
+}
+
+static bool emitter_uses_collision(const Node *p_node) {
+	const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node);
+	if (!gpu || !gpu->is_visible_in_tree()) {
+		return false;
+	}
+	Ref<Material> material = gpu->get_process_material();
+	if (material.is_null()) {
+		return false;
+	}
+	bool valid = false;
+	const Variant mode = material->get("collision_mode", &valid);
+	return valid && int(mode) != 0;
+}
+
+bool ParticleEffect3D::_get_level_collision_region(AABB &r_region) const {
+	bool found = false;
+	for (const EmitterState &state : emitters) {
+		const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(state.id));
+		if (!emitter_uses_collision(gpu)) {
+			continue;
+		}
+		const AABB region = gpu->get_global_transform().xform(gpu->get_visibility_aabb());
+		if (found) {
+			r_region.merge_with(region);
+		} else {
+			r_region = region;
+			found = true;
+		}
+	}
+	if (!found) {
+		return false;
+	}
+	r_region = r_region.grow(0.5);
+	// Keep the SDF resolution useful: limit the baked area around the effect.
+	const Vector3 center = r_region.get_center();
+	r_region.size = r_region.size.min(Vector3(64, 64, 64));
+	r_region.position = center - r_region.size * 0.5;
+	return true;
+}
+
+void ParticleEffect3D::update_level_collision() {
+	if (!playing) {
+		emitters.clear();
+		events.clear();
+		_collect_emitters(this);
+	}
+	_update_level_collision();
+}
+
+namespace {
+struct LevelCollisionBake {
+	GPUParticlesCollisionSDF3D *baker = nullptr; // Not in the tree; owned by the bake.
+	Vector<Face3> faces;
+	Ref<Image> image;
+	RID space;
+	AABB region;
+	ObjectID effect;
+};
+
+struct LevelCollisionCacheEntry {
+	RID space;
+	AABB region;
+	Ref<Texture3D> texture;
+	uint64_t used = 0;
+};
+
+// Effects replayed in the same place (a looping fire, repeated explosions)
+// share one bake.
+LocalVector<LevelCollisionCacheEntry> level_collision_cache;
+uint64_t level_collision_clock = 0;
+constexpr uint32_t LEVEL_COLLISION_CACHE_SIZE = 16;
+
+Ref<Texture3D> find_cached_level_collision(const RID &p_space, const AABB &p_region) {
+	for (LevelCollisionCacheEntry &entry : level_collision_cache) {
+		if (entry.space == p_space && entry.region == p_region) {
+			entry.used = ++level_collision_clock;
+			return entry.texture;
+		}
+	}
+	return Ref<Texture3D>();
+}
+
+void cache_level_collision(const RID &p_space, const AABB &p_region, const Ref<Texture3D> &p_texture) {
+	if (level_collision_cache.size() >= LEVEL_COLLISION_CACHE_SIZE) {
+		uint32_t oldest = 0;
+		for (uint32_t i = 1; i < level_collision_cache.size(); i++) {
+			if (level_collision_cache[i].used < level_collision_cache[oldest].used) {
+				oldest = i;
+			}
+		}
+		level_collision_cache.remove_at_unordered(oldest);
+	}
+	LevelCollisionCacheEntry entry;
+	entry.space = p_space;
+	entry.region = p_region;
+	entry.texture = p_texture;
+	entry.used = ++level_collision_clock;
+	level_collision_cache.push_back(entry);
+}
+
+Ref<Texture3D> sdf_image_to_texture(const Ref<Image> &p_image) {
+	if (p_image.is_null()) {
+		return Ref<Texture3D>();
+	}
+	const int depth = MAX(1, int(p_image->get_meta("depth", 1)));
+	const int width = p_image->get_width();
+	const int height = p_image->get_height() / depth;
+	Vector<Ref<Image>> slices;
+	slices.resize(depth);
+	for (int z = 0; z < depth; z++) {
+		slices.write[z] = p_image->get_region(Rect2i(0, z * height, width, height));
+	}
+	Ref<ImageTexture3D> texture;
+	texture.instantiate();
+	if (texture->create(p_image->get_format(), width, height, depth, false, slices) != OK) {
+		return Ref<Texture3D>();
+	}
+	return texture;
+}
+
+void level_collision_bake_task(void *p_userdata) {
+	LevelCollisionBake *bake = static_cast<LevelCollisionBake *>(p_userdata);
+	bake->image = bake->baker->bake_faces(bake->faces);
+	callable_mp_static(&ParticleEffect3D::_level_collision_bake_done).call_deferred(int64_t(p_userdata));
+}
+} // namespace
+
+void ParticleEffect3D::clear_level_collision_cache() {
+	level_collision_cache.clear();
+}
+
+void ParticleEffect3D::_level_collision_bake_done(int64_t p_bake) {
+	LevelCollisionBake *bake = reinterpret_cast<LevelCollisionBake *>(p_bake);
+	const Ref<Texture3D> texture = sdf_image_to_texture(bake->image);
+	memdelete(bake->baker);
+	if (texture.is_valid()) {
+		cache_level_collision(bake->space, bake->region, texture);
+	}
+	if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(bake->effect))) {
+		if (effect->level_collision_pending && effect->level_collision_pending_region == bake->region) {
+			effect->level_collision_pending = false;
+			effect->_set_level_collision(bake->region, texture);
+		}
+	}
+	memdelete(bake);
+}
+
+void ParticleEffect3D::_set_level_collision(const AABB &p_region, const Ref<Texture3D> &p_texture) {
+	GPUParticlesCollisionSDF3D *sdf = Object::cast_to<GPUParticlesCollisionSDF3D>(ObjectDB::get_instance(level_collision_id));
+	if (p_texture.is_null() || !collide_with_level || !is_inside_tree()) {
+		if (sdf) {
+			sdf->queue_free();
+		}
+		level_collision_id = ObjectID();
+		level_collision_region = AABB();
+		return;
+	}
+	if (!sdf) {
+		sdf = memnew(GPUParticlesCollisionSDF3D);
+		sdf->set_name("LevelParticleCollision");
+		add_child(sdf, false, INTERNAL_MODE_BACK);
+		sdf->set_as_top_level(true);
+		level_collision_id = sdf->get_instance_id();
+	}
+	sdf->set_size(p_region.size);
+	sdf->set_global_transform(Transform3D(Basis(), p_region.get_center()));
+	sdf->set_texture(p_texture);
+	level_collision_region = p_region;
+}
+
+void ParticleEffect3D::_update_level_collision() {
+	level_collision_retry = false;
+	AABB region;
+	if (!collide_with_level || !is_inside_tree() || !_get_level_collision_region(region)) {
+		level_collision_pending = false;
+		_set_level_collision(AABB(), Ref<Texture3D>());
+		return;
+	}
+	// Snap to a 1 m grid so nearby replays share a cached bake.
+	const Vector3 center = region.get_center().snappedf(1.0);
+	const Vector3 size = (region.size + Vector3(1, 1, 1)).ceil();
+	region = AABB(center - size * 0.5, size);
+
+	if (level_collision_id.is_valid() && level_collision_region == region) {
+		return; // A looping or replayed effect that did not move keeps its bake.
+	}
+	if (level_collision_pending && level_collision_pending_region == region) {
+		return;
+	}
+	Ref<World3D> world = get_world_3d();
+	PhysicsDirectSpaceState3D *space = world.is_valid() ? world->get_direct_space_state() : nullptr;
+	if (!space) {
+		return;
+	}
+	const RID space_rid = world->get_space();
+	const Ref<Texture3D> cached = find_cached_level_collision(space_rid, region);
+	if (cached.is_valid()) {
+		level_collision_pending = false;
+		_set_level_collision(region, cached);
+		return;
+	}
+
+	PhysicsServer3D *physics = PhysicsServer3D::get_singleton();
+	const RID box = physics->box_shape_create();
+	physics->shape_set_data(box, region.size * 0.5);
+	PhysicsDirectSpaceState3D::ShapeParameters query;
+	query.shape_rid = box;
+	query.transform = Transform3D(Basis(), region.get_center());
+	query.collision_mask = level_collision_mask;
+	query.collide_with_areas = false;
+	static const int MAX_RESULTS = 256;
+	PhysicsDirectSpaceState3D::ShapeResult results[MAX_RESULTS];
+	const int count = space->intersect_shape(query, results, MAX_RESULTS);
+	physics->free_rid(box);
+
+	// Faces in the SDF's local space (axis aligned, centred on the region).
+	const Transform3D to_local = Transform3D(Basis(), -region.get_center());
+	Vector<Face3> faces;
+	HashSet<uint64_t> seen;
+	for (int i = 0; i < count; i++) {
+		Object *collider = results[i].collider;
+		if (!collider) {
+			continue;
+		}
+		const uint64_t key = (uint64_t(results[i].collider_id) * 31) ^ uint64_t(results[i].shape);
+		if (seen.has(key)) {
+			continue;
+		}
+		seen.insert(key);
+		// Only static level geometry: characters, props and rigid bodies move.
+		if (CollisionObject3D *body = Object::cast_to<CollisionObject3D>(collider)) {
+			if (!Object::cast_to<StaticBody3D>(body)) {
+				continue;
+			}
+			const uint32_t owner = body->shape_find_owner(results[i].shape);
+			const Transform3D xform = to_local * body->get_global_transform() * body->shape_owner_get_transform(owner);
+			for (int j = 0; j < body->shape_owner_get_shape_count(owner); j++) {
+				if (body->shape_owner_get_shape_index(owner, j) == results[i].shape) {
+					push_shape_faces(faces, xform, body->shape_owner_get_shape(owner, j));
+				}
+			}
+		} else if (Node3D *node = Object::cast_to<Node3D>(collider)) {
+			// CSG and similar nodes own their collision and expose meshes.
+			if (node->has_method("get_meshes")) {
+				const Array meshes = node->call("get_meshes");
+				if (meshes.size() >= 2) {
+					push_mesh_faces(faces, to_local * node->get_global_transform() * Transform3D(meshes[0]), meshes[1]);
+				}
+			}
+		}
+	}
+
+	if (faces.size() < 2) {
+		// Level bodies added this frame may not be queryable before the first
+		// physics step; try once more then.
+		if (Engine::get_singleton()->get_physics_frames() < 3) {
+			level_collision_retry = true;
+			set_physics_process_internal(true);
+		}
+		level_collision_pending = false;
+		_set_level_collision(AABB(), Ref<Texture3D>());
+		return;
+	}
+	print_verbose(vformat("ParticleEffect3D: baking level collision for %s from %d faces (%s).", get_name(), faces.size(), region));
+
+	// Bake on a worker thread; the collider appears when it is ready.
+	LevelCollisionBake *bake = memnew(LevelCollisionBake);
+	bake->baker = memnew(GPUParticlesCollisionSDF3D);
+	bake->baker->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+	bake->baker->set_size(region.size);
+	bake->faces = faces;
+	bake->space = space_rid;
+	bake->region = region;
+	bake->effect = get_instance_id();
+	level_collision_pending = true;
+	level_collision_pending_region = region;
+	WorkerThreadPool::get_singleton()->add_native_task(&level_collision_bake_task, bake, false, "Particle level collision");
+}
+
+void ParticleEffect3D::set_collide_with_level(bool p_enable) {
+	collide_with_level = p_enable;
+	if (!p_enable) {
+		level_collision_pending = false;
+		_set_level_collision(AABB(), Ref<Texture3D>());
+	}
+}
+
+bool ParticleEffect3D::is_colliding_with_level() const {
+	return collide_with_level;
+}
+
+void ParticleEffect3D::set_level_collision_mask(uint32_t p_mask) {
+	level_collision_mask = p_mask;
+}
+
+uint32_t ParticleEffect3D::get_level_collision_mask() const {
+	return level_collision_mask;
 }
 
 void ParticleEffect3D::stop() {
@@ -482,6 +908,13 @@ void ParticleEffect3D::_notification(int p_what) {
 		case NOTIFICATION_INTERNAL_PROCESS: {
 			_update(get_process_delta_time());
 		} break;
+		case NOTIFICATION_INTERNAL_PHYSICS_PROCESS: {
+			set_physics_process_internal(false);
+			if (level_collision_retry) {
+				_update_level_collision();
+				level_collision_retry = false; // Only one retry.
+			}
+		} break;
 	}
 }
 
@@ -548,6 +981,12 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_auto_free"), &ParticleEffect3D::is_auto_free);
 	ClassDB::bind_method(D_METHOD("set_speed_scale", "scale"), &ParticleEffect3D::set_speed_scale);
 	ClassDB::bind_method(D_METHOD("get_speed_scale"), &ParticleEffect3D::get_speed_scale);
+	ClassDB::bind_method(D_METHOD("set_collide_with_level", "enable"), &ParticleEffect3D::set_collide_with_level);
+	ClassDB::bind_method(D_METHOD("is_colliding_with_level"), &ParticleEffect3D::is_colliding_with_level);
+	ClassDB::bind_method(D_METHOD("set_level_collision_mask", "mask"), &ParticleEffect3D::set_level_collision_mask);
+	ClassDB::bind_method(D_METHOD("get_level_collision_mask"), &ParticleEffect3D::get_level_collision_mask);
+	ClassDB::bind_method(D_METHOD("update_level_collision"), &ParticleEffect3D::update_level_collision);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_level_collision_cache"), &ParticleEffect3D::clear_level_collision_cache);
 	ClassDB::bind_method(D_METHOD("play"), &ParticleEffect3D::play);
 	ClassDB::bind_method(D_METHOD("stop"), &ParticleEffect3D::stop);
 	ClassDB::bind_method(D_METHOD("restart"), &ParticleEffect3D::restart);
@@ -565,6 +1004,9 @@ void ParticleEffect3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "looping"), "set_looping", "is_looping");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_free"), "set_auto_free", "is_auto_free");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "speed_scale", PROPERTY_HINT_RANGE, "0,8,0.01,or_greater"), "set_speed_scale", "get_speed_scale");
+	ADD_GROUP("Level Collision", "");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "collide_with_level"), "set_collide_with_level", "is_colliding_with_level");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "level_collision_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_level_collision_mask", "get_level_collision_mask");
 
 	ADD_SIGNAL(MethodInfo("finished"));
 }

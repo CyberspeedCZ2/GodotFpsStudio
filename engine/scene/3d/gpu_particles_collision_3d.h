@@ -157,7 +157,9 @@ private:
 		const BVH *bvh = nullptr;
 		const Face3 *triangles = nullptr;
 		float thickness = 0.0;
+		bool report_progress = true;
 	};
+	Ref<Image> _bake_sdf(LocalVector<Face3> &r_faces, const AABB &p_aabb, float p_cell_size, const Vector3i &p_sdf_size, bool p_report_progress);
 
 	void _find_closest_distance(const Vector3 &p_pos, const BVH *p_bvh, uint32_t p_bvh_cell, const Face3 *p_triangles, float p_thickness, float &r_closest_distance);
 	void _compute_sdf_z(uint32_t p_z, ComputeSDFParams *params);
@@ -193,6 +195,9 @@ public:
 
 	Vector3i get_estimated_cell_size() const;
 	Ref<Image> bake();
+	// Bakes triangles given in this node's local space (no scene lookup, no
+	// editor progress). Used for runtime particle collision from physics shapes.
+	Ref<Image> bake_faces(const Vector<Face3> &p_faces);
 
 	virtual AABB get_aabb() const override;
 

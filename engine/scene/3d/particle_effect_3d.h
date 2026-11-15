@@ -10,6 +10,7 @@
 #include "core/templates/hash_map.h"
 #include "core/templates/local_vector.h"
 #include "scene/3d/node_3d.h"
+#include "scene/resources/texture.h"
 
 class PackedScene;
 
@@ -67,6 +68,13 @@ private:
 	bool looping = false;
 	bool auto_free = false;
 	double speed_scale = 1.0;
+	bool collide_with_level = true;
+	uint32_t level_collision_mask = 1;
+	ObjectID level_collision_id;
+	AABB level_collision_region;
+	bool level_collision_retry = false;
+	bool level_collision_pending = false;
+	AABB level_collision_pending_region;
 
 	bool playing = false;
 	bool stopping = false;
@@ -83,6 +91,9 @@ private:
 	double _get_max_lifetime() const;
 	void _update(double p_delta);
 	void _finish();
+	bool _get_level_collision_region(AABB &r_region) const;
+	void _update_level_collision();
+	void _set_level_collision(const AABB &p_region, const Ref<Texture3D> &p_texture);
 
 protected:
 	void _notification(int p_what);
@@ -97,6 +108,18 @@ public:
 	bool is_auto_free() const;
 	void set_speed_scale(double p_speed_scale);
 	double get_speed_scale() const;
+	void set_collide_with_level(bool p_enable);
+	bool is_colliding_with_level() const;
+	void set_level_collision_mask(uint32_t p_mask);
+	uint32_t get_level_collision_mask() const;
+	// Bakes the static physics shapes around the effect into a transient
+	// GPUParticlesCollisionSDF3D, so emitters with collision bounce off walls
+	// without hand-placed particle colliders. Called by play() at runtime.
+	void update_level_collision();
+	// Main thread completion of a background level collision bake.
+	static void _level_collision_bake_done(int64_t p_bake);
+	// Frees shared level collision bakes (call when the level geometry changed).
+	static void clear_level_collision_cache();
 
 	void play();
 	void stop();

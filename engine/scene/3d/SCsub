@@ -3,7 +3,19 @@ from misc.utility.scons_hints import *
 
 Import("env")
 
-env.add_source_files(env.scene_sources, "*.cpp")
+# GPU particle SDF baking runs at runtime (ParticleEffect3D level collision).
+# Dev builds default to -O0, which makes the bake ~10x slower, so always
+# compile this one file with optimizations.
+SDF_SOURCE = "gpu_particles_collision_3d.cpp"
+
+env.add_source_files(env.scene_sources, [f for f in Glob("*.cpp") if f.name != SDF_SOURCE])
+
+env_sdf = env.Clone()
+if not env.msvc:
+    env_sdf.Append(CCFLAGS=["-O3"])
+else:
+    env_sdf.Append(CCFLAGS=["/O2"])
+env_sdf.add_source_files(env.scene_sources, SDF_SOURCE)
 
 # Chain load SCsubs
 if not env["disable_physics_3d"]:

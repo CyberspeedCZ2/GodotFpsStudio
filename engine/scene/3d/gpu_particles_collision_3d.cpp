@@ -368,9 +368,10 @@ void GPUParticlesCollisionSDF3D::_compute_sdf_z(uint32_t p_z, ComputeSDFParams *
 
 void GPUParticlesCollisionSDF3D::_compute_sdf(ComputeSDFParams *params) {
 	WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &GPUParticlesCollisionSDF3D::_compute_sdf_z, params, params->size.z);
-	while (!WorkerThreadPool::get_singleton()->is_group_task_completed(group_task)) {
+	// Without progress reporting, wait directly (polling adds at least 10 ms).
+	while (params->report_progress && !WorkerThreadPool::get_singleton()->is_group_task_completed(group_task)) {
 		OS::get_singleton()->delay_usec(10000);
-		if (bake_step_function) {
+		if (params->report_progress && bake_step_function) {
 			bake_step_function(WorkerThreadPool::get_singleton()->get_group_processed_element_count(group_task) * 100 / params->size.z, "Baking SDF");
 		}
 	}
@@ -477,6 +478,38 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake() {
 		return Ref<Image>();
 	}
 
+	Ref<Image> ret = _bake_sdf(faces, aabb, cell_size, sdf_size, true);
+
+	if (bake_end_function) {
+		bake_end_function();
+	}
+
+	return ret;
+}
+
+Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces) {
+	static const int subdivs[RESOLUTION_MAX] = { 16, 32, 64, 128, 256, 512 };
+	const int subdiv = subdivs[get_resolution()];
+	AABB aabb(-size / 2, size);
+	const float cell_size = aabb.get_longest_axis_size() / float(subdiv);
+	Vector3i sdf_size = Vector3i(aabb.size / cell_size);
+	sdf_size = sdf_size.maxi(1);
+	aabb.size = Vector3(sdf_size) * cell_size;
+
+	LocalVector<Face3> faces;
+	faces.reserve(p_faces.size());
+	for (const Face3 &face : p_faces) {
+		if (Geometry3D::triangle_box_overlap(aabb.get_center(), aabb.size * 0.5, face.vertex)) {
+			faces.push_back(face);
+		}
+	}
+	if (faces.size() <= 1) {
+		return Ref<Image>();
+	}
+	return _bake_sdf(faces, aabb, cell_size, sdf_size, false);
+}
+
+Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, const AABB &aabb, float cell_size, const Vector3i &sdf_size, bool p_report_progress) {
 	LocalVector<FacePos> face_pos;
 
 	face_pos.resize(faces.size());
@@ -491,7 +524,7 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake() {
 		}
 	}
 
-	if (bake_step_function) {
+	if (p_report_progress && bake_step_function) {
 		bake_step_function(0, "Creating BVH");
 	}
 
@@ -502,11 +535,12 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake() {
 	Vector<uint8_t> cells_data;
 	cells_data.resize(sdf_size.z * sdf_size.y * sdf_size.x * (int)sizeof(float));
 
-	if (bake_step_function) {
+	if (p_report_progress && bake_step_function) {
 		bake_step_function(0, "Baking SDF");
 	}
 
 	ComputeSDFParams params;
+	params.report_progress = p_report_progress;
 	params.cells = (float *)cells_data.ptrw();
 	params.size = sdf_size;
 	params.cell_size = cell_size;
@@ -519,10 +553,6 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake() {
 	Ref<Image> ret = Image::create_from_data(sdf_size.x, sdf_size.y * sdf_size.z, false, Image::FORMAT_RF, cells_data);
 	ret->convert(Image::FORMAT_RH); //convert to half, save space
 	ret->set_meta("depth", sdf_size.z); //hack, make sure to add to the docs of this function
-
-	if (bake_end_function) {
-		bake_end_function();
-	}
 
 	return ret;
 }

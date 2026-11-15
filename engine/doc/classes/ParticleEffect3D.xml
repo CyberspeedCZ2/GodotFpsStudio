@@ -18,6 +18,12 @@
 	<tutorials>
 	</tutorials>
 	<methods>
+		<method name="clear_level_collision_cache" qualifiers="static">
+			<return type="void" />
+			<description>
+				Frees the level collision bakes shared between effects. Call it when the static level geometry changes while the game runs, so the next effects bake the new shapes.
+			</description>
+		</method>
 		<method name="get_elapsed_time" qualifiers="const">
 			<return type="float" />
 			<description>
@@ -94,6 +100,12 @@
 				Instantiates [param scene] (whose root must be a [ParticleEffect3D]) under [param parent] at the global [param transform], enables [member auto_free] and plays it.
 			</description>
 		</method>
+		<method name="update_level_collision">
+			<return type="void" />
+			<description>
+				Bakes the level collision around the effect now (see [member collide_with_level]). [method play] does this automatically; call it after moving a playing effect.
+			</description>
+		</method>
 		<method name="stop">
 			<return type="void" />
 			<description>
@@ -107,6 +119,12 @@
 		</member>
 		<member name="autoplay" type="bool" setter="set_autoplay" getter="is_autoplay" default="true">
 			If [code]true[/code], the effect plays when it enters the scene tree in a running game. Without autoplay its emitters stay silent until [method play] is called.
+		</member>
+		<member name="collide_with_level" type="bool" setter="set_collide_with_level" getter="is_colliding_with_level" default="true">
+			If [code]true[/code], emitters whose process material has collision enabled bounce off static level geometry while the game runs. GPU particles only collide with [GPUParticlesCollision3D] nodes, so when the effect plays it bakes the [StaticBody3D] (and CSG) collision shapes inside its emitters' [member GPUParticles3D.visibility_aabb] into a transient [GPUParticlesCollisionSDF3D]. The bake runs on a worker thread and is shared by effects replayed at the same place. Characters and rigid bodies are left out.
+		</member>
+		<member name="level_collision_mask" type="int" setter="set_level_collision_mask" getter="get_level_collision_mask" default="1">
+			The physics layers baked for [member collide_with_level].
 		</member>
 		<member name="looping" type="bool" setter="set_looping" getter="is_looping" default="false">
 			If [code]true[/code], a finite effect starts again when it finishes.
