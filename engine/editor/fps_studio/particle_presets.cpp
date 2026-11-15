@@ -238,14 +238,31 @@ TextureRequest make_bullet_hole_texture(Node *p_decal, const String &p_file_name
 	return request;
 }
 
-// Soft particle smoke shared by every smoke, dust, steam and mist emitter:
-// a neutral light texture tinted by the particle color. 16 variants in a 4x4
-// sheet; each particle shows a random one (anim_offset), so a few large soft
-// particles merge into one cloud instead of many separate balls.
-TextureRequest make_soft_smoke_texture(Node *p_emitter) {
-	TextureRequest request = make_texture(p_emitter, VFXTextureGenerator::TYPE_SOFT_SMOKE, "smoke_soft", 512, 4, 40.0, false);
+// Soft particle smoke shared by every smoke, dust, steam and mist emitter,
+// set up the way Source (HL2) and UE5 Niagara build smoke:
+// - texture: soft puff with lit inner billows; a 4x4 life-cycle flipbook
+//   (grows, breaks into wisps, thins out) played over the particle life,
+// - lit by the scene (per-vertex, cheap) so it is not glowing in dark levels,
+// - mixed sizes, random rotation with a slow spin, varied lifetimes.
+// A neutral light texture: the particle color tints it.
+TextureRequest make_soft_smoke(EmitterBuilder &r_builder) {
+	TextureRequest request = make_texture(r_builder.node, VFXTextureGenerator::TYPE_SOFT_SMOKE, "smoke_soft_life", 1024, 4, 1.0, true);
 	set_colors(request, Color(0.5, 0.5, 0.52), Color(1.0, 0.99, 0.97));
-	request.random_frame = true;
+	set_param(request, "lifecycle", 1.0f);
+	set_param(request, "radius", 0.95f);
+	r_builder.set("anim_speed", Vector2(1.0, 1.0));
+	r_builder.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
+	r_builder.process->set_lifetime_randomness(0.3);
+	const Vector2 scale = r_builder.process->get("scale");
+	r_builder.set("scale", Vector2(scale.x * 0.55f, scale.y * 1.25f)); // Bigger and smaller puffs.
+	const Vector2 angle = r_builder.process->get("angle");
+	if (angle.x == angle.y) {
+		r_builder.set("angle", RANDOM_ANGLE);
+	}
+	const Vector2 spin = r_builder.process->get("angular_velocity");
+	if (spin.x == 0.0f && spin.y == 0.0f) {
+		r_builder.set("angular_velocity", Vector2(-10, 10));
+	}
 	return request;
 }
 
@@ -278,7 +295,7 @@ void build_muzzle_flash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	smoke.set("color", Color(0.7, 0.7, 0.7, 0.45));
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
 	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.15, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(smoke.node));
+	r_textures.push_back(make_soft_smoke(smoke));
 
 	add_light(p_effect, "LightFlash", Color(1.0, 0.78, 0.45), 5.0, 5.0, 0.0, 0.07, 0.0, Vector3(0, 0, -0.2));
 }
@@ -318,15 +335,19 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	set_colors(wave_texture, Color(1.0, 0.6, 0.3), Color(1.0, 0.95, 0.85));
 	r_textures.push_back(wave_texture);
 
-	EmitterBuilder smoke = add_emitter(p_effect, "Smoke", 12, 3.5, true, 0.85, 3.2, BLEND_ALPHA);
-	ParticleEffect3D::set_emitter_delay(smoke.node, 0.35);
-	smoke.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.8);
-	smoke.set("direction", Vector3(0, 1, 0)).set("spread", 60.0).set("initial_velocity", Vector2(0.6, 1.6)).set("damping", Vector2(0.4, 0.8)).set("gravity", Vector3(0, 0.35, 0));
-	smoke.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-12, 12)).set("scale", Vector2(1.0, 1.6));
-	smoke.set("color", Color(0.32, 0.3, 0.29, 0.75));
-	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
-	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.15, 1), Vector2(0.6, 0.8), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(smoke.node));
+	EmitterBuilder smoke = add_emitter(p_effect, "Smoke", 18, 5.0, true, 0.55, 4.0, BLEND_ALPHA);
+	ParticleEffect3D::set_emitter_delay(smoke.node, 0.25);
+	smoke.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 1.0);
+	// Thrown outward, slowed quickly by drag, then a slow buoyant rise.
+	smoke.set("direction", Vector3(0, 1, 0)).set("spread", 80.0).set("initial_velocity", Vector2(1.2, 3.2)).set("damping", Vector2(2.0, 3.0)).set("gravity", Vector3(0, 0.4, 0));
+	// Drag only early in life: it stops the outward throw, then fades so the
+	// buoyancy can lift the smoke (drag larger than gravity would hold it).
+	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_DAMPING, make_curve({ Vector2(0, 1), Vector2(0.3, 0.0), Vector2(1, 0.0) }));
+	smoke.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-8, 8)).set("scale", Vector2(1.0, 1.6));
+	smoke.set("color", Color(0.3, 0.28, 0.27, 0.7));
+	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.35), Vector2(0.35, 0.8), Vector2(1, 1.0) }));
+	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.08, 1), Vector2(0.5, 0.75), Vector2(1, 0) }));
+	r_textures.push_back(make_soft_smoke(smoke));
 
 	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
 	add_camera_shake(p_effect, 0.85, 0.75, 6.0, 35.0, 0.0);
@@ -355,7 +376,7 @@ void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	dust.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-40, 40)).set("color", Color(0.62, 0.55, 0.46, 0.7));
 	dust.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
 	dust.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(dust.node));
+	r_textures.push_back(make_soft_smoke(dust));
 
 	EmitterBuilder chips = add_emitter(p_effect, "Debris", 10, 0.8, true, 1.0, 0.035, BLEND_ALPHA);
 	chips.set("direction", Vector3(0, 1, 0)).set("spread", 45.0).set("initial_velocity", Vector2(2.5, 5.0)).set("gravity", Vector3(0, -9.8, 0)).set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-400, 400)).set("scale", Vector2(0.5, 1.4));
@@ -400,7 +421,7 @@ void build_blood_hit(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	mist.set("color", Color(0.45, 0.02, 0.02, 0.85));
 	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
 	mist.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(mist.node));
+	r_textures.push_back(make_soft_smoke(mist));
 
 	EmitterBuilder drops = add_emitter(p_effect, "Droplets", 18, 0.7, true, 1.0, 0.05, BLEND_ALPHA, true);
 	drops.set("direction", Vector3(0, 0.3, 1)).set("spread", 35.0).set("initial_velocity", Vector2(2.0, 5.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.5, 1.3));
@@ -427,7 +448,7 @@ void build_smoke_plume(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	smoke.process->set_color_ramp(make_ramp({ { 0.0f, Color(0.36, 0.34, 0.33, 0.0) }, { 0.12f, Color(0.4, 0.38, 0.36, 0.7) }, { 1.0f, Color(0.6, 0.6, 0.62, 0.0) } }));
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
 	smoke.node->set("preprocess", 4.0);
-	r_textures.push_back(make_soft_smoke_texture(smoke.node));
+	r_textures.push_back(make_soft_smoke(smoke));
 }
 
 void build_fire(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -455,7 +476,7 @@ void build_fire(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	smoke.process->set_color_ramp(make_ramp({ { 0.0f, Color(0.15, 0.14, 0.13, 0.0) }, { 0.2f, Color(0.2, 0.19, 0.18, 0.5) }, { 1.0f, Color(0.35, 0.35, 0.36, 0.0) } }));
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
 	smoke.node->set("preprocess", 3.0);
-	r_textures.push_back(make_soft_smoke_texture(smoke.node));
+	r_textures.push_back(make_soft_smoke(smoke));
 
 	add_light(p_effect, "FireLight", Color(1.0, 0.55, 0.22), 2.5, 6.0, 0.0, 0.0, 0.45, Vector3(0, 0.45, 0));
 }
@@ -470,7 +491,7 @@ void build_wood_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	dust.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-40, 40)).set("color", Color(0.55, 0.42, 0.28, 0.6));
 	dust.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
 	dust.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(dust.node));
+	r_textures.push_back(make_soft_smoke(dust));
 
 	EmitterBuilder splinters = add_emitter(p_effect, "Splinters", 12, 0.9, true, 1.0, 0.07, BLEND_ALPHA, true);
 	splinters.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(2.5, 6.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.5, 1.3));
@@ -505,7 +526,7 @@ void build_water_splash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	mist.set("color", Color(0.9, 0.95, 1.0, 0.35));
 	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
 	mist.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(mist.node));
+	r_textures.push_back(make_soft_smoke(mist));
 
 	// Flat ripple ring lying on the water.
 	EmitterBuilder ripple = add_emitter(p_effect, "Ripple", 2, 1.0, true, 0.7, 1.0, BLEND_ALPHA);
@@ -583,7 +604,7 @@ void build_steam_leak(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_text
 	steam.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(1, 1.5) }, 1.5f));
 	steam.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
 	steam.node->set("preprocess", 2.0);
-	r_textures.push_back(make_soft_smoke_texture(steam.node));
+	r_textures.push_back(make_soft_smoke(steam));
 	add_sound_slot(p_effect, 3.0, 25.0);
 }
 
@@ -592,12 +613,12 @@ void build_smoke_grenade(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	EmitterBuilder smoke = add_emitter(p_effect, "Smoke", 32, 7.0, false, 0.0, 3.8, BLEND_ALPHA);
 	ParticleEffect3D::set_emitter_duration(smoke.node, 8.0);
 	smoke.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.2);
-	smoke.set("direction", Vector3(0, 1, 0)).set("spread", 80.0).set("initial_velocity", Vector2(1.0, 2.5)).set("damping", Vector2(0.5, 0.9)).set("gravity", Vector3(0, 0.05, 0));
+	smoke.set("direction", Vector3(0, 1, 0)).set("spread", 80.0).set("initial_velocity", Vector2(1.0, 2.5)).set("damping", Vector2(0.9, 1.4)).set("gravity", Vector3(0, 0.04, 0));
 	smoke.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-8, 8)).set("scale", Vector2(0.9, 1.3)).set("color", Color(0.72, 0.72, 0.7, 0.85));
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.3), Vector2(0.4, 1.0), Vector2(1, 1.3) }, 1.3f));
 	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(0.75, 0.9), Vector2(1, 0) }));
 	enable_collision(smoke, 0.0, 1.0);
-	r_textures.push_back(make_soft_smoke_texture(smoke.node));
+	r_textures.push_back(make_soft_smoke(smoke));
 	add_sound_slot(p_effect, 3.0, 30.0);
 }
 
@@ -623,7 +644,7 @@ void build_signal_flare(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	smoke.process->set_color_ramp(make_ramp({ { 0.0f, Color(0.9, 0.3, 0.25, 0.0) }, { 0.15f, Color(0.85, 0.35, 0.3, 0.6) }, { 1.0f, Color(0.7, 0.55, 0.55, 0.0) } }));
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.3), Vector2(1, 1.0) }));
 	smoke.node->set("preprocess", 3.0);
-	r_textures.push_back(make_soft_smoke_texture(smoke.node));
+	r_textures.push_back(make_soft_smoke(smoke));
 
 	add_light(p_effect, "FlareLight", Color(1.0, 0.2, 0.12), 3.0, 9.0, 0.0, 0.0, 0.35, Vector3(0, 0.1, 0));
 	add_sound_slot(p_effect, 2.0, 20.0);
@@ -638,7 +659,7 @@ void build_dust_landing(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	dust.node->set_position(Vector3(0, 0.1, 0));
 	dust.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.4), Vector2(1, 1.0) }));
 	dust.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke_texture(dust.node));
+	r_textures.push_back(make_soft_smoke(dust));
 }
 
 void build_ambient_dust(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {

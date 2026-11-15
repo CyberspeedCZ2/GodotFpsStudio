@@ -371,7 +371,9 @@ struct TypeTable {
 			add_param(t, "detail", "Detail", 0.25f, 0.75f, 0.01f, 0.5f, "Strength of fine detail.");
 			add_param(t, "density", "Density", 0.2f, 2.0f, 0.01f, 0.9f, "Opacity of the puff.");
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 110.0f, "Direction of the soft key light.");
-			add_param(t, "shading", "Shading", 0.0f, 1.0f, 0.01f, 0.4f, "Contrast of the lighting. Low values keep particles from looking like separate balls.");
+			add_param(t, "shading", "Shading", 0.0f, 1.0f, 0.01f, 0.5f, "Contrast of the lighting. Low values keep particles from looking like separate balls.");
+			add_param(t, "billows", "Inner billows", 0.0f, 1.0f, 0.01f, 0.55f, "Lit billowy detail inside the puff (keeps it from looking like a blur).");
+			add_param(t, "lifecycle", "Life cycle", 0.0f, 1.0f, 0.01f, 0.0f, "In sprite sheets: the puff grows, breaks into wisps and thins out over the animation (play it over the particle life).");
 			types[i++] = t;
 		}
 		{
@@ -1481,14 +1483,24 @@ void render_2d(const FrameContext &c, float x, float y, float *r_px) {
 
 void render_soft_smoke(const FrameContext &c, float x, float y, float *r_px) {
 	const Settings &s = *c.s;
-	const float radius = param(c, 0);
+	const float base_radius = param(c, 0);
 	const float softness = param(c, 1);
-	const float wisps = param(c, 2);
+	const float base_wisps = param(c, 2);
 	const float scale = param(c, 3);
 	const float gain = param(c, 4);
-	const float density = param(c, 5);
+	const float base_density = param(c, 5);
 	const float light_angle = param(c, 6) * PI / 180.0f;
 	const float shading = param(c, 7);
+	const float billows = param(c, 8);
+	const float lifecycle = param(c, 9);
+	// Life cycle (UE-style flipbook): grow, break up into wisps, thin out.
+	const float life = lifecycle > 0.0f ? saturate(s.life) * lifecycle : 0.0f;
+	// Modest growth: the particle Scale curve does the rest, and a small puff
+	// in a big quad would only add transparent overdraw.
+	const float grow = mixf(1.0f, mixf(0.8f, 1.0f, std::sqrt(life)), lifecycle);
+	const float radius = base_radius * grow;
+	const float wisps = minf(1.0f, mixf(base_wisps * mixf(1.0f, 0.6f, lifecycle), base_wisps + 0.45f, life));
+	const float density = base_density * mixf(1.0f, 0.4f, life * life);
 	const float r = len2(x, y) / radius;
 	if (r >= 1.0f) {
 		write_flat(r_px, c.color_b, 0.0f, s);
@@ -1496,32 +1508,48 @@ void render_soft_smoke(const FrameContext &c, float x, float y, float *r_px) {
 	}
 	const int octaves = s.quality > 0 ? 5 : 3;
 	const V3 offset = seed_offset(s.seed);
+	// Noise in the puff's own (expanding) space, so it grows coherently.
+	const float ux = x / grow;
+	const float uy = y / grow;
+	const float z = c.t * 0.15f + life * 0.8f;
 	auto noise = [&](float px, float py) -> float {
-		const V3 q = V3(px * scale, py * scale, c.t * 0.15f) + offset;
+		const V3 q = V3(px * scale, py * scale, z) + offset;
 		const float wx = fbm(q * 0.5f + V3(1.7f, 9.2f, 0.0f), 2, 0.5f, s.seed + 11u);
 		const float wy = fbm(q * 0.5f + V3(8.3f, 2.8f, 0.0f), 2, 0.5f, s.seed + 12u);
 		return fbm(q + V3(wx, wy, 0.0f) * 0.8f, octaves, gain, s.seed) * 0.5f + 0.5f;
 	};
-	const float n = noise(x, y);
+	auto inner = [&](float px, float py) -> float {
+		return saturate(billow(V3(px * scale * 0.95f, py * scale * 0.95f, z * 1.3f) + offset * 1.7f, 4, 0.45f, s.seed + 23u) * 0.9f + 0.1f);
+	};
+	const float n = noise(ux, uy);
+	const float b = billows > 0.0f ? inner(ux, uy) : 0.5f;
 	// Smooth radial profile: opaque-ish centre, long transparent fade.
 	const float falloff = 1.0f - r;
 	const float profile = std::pow(smoothstepf(0.0f, 1.0f, falloff), 0.25f + 0.9f * softness);
 	// Wisps: contrasty noise that thins the puff, strongest towards the edge.
 	const float w = smoothstepf(0.25f, 0.85f, n);
 	float d = profile * mixf(1.0f, w * 1.6f, wisps * (0.55f + 0.45f * (1.0f - profile)));
+	d *= 1.0f - billows * 0.35f * (1.0f - b);
 	const float alpha = saturate(d * density * 1.9f);
-	// Soft lighting from a rounded puff normal bent by the noise.
+	// Lighting: rounded puff normal, bent by the wisps and the inner billows.
 	const float e = 0.02f;
-	const float gx = (noise(x + e, y) - n) / e;
-	const float gy = (noise(x, y + e) - n) / e;
-	const float nx = x / radius - gx * 0.04f * wisps;
-	const float ny = y / radius - gy * 0.04f * wisps;
+	const float gx = (noise(ux + e, uy) - n) / e;
+	const float gy = (noise(ux, uy + e) - n) / e;
+	float bx = 0.0f;
+	float by = 0.0f;
+	if (billows > 0.0f) {
+		bx = (inner(ux + e, uy) - b) / e;
+		by = (inner(ux, uy + e) - b) / e;
+	}
+	const float nx = x / radius - gx * 0.04f * wisps - bx * 0.12f * billows;
+	const float ny = y / radius - gy * 0.04f * wisps - by * 0.12f * billows;
 	const float nz = std::sqrt(maxf(1.0f - minf(r * r, 1.0f), 0.0f)) + 0.35f;
 	const V3 normal = normalize3(V3(nx, ny, nz));
 	const V3 light = normalize3(V3(std::cos(light_angle), std::sin(light_angle), 0.8f));
 	const float lambert = dot3(normal, light) * 0.5f + 0.5f;
-	const float lit = saturate(mixf(0.6f, lambert, shading) + (n - 0.5f) * 0.25f * shading);
-	write_flat(r_px, mix3(c.color_a, c.color_b, lit), alpha, s);
+	float lit = mixf(0.6f, lambert, shading) + (n - 0.5f) * 0.25f * shading;
+	lit += (b - 0.5f) * billows * 0.55f;
+	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(lit)), alpha, s);
 }
 
 /* Decals ----------------------------------------------------------------- */

@@ -2399,6 +2399,14 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 						process->set("anim_offset", Vector2(0.0, 1.0));
 					}
 				}
+			} else if (request.lifecycle) {
+				// Life-cycle sheets play once over each particle's life.
+				if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(request.emitter)) {
+					Ref<Material> process = gpu->get_process_material();
+					if (process.is_valid() && Vector2(process->get("anim_speed")) == Vector2()) {
+						process->set("anim_speed", Vector2(1.0, 1.0));
+					}
+				}
 			} else if (!request.lifecycle) {
 				const double lifetime = double(request.emitter->get("lifetime"));
 				const double speed = MAX(0.01, lifetime / MAX(0.01, request.sheet_duration));
