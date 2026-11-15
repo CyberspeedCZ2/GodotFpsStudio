@@ -26,6 +26,7 @@ class CurveEditor;
 class EditorFileDialog;
 class EditorInspector;
 class FPSParticleModuleStack;
+class FPSParticleTimeline;
 class TabContainer;
 class EditorSpinSlider;
 class GridContainer;
@@ -209,6 +210,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *time_label = nullptr;
 	Label *selection_label = nullptr;
 	FPSParticleModuleStack *module_stack = nullptr;
+	FPSParticleTimeline *timeline_view = nullptr;
 	Control *module_stack_scroll = nullptr;
 	TabContainer *properties_tabs = nullptr;
 	TabContainer *bottom_tabs = nullptr;
@@ -296,6 +298,12 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_close_pressed();
 	void _show_texture_generator();
 	void _on_properties_mode_toggled(bool p_pressed, bool p_advanced);
+	void _restart_preview_at(double p_time);
+	void _on_timeline_scrub(double p_time);
+	void _on_timeline_emitter_selected(Object *p_emitter);
+	void _on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration);
+	void _apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration);
+	Node *_convert_to_effect_root(Node *p_root);
 	void _on_module_stack_property_edited(const String &p_property);
 	void _on_module_stack_generate_texture();
 	String _get_auto_texture_path() const;

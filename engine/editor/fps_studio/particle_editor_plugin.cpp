@@ -8,6 +8,7 @@
 #include "particle_editor_plugin.h"
 
 #include "particle_module_stack.h"
+#include "particle_timeline.h"
 #include "vfx_texture_generator.h"
 
 #include "core/input/input_event.h"
@@ -43,6 +44,7 @@
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/light_3d.h"
 #include "scene/3d/mesh_instance_3d.h"
+#include "scene/3d/particle_effect_3d.h"
 #include "scene/3d/world_environment.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/separator.h"
@@ -559,6 +561,9 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 		return;
 	}
 	emitter_tree->clear();
+	if (timeline_view) {
+		timeline_view->refresh();
+	}
 	TreeItem *root_item = emitter_tree->create_item();
 	Node *effect_root = _get_effect_root();
 	Vector<Node *> emitters;
@@ -682,6 +687,9 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 	}
 	effect_root_id = p_root ? p_root->get_instance_id() : ObjectID();
 	effect_path = p_path;
+	if (timeline_view) {
+		timeline_view->set_effect(p_root);
+	}
 	effect_dirty = p_dirty;
 	edited_emitter_id = ObjectID();
 	Vector<Node *> emitters;
@@ -738,6 +746,9 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 	if (module_stack) {
 		module_stack->edit(p_node);
 	}
+	if (timeline_view) {
+		timeline_view->set_selected_emitter(p_node);
+	}
 	if (texture_generator_apply_button) {
 		texture_generator_apply_button->set_disabled(p_node == nullptr);
 	}
@@ -776,20 +787,37 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 
 	Vector<Node *> emitters;
 	_collect_emitters(source, emitters);
+	// Finite effects loop over their full timeline (delays + emission +
+	// lifetime); continuous ones over the visible timeline span.
 	preview_duration = 0.1;
+	double max_start = 0.0;
+	double max_lifetime = 0.1;
+	bool infinite = false;
 	for (Node *emitter : emitters) {
-		if (emitter->has_method("get_lifetime")) {
-			preview_duration = MAX(preview_duration, double(emitter->call("get_lifetime")));
+		double start, emission_end, visual_end;
+		ParticleEffect3D::get_emitter_window(emitter, start, emission_end, visual_end);
+		max_start = MAX(max_start, start);
+		max_lifetime = MAX(max_lifetime, double(emitter->get("lifetime")));
+		if (visual_end < 0.0) {
+			infinite = true;
+		} else {
+			preview_duration = MAX(preview_duration, visual_end);
 		}
 	}
+	if (infinite) {
+		preview_duration = MAX(preview_duration, max_start + max_lifetime);
+	}
 	preview_duration = MAX(preview_duration, 0.1);
+	if (timeline_view) {
+		timeline_view->refresh();
+	}
 	preview_time = 0.0;
 	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
 		timeline->set_max(preview_duration);
 		timeline->set_value_no_signal(0.0);
 	}
-	restart_particle_nodes(preview_effect);
+	_restart_preview_at(0.0);
 	_set_preview_playing(preview_playing);
 	_frame_preview();
 	_update_time_label();
@@ -821,6 +849,9 @@ void FPSStudioParticleEditorPlugin::_set_preview_playing(bool p_playing) {
 		play_button->set_text(preview_playing ? TTR("Pause") : TTR("Play"));
 	}
 	set_preview_speed_recursive(preview_effect, preview_playing ? preview_speed : 0.0);
+	if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(preview_effect)) {
+		effect->set_speed_scale(preview_playing ? preview_speed : 0.0);
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_on_play_toggled(bool p_pressed) {
@@ -839,7 +870,7 @@ void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
 	if (timeline) {
 		timeline->set_value_no_signal(0.0);
 	}
-	restart_particle_nodes(preview_effect);
+	_restart_preview_at(0.0);
 	_set_preview_playing(true);
 	_update_time_label();
 }
@@ -851,7 +882,7 @@ void FPSStudioParticleEditorPlugin::_on_timeline_changed(double p_value) {
 	_set_preview_playing(false);
 	preview_time = p_value;
 	preview_time_label_update_accumulator = 0.0;
-	restart_particle_nodes(preview_effect, true, preview_time);
+	_restart_preview_at(preview_time);
 	_update_time_label();
 }
 
@@ -859,6 +890,9 @@ void FPSStudioParticleEditorPlugin::_on_speed_changed(double p_value) {
 	preview_speed = p_value;
 	if (preview_playing && preview_effect) {
 		set_preview_speed_recursive(preview_effect, preview_speed);
+		if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(preview_effect)) {
+			effect->set_speed_scale(preview_speed);
+		}
 	}
 }
 
@@ -1867,6 +1901,98 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 	_sync_preview_properties();
 }
 
+void FPSStudioParticleEditorPlugin::_restart_preview_at(double p_time) {
+	if (!preview_effect) {
+		return;
+	}
+	if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(preview_effect)) {
+		effect->seek(p_time);
+	} else {
+		restart_particle_nodes(preview_effect, p_time > 0.0, p_time);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_scrub(double p_time) {
+	if (!preview_effect) {
+		return;
+	}
+	const double clamped = CLAMP(p_time, 0.0, preview_duration);
+	if (timeline) {
+		timeline->set_value(clamped);
+	}
+	if (timeline_view) {
+		timeline_view->set_current_time(clamped);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_emitter_selected(Object *p_emitter) {
+	Node *emitter = Object::cast_to<Node>(p_emitter);
+	if (emitter && emitter != _get_edited_emitter()) {
+		_set_edited_emitter(emitter);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration) {
+	Node *emitter = Object::cast_to<Node>(p_emitter);
+	if (!emitter) {
+		return;
+	}
+	ParticleEffect3D::set_emitter_delay(emitter, p_delay);
+	ParticleEffect3D::set_emitter_duration(emitter, p_duration);
+	_mark_document_dirty();
+	// Rebuild the preview copy but keep the user's camera framing.
+	const double yaw = preview_camera_yaw;
+	const double pitch = preview_camera_pitch;
+	const double distance = preview_camera_distance;
+	const Vector3 target = preview_camera_target;
+	_rebuild_preview();
+	preview_camera_yaw = yaw;
+	preview_camera_pitch = pitch;
+	preview_camera_distance = distance;
+	preview_camera_target = target;
+	_update_preview_camera();
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration) {
+	Node *emitter = Object::cast_to<Node>(p_emitter);
+	if (!emitter) {
+		return;
+	}
+	const double delay = ParticleEffect3D::get_emitter_delay(emitter);
+	const double duration = ParticleEffect3D::get_emitter_duration(emitter);
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(vformat(TTR("Change Timing of %s"), emitter->get_name()), UndoRedo::MERGE_DISABLE, emitter);
+	undo_redo->add_do_method(this, "_apply_emitter_timing", emitter, delay, duration);
+	undo_redo->add_undo_method(this, "_apply_emitter_timing", emitter, p_old_delay, p_old_duration);
+	undo_redo->commit_action();
+}
+
+Node *FPSStudioParticleEditorPlugin::_convert_to_effect_root(Node *p_root) {
+	// Older effects were saved with a plain Node3D root. Replace it with a
+	// ParticleEffect3D so timing and game-side playback work; children,
+	// transform and metadata are kept. The change is written on next save.
+	if (!p_root || p_root->get_class_name() != Node3D::get_class_static()) {
+		return p_root;
+	}
+	Node3D *old_root = Object::cast_to<Node3D>(p_root);
+	ParticleEffect3D *effect = memnew(ParticleEffect3D);
+	effect->set_name(old_root->get_name());
+	effect->set_transform(old_root->get_transform());
+	List<StringName> meta_keys;
+	old_root->get_meta_list(&meta_keys);
+	for (const StringName &key : meta_keys) {
+		effect->set_meta(key, old_root->get_meta(key));
+	}
+	while (old_root->get_child_count() > 0) {
+		Node *child = old_root->get_child(0);
+		old_root->remove_child(child);
+		effect->add_child(child);
+	}
+	set_scene_subtree_owners(effect, effect);
+	memdelete(old_root);
+	return effect;
+}
+
 void FPSStudioParticleEditorPlugin::_on_properties_mode_toggled(bool p_pressed, bool p_advanced) {
 	if (!p_pressed) {
 		return;
@@ -1913,7 +2039,7 @@ void FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture() {
 }
 
 void FPSStudioParticleEditorPlugin::_create_effect_document(int p_template) {
-	Node3D *effect = memnew(Node3D);
+	ParticleEffect3D *effect = memnew(ParticleEffect3D);
 	if (p_template == PARTICLE_TEMPLATE_BURST) {
 		effect->set_name("BurstEffect");
 	} else if (p_template == PARTICLE_TEMPLATE_FOUNTAIN) {
@@ -2222,6 +2348,7 @@ void FPSStudioParticleEditorPlugin::_load_particle_scene(const String &p_path) {
 		EditorNode::get_singleton()->show_warning(TTR("The selected scene does not contain a 3D particle emitter."));
 		return;
 	}
+	particle_scene = _convert_to_effect_root(particle_scene);
 	particle_scene->set_scene_file_path(p_path);
 	_set_effect_document(particle_scene, p_path, false);
 }
@@ -2319,12 +2446,6 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	Node *emitter = _get_edited_emitter();
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
 	Ref<VisualShader> visual_shader = _get_particle_visual_shader(emitter);
-	if (particle_logic_content) {
-		Control *logic_panel = Object::cast_to<Control>(particle_logic_content->get_parent());
-		if (logic_panel) {
-			logic_panel->set_visible(emitter != nullptr);
-		}
-	}
 	particle_graph_button->set_disabled(!gpu);
 	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Open in Shader Editor") : TTR("Create Node Graph"));
 	if (!emitter) {
@@ -2883,7 +3004,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		if (preview_time >= preview_duration) {
 			if (preview_loop) {
 				preview_time = Math::fmod(preview_time, preview_duration);
-				restart_particle_nodes(preview_effect);
+				_restart_preview_at(0.0);
 			} else {
 				preview_time = preview_duration;
 				_set_preview_playing(false);
@@ -2891,6 +3012,9 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		}
 		if (timeline) {
 			timeline->set_value_no_signal(preview_time);
+		}
+		if (timeline_view) {
+			timeline_view->set_current_time(preview_time);
 		}
 		// Keep the slider in sync every frame, but avoid invalidating the transport
 		// row and its parent split containers whenever the formatted time changes.
@@ -2914,6 +3038,7 @@ void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_emitter_name_changed"), &FPSStudioParticleEditorPlugin::_on_emitter_name_changed);
 	ClassDB::bind_method(D_METHOD("_on_effect_name_changed"), &FPSStudioParticleEditorPlugin::_on_effect_name_changed);
 	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
+	ClassDB::bind_method(D_METHOD("_apply_emitter_timing", "emitter", "delay", "duration"), &FPSStudioParticleEditorPlugin::_apply_emitter_timing);
 }
 
 void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
@@ -3268,6 +3393,17 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	bottom_tabs->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
 	bottom_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	center_split->add_child(bottom_tabs);
+	ScrollContainer *timeline_scroll = memnew(ScrollContainer);
+	timeline_scroll->set_name(TTR("Timeline"));
+	timeline_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
+	bottom_tabs->add_child(timeline_scroll);
+	timeline_view = memnew(FPSParticleTimeline);
+	timeline_view->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	timeline_view->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	timeline_view->connect("scrub_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_scrub));
+	timeline_view->connect("emitter_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_emitter_selected));
+	timeline_view->connect("timing_committed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_timing_committed));
+	timeline_scroll->add_child(timeline_view);
 	PanelContainer *logic_panel = memnew(PanelContainer);
 	logic_panel->set_name(TTR("Particle Logic"));
 	logic_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
