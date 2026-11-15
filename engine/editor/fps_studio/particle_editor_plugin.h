@@ -241,8 +241,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	int preview_environment_preset = 0;
 	bool preview_show_bounds = false;
 	bool preview_show_radii = true;
-	bool preview_play_sound = true;
-	bool preview_play_shake = true;
+	bool preview_play_sound = false; // Off by default; the View menu choice is remembered.
+	bool preview_play_shake = false;
 	Node3D *preview_radii_root = nullptr;
 	MeshInstance3D *preview_floor = nullptr;
 	Control *module_stack_scroll = nullptr;
@@ -390,6 +390,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _apply_preview_event_toggles();
 	void _update_toolbar_icons();
 	void _on_preview_view_menu_id(int p_id);
+	void _set_preview_view_option(int p_id, bool p_checked);
 	void _apply_preview_environment(int p_preset);
 	void _update_preview_bounds();
 	void _update_preview_stats();

@@ -4334,8 +4334,26 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 	_update_preview_camera();
 }
 
+// View menu check items that are remembered in the editor layout.
+static const int PREVIEW_VIEW_OPTIONS[] = { 10, 11, 12, 13, 14, 15, 16, 17 };
+
 void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
 	PopupMenu *popup = preview_view_menu->get_popup();
+	if (p_id >= 0 && p_id <= 3) {
+		_set_preview_view_option(p_id, true);
+	} else {
+		_set_preview_view_option(p_id, !popup->is_item_checked(popup->get_item_index(p_id)));
+	}
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_set_preview_view_option(int p_id, bool p_checked) {
+	PopupMenu *popup = preview_view_menu ? preview_view_menu->get_popup() : nullptr;
+	if (!popup || popup->get_item_index(p_id) < 0) {
+		return;
+	}
 	if (p_id >= 0 && p_id <= 3) {
 		for (int i = 0; i <= 3; i++) {
 			popup->set_item_checked(popup->get_item_index(i), i == p_id);
@@ -4344,7 +4362,7 @@ void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
 		return;
 	}
 	const int index = popup->get_item_index(p_id);
-	const bool checked = !popup->is_item_checked(index);
+	const bool checked = p_checked;
 	popup->set_item_checked(index, checked);
 	switch (p_id) {
 		case 10:
@@ -5046,6 +5064,23 @@ void FPSStudioParticleEditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) 
 	bottom_window_rect = p_layout->get_value(section, "timeline_window_rect", Rect2i());
 	bottom_window_screen = p_layout->get_value(section, "timeline_window_screen", -1);
 	texture_generator_size = p_layout->get_value(section, "texture_generator_size", Size2i());
+	// Preview View menu: environment, overlays and preview events.
+	if (preview_view_menu) {
+		PopupMenu *view_popup = preview_view_menu->get_popup();
+		if (p_layout->has_section_key(section, "view_environment")) {
+			_set_preview_view_option(CLAMP(int(p_layout->get_value(section, "view_environment", 0)), 0, 3), true);
+		}
+		for (int id : PREVIEW_VIEW_OPTIONS) {
+			const String key = "view_option_" + itos(id);
+			if (!p_layout->has_section_key(section, key)) {
+				continue;
+			}
+			const bool checked = p_layout->get_value(section, key, false);
+			if (checked != view_popup->is_item_checked(view_popup->get_item_index(id))) {
+				_set_preview_view_option(id, checked);
+			}
+		}
+	}
 	// A detached Timeline & Logic window is detached again when the
 	// workspace is shown (it docks while another workspace is active).
 	if (p_layout->get_value(section, "timeline_floating", false) && show_bottom_panel) {
@@ -5098,6 +5133,13 @@ void FPSStudioParticleEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) 
 	}
 	if (texture_generator_size.x > 0 && texture_generator_size.y > 0) {
 		p_layout->set_value(section, "texture_generator_size", texture_generator_size);
+	}
+	if (preview_view_menu) {
+		PopupMenu *view_popup = preview_view_menu->get_popup();
+		p_layout->set_value(section, "view_environment", preview_environment_preset);
+		for (int id : PREVIEW_VIEW_OPTIONS) {
+			p_layout->set_value(section, "view_option_" + itos(id), view_popup->is_item_checked(view_popup->get_item_index(id)));
+		}
 	}
 	if (panel_layout_pending) {
 		// Not applied yet (the workspace was never shown): keep the saved split.
