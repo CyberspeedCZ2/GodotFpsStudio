@@ -43,21 +43,34 @@ Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewp
 - Šířky hlavních panelů se ukládají do rozvržení editoru a při dalším spuštění obnoví. Při úzkém okně se zkracuje document toolbar a časový popisek přehrávání je v pevně širokém ořezávacím kontejneru, aby jeho měnící se čísla nerozhazovala minimální šířku panelů. Uživatel potvrdil, že cukání pravé strany při pohybu časové osy už nepozoruje.
 - Dvojklik na název emitoru ve stromu zahájí přejmenování; změna se objeví také v popisku náhledu a lze ji vrátit přes Undo/Redo.
 - Křivky Alpha a Scale mají účelové presety i nativní CurveEditor. Další parametry procesu zatím nemají vlastní zjednodušené křivkové karty.
-- **Texture Generator (VFX Texture Generator)** otevírá nativní nástroj s průhledným 2D náhledem pro procedurální generování VFX textur a animovaných sprite sheetů.
-  - **3D volumetrický raymarching pro exploze**: Pro předlohy `Explosion (Fireball)` a `Explosion 2 (Shockwave ring)` využívá skutečný 3D objemový raymarching (inspirovaný Dukeovým algoritmem z EffectTextureMakeru). Na rozdíl od starších 2.5D plošných řezů ($z = \sqrt{1 - r^2}$), které tvořily ploché komiksové vrstevnice a stuhovité obrysy, volumetrický výpočet vrhá paprsek skrze 3D kouli v 64 krocích, akumuluje hustotu Otaviogoodova rotačního spirálového šumu a 3D FBM, simuluje optickou absorpci (Beer-Lambert zákon), vnitřní rozptyl bodového záření (Bloom) v jádře a filmové mapování tónů (Filmic curve dle Johna Hablea). Výsledkem jsou hluboké, žhavé filamenty, měkké kouřové zákaly a fotorealistický přechod z bíložhavého jádra do temného kouře.
-  - **Paralelizace přes WorkerThreadPool**: Výpočet scanlines volumetrického raymarchingu je paralelizován přes nativní vlákna enginu, takže plně vytěžuje vícejádrové CPU (Apple Silicon) a náhled (256×256) generuje za cca 18 ms.
-  - **Předvolby a parametry**: Nabízí 15 procedurálních typů ve skupinách (Oheň, Kouř, Ohnivá koule, Tlaková vlna, Jiskry, Blesky, Oblouky, Mraky, Prstence, Magické kruhy, Kaustiky, Bubliny, Plasma aj.). Posuvníky řídí Speed, Density, Emission, Turbulence / Detail, Contrast / Sharpness a Rotation (úhel).
-  - **Herní styly (Game style presets)**: Předvolby `Realistic (Cinematic)`, `Medium (Balanced)`, `Low (Performance / Retro)`, `Cartoon / Toon` a `Custom` umožňují rychlé přepínání mezi filmovým realismem, vyváženým nastavením, retro stylizací a komiksovou grafikou.
-  - **Pokročilé zpracování a výstupy**:
-    - *Polární konverze (Polar coordinates)*: transformuje kartézské procedurální šumy do kruhových a vířivých polárních souřadnic.
-    - *Toon shading*: nastavitelná 3-tónová kvantizace prahů jasu pro stylizovanou anime/kreslenou grafiku.
-    - *Seamless tiling*: periodické vzorkování okrajů pro bezešvé dlaždicování s nastavitelnou radiální maskou.
-    - *Alfa zpracování*: prahování (threshold), měkké 3×3 rozostření a náhled černobílé alfa masky.
-    - *Normal map export*: volitelný PNG export tangent-space normálové mapy odvozené ze Sobelova gradientu výšky alfy s nastavitelným výškovým měřítkem (cHeightScale).
-    - *Barevné tónování (Color Balance)*: úprava odstínů pro stíny, střední tóny a světla.
-    - *Recepty (.cfg v2)*: ukládání a načítání kompletního nastavení generátoru do textového receptu vedle projektu.
-    - *Automatické nastavení emitoru*: při **Apply to Emitter** nastaví synchronně naimportovanou texturu do `StandardMaterial3D`, automaticky aktivuje `BILLBOARD_PARTICLES` a u sprite sheetů nakonfiguruje horizontální i vertikální dělení atlasu (`particles_anim_h_frames` / `v_frames`).
+- **Texture Generator (VFX Texture Generator)** otevírá nativní nástroj pro procedurální VFX textury a animované sprite sheety. Podrobnosti jsou v části [VFX Texture Generator](#vfx-texture-generator).
 - Náhled kopíruje podstrom uloženého efektu. Kolizní nebo attractor uzly, které jsou mimo tento podstrom ve scéně Level, se do simulace nepřidají.
+
+## VFX Texture Generator
+
+Generátor je samostatný modul `engine/editor/fps_studio/vfx_texture_generator.cpp` bez závislosti na editoru. Plugin ho obaluje do `Image` a vykresluje po řádcích přes `WorkerThreadPool`. Stejný zdroj lze přeložit i mimo engine jako malý nástroj a referenční obrázky tak lze vykreslit bez GUI.
+
+### Vykreslování
+
+- **Fire, Smoke, Cloud, Explosion a Explosion Ring** jsou objemová média. Paprsek prochází 3D polem hustoty a teploty. Útlum je počítán podle Beer–Lambertova zákona, emise podle teploty (rampa saze → barva A → barva B → bílé jádro), rozptyl s krátkým stínovým paprskem ke klíčovému světlu a výsledek prochází exponenciálním tone mapperem. Tvar vytváří vlastní 3D gradientní šum, billow turbulence (zaoblené „květákové“ chuchvalce) a domain warping. Doména šumu je pootočená mimo osy mřížky, aby obrysy nepůsobily hranatě.
+- Exploze mají parametr **Life cycle**. Ve sprite sheetu exploze během animace expanduje, chladne a mění se v kouř; u samostatné textury tento průběh řídí posuvník času.
+- Energetické efekty (Spark, Lightning, Electric Burst, Muzzle Flash / Flare, Energy Ring, Shockwave, Magic Circle, Bokeh, Plasma Sun) se počítají analyticky jako HDR emise a prochází stejným tone mapperem. Proto mají měkký fotografický přechod místo plochých barevných pásů. Blesky jsou fraktální polyline z midpoint displacement s větvemi.
+- Caustics a Noise jsou vzory podporující skutečně bezešvé dlaždicování (periodický šum a periodické Voronoi buňky).
+- Emisivní světlo zvyšuje alfu, takže textura s běžným alpha blendingem vypadá na černém pozadí stejně jako aditivní výsledek.
+- Kód je napsán nově. Neobsahuje ani nepřekládá shadery EffectTextureMakeru ani shadery ze Shadertoy; EffectTextureMaker slouží pouze jako vizuální reference.
+
+### Ovládání
+
+- **Levý panel** obsahuje galerii typů s náhledy, seskupenou do kategorií Fire & Explosions, Smoke & Clouds, Energy & Light, Shapes a Noise & Patterns.
+- **Střed** ukazuje čtvercový náhled s volbou pozadí (Checker, Black, Dark, Gray, White), přepínač **Show Sheet** pro celý sprite sheet a transport (Play/Pause, časová osa, čas a číslo snímku). Při přehrávání a tažení posuvníků se náhled počítá v rychlé draft kvalitě; po pozastavení se překreslí v plné kvalitě.
+- **Pravý inspektor** má sbalovací sekce:
+  - *Effect* — parametry specifické pro vybraný typ (např. u exploze Radius, Billows, Billow size, Detail, Fire, Smoke, Density, Light angle, Life cycle), Seed s tlačítkem Random a Reset to Defaults.
+  - *Color & Tone* — dvě barvy s popisky podle typu (např. Flame color / Hot color, Shadow color / Lit color), Exposure a Opacity.
+  - *Motion & Mapping* — Speed, Rotation, Polar Coordinates a Seamless Tiling (jen pro vzory).
+  - *Output* — Resolution do 2048 px, Layout (samostatná textura, sheet 4×4 nebo 8×8), Frame rate a Duration.
+  - *Post-processing* — Toon shading, prahování a rozmazání alfy, náhled alfa masky, export normal mapy a color balance.
+- **Spodní lišta**: Load Recipe a Save Recipe vlevo, stav uprostřed, vpravo Close, Export PNG a Apply to Emitter. Apply to Emitter je aktivní až po exportu, protože emitor uchovává odkaz na projektový PNG. Nastaví `StandardMaterial3D`, `BILLBOARD_PARTICLES`, dělení atlasu a rychlost animace podle Frame rate.
+- Recepty `.cfg` verze 3 ukládají typ, globální volby, postprocesy a parametry typu podle stabilních klíčů v sekci `[params]`. Recepty verze 1 a 2 se načtou se stejným typem, barvami, rychlostí a rotací; ostatní parametry dostanou výchozí hodnoty nového generátoru.
 
 ## Implementace
 

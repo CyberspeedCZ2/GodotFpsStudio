@@ -7,6 +7,8 @@
 
 #include "particle_editor_plugin.h"
 
+#include "vfx_texture_generator.h"
+
 #include "core/input/input_event.h"
 #include "core/io/config_file.h"
 #include "core/io/image.h"
@@ -24,6 +26,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/gui/editor_file_dialog.h"
+#include "editor/gui/editor_spin_slider.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/curve_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
@@ -38,11 +41,14 @@
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/world_environment.h"
 #include "scene/gui/box_container.h"
+#include "scene/gui/separator.h"
+#include "scene/gui/aspect_ratio_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/check_button.h"
 #include "scene/gui/color_picker.h"
 #include "scene/gui/dialogs.h"
 #include "scene/gui/foldable_container.h"
+#include "scene/gui/grid_container.h"
 #include "scene/gui/label.h"
 #include "scene/gui/line_edit.h"
 #include "scene/gui/menu_button.h"
@@ -63,6 +69,7 @@
 #include "scene/resources/curve_texture.h"
 #include "scene/resources/atlas_texture.h"
 #include "scene/resources/environment.h"
+#include "scene/resources/style_box_flat.h"
 #include "scene/resources/image_texture.h"
 #include "scene/resources/immediate_mesh.h"
 #include "scene/resources/material.h"
@@ -75,25 +82,6 @@ enum ParticleTemplate {
 	PARTICLE_TEMPLATE_BURST = 2,
 	PARTICLE_TEMPLATE_FOUNTAIN = 3,
 	PARTICLE_TEMPLATE_SMOKE = 4,
-};
-
-enum VFXTexturePreset {
-	VFX_TEXTURE_FIRE = 0,
-	VFX_TEXTURE_SMOKE = 1,
-	VFX_TEXTURE_EXPLOSION = 2,
-	VFX_TEXTURE_SPARK = 3,
-	VFX_TEXTURE_LIGHTNING = 4,
-	VFX_TEXTURE_CLOUD = 5,
-	VFX_TEXTURE_RING = 6,
-	VFX_TEXTURE_MAGIC_CIRCLE = 7,
-	VFX_TEXTURE_NOISE = 8,
-	VFX_TEXTURE_WAVE_RING = 9,
-	VFX_TEXTURE_FLASH_LENS = 10,
-	VFX_TEXTURE_BUBBLES = 11,
-	VFX_TEXTURE_PLASMA_BURST = 12,
-	VFX_TEXTURE_VORONOI_CAUSTICS = 13,
-	VFX_TEXTURE_ELECTRIC_ARC = 14,
-	VFX_TEXTURE_EXPLOSION_RING = 15,
 };
 
 enum VFXTextureOutput {
@@ -118,764 +106,46 @@ enum ParticleScaleCurvePreset {
 	PARTICLE_SCALE_CURVE_HOLD,
 };
 
-static uint32_t particle_texture_hash(int p_x, int p_y, int p_seed) {
-	uint32_t value = uint32_t(p_x) * 0x8da6b343u ^ uint32_t(p_y) * 0xd8163841u ^ uint32_t(p_seed) * 0xcb1ab31fu;
-	value ^= value >> 13;
-	value *= 0x85ebca6bu;
-	value ^= value >> 16;
-	return value;
-}
-
-static real_t particle_texture_noise(real_t p_x, real_t p_y, int p_seed) {
-	const int x0 = int(Math::floor(p_x));
-	const int y0 = int(Math::floor(p_y));
-	const real_t tx = p_x - x0;
-	const real_t ty = p_y - y0;
-	const real_t sx = tx * tx * (3.0 - 2.0 * tx);
-	const real_t sy = ty * ty * (3.0 - 2.0 * ty);
-	auto sample = [&](int p_ix, int p_iy) -> real_t {
-		return real_t(particle_texture_hash(p_ix, p_iy, p_seed) & 0xffffu) / 65535.0;
-	};
-	const real_t top = Math::lerp(sample(x0, y0), sample(x0 + 1, y0), sx);
-	const real_t bottom = Math::lerp(sample(x0, y0 + 1), sample(x0 + 1, y0 + 1), sx);
-	return Math::lerp(top, bottom, sy);
-}
-
-static real_t particle_texture_fractal(real_t p_x, real_t p_y, int p_seed) {
-	real_t value = 0.0;
-	real_t weight = 0.0;
-	for (int octave = 0; octave < 4; octave++) {
-		const real_t amplitude = 1.0 / (1 << octave);
-		value += particle_texture_noise(p_x * (1 << octave), p_y * (1 << octave), p_seed + octave * 193) * amplitude;
-		weight += amplitude;
-	}
-	return value / weight;
-}
-
-static void particle_texture_voronoi(real_t p_x, real_t p_y, int p_seed, real_t &r_f1, real_t &r_f2) {
-	const int x0 = int(Math::floor(p_x));
-	const int y0 = int(Math::floor(p_y));
-	real_t d1 = 999.0;
-	real_t d2 = 999.0;
-	for (int dy = -1; dy <= 1; dy++) {
-		for (int dx = -1; dx <= 1; dx++) {
-			const int cx = x0 + dx;
-			const int cy = y0 + dy;
-			const uint32_t h = particle_texture_hash(cx, cy, p_seed);
-			const real_t ox = real_t(h & 0xffffu) / 65535.0;
-			const real_t oy = real_t((h >> 16) & 0xffffu) / 65535.0;
-			const real_t px = cx + ox;
-			const real_t py = cy + oy;
-			const real_t dist = Math::sqrt((p_x - px) * (p_x - px) + (p_y - py) * (p_y - py));
-			if (dist < d1) {
-				d2 = d1;
-				d1 = dist;
-			} else if (dist < d2) {
-				d2 = dist;
-			}
-		}
-	}
-	r_f1 = d1;
-	r_f2 = d2;
-}
-
 static real_t particle_texture_smoothstep(real_t p_edge_a, real_t p_edge_b, real_t p_value) {
 	const real_t t = CLAMP((p_value - p_edge_a) / MAX(p_edge_b - p_edge_a, real_t(0.0001)), 0.0, 1.0);
 	return t * t * (3.0 - 2.0 * t);
 }
 
-static real_t particle_texture_spiral(real_t p_x, real_t p_y, real_t p_z, real_t p_time, real_t p_speed = 1.0) {
-	const real_t nudge = 4.0;
-	const real_t normalizer = real_t(1.0) / Math::sqrt(real_t(1.0) + nudge * nudge);
-	real_t n = -Math::fposmod(real_t(p_time * 0.8 * p_speed), real_t(2.1));
-	real_t iter = 2.0;
-	real_t px = p_x;
-	real_t py = p_y;
-	real_t pz = p_z;
-	for (int i = 0; i < 8; i++) {
-		n -= Math::abs(Math::sin(py * iter) + Math::cos(px * iter)) / iter;
-		const real_t nx = (px + py * nudge) * normalizer;
-		const real_t ny = (py - px * nudge) * normalizer;
-		px = nx;
-		py = ny;
-		const real_t mx = (px + pz * nudge) * normalizer;
-		const real_t mz = (pz - px * nudge) * normalizer;
-		px = mx;
-		pz = mz;
-		iter *= real_t(1.733733);
-	}
-	return n;
-}
-
-// Multi-octave rotated fractal Brownian motion (removes axis-aligned grid artifacts)
-static real_t particle_texture_fbm(real_t p_x, real_t p_y, int p_seed, int p_octaves = 6) {
-	real_t val = 0.0;
-	real_t amp = 0.5;
-	real_t px = p_x;
-	real_t py = p_y;
-	static const real_t c = 0.8;
-	static const real_t s = 0.6;
-	for (int i = 0; i < p_octaves; i++) {
-		val += amp * particle_texture_noise(px, py, p_seed + i * 193);
-		const real_t nx = c * px - s * py;
-		const real_t ny = s * px + c * py;
-		px = nx * real_t(2.02);
-		py = ny * real_t(2.02);
-		amp *= 0.5;
-	}
-	return val;
-}
-
-// Multi-octave sharp ridged turbulence for incandescent flame crests and plasma filaments
-static real_t particle_texture_ridged(real_t p_x, real_t p_y, int p_seed, int p_octaves = 5) {
-	real_t val = 0.0;
-	real_t amp = 0.5;
-	real_t px = p_x;
-	real_t py = p_y;
-	static const real_t c = 0.8;
-	static const real_t s = 0.6;
-	for (int i = 0; i < p_octaves; i++) {
-		const real_t n = particle_texture_noise(px, py, p_seed + i * 137);
-		const real_t r = real_t(1.0) - Math::abs(n - real_t(0.5)) * real_t(2.0);
-		val += amp * (r * r);
-		const real_t nx = c * px - s * py;
-		const real_t ny = s * px + c * py;
-		px = nx * real_t(2.05);
-		py = ny * real_t(2.05);
-		amp *= 0.5;
-	}
-	return val;
-}
-
-// Physical multi-stop thermal/radiance gradient (Blackbody & HDR optical curve)
-static Color sample_physical_vfx_gradient(real_t p_t, const Color &p_color_a, const Color &p_color_b, real_t p_emission = 1.0) {
-	if (p_t <= 0.001) {
-		return Color(0.0, 0.0, 0.0, 0.0);
-	}
-	// Deep soot / shadow root tone: darkened base color
-	const Color smoke(p_color_a.r * real_t(0.12), p_color_a.g * real_t(0.12), p_color_a.b * real_t(0.12), real_t(1.0));
-	const Color incandescent(real_t(1.0), real_t(0.98), real_t(0.92), real_t(1.0));
-
-	Color col;
-	if (p_t < 0.22) {
-		const real_t f = p_t / real_t(0.22);
-		col = smoke.lerp(p_color_a * real_t(0.70), f);
-	} else if (p_t < 0.58) {
-		const real_t f = (p_t - real_t(0.22)) / real_t(0.36);
-		col = (p_color_a * real_t(0.70)).lerp(p_color_a, f);
-	} else if (p_t < 0.82) {
-		const real_t f = (p_t - real_t(0.58)) / real_t(0.24);
-		col = p_color_a.lerp(p_color_b, f);
-	} else {
-		const real_t f = CLAMP((p_t - real_t(0.82)) / real_t(0.18), real_t(0.0), real_t(1.0)) * CLAMP(p_emission, real_t(0.4), real_t(2.5));
-		col = p_color_b.lerp(incandescent, CLAMP(f, real_t(0.0), real_t(1.0)));
-	}
-	return col;
-}
-
-struct VolumetricVec4 {
-	real_t x = 0.0;
-	real_t y = 0.0;
-	real_t z = 0.0;
-	real_t w = 0.0;
-	VolumetricVec4() {}
-	VolumetricVec4(real_t p_x, real_t p_y, real_t p_z, real_t p_w) :
-			x(p_x), y(p_y), z(p_z), w(p_w) {}
-};
-
-static inline Vector3 particle_texture_hash3(const Vector3 &p) {
-	const real_t px = p.dot(Vector3(127.1, 311.7, 74.7));
-	const real_t py = p.dot(Vector3(269.5, 183.3, 246.1));
-	const real_t pz = p.dot(Vector3(113.5, 271.9, 124.6));
-	const real_t sx = Math::sin(px) * real_t(43758.5453123);
-	const real_t sy = Math::sin(py) * real_t(43758.5453123);
-	const real_t sz = Math::sin(pz) * real_t(43758.5453123);
-	return Vector3(
-			real_t(-1.0) + real_t(2.0) * (sx - Math::floor(sx)),
-			real_t(-1.0) + real_t(2.0) * (sy - Math::floor(sy)),
-			real_t(-1.0) + real_t(2.0) * (sz - Math::floor(sz)));
-}
-
-static inline real_t particle_texture_noise3(const Vector3 &p) {
-	const Vector3 i(Math::floor(p.x), Math::floor(p.y), Math::floor(p.z));
-	const Vector3 f = p - i;
-	const Vector3 u(f.x * f.x * (real_t(3.0) - real_t(2.0) * f.x),
-			f.y * f.y * (real_t(3.0) - real_t(2.0) * f.y),
-			f.z * f.z * (real_t(3.0) - real_t(2.0) * f.z));
-	auto d = [&](real_t ox, real_t oy, real_t oz) -> real_t {
-		const Vector3 off(ox, oy, oz);
-		const Vector3 g = particle_texture_hash3(i + off);
-		return g.dot(f - off);
-	};
-	const real_t x00 = Math::lerp(d(0, 0, 0), d(1, 0, 0), u.x);
-	const real_t x10 = Math::lerp(d(0, 1, 0), d(1, 1, 0), u.x);
-	const real_t y0 = Math::lerp(x00, x10, u.y);
-
-	const real_t x01 = Math::lerp(d(0, 0, 1), d(1, 0, 1), u.x);
-	const real_t x11 = Math::lerp(d(0, 1, 1), d(1, 1, 1), u.x);
-	const real_t y1 = Math::lerp(x01, x11, u.y);
-
-	return Math::lerp(y0, y1, u.z);
-}
-
-static inline real_t particle_texture_fbm3(const Vector3 &p) {
-	return particle_texture_noise3(p * real_t(0.6125)) * real_t(0.5) +
-			particle_texture_noise3(p * real_t(0.125)) * real_t(0.25) +
-			particle_texture_noise3(p * real_t(0.25)) * real_t(0.125) +
-			particle_texture_noise3(p * real_t(0.4)) * real_t(0.2);
-}
-
-static inline Vector3 particle_texture_tonemap_filmic(const Vector3 &c) {
-	auto f = [](real_t x) -> real_t {
-		x = MAX(real_t(0.0), x - real_t(0.004));
-		return (x * (real_t(6.2) * x + real_t(0.5))) / (x * (real_t(6.2) * x + real_t(1.7)) + real_t(0.06));
-	};
-	return Vector3(f(c.x), f(c.y), f(c.z));
-}
-
-static inline bool particle_texture_ray_sphere_intersect(const Vector3 &org, const Vector3 &dir, real_t &r_near, real_t &r_far) {
-	const real_t b = dir.dot(org);
-	const real_t c = org.dot(org) - real_t(8.0);
-	const real_t delta = b * b - c;
-	if (delta < 0.0) {
-		return false;
-	}
-	const real_t deltasqrt = Math::sqrt(delta);
-	r_near = -b - deltasqrt;
-	r_far = -b + deltasqrt;
-	return r_far > 0.0;
-}
-
-static inline Color particle_texture_volumetric_explosion(real_t p_u, real_t p_v, real_t p_time, bool p_hollow_ring, real_t p_speed, real_t p_density, real_t p_emission, real_t p_detail, real_t p_contrast, real_t p_angle, const Color &p_color_a, const Color &p_color_b) {
-	const real_t uvx = (p_u - real_t(0.5));
-	const real_t uvy = (p_v - real_t(0.5));
-	const Vector3 rd = Vector3(uvx, uvy, real_t(1.0)).normalized();
-	const Vector3 ro = Vector3(0.0, 0.0, -6.0);
-
-	real_t near_t = 0.0, far_t = 0.0;
-	if (!particle_texture_ray_sphere_intersect(ro, rd, near_t, far_t)) {
-		return Color(0.0, 0.0, 0.0, 0.0);
-	}
-
-	const real_t pan_rad = Math::deg_to_rad(p_angle);
-	const real_t cos_pan = Math::cos(pan_rad);
-	const real_t sin_pan = Math::sin(pan_rad);
-
-	auto map_volume = [&](const Vector3 &p_pos) -> real_t {
-		Vector3 p = p_pos;
-		if (p_angle != 0.0) {
-			const real_t rx = cos_pan * p.x + sin_pan * p.z;
-			const real_t rz = -sin_pan * p.x + cos_pan * p.z;
-			p.x = rx;
-			p.z = rz;
-		}
-		const Vector3 scaled_p = p / real_t(0.6);
-		real_t final_dist = scaled_p.length() - real_t(4.0);
-		final_dist += particle_texture_fbm3(scaled_p * (real_t(50.0) * p_density * p_detail * real_t(0.1)));
-		const real_t spiral = particle_texture_spiral(scaled_p.z * real_t(0.4132) + real_t(333.0),
-				scaled_p.x * real_t(0.4132) + real_t(333.0),
-				scaled_p.y * real_t(0.4132) + real_t(333.0),
-				p_time, p_speed);
-		final_dist += spiral * real_t(3.0);
-		return final_dist * real_t(0.6);
-	};
-
-	real_t t = near_t;
-	real_t ld = 0.0, td = 0.0, w = 0.0;
-	const real_t h = 0.1;
-	VolumetricVec4 sum(0.0, 0.0, 0.0, 0.0);
-
-	const Vector3 col_a_v(p_color_a.r, p_color_a.g, p_color_a.b);
-	const Vector3 col_b_v(p_color_b.r, p_color_b.g, p_color_b.b);
-	const Vector3 light_color = col_a_v.lerp(col_b_v, 0.5);
-
-	for (int i = 0; i < 64; i++) {
-		if (td > 0.9 || t > 10.0 || sum.w > 0.99 || t > far_t) {
-			break;
-		}
-		const Vector3 pos = ro + rd * t;
-		real_t d = map_volume(pos);
-		if (p_hollow_ring) {
-			d = Math::abs(d) + real_t(0.07);
-		}
-		d = MAX(d, real_t(0.03));
-
-		const Vector3 ldst = -pos;
-		const real_t l_dist = MAX(ldst.length(), real_t(0.001));
-
-		const real_t bloom_term = real_t(1.0) / (Math::exp(l_dist * l_dist * l_dist * real_t(0.15)) * real_t(30.0));
-		sum.x += light_color.x * bloom_term;
-		sum.y += light_color.y * bloom_term;
-		sum.z += light_color.z * bloom_term;
-
-		if (d < h) {
-			ld = h - d;
-			w = (real_t(1.0) - td) * ld;
-			td += w + real_t(1.0 / 200.0);
-
-			const real_t clamped_td = CLAMP(td, real_t(0.0), real_t(1.0));
-			const Vector3 smoke_tint = col_a_v * real_t(0.35);
-			const Vector3 base_media = Vector3(1.0, 0.95, 0.9).lerp(smoke_tint, clamped_td);
-			const Vector3 col_center = col_b_v * real_t(7.0);
-			const Vector3 col_edge = col_a_v * real_t(1.5);
-			const real_t mix_factor = CLAMP((l_dist + real_t(0.05)) / real_t(0.9), real_t(0.0), real_t(1.0));
-			const Vector3 col_mix = col_center.lerp(col_edge, mix_factor);
-			const Vector3 c_color(base_media.x * col_mix.x, base_media.y * col_mix.y, base_media.z * col_mix.z);
-
-			VolumetricVec4 col(c_color.x, c_color.y, c_color.z, td);
-			const real_t emiss_factor = sum.w * p_emission * real_t(0.2) / l_dist;
-			sum.x += sum.x * emiss_factor;
-			sum.y += sum.y * emiss_factor;
-			sum.z += sum.z * emiss_factor;
-
-			col.w *= real_t(0.2);
-			col.x *= col.w;
-			col.y *= col.w;
-			col.z *= col.w;
-
-			sum.x += col.x * (real_t(1.0) - sum.w);
-			sum.y += col.y * (real_t(1.0) - sum.w);
-			sum.z += col.z * (real_t(1.0) - sum.w);
-			sum.w += col.w * (real_t(1.0) - sum.w);
-		}
-		td += real_t(1.0 / 70.0);
-		t += MAX(d * real_t(0.08) * MAX(MIN(l_dist, d), real_t(2.0)), real_t(0.01));
-	}
-
-	const real_t sc = (real_t(1.0) / Math::exp(ld * real_t(0.2))) * real_t(0.8);
-	sum.x = CLAMP(sum.x * sc, real_t(0.0), real_t(1.0));
-	sum.y = CLAMP(sum.y * sc, real_t(0.0), real_t(1.0));
-	sum.z = CLAMP(sum.z * sc, real_t(0.0), real_t(1.0));
-	sum.w = CLAMP(sum.w * sc, real_t(0.0), real_t(1.0));
-
-	sum.x = sum.x * sum.x * (real_t(3.0) - real_t(2.0) * sum.x);
-	sum.y = sum.y * sum.y * (real_t(3.0) - real_t(2.0) * sum.y);
-	sum.z = sum.z * sum.z * (real_t(3.0) - real_t(2.0) * sum.z);
-
-	const Vector3 tone = particle_texture_tonemap_filmic(Vector3(sum.x, sum.y, sum.z) * real_t(2.02));
-	real_t alpha = CLAMP(sum.w * real_t(1.6) * p_density, real_t(0.0), real_t(1.0));
-	if (p_contrast != 1.0) {
-		if (p_contrast > 1.0) {
-			alpha = Math::pow(alpha, real_t(1.0 / p_contrast));
-		} else {
-			alpha *= (real_t(0.5) + p_contrast * real_t(0.5));
-		}
-	}
-	return Color(tone.x, tone.y, tone.z, CLAMP(alpha, real_t(0.0), real_t(1.0)));
-}
-
-struct VolumetricExplosionScanlineContext {
-	Ref<Image> image;
+struct VFXTextureRenderJob {
+	const VFXTextureGenerator::Settings *settings = nullptr;
 	int size = 0;
-	real_t time = 0.0;
-	bool hollow_ring = false;
-	real_t speed = 1.0;
-	real_t density = 1.0;
-	real_t emission = 1.0;
-	real_t detail = 1.0;
-	real_t contrast = 1.0;
-	real_t angle = 0.0;
-	bool polar_conversion = false;
-	Color color_a;
-	Color color_b;
+	float *buffer = nullptr;
 };
 
-static void _volumetric_explosion_row_worker(void *p_userdata, uint32_t p_row) {
-	VolumetricExplosionScanlineContext *ctx = static_cast<VolumetricExplosionScanlineContext *>(p_userdata);
-	const int py = int(p_row);
-	const int p_size = ctx->size;
-	real_t v = (real_t(py) + 0.5) / real_t(p_size);
-	for (int px = 0; px < p_size; px++) {
-		real_t u = (real_t(px) + 0.5) / real_t(p_size);
-		if (ctx->polar_conversion) {
-			const real_t x = (u - 0.5) * 2.0;
-			const real_t y = (v - 0.5) * 2.0;
-			const real_t r = Vector2(x, y).length();
-			const real_t angle = Math::atan2(y, x);
-			u = Math::fposmod(real_t(angle / Math::TAU + 0.5), real_t(1.0));
-			v = CLAMP(r, 0.0, 1.0);
-		}
-		const Color c = particle_texture_volumetric_explosion(u, v, ctx->time, ctx->hollow_ring, ctx->speed, ctx->density, ctx->emission, ctx->detail, ctx->contrast, ctx->angle, ctx->color_a, ctx->color_b);
-		ctx->image->set_pixel(px, py, c);
-	}
+static void _vfx_texture_render_row(void *p_userdata, uint32_t p_row) {
+	VFXTextureRenderJob *job = static_cast<VFXTextureRenderJob *>(p_userdata);
+	VFXTextureGenerator::render_rows(*job->settings, job->size, job->buffer, int(p_row), int(p_row) + 1);
 }
 
-// Native, deterministic VFX texture recipe. It follows the publicly documented
-// workflow (procedural templates, time samples, sprite sheets and alpha) without
-// embedding or translating the website's shader source.
-static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int p_seed, const Color &p_color_a, const Color &p_color_b, real_t p_time, bool p_polar_conversion = false, bool p_tiling = false, real_t p_tiling_radial_mask = 1.0, real_t p_speed = 1.0, real_t p_density = 1.0, real_t p_emission = 1.0, real_t p_detail = 1.0, real_t p_contrast = 1.0, real_t p_angle = 0.0) {
-	Ref<Image> image;
-	image.instantiate();
-	image->initialize_data(p_size, p_size, false, Image::FORMAT_RGBA8);
-	const real_t detail_scale = CLAMP(p_detail, real_t(0.2), real_t(4.0));
-
-	if (p_preset == VFX_TEXTURE_EXPLOSION || p_preset == VFX_TEXTURE_EXPLOSION_RING) {
-		VolumetricExplosionScanlineContext ctx;
-		ctx.image = image;
-		ctx.size = p_size;
-		ctx.time = p_time;
-		ctx.hollow_ring = (p_preset == VFX_TEXTURE_EXPLOSION_RING);
-		ctx.speed = p_speed;
-		ctx.density = p_density;
-		ctx.emission = p_emission;
-		ctx.detail = detail_scale;
-		ctx.contrast = p_contrast;
-		ctx.angle = p_angle;
-		ctx.polar_conversion = p_polar_conversion;
-		ctx.color_a = p_color_a;
-		ctx.color_b = p_color_b;
-
-		if (p_size >= 64 && WorkerThreadPool::get_singleton()) {
-			WorkerThreadPool::GroupID group = WorkerThreadPool::get_singleton()->add_native_group_task(
-					_volumetric_explosion_row_worker, &ctx, p_size, -1, true, "VFX Volumetric Explosion Scanlines");
-			WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group);
-		} else {
-			for (int y = 0; y < p_size; y++) {
-				_volumetric_explosion_row_worker(&ctx, y);
-			}
-		}
-		return image;
-	}
-	const real_t effective_time = p_time * p_speed;
-	const real_t phase = Math::fposmod(effective_time, real_t(1.0));
-	for (int py = 0; py < p_size; py++) {
-		real_t v = (real_t(py) + 0.5) / p_size;
-		for (int px = 0; px < p_size; px++) {
-			real_t u = (real_t(px) + 0.5) / p_size;
-			real_t x = (u - 0.5) * 2.0;
-			real_t y = (v - 0.5) * 2.0;
-
-			if (p_angle != 0.0) {
-				const real_t rad = Math::deg_to_rad(p_angle);
-				const real_t cos_a = Math::cos(rad);
-				const real_t sin_a = Math::sin(rad);
-				const real_t rx = x * cos_a - y * sin_a;
-				const real_t ry = x * sin_a + y * cos_a;
-				x = rx;
-				y = ry;
-				u = x * 0.5 + 0.5;
-				v = y * 0.5 + 0.5;
-			}
-
-			if (p_polar_conversion) {
-				const real_t r = Vector2(x, y).length();
-				const real_t angle = Math::atan2(y, x);
-				u = Math::fposmod(real_t(angle / Math::TAU + 0.5), real_t(1.0));
-				v = CLAMP(r, 0.0, 1.0);
-				x = (u - 0.5) * 2.0;
-				y = (v - 0.5) * 2.0;
-			}
-
-			real_t noise = 0.0;
-			if (p_tiling) {
-				const real_t nu = Math::fposmod(u, real_t(1.0));
-				const real_t nv = Math::fposmod(v, real_t(1.0));
-				const real_t n1 = particle_texture_noise((nu * 6.0 + effective_time * 0.19) * detail_scale, (nv * 6.0 - effective_time * 0.13) * detail_scale, p_seed);
-				const real_t n2 = particle_texture_noise(((nu - 1.0) * 6.0 + effective_time * 0.19) * detail_scale, (nv * 6.0 - effective_time * 0.13) * detail_scale, p_seed);
-				const real_t n3 = particle_texture_noise((nu * 6.0 + effective_time * 0.19) * detail_scale, ((nv - 1.0) * 6.0 - effective_time * 0.13) * detail_scale, p_seed);
-				const real_t n4 = particle_texture_noise(((nu - 1.0) * 6.0 + effective_time * 0.19) * detail_scale, ((nv - 1.0) * 6.0 - effective_time * 0.13) * detail_scale, p_seed);
-				const real_t wx = nu * nu * (3.0 - 2.0 * nu);
-				const real_t wy = nv * nv * (3.0 - 2.0 * nv);
-				noise = Math::lerp(Math::lerp(n1, n2, wx), Math::lerp(n3, n4, wx), wy);
-			} else {
-				noise = particle_texture_fractal((u * 6.0 + effective_time * 0.19) * detail_scale, (v * 6.0 - effective_time * 0.13) * detail_scale, p_seed);
-			}
-			real_t alpha = 0.0;
-			real_t color_mix = noise;
-			if (p_preset == VFX_TEXTURE_FIRE) {
-				const real_t fire_h = real_t(1.0) - v;
-				const real_t xfuel = CLAMP(real_t(1.0) - Math::abs(x), real_t(0.0), real_t(1.0));
-				const real_t ypart_clipped = CLAMP(fire_h / real_t(0.85), real_t(0.0), real_t(1.0));
-				const real_t ypart_falloff = CLAMP(real_t(2.0) - fire_h / real_t(0.48), real_t(0.0), real_t(1.0));
-				const real_t ypart_n = real_t(1.0) - ypart_clipped;
-
-				const real_t p_scale = real_t(3.5) * detail_scale;
-				const real_t flow_x = real_t(4.1) * (real_t(0.5) - u) * Math::pow(ypart_n, real_t(4.0));
-				const real_t flow_y = real_t(-2.0) * xfuel * Math::pow(ypart_n, real_t(16.0));
-
-				const real_t wx1 = particle_texture_fbm(x * p_scale + flow_x, (y - effective_time * real_t(2.2) + flow_y) * p_scale, p_seed, 5);
-				const real_t wy1 = particle_texture_fbm((x + real_t(5.2)) * p_scale, (y - effective_time * real_t(2.6)) * p_scale, p_seed + 17, 5);
-				const real_t flame_ridge = particle_texture_ridged((x + (wx1 - real_t(0.5)) * real_t(0.7)) * real_t(4.5) * detail_scale, (y - effective_time * real_t(3.2) + (wy1 - real_t(0.5)) * real_t(0.7)) * real_t(4.5) * detail_scale, p_seed + 43, 5);
-
-				const real_t flame_w = (real_t(0.38) * Math::sin(CLAMP(fire_h, real_t(0.0), real_t(1.0)) * real_t(Math::PI)) + real_t(0.05)) / detail_scale;
-				const real_t radial_dist = Math::abs(x) / MAX(real_t(0.01), flame_w);
-				const real_t base_envelope = Math::exp(-radial_dist * radial_dist * real_t(2.2));
-
-				const real_t flames_core = Math::pow(MAX(ypart_clipped, real_t(0.001)), real_t(0.35) * xfuel) * Math::pow(MAX(wx1, real_t(0.001)), real_t(0.35) * xfuel);
-				const real_t combustion_front = ypart_falloff * Math::pow(CLAMP(real_t(1.0) - flames_core * flames_core * flames_core, real_t(0.0), real_t(1.0)), real_t(6.0));
-
-				const real_t spark_noise = particle_texture_noise(x * real_t(25.0) * detail_scale, (y - effective_time * real_t(7.0)) * real_t(25.0) * detail_scale, p_seed + 89);
-				const real_t spark_ember = (spark_noise > real_t(0.82)) ? (spark_noise - real_t(0.82)) * real_t(5.0) * base_envelope : real_t(0.0);
-
-				const real_t vertical_fade = Math::pow(CLAMP(fire_h / real_t(0.08), real_t(0.0), real_t(1.0)), real_t(1.2)) * Math::pow(CLAMP((real_t(1.0) - fire_h) / real_t(0.25), real_t(0.0), real_t(1.0)), real_t(1.5));
-				const real_t flame_val = (base_envelope * (real_t(0.30) + flame_ridge * real_t(0.75) + combustion_front * real_t(0.65)) + spark_ember * real_t(0.6)) * vertical_fade;
-
-				const real_t temp = CLAMP(flame_val * real_t(1.75), real_t(0.0), real_t(1.0));
-				alpha = CLAMP(temp * real_t(1.6), real_t(0.0), real_t(1.0));
-				color_mix = temp;
-			} else if (p_preset == VFX_TEXTURE_SMOKE) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t p_scale = real_t(3.0) * detail_scale;
-				const real_t qx = particle_texture_fbm(x * p_scale + effective_time * real_t(0.2), y * p_scale - effective_time * real_t(0.35), p_seed, 5);
-				const real_t qy = particle_texture_fbm((x + real_t(3.1)) * p_scale - effective_time * real_t(0.15), (y + real_t(1.8)) * p_scale - effective_time * real_t(0.3), p_seed + 19, 5);
-				const real_t billow = particle_texture_fbm((x + (qx - real_t(0.5)) * real_t(0.7)) * real_t(4.2) * detail_scale, (y + (qy - real_t(0.5)) * real_t(0.7)) * real_t(4.2) * detail_scale - effective_time * real_t(0.45), p_seed + 53, 6);
-
-				const real_t light_dir_x = real_t(-0.6);
-				const real_t light_dir_y = real_t(-0.8);
-				const real_t billow_offset = particle_texture_fbm((x + light_dir_x * real_t(0.045)) * real_t(4.2) * detail_scale, (y + light_dir_y * real_t(0.045)) * real_t(4.2) * detail_scale - effective_time * real_t(0.45), p_seed + 53, 5);
-				const real_t shadow = CLAMP((billow - billow_offset) * real_t(4.5) + real_t(0.55), real_t(0.15), real_t(1.0));
-
-				const real_t puff = Math::exp(-Math::pow(radius / real_t(0.72), real_t(2.0)));
-				const real_t density = CLAMP((puff * real_t(0.8) + billow * real_t(0.6) - (radius / real_t(0.85)) * real_t(0.5)), real_t(0.0), real_t(1.0));
-
-				alpha = CLAMP(density * real_t(1.6), real_t(0.0), real_t(0.88)) * CLAMP((real_t(1.0) - radius) * real_t(3.5), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(shadow * (real_t(0.3) + billow * real_t(0.7)), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_SPARK) {
-				const real_t angle = phase * real_t(Math::TAU);
-				const real_t center_line = real_t(0.5) + real_t(0.55) * (real_t(0.5) - v) + Math::sin(angle) * real_t(0.12);
-				const real_t flutter = (particle_texture_noise(v * real_t(25.0) * detail_scale + effective_time * real_t(8.0), 0.0, p_seed + 31) - real_t(0.5)) * real_t(0.025);
-				const real_t dist = Math::abs(u - center_line - flutter);
-
-				const real_t head_y = real_t(0.82);
-				const real_t head_dist = Vector2(u - center_line, v - head_y).length();
-				const real_t head = real_t(1.0) / (real_t(1.0) + head_dist * real_t(55.0));
-
-				const real_t taper = real_t(0.003) + real_t(0.03) * CLAMP((head_y - v) / real_t(0.7), real_t(0.0), real_t(1.0));
-				const real_t streak = (real_t(1.0) - CLAMP(dist / taper, real_t(0.0), real_t(1.0))) * CLAMP((head_y - v) / real_t(0.7), real_t(0.0), real_t(1.0));
-				const real_t wake_drops = particle_texture_noise(v * real_t(40.0) * detail_scale, 0.0, p_seed + 67);
-				const real_t spark_tail = streak * (real_t(0.6) + wake_drops * real_t(0.6));
-
-				const real_t spark = MAX(head * real_t(1.5), spark_tail);
-				const real_t fade = CLAMP(real_t(1.0) - Math::abs(v - real_t(0.5)) * real_t(1.85), real_t(0.0), real_t(1.0));
-
-				alpha = CLAMP(spark * fade * real_t(1.5), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(head * real_t(0.8) + spark_tail * real_t(0.5) + real_t(0.2), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_LIGHTNING) {
-				const real_t main_noise = particle_texture_noise((u * real_t(4.0) + effective_time * real_t(0.6)) * detail_scale, (v * real_t(14.0) - effective_time * real_t(1.8)) * detail_scale, p_seed + 89);
-				const real_t center_line = real_t(0.5) + (real_t(0.5) - v) * real_t(0.15) + (main_noise - real_t(0.5)) * real_t(0.32) + Math::sin(v * real_t(45.0) + effective_time * real_t(10.0)) * real_t(0.025);
-
-				const real_t taper = real_t(0.005) + real_t(0.025) * CLAMP(real_t(1.0) - Math::abs(v - real_t(0.5)) * real_t(1.8), real_t(0.0), real_t(1.0));
-				const real_t dist_main = Math::abs(u - center_line);
-				const real_t core = real_t(1.0) - CLAMP(dist_main / taper, real_t(0.0), real_t(1.0));
-				const real_t glow = real_t(1.0) / (real_t(1.0) + (dist_main / taper) * (dist_main / taper) * real_t(0.8));
-
-				const real_t branch_n = particle_texture_noise((u * real_t(7.0) + effective_time * real_t(0.8)) * detail_scale, (v * real_t(20.0) - effective_time * real_t(2.2)) * detail_scale, p_seed + 143);
-				const real_t branch_line = center_line + (branch_n - real_t(0.5)) * real_t(0.22) * CLAMP((v - real_t(0.2)) * real_t(2.0), real_t(0.0), real_t(1.0));
-				const real_t branch = real_t(1.0) - CLAMP(Math::abs(u - branch_line) / (taper * real_t(0.55)), real_t(0.0), real_t(1.0));
-
-				const real_t v_fade = CLAMP(real_t(1.0) - Math::abs(v - real_t(0.5)) * real_t(1.9), real_t(0.0), real_t(1.0));
-				const real_t bolt = (core * real_t(1.2) + branch * real_t(0.6) + glow * real_t(0.45)) * v_fade;
-
-				alpha = CLAMP(bolt * real_t(1.4), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(core * real_t(0.75) + branch * real_t(0.35) + glow * real_t(0.25), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_CLOUD) {
-				const real_t radius = Vector2(x * real_t(0.92), y * real_t(1.12)).length();
-				const real_t p_scale = real_t(3.2) * detail_scale;
-				const real_t qx = particle_texture_fbm(x * p_scale, y * p_scale, p_seed, 5);
-				const real_t qy = particle_texture_fbm((x + real_t(4.1)) * p_scale, (y + real_t(2.7)) * p_scale, p_seed + 19, 5);
-				const real_t c_fbm = particle_texture_fbm((x + (qx - real_t(0.5)) * real_t(0.5)) * real_t(4.0) * detail_scale, (y + (qy - real_t(0.5)) * real_t(0.5)) * real_t(4.0) * detail_scale, p_seed + 41, 6);
-
-				const real_t light_dir_x = real_t(-0.5);
-				const real_t light_dir_y = real_t(-0.7);
-				const real_t c_offset = particle_texture_fbm((x + light_dir_x * real_t(0.035)) * real_t(4.0) * detail_scale, (y + light_dir_y * real_t(0.035)) * real_t(4.0) * detail_scale, p_seed + 41, 5);
-				const real_t shadow = CLAMP((c_fbm - c_offset) * real_t(4.5) + real_t(0.55), real_t(0.2), real_t(1.0));
-
-				const real_t cloud_edge = real_t(0.92) - radius + (c_fbm - real_t(0.5)) * real_t(0.65);
-				alpha = CLAMP(cloud_edge * real_t(2.8), real_t(0.0), real_t(0.92)) * CLAMP((real_t(1.12) - radius) * real_t(3.0), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(shadow * (real_t(0.35) + c_fbm * real_t(0.65)), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_RING) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t ring_radius = real_t(0.48) + real_t(0.02) * Math::sin(phase * real_t(Math::TAU));
-				const real_t ring_noise = particle_texture_fbm(x * real_t(6.0) * detail_scale + effective_time * real_t(0.5), y * real_t(6.0) * detail_scale, p_seed, 4);
-				const real_t irregularity = (ring_noise - real_t(0.5)) * real_t(0.06);
-				const real_t ring_dist = Math::abs(radius + irregularity - ring_radius);
-				const real_t ring_core = real_t(1.0) - CLAMP(ring_dist / real_t(0.045), real_t(0.0), real_t(1.0));
-				const real_t ring_glow = real_t(1.0) / (real_t(1.0) + (ring_dist / real_t(0.08)) * (ring_dist / real_t(0.08)));
-				const real_t inner_core = CLAMP((real_t(0.20) - radius) * real_t(3.5), real_t(0.0), real_t(0.3)) * (real_t(0.3) + ring_noise * real_t(0.7));
-
-				alpha = CLAMP((ring_core * real_t(1.3) + ring_glow * real_t(0.4) + inner_core) * CLAMP((real_t(1.18) - radius) * real_t(2.8), real_t(0.0), real_t(1.0)), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(ring_core * real_t(0.75) + ring_glow * real_t(0.25) + inner_core * real_t(0.2), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_MAGIC_CIRCLE) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t angle = Math::atan2(y, x) + phase * real_t(0.45);
-				const real_t outer_ring = real_t(1.0) - CLAMP(Math::abs(radius - real_t(0.43)) / real_t(0.015), real_t(0.0), real_t(1.0));
-				const real_t inner_ring = real_t(1.0) - CLAMP(Math::abs(radius - real_t(0.30)) / real_t(0.010), real_t(0.0), real_t(1.0));
-				const real_t spokes = (real_t(1.0) - CLAMP(Math::abs(Math::sin(angle * real_t(8.0))) / real_t(0.08), real_t(0.0), real_t(1.0))) * CLAMP((radius - real_t(0.30)) * real_t(8.0), real_t(0.0), real_t(1.0)) * CLAMP((real_t(0.43) - radius) * real_t(8.0), real_t(0.0), real_t(1.0));
-				const real_t runes = (real_t(1.0) - CLAMP(Math::abs(Math::sin(angle * real_t(24.0) + noise * real_t(0.8))) / real_t(0.16), real_t(0.0), real_t(1.0))) * CLAMP((radius - real_t(0.34)) * real_t(20.0), real_t(0.0), real_t(1.0)) * CLAMP((real_t(0.42) - radius) * real_t(20.0), real_t(0.0), real_t(1.0));
-				const real_t poly_star = (real_t(1.0) - CLAMP(Math::abs(Math::cos(angle * real_t(6.0)) * real_t(0.12) + real_t(0.22) - radius) / real_t(0.012), real_t(0.0), real_t(1.0))) * CLAMP((real_t(0.36) - radius) * real_t(8.0), real_t(0.0), real_t(1.0));
-				const real_t sigil = MAX(MAX(MAX(outer_ring, inner_ring), MAX(spokes, runes)), poly_star);
-				alpha = CLAMP(sigil * CLAMP((real_t(0.57) - radius) * real_t(10.0), real_t(0.0), real_t(1.0)), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(sigil * real_t(0.8) + real_t(0.2), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_WAVE_RING) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t ring_radius = real_t(0.10) + phase * real_t(0.65);
-				const real_t ring_thick = real_t(0.03) + phase * real_t(0.03);
-				const real_t dist_to_crest = radius - ring_radius;
-				const real_t shock_front = real_t(1.0) / (real_t(1.0) + Math::abs(dist_to_crest) / MAX(real_t(0.001), ring_thick * real_t(1.2)));
-				const real_t trailing_ripple = (dist_to_crest < 0.0) ? Math::sin(dist_to_crest * real_t(42.0)) * Math::exp(dist_to_crest * real_t(9.0)) : real_t(0.0);
-				const real_t wave_fbm = particle_texture_fbm(x * real_t(7.0) * detail_scale, y * real_t(7.0) * detail_scale, p_seed, 4);
-
-				const real_t wave = MAX(shock_front * real_t(1.3), trailing_ripple * real_t(0.6)) + (wave_fbm - real_t(0.5)) * real_t(0.15) * shock_front;
-				const real_t fade = (real_t(1.0) - phase * real_t(0.65)) * CLAMP((real_t(1.08) - radius) * real_t(3.5), real_t(0.0), real_t(1.0));
-				alpha = CLAMP(wave * fade, real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(shock_front * real_t(0.85) + trailing_ripple * real_t(0.3) + real_t(0.15), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_FLASH_LENS) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t core = real_t(1.0) / (real_t(1.0) + radius * real_t(32.0));
-				const real_t streak_h = real_t(1.0) / (real_t(1.0) + Math::abs(y) * real_t(80.0) + Math::abs(x) * real_t(1.5));
-				const real_t streak_v = real_t(1.0) / (real_t(1.0) + Math::abs(x) * real_t(80.0) + Math::abs(y) * real_t(1.5));
-				const real_t angle = Math::atan2(y, x);
-				const real_t spikes = Math::pow(Math::abs(Math::cos(angle * real_t(3.0))), real_t(36.0)) / (real_t(1.0) + radius * real_t(14.0));
-				const real_t halo = Math::exp(-Math::pow((radius - real_t(0.46)) / real_t(0.035), real_t(2.0))) * real_t(0.35);
-
-				const real_t flare = core * real_t(1.5) + streak_h * real_t(1.1) + streak_v * real_t(0.4) + spikes * real_t(0.65) + halo;
-				const real_t fade = CLAMP((real_t(1.15) - radius) * real_t(2.8), real_t(0.0), real_t(1.0));
-
-				alpha = CLAMP(flare * fade, real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(core * real_t(0.85) + streak_h * real_t(0.45) + spikes * real_t(0.35) + real_t(0.15), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_BUBBLES) {
-				const real_t radius = Vector2(x, y).length();
-				real_t bubble_acc = 0.0;
-				real_t rim_acc = 0.0;
-				static const int ring_counts[3] = { 10, 16, 22 };
-				static const real_t ring_radii[3] = { 0.22, 0.38, 0.56 };
-				static const real_t ring_bubble_sizes[3] = { 0.05, 0.07, 0.09 };
-				for (int ring = 0; ring < 3; ring++) {
-					const int count = ring_counts[ring];
-					const real_t r_band = ring_radii[ring];
-					const real_t b_radius = ring_bubble_sizes[ring];
-					for (int k = 0; k < count; k++) {
-						const real_t b_angle = (real_t(k) / count) * real_t(Math::TAU) + phase * real_t(0.2) * (ring % 2 == 0 ? real_t(1.0) : real_t(-1.0));
-						const real_t bx = Math::cos(b_angle) * r_band;
-						const real_t by = Math::sin(b_angle) * r_band;
-						const real_t d = Vector2(x - bx, y - by).length();
-						if (d < b_radius * real_t(1.3)) {
-							const real_t rim = Math::exp(-Math::pow((d - b_radius * real_t(0.88)) / (b_radius * real_t(0.14)), real_t(2.0)));
-							const real_t interior = CLAMP(real_t(1.0) - (d / b_radius), real_t(0.0), real_t(1.0));
-							const real_t b_val = interior * real_t(0.35) + rim * real_t(0.95);
-							rim_acc = MAX(rim_acc, rim);
-							bubble_acc = MAX(bubble_acc, b_val);
-						}
-					}
-				}
-				const real_t fade = CLAMP((real_t(0.78) - radius) * real_t(4.0), real_t(0.0), real_t(1.0));
-				alpha = CLAMP(bubble_acc * fade * real_t(1.3), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(rim_acc * real_t(0.8) + bubble_acc * real_t(0.3) + real_t(0.15), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_PLASMA_BURST) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t angle = Math::atan2(y, x);
-
-				real_t f1, f2;
-				particle_texture_voronoi(x * real_t(6.0) * detail_scale, y * real_t(6.0) * detail_scale, p_seed, f1, f2);
-				const real_t gran = (f2 - f1);
-
-				const real_t p_scale = real_t(3.5) * detail_scale;
-				const real_t corona_fbm = particle_texture_fbm(x * p_scale + effective_time * real_t(0.2), y * p_scale - effective_time * real_t(0.2), p_seed + 31, 5);
-				const real_t solar_loops = particle_texture_ridged((radius * real_t(8.0) - effective_time * real_t(3.0)) * detail_scale, (angle * real_t(4.0)) * detail_scale, p_seed + 77, 4);
-
-				const real_t core = real_t(1.0) / (real_t(1.0) + Math::pow(radius / real_t(0.28), real_t(3.0)));
-				const real_t limb = Math::exp(-Math::pow((radius - real_t(0.42)) / real_t(0.16), real_t(2.0))) * (corona_fbm * real_t(0.8) + solar_loops * real_t(0.7));
-				const real_t plasma = core * (real_t(0.8) + gran * real_t(0.4)) + limb;
-
-				const real_t fade = CLAMP((real_t(1.0) - radius) * real_t(3.5), real_t(0.0), real_t(1.0));
-				const real_t temp = CLAMP(plasma * fade, real_t(0.0), real_t(1.0));
-				alpha = CLAMP(temp * real_t(1.5), real_t(0.0), real_t(1.0));
-				color_mix = temp;
-			} else if (p_preset == VFX_TEXTURE_VORONOI_CAUSTICS) {
-				// 3-matrix transformation across 3 octaves for razor-sharp refractive caustics
-				const real_t scale = real_t(2.0) * detail_scale;
-				const real_t coord_x = x * scale;
-				const real_t coord_y = y * scale;
-				const real_t coord_z = effective_time * real_t(0.25);
-
-				// Matrix M = {{-2, -1, 2}, {3, -2, 1}, {1, 2, 2}}
-				const real_t a_x = coord_x * real_t(-2.0) + coord_y * real_t(3.0) + coord_z * real_t(1.0);
-				const real_t a_y = coord_x * real_t(-1.0) + coord_y * real_t(-2.0) + coord_z * real_t(2.0);
-				const real_t a_z = coord_x * real_t(2.0) + coord_y * real_t(1.0) + coord_z * real_t(2.0);
-
-				const real_t b_x = (a_x * real_t(-2.0) + a_y * real_t(3.0) + a_z * real_t(1.0)) * real_t(0.4);
-				const real_t b_y = (a_x * real_t(-1.0) + a_y * real_t(-2.0) + a_z * real_t(2.0)) * real_t(0.4);
-				const real_t b_z = (a_x * real_t(2.0) + a_y * real_t(1.0) + a_z * real_t(2.0)) * real_t(0.4);
-
-				const real_t c_x = (b_x * real_t(-2.0) + b_y * real_t(3.0) + b_z * real_t(1.0)) * real_t(0.3);
-				const real_t c_y = (b_x * real_t(-1.0) + b_y * real_t(-2.0) + b_z * real_t(2.0)) * real_t(0.3);
-				const real_t c_z = (b_x * real_t(2.0) + b_y * real_t(1.0) + b_z * real_t(2.0)) * real_t(0.3);
-
-				auto frac_dist = [](real_t vx, real_t vy, real_t vz) -> real_t {
-					const real_t fx = real_t(0.5) - Math::fposmod(vx, real_t(1.0));
-					const real_t fy = real_t(0.5) - Math::fposmod(vy, real_t(1.0));
-					const real_t fz = real_t(0.5) - Math::fposmod(vz, real_t(1.0));
-					return Math::sqrt(fx * fx + fy * fy + fz * fz);
-				};
-
-				const real_t la = frac_dist(a_x, a_y, a_z);
-				const real_t lb = frac_dist(b_x, b_y, b_z);
-				const real_t lc = frac_dist(c_x, c_y, c_z);
-				const real_t min_dist = MIN(MIN(la, lb), lc);
-				const real_t caustic = Math::pow(min_dist, real_t(7.0)) * real_t(25.0);
-
-				const real_t radius = Vector2(x, y).length();
-				const real_t fade = CLAMP((real_t(1.08) - radius) * real_t(3.0), real_t(0.0), real_t(1.0));
-				alpha = CLAMP(caustic * fade * real_t(1.3), real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(caustic * real_t(0.9) + real_t(0.1), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_ELECTRIC_ARC) {
-				real_t arc_core_acc = 0.0;
-				real_t arc_glow_acc = 0.0;
-				const real_t radius = Vector2(x, y).length();
-				const real_t angle = Math::atan2(y, x);
-				for (int i = 0; i < 5; i++) {
-					const real_t arc_angle = (real_t(i) / real_t(5.0)) * real_t(Math::TAU) + Math::sin(effective_time * real_t(10.0) + i * real_t(2.3)) * real_t(0.28);
-					const real_t arc_noise = particle_texture_noise((radius * real_t(12.0) + effective_time * real_t(9.0)) * detail_scale, i * real_t(19.0), p_seed + i * 31);
-					const real_t ang_diff = Math::abs(Math::fposmod(angle - arc_angle + real_t(Math::PI), real_t(Math::TAU)) - real_t(Math::PI));
-					const real_t dist = ang_diff * radius + (arc_noise - real_t(0.5)) * real_t(0.06);
-					const real_t core = real_t(1.0) - CLAMP(dist / real_t(0.02), real_t(0.0), real_t(1.0));
-					const real_t glow = real_t(1.0) / (real_t(1.0) + (dist / real_t(0.04)) * (dist / real_t(0.04)));
-					arc_core_acc = MAX(arc_core_acc, core);
-					arc_glow_acc = MAX(arc_glow_acc, glow);
-				}
-				const real_t center_node = real_t(1.0) / (real_t(1.0) + radius * real_t(35.0));
-				const real_t arc = MAX(arc_core_acc, center_node) * real_t(1.2) + arc_glow_acc * real_t(0.35);
-				const real_t fade = CLAMP((real_t(1.0) - radius) * real_t(3.5), real_t(0.0), real_t(1.0));
-
-				alpha = CLAMP(arc * fade, real_t(0.0), real_t(1.0));
-				color_mix = CLAMP(center_node * real_t(0.7) + arc_core_acc * real_t(0.6) + arc_glow_acc * real_t(0.25), real_t(0.0), real_t(1.0));
-			} else {
-				const real_t radius = Vector2(x, y).length();
-				const real_t p_scale = real_t(3.5) * detail_scale;
-				const real_t flow_fbm = particle_texture_fbm(x * p_scale + effective_time * real_t(0.15), y * p_scale - effective_time * real_t(0.15), p_seed, 5);
-				const real_t radial_fade = CLAMP((real_t(1.0) - radius) * real_t(2.2), real_t(0.0), real_t(1.0));
-				alpha = CLAMP((flow_fbm - real_t(0.25)) * real_t(2.2), real_t(0.0), real_t(1.0)) * radial_fade;
-				color_mix = CLAMP(flow_fbm, real_t(0.0), real_t(1.0));
-			}
-
-			if (p_tiling && p_tiling_radial_mask > 0.001) {
-				const real_t orig_u = (real_t(px) + 0.5) / p_size;
-				const real_t orig_v = (real_t(py) + 0.5) / p_size;
-				const real_t dist = Vector2((orig_u - 0.5) * 2.0, (orig_v - 0.5) * 2.0).length();
-				const real_t mask_start = 1.0 - p_tiling_radial_mask * 0.75;
-				const real_t mask = 1.0 - particle_texture_smoothstep(mask_start, 1.0, dist);
-				alpha *= mask;
-			}
-			if (p_contrast != 1.0) {
-				color_mix = CLAMP(0.5 + (color_mix - 0.5) * p_contrast, 0.0, 1.0);
-				if (p_contrast > 1.0) {
-					alpha = CLAMP(Math::pow(alpha, real_t(1.0 / p_contrast)), 0.0, 1.0);
-				} else if (p_contrast < 1.0) {
-					alpha = CLAMP(alpha * (0.5 + p_contrast * 0.5), 0.0, 1.0);
-				}
-			}
-			alpha = CLAMP(alpha * p_density, 0.0, 1.0);
-			Color color;
-			if (p_preset == VFX_TEXTURE_SMOKE || p_preset == VFX_TEXTURE_CLOUD) {
-				color = p_color_a.lerp(p_color_b, color_mix);
-			} else {
-				color = sample_physical_vfx_gradient(color_mix, p_color_a, p_color_b, p_emission);
-			}
-			color.a = CLAMP(alpha, 0.0, 1.0);
-			image->set_pixel(px, py, color);
+// Renders one frame of the procedural generator on all worker threads.
+static Ref<Image> render_vfx_texture_frame(const VFXTextureGenerator::Settings &p_settings, int p_size) {
+	Vector<float> buffer;
+	buffer.resize(p_size * p_size * 4);
+	VFXTextureRenderJob job;
+	job.settings = &p_settings;
+	job.size = p_size;
+	job.buffer = buffer.ptrw();
+	if (p_size >= 32 && WorkerThreadPool::get_singleton()) {
+		const WorkerThreadPool::GroupID group = WorkerThreadPool::get_singleton()->add_native_group_task(_vfx_texture_render_row, &job, p_size, -1, true, "VFX Texture Generator");
+		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group);
+	} else {
+		for (int y = 0; y < p_size; y++) {
+			_vfx_texture_render_row(&job, y);
 		}
 	}
-	return image;
+	PackedByteArray bytes;
+	bytes.resize(p_size * p_size * 4);
+	uint8_t *w = bytes.ptrw();
+	const float *r = buffer.ptr();
+	for (int i = 0; i < p_size * p_size * 4; i++) {
+		w[i] = uint8_t(CLAMP(int(Math::round(r[i] * 255.0f)), 0, 255));
+	}
+	return Image::create_from_data(p_size, p_size, false, Image::FORMAT_RGBA8, bytes);
 }
 
 static void process_particle_texture_frame(const Ref<Image> &p_image, real_t p_alpha_threshold, real_t p_alpha_blur, bool p_toon_enabled, real_t p_toon_dark, real_t p_toon_light, const Color &p_shadows_tint, const Color &p_midtones_tint, const Color &p_highlights_tint, bool p_generate_normal_map, real_t p_normal_height_scale, bool p_show_alpha) {
@@ -1600,64 +870,213 @@ void FPSStudioParticleEditorPlugin::_on_grid_toggled(bool p_enabled) {
 	}
 }
 
+static const int VFX_TEXTURE_RESOLUTIONS[] = { 128, 256, 512, 1024, 2048 };
+
+static Color vfx_color_from_array(const float *p_color) {
+	return Color(p_color[0], p_color[1], p_color[2], 1.0);
+}
+
+void FPSStudioParticleEditorPlugin::_show_texture_generator() {
+	if (texture_generator_dialog) {
+		texture_generator_dialog->popup_centered_clamped(Size2i(1280, 820) * EDSCALE, 0.9);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_on_texture_generator_pressed() {
 	if (!texture_generator_dialog) {
 		return;
 	}
-	if (!generated_texture_image.is_valid()) {
-		_regenerate_texture(true);
+	if (!texture_generator_thumbnails_ready) {
+		_build_texture_type_list();
 	}
-	texture_generator_dialog->popup_centered_clamped(Size2i(900, 680) * EDSCALE, 0.85);
+	_regenerate_texture(true);
+	_show_texture_generator();
 }
 
-void FPSStudioParticleEditorPlugin::_on_texture_generator_preset_selected(int p_index) {
-	if (texture_generator_loading_recipe) {
+void FPSStudioParticleEditorPlugin::_build_texture_type_list() {
+	if (!texture_generator_type_tree) {
 		return;
 	}
-	const int preset_id = texture_generator_preset->get_item_id(p_index);
-	if (preset_id == VFX_TEXTURE_SMOKE || preset_id == VFX_TEXTURE_CLOUD) {
-		texture_generator_color_a->set_pick_color(Color(0.16, 0.19, 0.24, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.72, 0.76, 0.82, 1.0));
-	} else if (preset_id == VFX_TEXTURE_SPARK) {
-		texture_generator_color_a->set_pick_color(Color(1.0, 0.46, 0.08, 1.0));
-		texture_generator_color_b->set_pick_color(Color(1.0, 0.94, 0.64, 1.0));
-	} else if (preset_id == VFX_TEXTURE_LIGHTNING || preset_id == VFX_TEXTURE_ELECTRIC_ARC) {
-		texture_generator_color_a->set_pick_color(Color(0.24, 0.14, 0.88, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.75, 0.92, 1.0, 1.0));
-	} else if (preset_id == VFX_TEXTURE_RING || preset_id == VFX_TEXTURE_MAGIC_CIRCLE) {
-		texture_generator_color_a->set_pick_color(Color(0.22, 0.12, 0.72, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.26, 0.92, 1.0, 1.0));
-	} else if (preset_id == VFX_TEXTURE_WAVE_RING) {
-		texture_generator_color_a->set_pick_color(Color(0.15, 0.45, 0.95, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.85, 0.96, 1.0, 1.0));
-	} else if (preset_id == VFX_TEXTURE_FLASH_LENS) {
-		texture_generator_color_a->set_pick_color(Color(1.0, 0.65, 0.18, 1.0));
-		texture_generator_color_b->set_pick_color(Color(1.0, 0.98, 0.85, 1.0));
-	} else if (preset_id == VFX_TEXTURE_BUBBLES) {
-		texture_generator_color_a->set_pick_color(Color(0.12, 0.48, 0.92, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.68, 0.94, 1.0, 1.0));
-	} else if (preset_id == VFX_TEXTURE_PLASMA_BURST) {
-		texture_generator_color_a->set_pick_color(Color(0.98, 0.18, 0.02, 1.0));
-		texture_generator_color_b->set_pick_color(Color(1.0, 0.92, 0.48, 1.0));
-	} else if (preset_id == VFX_TEXTURE_VORONOI_CAUSTICS) {
-		texture_generator_color_a->set_pick_color(Color(0.04, 0.42, 0.62, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.32, 0.95, 0.88, 1.0));
-	} else if (preset_id == VFX_TEXTURE_NOISE) {
-		texture_generator_color_a->set_pick_color(Color(0.04, 0.18, 0.26, 1.0));
-		texture_generator_color_b->set_pick_color(Color(0.2, 0.9, 0.58, 1.0));
-	} else if (preset_id == VFX_TEXTURE_EXPLOSION || preset_id == VFX_TEXTURE_EXPLOSION_RING) {
-		texture_generator_color_a->set_pick_color(Color(0.96, 0.16, 0.02, 1.0));
-		texture_generator_color_b->set_pick_color(Color(1.0, 0.92, 0.45, 1.0));
-	} else {
-		texture_generator_color_a->set_pick_color(Color(0.95, 0.12, 0.025, 1.0));
-		texture_generator_color_b->set_pick_color(Color(1.0, 0.82, 0.18, 1.0));
+	texture_generator_type_tree->clear();
+	TreeItem *root = texture_generator_type_tree->create_item();
+	Vector<String> categories;
+	for (int i = 0; i < VFXTextureGenerator::get_type_count(); i++) {
+		const String category = String::utf8(VFXTextureGenerator::get_type_info_by_index(i)->category);
+		if (!categories.has(category)) {
+			categories.push_back(category);
+		}
 	}
+	TreeItem *selected_item = nullptr;
+	for (const String &category : categories) {
+		TreeItem *category_item = texture_generator_type_tree->create_item(root);
+		category_item->set_text(0, category);
+		category_item->set_selectable(0, false);
+		category_item->set_custom_color(0, texture_generator_type_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
+		for (int i = 0; i < VFXTextureGenerator::get_type_count(); i++) {
+			const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info_by_index(i);
+			if (String::utf8(info->category) != category) {
+				continue;
+			}
+			// Small draft thumbnail rendered with the type defaults.
+			VFXTextureGenerator::Settings settings;
+			settings.type = info->id;
+			settings.seed = 7;
+			settings.time = 0.35f;
+			settings.quality = 0;
+			VFXTextureGenerator::apply_type_defaults(settings);
+			Ref<Image> thumbnail = render_vfx_texture_frame(settings, 48);
+			TreeItem *item = texture_generator_type_tree->create_item(category_item);
+			item->set_text(0, String::utf8(info->name));
+			item->set_tooltip_text(0, String::utf8(info->description));
+			item->set_icon(0, ImageTexture::create_from_image(thumbnail));
+			item->set_icon_max_width(0, int(40 * EDSCALE));
+			item->set_metadata(0, info->id);
+			if (info->id == texture_generator_type) {
+				selected_item = item;
+			}
+		}
+	}
+	if (selected_item) {
+		texture_generator_syncing_ui = true;
+		selected_item->select(0);
+		texture_generator_syncing_ui = false;
+	}
+	texture_generator_thumbnails_ready = true;
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_type_selected() {
+	if (texture_generator_syncing_ui || !texture_generator_type_tree) {
+		return;
+	}
+	TreeItem *item = texture_generator_type_tree->get_selected();
+	if (!item || item->get_metadata(0).get_type() != Variant::INT) {
+		return;
+	}
+	const int type = int(item->get_metadata(0));
+	if (type == texture_generator_type) {
+		return;
+	}
+	_select_texture_type(type, true);
 	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
 
+void FPSStudioParticleEditorPlugin::_select_texture_type(int p_type, bool p_reset_params) {
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(p_type);
+	if (!info) {
+		return;
+	}
+	texture_generator_type = p_type;
+	if (p_reset_params) {
+		for (int i = 0; i < VFXTextureGenerator::MAX_PARAMS; i++) {
+			texture_generator_params[i] = i < info->param_count ? info->params[i].default_value : 0.0f;
+		}
+		texture_generator_syncing_ui = true;
+		if (texture_generator_color_a) {
+			texture_generator_color_a->set_pick_color(vfx_color_from_array(info->color_a));
+		}
+		if (texture_generator_color_b) {
+			texture_generator_color_b->set_pick_color(vfx_color_from_array(info->color_b));
+		}
+		texture_generator_syncing_ui = false;
+	}
+	if (texture_generator_type_title) {
+		texture_generator_type_title->set_text(String::utf8(info->name));
+	}
+	if (texture_generator_type_description) {
+		texture_generator_type_description->set_text(String::utf8(info->description));
+	}
+	if (texture_generator_color_a_label) {
+		texture_generator_color_a_label->set_text(String::utf8(info->color_a_label));
+	}
+	if (texture_generator_color_b_label) {
+		texture_generator_color_b_label->set_text(String::utf8(info->color_b_label));
+	}
+	if (texture_generator_tiling) {
+		texture_generator_tiling->set_disabled(!info->supports_tiling);
+		texture_generator_tiling->set_tooltip_text(info->supports_tiling ? TTR("Generate a texture that repeats seamlessly.") : TTR("Only pattern types (Noise, Caustics) can tile seamlessly."));
+	}
+	if (texture_generator_type_tree) {
+		// Keep the tree selection in sync (recipes and resets change the type).
+		texture_generator_syncing_ui = true;
+		TreeItem *root = texture_generator_type_tree->get_root();
+		for (TreeItem *category = root ? root->get_first_child() : nullptr; category; category = category->get_next()) {
+			for (TreeItem *item = category->get_first_child(); item; item = item->get_next()) {
+				if (int(item->get_metadata(0)) == p_type && !item->is_selected(0)) {
+					item->select(0);
+				}
+			}
+		}
+		texture_generator_syncing_ui = false;
+	}
+	_rebuild_texture_param_controls();
+}
+
+void FPSStudioParticleEditorPlugin::_rebuild_texture_param_controls() {
+	if (!texture_generator_param_grid) {
+		return;
+	}
+	for (int i = texture_generator_param_grid->get_child_count() - 1; i >= 0; i--) {
+		Node *child = texture_generator_param_grid->get_child(i);
+		texture_generator_param_grid->remove_child(child);
+		child->queue_free();
+	}
+	texture_generator_param_sliders.clear();
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(texture_generator_type);
+	if (!info) {
+		return;
+	}
+	for (int i = 0; i < info->param_count; i++) {
+		const VFXTextureGenerator::ParamInfo &param = info->params[i];
+		Label *label = memnew(Label);
+		label->set_text(String::utf8(param.label));
+		label->set_tooltip_text(String::utf8(param.tooltip));
+		label->set_mouse_filter(Control::MOUSE_FILTER_PASS);
+		texture_generator_param_grid->add_child(label);
+		EditorSpinSlider *slider = memnew(EditorSpinSlider);
+		slider->set_min(param.min_value);
+		slider->set_max(param.max_value);
+		slider->set_step(param.step);
+		slider->set_value_no_signal(texture_generator_params[i]);
+		slider->set_editing_integer(param.step >= 1.0f);
+		slider->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		slider->set_tooltip_text(String::utf8(param.tooltip));
+		slider->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_param_changed).bind(i));
+		texture_generator_param_grid->add_child(slider);
+		texture_generator_param_sliders.push_back(slider);
+	}
+}
+
+VFXTextureGenerator::Settings FPSStudioParticleEditorPlugin::_make_texture_settings(double p_time, double p_life, int p_quality) const {
+	VFXTextureGenerator::Settings settings;
+	settings.type = texture_generator_type;
+	settings.seed = texture_generator_seed ? uint32_t(texture_generator_seed->get_value()) : 7u;
+	settings.time = float(p_time);
+	settings.life = float(CLAMP(p_life, 0.0, 1.0));
+	settings.quality = p_quality;
+	const Color color_a = texture_generator_color_a ? texture_generator_color_a->get_pick_color() : Color(1, 1, 1);
+	const Color color_b = texture_generator_color_b ? texture_generator_color_b->get_pick_color() : Color(1, 1, 1);
+	settings.color_a[0] = color_a.r;
+	settings.color_a[1] = color_a.g;
+	settings.color_a[2] = color_a.b;
+	settings.color_b[0] = color_b.r;
+	settings.color_b[1] = color_b.g;
+	settings.color_b[2] = color_b.b;
+	for (int i = 0; i < VFXTextureGenerator::MAX_PARAMS; i++) {
+		settings.params[i] = texture_generator_params[i];
+	}
+	settings.speed = texture_generator_speed ? float(texture_generator_speed->get_value()) : 1.0f;
+	settings.rotation_degrees = texture_generator_rotation ? float(texture_generator_rotation->get_value()) : 0.0f;
+	settings.exposure = texture_generator_exposure ? float(texture_generator_exposure->get_value()) : 1.0f;
+	settings.opacity = texture_generator_opacity ? float(texture_generator_opacity->get_value()) : 1.0f;
+	settings.polar = texture_generator_polar && texture_generator_polar->is_pressed();
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(texture_generator_type);
+	settings.tiling = info && info->supports_tiling && texture_generator_tiling && texture_generator_tiling->is_pressed();
+	return settings;
+}
+
 void FPSStudioParticleEditorPlugin::_on_texture_generator_resolution_selected(int p_index) {
-	if (texture_generator_loading_recipe) {
+	if (texture_generator_syncing_ui) {
 		return;
 	}
 	_invalidate_texture_export();
@@ -1665,7 +1084,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_resolution_selected(in
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_output_selected(int p_index) {
-	if (texture_generator_loading_recipe) {
+	if (texture_generator_syncing_ui) {
 		return;
 	}
 	_update_texture_time_controls();
@@ -1674,15 +1093,30 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_output_selected(int p_
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_seed_changed(double p_value) {
-	if (texture_generator_loading_recipe) {
+	if (texture_generator_syncing_ui) {
 		return;
 	}
 	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
 
+void FPSStudioParticleEditorPlugin::_on_texture_generator_randomize_seed_pressed() {
+	if (texture_generator_seed) {
+		texture_generator_seed->set_value(Math::rand() % 100000);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_on_texture_generator_fps_changed(double p_value) {
-	if (texture_generator_loading_recipe) {
+	if (texture_generator_syncing_ui) {
+		return;
+	}
+	_update_texture_time_controls();
+	_invalidate_texture_export();
+	_regenerate_texture(true);
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_duration_changed(double p_value) {
+	if (texture_generator_syncing_ui) {
 		return;
 	}
 	_update_texture_time_controls();
@@ -1693,18 +1127,17 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_fps_changed(double p_v
 void FPSStudioParticleEditorPlugin::_on_texture_generator_animate_toggled(bool p_enabled) {
 	texture_generator_playback_accumulator = 0.0;
 	texture_generator_preview_refresh = 0.0;
+	if (texture_generator_animate) {
+		texture_generator_animate->set_text(p_enabled ? TTR("Pause") : TTR("Play"));
+		texture_generator_animate->set_tooltip_text(p_enabled ? TTR("Pause the preview animation.") : TTR("Play the preview animation."));
+	}
 	const bool is_single_texture = !texture_generator_output || texture_generator_output->get_selected_id() == VFX_TEXTURE_OUTPUT_STILL;
 	if (p_enabled && is_single_texture) {
 		// The current-time sample changes while playing, so any previously exported
 		// single frame no longer represents the selected generator state.
-		generated_texture_path = String();
-		if (texture_generator_apply_button) {
-			texture_generator_apply_button->set_disabled(true);
-		}
-		if (texture_generator_status) {
-			texture_generator_status->set_text(String());
-		}
-	} else if (!p_enabled && is_single_texture) {
+		_invalidate_texture_export();
+	} else if (!p_enabled) {
+		// Paused: refine the preview at full quality.
 		_regenerate_texture(true);
 	}
 }
@@ -1712,19 +1145,15 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_animate_toggled(bool p
 void FPSStudioParticleEditorPlugin::_on_texture_generator_time_changed(double p_value) {
 	texture_generator_time_value = p_value;
 	texture_generator_preview_frame = -1;
-	if (texture_generator_time_label) {
-		texture_generator_time_label->set_text(vformat("%s s", String::num(texture_generator_time_value, 2)));
+	_update_texture_time_controls();
+	if (texture_generator_output && texture_generator_output->get_selected_id() == VFX_TEXTURE_OUTPUT_STILL) {
+		_invalidate_texture_export();
 	}
-	if (texture_generator_output && texture_generator_output->get_selected_id() > 1) {
-		_regenerate_texture(true);
-		return;
-	}
-	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed(const Color &p_color) {
-	if (texture_generator_loading_recipe) {
+	if (texture_generator_syncing_ui) {
 		return;
 	}
 	_invalidate_texture_export();
@@ -1732,184 +1161,80 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed(const Co
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_processing_value_changed(double p_value) {
-	if (texture_generator_loading_recipe) {
+	if (texture_generator_syncing_ui) {
 		return;
 	}
 	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
 
-void FPSStudioParticleEditorPlugin::_on_texture_generator_alpha_preview_toggled(bool p_enabled) {
-	if (texture_generator_loading_recipe) {
+void FPSStudioParticleEditorPlugin::_on_texture_generator_param_changed(double p_value, int p_index) {
+	if (p_index < 0 || p_index >= VFXTextureGenerator::MAX_PARAMS) {
 		return;
 	}
-	_regenerate_texture(true);
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_normal_map_toggled(bool p_enabled) {
-	_on_texture_generator_processing_value_changed(p_enabled ? 1.0 : 0.0);
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_polar_toggled(bool p_enabled) {
-	_on_texture_generator_processing_value_changed(p_enabled ? 1.0 : 0.0);
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_style_selected(int p_index) {
-	if (texture_generator_loading_recipe || !texture_generator_style) {
+	texture_generator_params[p_index] = float(p_value);
+	if (texture_generator_syncing_ui) {
 		return;
-	}
-	const int style = texture_generator_style->get_item_id(p_index);
-	if (style == VFX_STYLE_CUSTOM) {
-		return;
-	}
-	texture_generator_loading_recipe = true;
-	switch (style) {
-		case VFX_STYLE_REALISTIC:
-			if (texture_generator_param_speed) {
-				texture_generator_param_speed->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_density) {
-				texture_generator_param_density->set_value_no_signal(1.1);
-			}
-			if (texture_generator_param_emission) {
-				texture_generator_param_emission->set_value_no_signal(1.35);
-			}
-			if (texture_generator_param_detail) {
-				texture_generator_param_detail->set_value_no_signal(1.35);
-			}
-			if (texture_generator_param_contrast) {
-				texture_generator_param_contrast->set_value_no_signal(1.1);
-			}
-			if (texture_generator_param_angle) {
-				texture_generator_param_angle->set_value_no_signal(0.0);
-			}
-			if (texture_generator_toon) {
-				texture_generator_toon->set_pressed_no_signal(false);
-			}
-			break;
-		case VFX_STYLE_MEDIUM:
-			if (texture_generator_param_speed) {
-				texture_generator_param_speed->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_density) {
-				texture_generator_param_density->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_emission) {
-				texture_generator_param_emission->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_detail) {
-				texture_generator_param_detail->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_contrast) {
-				texture_generator_param_contrast->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_angle) {
-				texture_generator_param_angle->set_value_no_signal(0.0);
-			}
-			if (texture_generator_toon) {
-				texture_generator_toon->set_pressed_no_signal(false);
-			}
-			break;
-		case VFX_STYLE_LOW:
-			if (texture_generator_param_speed) {
-				texture_generator_param_speed->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_density) {
-				texture_generator_param_density->set_value_no_signal(0.9);
-			}
-			if (texture_generator_param_emission) {
-				texture_generator_param_emission->set_value_no_signal(0.85);
-			}
-			if (texture_generator_param_detail) {
-				texture_generator_param_detail->set_value_no_signal(0.55);
-			}
-			if (texture_generator_param_contrast) {
-				texture_generator_param_contrast->set_value_no_signal(1.45);
-			}
-			if (texture_generator_param_angle) {
-				texture_generator_param_angle->set_value_no_signal(0.0);
-			}
-			if (texture_generator_toon) {
-				texture_generator_toon->set_pressed_no_signal(false);
-			}
-			break;
-		case VFX_STYLE_TOON:
-			if (texture_generator_param_speed) {
-				texture_generator_param_speed->set_value_no_signal(1.0);
-			}
-			if (texture_generator_param_density) {
-				texture_generator_param_density->set_value_no_signal(1.2);
-			}
-			if (texture_generator_param_emission) {
-				texture_generator_param_emission->set_value_no_signal(1.2);
-			}
-			if (texture_generator_param_detail) {
-				texture_generator_param_detail->set_value_no_signal(0.8);
-			}
-			if (texture_generator_param_contrast) {
-				texture_generator_param_contrast->set_value_no_signal(1.5);
-			}
-			if (texture_generator_param_angle) {
-				texture_generator_param_angle->set_value_no_signal(0.0);
-			}
-			if (texture_generator_toon) {
-				texture_generator_toon->set_pressed_no_signal(true);
-			}
-			if (texture_generator_toon_dark) {
-				texture_generator_toon_dark->set_value_no_signal(0.45);
-			}
-			if (texture_generator_toon_light) {
-				texture_generator_toon_light->set_value_no_signal(0.80);
-			}
-			break;
-	}
-	texture_generator_loading_recipe = false;
-	_invalidate_texture_export();
-	_regenerate_texture(true);
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_param_changed(double p_value) {
-	if (texture_generator_loading_recipe) {
-		return;
-	}
-	if (texture_generator_style) {
-		texture_generator_style->select(texture_generator_style->get_item_index(VFX_STYLE_CUSTOM));
 	}
 	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_reset_params_pressed() {
-	if (texture_generator_style) {
-		const int medium_idx = texture_generator_style->get_item_index(VFX_STYLE_MEDIUM);
-		if (medium_idx >= 0) {
-			texture_generator_style->select(medium_idx);
-			_on_texture_generator_style_selected(medium_idx);
-		}
+	_select_texture_type(texture_generator_type, true);
+	texture_generator_syncing_ui = true;
+	if (texture_generator_speed) {
+		texture_generator_speed->set_value_no_signal(1.0);
 	}
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_toon_toggled(bool p_enabled) {
-	if (!texture_generator_loading_recipe && texture_generator_style) {
-		texture_generator_style->select(texture_generator_style->get_item_index(VFX_STYLE_CUSTOM));
+	if (texture_generator_rotation) {
+		texture_generator_rotation->set_value_no_signal(0.0);
 	}
-	_on_texture_generator_processing_value_changed(p_enabled ? 1.0 : 0.0);
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_tiling_toggled(bool p_enabled) {
-	_on_texture_generator_processing_value_changed(p_enabled ? 1.0 : 0.0);
-}
-
-void FPSStudioParticleEditorPlugin::_on_texture_generator_duration_changed(double p_value) {
-	if (texture_generator_loading_recipe) {
-		return;
+	if (texture_generator_exposure) {
+		texture_generator_exposure->set_value_no_signal(1.0);
 	}
-	_update_texture_time_controls();
+	if (texture_generator_opacity) {
+		texture_generator_opacity->set_value_no_signal(1.0);
+	}
+	texture_generator_syncing_ui = false;
 	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
 
+void FPSStudioParticleEditorPlugin::_on_texture_generator_toggle_changed(bool p_enabled) {
+	_on_texture_generator_processing_value_changed(p_enabled ? 1.0 : 0.0);
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_alpha_preview_toggled(bool p_enabled) {
+	if (texture_generator_syncing_ui) {
+		return;
+	}
+	_regenerate_texture(true);
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_background_selected(int p_index) {
+	if (!texture_generator_stage || !texture_generator_checker) {
+		return;
+	}
+	static const Color backgrounds[] = { Color(0.0, 0.0, 0.0, 0.0), Color(0.0, 0.0, 0.0), Color(0.18, 0.18, 0.19), Color(0.5, 0.5, 0.5), Color(1.0, 1.0, 1.0) };
+	const int index = CLAMP(p_index, 0, 4);
+	texture_generator_checker->set_visible(index == 0);
+	Ref<StyleBoxFlat> style;
+	style.instantiate();
+	style->set_bg_color(index == 0 ? Color(0.0, 0.0, 0.0, 0.0) : backgrounds[index]);
+	texture_generator_stage->add_theme_style_override(SceneStringName(panel), style);
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_show_sheet_toggled(bool p_enabled) {
+	texture_generator_preview_frame = -1;
+	if (p_enabled) {
+		_regenerate_texture(false);
+	} else {
+		_regenerate_texture(true);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_on_texture_generator_reset_color_balance_pressed() {
+	texture_generator_syncing_ui = true;
 	if (texture_generator_shadows_tint) {
 		texture_generator_shadows_tint->set_pick_color(Color(1.0, 1.0, 1.0, 1.0));
 	}
@@ -1919,6 +1244,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_reset_color_balance_pr
 	if (texture_generator_highlights_tint) {
 		texture_generator_highlights_tint->set_pick_color(Color(1.0, 1.0, 1.0, 1.0));
 	}
+	texture_generator_syncing_ui = false;
 	_invalidate_texture_export();
 	_regenerate_texture(true);
 }
@@ -1927,6 +1253,10 @@ void FPSStudioParticleEditorPlugin::_on_texture_recipe_save_pressed() {
 	if (texture_recipe_save_dialog && texture_generator_dialog) {
 		texture_generator_return_after_recipe = true;
 		texture_generator_dialog->hide();
+		const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(texture_generator_type);
+		if (info) {
+			texture_recipe_save_dialog->set_current_file(String::utf8(info->name).to_snake_case().replace("/", "_").replace(" ", "") + ".cfg");
+		}
 		texture_recipe_save_dialog->popup_file_dialog();
 	}
 }
@@ -1950,46 +1280,44 @@ void FPSStudioParticleEditorPlugin::_on_texture_recipe_dialog_visibility_changed
 }
 
 void FPSStudioParticleEditorPlugin::_show_texture_generator_after_recipe() {
-	if (texture_generator_dialog) {
-		texture_generator_dialog->popup_centered_clamped(Size2i(900, 680) * EDSCALE, 0.85);
-	}
+	_show_texture_generator();
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_recipe_save_path_selected(const String &p_path) {
 	Ref<ConfigFile> recipe;
 	recipe.instantiate();
-	recipe->set_value("generator", "version", 2);
-	recipe->set_value("generator", "preset", texture_generator_preset->get_selected_id());
-	static const int resolutions[] = { 128, 256, 512, 1024, 2048 };
-	recipe->set_value("generator", "resolution", resolutions[CLAMP(texture_generator_resolution->get_selected(), 0, 4)]);
+	recipe->set_value("generator", "version", 3);
+	recipe->set_value("generator", "type", texture_generator_type);
+	recipe->set_value("generator", "resolution", VFX_TEXTURE_RESOLUTIONS[CLAMP(texture_generator_resolution->get_selected(), 0, 4)]);
 	recipe->set_value("generator", "output_layout", texture_generator_output->get_selected_id());
 	recipe->set_value("generator", "seed", int(texture_generator_seed->get_value()));
 	recipe->set_value("generator", "fps", int(texture_generator_fps->get_value()));
 	recipe->set_value("generator", "time", texture_generator_time_value);
-	recipe->set_value("generator", "duration", texture_generator_duration ? texture_generator_duration->get_value() : 2.0);
-	recipe->set_value("generator", "base_color", texture_generator_color_a->get_pick_color());
-	recipe->set_value("generator", "highlight_color", texture_generator_color_b->get_pick_color());
-	recipe->set_value("generator", "polar_conversion", texture_generator_polar ? texture_generator_polar->is_pressed() : false);
-	recipe->set_value("generator", "toon_enabled", texture_generator_toon ? texture_generator_toon->is_pressed() : false);
-	recipe->set_value("generator", "toon_dark", texture_generator_toon_dark ? texture_generator_toon_dark->get_value() : 0.5);
-	recipe->set_value("generator", "toon_light", texture_generator_toon_light ? texture_generator_toon_light->get_value() : 0.85);
-	recipe->set_value("generator", "tiling_enabled", texture_generator_tiling ? texture_generator_tiling->is_pressed() : false);
-	recipe->set_value("generator", "tiling_radial_mask", texture_generator_tiling_radial_mask ? texture_generator_tiling_radial_mask->get_value() : 1.0);
-	recipe->set_value("generator", "alpha_threshold", texture_generator_alpha_threshold->get_value());
-	recipe->set_value("generator", "alpha_blur", texture_generator_alpha_blur->get_value());
-	recipe->set_value("generator", "alpha_preview", texture_generator_alpha_preview->is_pressed());
-	recipe->set_value("generator", "normal_map", texture_generator_normal_map->is_pressed());
-	recipe->set_value("generator", "normal_height_scale", texture_generator_normal_height_scale ? texture_generator_normal_height_scale->get_value() : 3.0);
-	recipe->set_value("generator", "shadows_tint", texture_generator_shadows_tint->get_pick_color());
-	recipe->set_value("generator", "midtones_tint", texture_generator_midtones_tint->get_pick_color());
-	recipe->set_value("generator", "highlights_tint", texture_generator_highlights_tint->get_pick_color());
-	recipe->set_value("generator", "style", texture_generator_style ? texture_generator_style->get_selected_id() : int(VFX_STYLE_REALISTIC));
-	recipe->set_value("generator", "param_speed", texture_generator_param_speed ? texture_generator_param_speed->get_value() : 1.0);
-	recipe->set_value("generator", "param_density", texture_generator_param_density ? texture_generator_param_density->get_value() : 1.0);
-	recipe->set_value("generator", "param_emission", texture_generator_param_emission ? texture_generator_param_emission->get_value() : 1.0);
-	recipe->set_value("generator", "param_detail", texture_generator_param_detail ? texture_generator_param_detail->get_value() : 1.0);
-	recipe->set_value("generator", "param_contrast", texture_generator_param_contrast ? texture_generator_param_contrast->get_value() : 1.0);
-	recipe->set_value("generator", "param_angle", texture_generator_param_angle ? texture_generator_param_angle->get_value() : 0.0);
+	recipe->set_value("generator", "duration", texture_generator_duration->get_value());
+	recipe->set_value("generator", "color_a", texture_generator_color_a->get_pick_color());
+	recipe->set_value("generator", "color_b", texture_generator_color_b->get_pick_color());
+	recipe->set_value("generator", "speed", texture_generator_speed->get_value());
+	recipe->set_value("generator", "rotation", texture_generator_rotation->get_value());
+	recipe->set_value("generator", "exposure", texture_generator_exposure->get_value());
+	recipe->set_value("generator", "opacity", texture_generator_opacity->get_value());
+	recipe->set_value("generator", "polar_conversion", texture_generator_polar->is_pressed());
+	recipe->set_value("generator", "tiling_enabled", texture_generator_tiling->is_pressed());
+	recipe->set_value("post", "toon_enabled", texture_generator_toon->is_pressed());
+	recipe->set_value("post", "toon_dark", texture_generator_toon_dark->get_value());
+	recipe->set_value("post", "toon_light", texture_generator_toon_light->get_value());
+	recipe->set_value("post", "alpha_threshold", texture_generator_alpha_threshold->get_value());
+	recipe->set_value("post", "alpha_blur", texture_generator_alpha_blur->get_value());
+	recipe->set_value("post", "normal_map", texture_generator_normal_map->is_pressed());
+	recipe->set_value("post", "normal_height_scale", texture_generator_normal_height_scale->get_value());
+	recipe->set_value("post", "shadows_tint", texture_generator_shadows_tint->get_pick_color());
+	recipe->set_value("post", "midtones_tint", texture_generator_midtones_tint->get_pick_color());
+	recipe->set_value("post", "highlights_tint", texture_generator_highlights_tint->get_pick_color());
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(texture_generator_type);
+	if (info) {
+		for (int i = 0; i < info->param_count; i++) {
+			recipe->set_value("params", String::utf8(info->params[i].key), texture_generator_params[i]);
+		}
+	}
 	String path = p_path;
 	if (path.get_extension().to_lower() != "cfg") {
 		path += ".cfg";
@@ -2012,112 +1340,98 @@ void FPSStudioParticleEditorPlugin::_on_texture_recipe_load_path_selected(const 
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not load the texture recipe from %s (error %d)."), p_path, load_error));
 		return;
 	}
-	const int preset = int(recipe->get_value("generator", "preset", VFX_TEXTURE_FIRE));
+	const int version = int(recipe->get_value("generator", "version", 1));
+	// Version 1 and 2 recipes stored the same type IDs under "preset".
+	const int type = int(recipe->get_value("generator", version >= 3 ? "type" : "preset", VFXTextureGenerator::TYPE_FIRE));
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(type);
 	const int output = int(recipe->get_value("generator", "output_layout", VFX_TEXTURE_OUTPUT_STILL));
+	const int output_index = texture_generator_output->get_item_index(output);
+	if (!info || output_index < 0) {
+		EditorNode::get_singleton()->show_warning(TTR("The texture recipe contains an unsupported template or output layout."));
+		return;
+	}
 	const int resolution = int(recipe->get_value("generator", "resolution", 256));
-	static const int resolutions[] = { 128, 256, 512, 1024, 2048 };
 	int resolution_index = 1;
 	for (int i = 0; i < 5; i++) {
-		if (resolutions[i] == resolution) {
+		if (VFX_TEXTURE_RESOLUTIONS[i] == resolution) {
 			resolution_index = i;
 			break;
 		}
 	}
-	const int preset_index = texture_generator_preset->get_item_index(preset);
-	const int output_index = texture_generator_output->get_item_index(output);
-	if (preset_index < 0 || output_index < 0) {
-		EditorNode::get_singleton()->show_warning(TTR("The texture recipe contains an unsupported template or output layout."));
-		return;
+	_select_texture_type(type, true);
+	texture_generator_syncing_ui = true;
+	if (version >= 3 && recipe->has_section("params")) {
+		for (int i = 0; i < info->param_count; i++) {
+			const String key = String::utf8(info->params[i].key);
+			texture_generator_params[i] = float(recipe->get_value("params", key, info->params[i].default_value));
+		}
 	}
-	texture_generator_loading_recipe = true;
-	texture_generator_preset->select(preset_index);
 	texture_generator_resolution->select(resolution_index);
 	texture_generator_output->select(output_index);
 	texture_generator_seed->set_value_no_signal(int(recipe->get_value("generator", "seed", 7)));
 	texture_generator_fps->set_value_no_signal(int(recipe->get_value("generator", "fps", 12)));
 	texture_generator_time_value = real_t(recipe->get_value("generator", "time", 0.0));
-	if (texture_generator_duration) {
-		texture_generator_duration->set_value_no_signal(real_t(recipe->get_value("generator", "duration", 2.0)));
-	}
-	texture_generator_color_a->set_pick_color(recipe->get_value("generator", "base_color", Color(0.95, 0.12, 0.025, 1.0)));
-	texture_generator_color_b->set_pick_color(recipe->get_value("generator", "highlight_color", Color(1.0, 0.82, 0.18, 1.0)));
-	if (texture_generator_polar) {
-		texture_generator_polar->set_pressed_no_signal(bool(recipe->get_value("generator", "polar_conversion", false)));
-	}
-	if (texture_generator_toon) {
-		texture_generator_toon->set_pressed_no_signal(bool(recipe->get_value("generator", "toon_enabled", false)));
-	}
-	if (texture_generator_toon_dark) {
-		texture_generator_toon_dark->set_value_no_signal(real_t(recipe->get_value("generator", "toon_dark", 0.5)));
-	}
-	if (texture_generator_toon_light) {
-		texture_generator_toon_light->set_value_no_signal(real_t(recipe->get_value("generator", "toon_light", 0.85)));
-	}
-	if (texture_generator_tiling) {
-		texture_generator_tiling->set_pressed_no_signal(bool(recipe->get_value("generator", "tiling_enabled", false)));
-	}
-	if (texture_generator_tiling_radial_mask) {
-		texture_generator_tiling_radial_mask->set_value_no_signal(real_t(recipe->get_value("generator", "tiling_radial_mask", 1.0)));
-	}
-	texture_generator_alpha_threshold->set_value_no_signal(real_t(recipe->get_value("generator", "alpha_threshold", 0.0)));
-	texture_generator_alpha_blur->set_value_no_signal(real_t(recipe->get_value("generator", "alpha_blur", 0.0)));
-	texture_generator_alpha_preview->set_pressed_no_signal(bool(recipe->get_value("generator", "alpha_preview", false)));
-	texture_generator_normal_map->set_pressed_no_signal(bool(recipe->get_value("generator", "normal_map", false)));
-	if (texture_generator_normal_height_scale) {
-		texture_generator_normal_height_scale->set_value_no_signal(real_t(recipe->get_value("generator", "normal_height_scale", 3.0)));
-	}
-	texture_generator_shadows_tint->set_pick_color(recipe->get_value("generator", "shadows_tint", Color(1.0, 1.0, 1.0, 1.0)));
-	texture_generator_midtones_tint->set_pick_color(recipe->get_value("generator", "midtones_tint", Color(1.0, 1.0, 1.0, 1.0)));
-	texture_generator_highlights_tint->set_pick_color(recipe->get_value("generator", "highlights_tint", Color(1.0, 1.0, 1.0, 1.0)));
-	const int style = int(recipe->get_value("generator", "style", VFX_STYLE_REALISTIC));
-	const int style_index = texture_generator_style ? texture_generator_style->get_item_index(style) : -1;
-	if (style_index >= 0) {
-		texture_generator_style->select(style_index);
-	}
-	if (texture_generator_param_speed) {
-		texture_generator_param_speed->set_value_no_signal(real_t(recipe->get_value("generator", "param_speed", 1.0)));
-	}
-	if (texture_generator_param_density) {
-		texture_generator_param_density->set_value_no_signal(real_t(recipe->get_value("generator", "param_density", 1.0)));
-	}
-	if (texture_generator_param_emission) {
-		texture_generator_param_emission->set_value_no_signal(real_t(recipe->get_value("generator", "param_emission", 1.0)));
-	}
-	if (texture_generator_param_detail) {
-		texture_generator_param_detail->set_value_no_signal(real_t(recipe->get_value("generator", "param_detail", 1.0)));
-	}
-	if (texture_generator_param_contrast) {
-		texture_generator_param_contrast->set_value_no_signal(real_t(recipe->get_value("generator", "param_contrast", 1.0)));
-	}
-	if (texture_generator_param_angle) {
-		texture_generator_param_angle->set_value_no_signal(real_t(recipe->get_value("generator", "param_angle", 0.0)));
-	}
-	texture_generator_loading_recipe = false;
+	texture_generator_duration->set_value_no_signal(real_t(recipe->get_value("generator", "duration", 2.0)));
+	texture_generator_color_a->set_pick_color(recipe->get_value("generator", version >= 3 ? "color_a" : "base_color", vfx_color_from_array(info->color_a)));
+	texture_generator_color_b->set_pick_color(recipe->get_value("generator", version >= 3 ? "color_b" : "highlight_color", vfx_color_from_array(info->color_b)));
+	texture_generator_speed->set_value_no_signal(real_t(recipe->get_value("generator", version >= 3 ? "speed" : "param_speed", 1.0)));
+	texture_generator_rotation->set_value_no_signal(real_t(recipe->get_value("generator", version >= 3 ? "rotation" : "param_angle", 0.0)));
+	texture_generator_exposure->set_value_no_signal(real_t(recipe->get_value("generator", "exposure", 1.0)));
+	texture_generator_opacity->set_value_no_signal(real_t(recipe->get_value("generator", "opacity", 1.0)));
+	texture_generator_polar->set_pressed_no_signal(bool(recipe->get_value("generator", "polar_conversion", false)));
+	texture_generator_tiling->set_pressed_no_signal(bool(recipe->get_value("generator", "tiling_enabled", false)));
+	const String post = version >= 3 ? "post" : "generator";
+	texture_generator_toon->set_pressed_no_signal(bool(recipe->get_value(post, "toon_enabled", false)));
+	texture_generator_toon_dark->set_value_no_signal(real_t(recipe->get_value(post, "toon_dark", 0.5)));
+	texture_generator_toon_light->set_value_no_signal(real_t(recipe->get_value(post, "toon_light", 0.85)));
+	texture_generator_alpha_threshold->set_value_no_signal(real_t(recipe->get_value(post, "alpha_threshold", 0.0)));
+	texture_generator_alpha_blur->set_value_no_signal(real_t(recipe->get_value(post, "alpha_blur", 0.0)));
+	texture_generator_normal_map->set_pressed_no_signal(bool(recipe->get_value(post, "normal_map", false)));
+	texture_generator_normal_height_scale->set_value_no_signal(real_t(recipe->get_value(post, "normal_height_scale", 3.0)));
+	texture_generator_shadows_tint->set_pick_color(recipe->get_value(post, "shadows_tint", Color(1.0, 1.0, 1.0, 1.0)));
+	texture_generator_midtones_tint->set_pick_color(recipe->get_value(post, "midtones_tint", Color(1.0, 1.0, 1.0, 1.0)));
+	texture_generator_highlights_tint->set_pick_color(recipe->get_value(post, "highlights_tint", Color(1.0, 1.0, 1.0, 1.0)));
+	texture_generator_syncing_ui = false;
+	_rebuild_texture_param_controls();
 	_update_texture_time_controls();
 	_invalidate_texture_export();
 	_regenerate_texture(true);
+	if (texture_generator_status) {
+		texture_generator_status->set_text(vformat(TTR("Recipe loaded: %s"), p_path.get_file()));
+	}
 }
 
-void FPSStudioParticleEditorPlugin::_on_texture_generator_action(const String &p_action) {
-	if (p_action == "export") {
-		// A playing still preview is intentionally rendered at a smaller size for
-		// responsiveness. Export always regenerates the full-resolution sample.
-		_regenerate_texture();
-		if (!generated_texture_image.is_valid() || !texture_save_dialog) {
-			return;
-		}
-		const String output_suffix = generated_texture_frame_columns > 1 ? vformat("_flipbook_%dx%d", generated_texture_frame_columns, generated_texture_frame_columns) : String();
-		const String normal_suffix = texture_generator_normal_map->is_pressed() ? "_normal" : String();
-		texture_save_dialog->set_current_file(vformat("%s%s%s_%d.png", texture_generator_preset->get_text().to_lower(), output_suffix, normal_suffix, int(texture_generator_seed->get_value())));
-		texture_generator_return_after_export = true;
+void FPSStudioParticleEditorPlugin::_on_texture_generator_export_pressed() {
+	// The live preview may be rendered at a smaller size and draft quality.
+	// Export always regenerates the full-resolution sample.
+	_regenerate_texture();
+	if (!generated_texture_image.is_valid() || !texture_save_dialog) {
+		return;
+	}
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(texture_generator_type);
+	const String base_name = info ? String::utf8(info->name).to_lower().replace(" / ", "_").replace(" ", "_") : String("vfx");
+	const String output_suffix = generated_texture_frame_columns > 1 ? vformat("_flipbook_%dx%d", generated_texture_frame_columns, generated_texture_frame_columns) : String();
+	const String normal_suffix = texture_generator_normal_map->is_pressed() ? "_normal" : String();
+	texture_save_dialog->set_current_file(vformat("%s%s%s_%d.png", base_name, output_suffix, normal_suffix, int(texture_generator_seed->get_value())));
+	texture_generator_return_after_export = true;
+	texture_generator_dialog->hide();
+	texture_save_dialog->popup_file_dialog();
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_apply_pressed() {
+	if (texture_generator_normal_map->is_pressed()) {
+		EditorNode::get_singleton()->show_warning(TTR("Normal maps are exported as project textures and cannot be applied as an unlit particle color texture."));
+		return;
+	}
+	_apply_generated_texture();
+	if (texture_generator_status && !generated_texture_path.is_empty()) {
+		texture_generator_status->set_text(vformat(TTR("Applied %s to the selected emitter."), generated_texture_path.get_file()));
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_close_pressed() {
+	if (texture_generator_dialog) {
 		texture_generator_dialog->hide();
-		texture_save_dialog->popup_file_dialog();
-	} else if (p_action == "apply") {
-		if (texture_generator_normal_map->is_pressed()) {
-			EditorNode::get_singleton()->show_warning(TTR("Normal maps are exported as project textures and cannot be applied as an unlit particle color texture."));
-			return;
-		}
-		_apply_generated_texture();
 	}
 }
 
@@ -2125,6 +1439,7 @@ void FPSStudioParticleEditorPlugin::_invalidate_texture_export() {
 	generated_texture_path = String();
 	if (texture_generator_apply_button) {
 		texture_generator_apply_button->set_disabled(true);
+		texture_generator_apply_button->set_tooltip_text(TTR("Export the PNG first; the emitter keeps a reference to the exported project texture."));
 	}
 	if (texture_generator_status) {
 		texture_generator_status->set_text(String());
@@ -2146,9 +1461,7 @@ void FPSStudioParticleEditorPlugin::_show_texture_generator_after_export() {
 		return;
 	}
 	texture_generator_return_after_export = false;
-	if (texture_generator_dialog) {
-		texture_generator_dialog->popup_centered_clamped(Size2i(900, 680) * EDSCALE, 0.85);
-	}
+	_show_texture_generator();
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String &p_path) {
@@ -2181,6 +1494,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 	generated_texture = imported_texture;
 	if (texture_generator_apply_button) {
 		texture_generator_apply_button->set_disabled(texture_generator_normal_map->is_pressed());
+		texture_generator_apply_button->set_tooltip_text(TTR("Assign the exported texture to the selected emitter."));
 	}
 	if (texture_generator_status) {
 		const String message = texture_generator_normal_map->is_pressed() ? TTR("Exported normal map: %s") : TTR("Exported: %s");
@@ -2193,19 +1507,19 @@ void FPSStudioParticleEditorPlugin::_update_texture_time_controls() {
 	if (!texture_generator_time) {
 		return;
 	}
-	const int columns = texture_generator_output ? texture_generator_output->get_selected_id() : 1;
+	const int columns = texture_generator_output ? MAX(1, texture_generator_output->get_selected_id()) : 1;
 	const bool is_sheet = columns > 1;
-	if (texture_generator_fps_label) {
-		texture_generator_fps_label->set_visible(is_sheet);
+	if (texture_generator_fps_row) {
+		texture_generator_fps_row->set_visible(is_sheet);
 	}
-	if (texture_generator_fps) {
-		texture_generator_fps->set_visible(is_sheet);
+	if (texture_generator_duration_row) {
+		texture_generator_duration_row->set_visible(is_sheet);
 	}
-	if (texture_generator_duration_label) {
-		texture_generator_duration_label->set_visible(is_sheet);
-	}
-	if (texture_generator_duration) {
-		texture_generator_duration->set_visible(is_sheet);
+	if (texture_generator_show_sheet) {
+		texture_generator_show_sheet->set_visible(is_sheet);
+		if (!is_sheet && texture_generator_show_sheet->is_pressed()) {
+			texture_generator_show_sheet->set_pressed_no_signal(false);
+		}
 	}
 	const double duration = is_sheet && texture_generator_duration ? texture_generator_duration->get_value() : 1.0;
 	texture_generator_time->set_min(0.0);
@@ -2214,7 +1528,16 @@ void FPSStudioParticleEditorPlugin::_update_texture_time_controls() {
 	texture_generator_time_value = CLAMP(texture_generator_time_value, 0.0, duration);
 	texture_generator_time->set_value_no_signal(texture_generator_time_value);
 	if (texture_generator_time_label) {
-		texture_generator_time_label->set_text(vformat("%s s", String::num(texture_generator_time_value, 2)));
+		texture_generator_time_label->set_text(vformat("%s / %s s", String::num(texture_generator_time_value, 2), String::num(duration, 2)));
+	}
+	if (texture_generator_frame_label) {
+		if (is_sheet) {
+			const int frame_count = columns * columns;
+			const int frame_index = CLAMP(int(Math::floor((texture_generator_time_value / MAX(0.001, duration)) * frame_count)), 0, frame_count - 1);
+			texture_generator_frame_label->set_text(vformat(TTR("Frame %d / %d"), frame_index + 1, frame_count));
+		} else {
+			texture_generator_frame_label->set_text(vformat(TTR("Life %d%%"), int(Math::round(texture_generator_time_value / MAX(0.001, duration) * 100.0))));
+		}
 	}
 }
 
@@ -2222,7 +1545,7 @@ void FPSStudioParticleEditorPlugin::_update_texture_preview() {
 	if (!texture_generator_preview || !generated_texture.is_valid()) {
 		return;
 	}
-	if (generated_texture_frame_columns <= 1) {
+	if (generated_texture_frame_columns <= 1 || (texture_generator_show_sheet && texture_generator_show_sheet->is_pressed())) {
 		texture_generator_preview->set_texture(generated_texture);
 		texture_generator_preview_frame = 0;
 		return;
@@ -2243,76 +1566,60 @@ void FPSStudioParticleEditorPlugin::_update_texture_preview() {
 }
 
 void FPSStudioParticleEditorPlugin::_regenerate_texture(bool p_preview_only) {
-	if (!texture_generator_preset || !texture_generator_resolution || !texture_generator_output || !texture_generator_seed || !texture_generator_fps || !texture_generator_color_a || !texture_generator_color_b || !texture_generator_alpha_threshold || !texture_generator_alpha_blur || !texture_generator_alpha_preview || !texture_generator_normal_map || !texture_generator_shadows_tint || !texture_generator_midtones_tint || !texture_generator_highlights_tint) {
+	if (!texture_generator_resolution || !texture_generator_output || !texture_generator_seed || !texture_generator_fps || !texture_generator_duration || !texture_generator_alpha_threshold || !texture_generator_alpha_blur || !texture_generator_alpha_preview || !texture_generator_normal_map || !texture_generator_shadows_tint || !texture_generator_midtones_tint || !texture_generator_highlights_tint || !texture_generator_toon) {
 		return;
 	}
-	static const int resolutions[] = { 128, 256, 512, 1024, 2048 };
 	const int resolution_index = CLAMP(texture_generator_resolution->get_selected(), 0, 4);
-	const int size = resolutions[resolution_index];
-	const int preset = texture_generator_preset->get_selected_id();
+	const int size = VFX_TEXTURE_RESOLUTIONS[resolution_index];
 	const int output_id = texture_generator_output->get_selected_id();
 	const int frame_columns = output_id == VFX_TEXTURE_OUTPUT_SHEET_8X8 ? 8 : (output_id == VFX_TEXTURE_OUTPUT_SHEET_4X4 ? 4 : 1);
 	const int frame_size = size / frame_columns;
-	const int seed = int(texture_generator_seed->get_value());
+	const int frame_count = frame_columns * frame_columns;
 	const int fps = MAX(1, int(texture_generator_fps->get_value()));
-	const double duration = texture_generator_duration ? texture_generator_duration->get_value() : 2.0;
-	const Color color_a = texture_generator_color_a->get_pick_color();
-	const Color color_b = texture_generator_color_b->get_pick_color();
-	const bool polar_conversion = texture_generator_polar && texture_generator_polar->is_pressed();
-	const bool toon_enabled = texture_generator_toon && texture_generator_toon->is_pressed();
-	const real_t toon_dark = texture_generator_toon_dark ? texture_generator_toon_dark->get_value() : 0.5;
-	const real_t toon_light = texture_generator_toon_light ? texture_generator_toon_light->get_value() : 0.85;
-	const bool tiling_enabled = texture_generator_tiling && texture_generator_tiling->is_pressed();
-	const real_t tiling_radial_mask = texture_generator_tiling_radial_mask ? texture_generator_tiling_radial_mask->get_value() : 1.0;
+	const double duration = frame_columns > 1 ? texture_generator_duration->get_value() : 1.0;
+	const bool toon_enabled = texture_generator_toon->is_pressed();
+	const real_t toon_dark = texture_generator_toon_dark->get_value();
+	const real_t toon_light = texture_generator_toon_light->get_value();
 	const real_t alpha_threshold = texture_generator_alpha_threshold->get_value();
 	const real_t alpha_blur = texture_generator_alpha_blur->get_value();
 	const Color shadows_tint = texture_generator_shadows_tint->get_pick_color();
 	const Color midtones_tint = texture_generator_midtones_tint->get_pick_color();
 	const Color highlights_tint = texture_generator_highlights_tint->get_pick_color();
 	const bool generate_normal_map = texture_generator_normal_map->is_pressed();
-	const real_t normal_height_scale = texture_generator_normal_height_scale ? texture_generator_normal_height_scale->get_value() : 3.0;
-	const real_t param_speed = texture_generator_param_speed ? texture_generator_param_speed->get_value() : 1.0;
-	const real_t param_density = texture_generator_param_density ? texture_generator_param_density->get_value() : 1.0;
-	const real_t param_emission = texture_generator_param_emission ? texture_generator_param_emission->get_value() : 1.0;
-	const real_t param_detail = texture_generator_param_detail ? texture_generator_param_detail->get_value() : 1.0;
-	const real_t param_contrast = texture_generator_param_contrast ? texture_generator_param_contrast->get_value() : 1.0;
-	const real_t param_angle = texture_generator_param_angle ? texture_generator_param_angle->get_value() : 0.0;
+	const real_t normal_height_scale = texture_generator_normal_height_scale->get_value();
+	const bool show_sheet = frame_columns > 1 && texture_generator_show_sheet && texture_generator_show_sheet->is_pressed();
 
-	if (p_preview_only) {
+	if (p_preview_only && !show_sheet) {
 		const int preview_frame_size = MIN(frame_size, 256);
-		const int frame_count = frame_columns * frame_columns;
 		const int frame_index = frame_columns == 1 ? 0 : CLAMP(int(Math::floor((texture_generator_time_value / MAX(0.001, duration)) * frame_count)), 0, frame_count - 1);
 		const real_t sample_time = frame_columns == 1 ? texture_generator_time_value : (real_t(frame_index) / frame_count) * duration;
-		Ref<Image> preview_image = generate_particle_texture_frame(preview_frame_size, preset, seed, color_a, color_b, sample_time, polar_conversion, tiling_enabled, tiling_radial_mask, param_speed, param_density, param_emission, param_detail, param_contrast, param_angle);
+		const real_t life = frame_columns == 1 ? texture_generator_time_value / MAX(0.001, duration) : real_t(frame_index) / real_t(MAX(1, frame_count - 1));
+		// Draft quality keeps playback and slider dragging responsive.
+		const bool playing = texture_generator_animate && texture_generator_animate->is_pressed();
+		const VFXTextureGenerator::Settings settings = _make_texture_settings(sample_time, life, playing ? 0 : 1);
+		Ref<Image> preview_image = render_vfx_texture_frame(settings, preview_frame_size);
 		process_particle_texture_frame(preview_image, alpha_threshold, alpha_blur, toon_enabled, toon_dark, toon_light, shadows_tint, midtones_tint, highlights_tint, generate_normal_map, normal_height_scale, texture_generator_alpha_preview->is_pressed());
 		texture_generator_preview->set_texture(ImageTexture::create_from_image(preview_image));
 		texture_generator_preview_frame = frame_index;
 		return;
 	}
-	generated_texture_image.instantiate();
-	generated_texture_image->initialize_data(size, size, false, Image::FORMAT_RGBA8);
-	const int frame_count = frame_columns * frame_columns;
+	generated_texture_image = Image::create_empty(size, size, false, Image::FORMAT_RGBA8);
 	for (int frame_index = 0; frame_index < frame_count; frame_index++) {
 		const real_t sample_time = frame_columns == 1 ? texture_generator_time_value : (real_t(frame_index) / frame_count) * duration;
-		Ref<Image> frame_image = generate_particle_texture_frame(frame_size, preset, seed, color_a, color_b, sample_time, polar_conversion, tiling_enabled, tiling_radial_mask, param_speed, param_density, param_emission, param_detail, param_contrast, param_angle);
+		const real_t life = frame_columns == 1 ? texture_generator_time_value / MAX(0.001, duration) : real_t(frame_index) / real_t(MAX(1, frame_count - 1));
+		const VFXTextureGenerator::Settings settings = _make_texture_settings(sample_time, life, 1);
+		Ref<Image> frame_image = render_vfx_texture_frame(settings, frame_size);
 		process_particle_texture_frame(frame_image, alpha_threshold, alpha_blur, toon_enabled, toon_dark, toon_light, shadows_tint, midtones_tint, highlights_tint, generate_normal_map, normal_height_scale, false);
 		const int origin_x = (frame_index % frame_columns) * frame_size;
 		const int origin_y = (frame_index / frame_columns) * frame_size;
-		for (int py = 0; py < frame_size; py++) {
-			for (int px = 0; px < frame_size; px++) {
-				generated_texture_image->set_pixel(origin_x + px, origin_y + py, frame_image->get_pixel(px, py));
-			}
-		}
+		generated_texture_image->blit_rect(frame_image, Rect2i(0, 0, frame_size, frame_size), Point2i(origin_x, origin_y));
 	}
 	generated_texture_frame_columns = frame_columns;
 	generated_texture_fps = fps;
 	generated_texture = ImageTexture::create_from_image(generated_texture_image);
 	generated_texture_path = String();
 	texture_generator_preview_frame = -1;
-	if (texture_generator_normal_map->is_pressed()) {
-		generated_texture_path = String();
-	}
-	if (texture_generator_alpha_preview->is_pressed()) {
+	if (texture_generator_alpha_preview->is_pressed() && !show_sheet) {
 		_regenerate_texture(true);
 	} else {
 		_update_texture_preview();
@@ -3336,13 +2643,10 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			texture_generator_time_value = Math::fposmod(texture_generator_time_value, duration);
 			texture_generator_preview_frame = -1;
 		}
-		if (texture_generator_time) {
-			texture_generator_time->set_value_no_signal(MIN(texture_generator_time_value, texture_generator_time->get_max()));
-		}
-		if (texture_generator_time_label) {
-			texture_generator_time_label->set_text(vformat("%s s", String::num(texture_generator_time_value, 2)));
-		}
-		if (is_sheet) {
+		_update_texture_time_controls();
+		if (texture_generator_show_sheet && texture_generator_show_sheet->is_pressed()) {
+			// The whole sheet is shown; nothing to animate.
+		} else if (is_sheet) {
 			const int current_frame = CLAMP(int(Math::floor((texture_generator_time_value / MAX(0.001, duration)) * (frame_columns * frame_columns))), 0, frame_columns * frame_columns - 1);
 			if (current_frame != texture_generator_preview_frame) {
 				_regenerate_texture(true);
@@ -3904,400 +3208,337 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 
 	texture_generator_dialog = memnew(AcceptDialog);
 	texture_generator_dialog->set_title(TTR("VFX Texture Generator"));
-	texture_generator_dialog->set_ok_button_text(TTR("Close"));
-	texture_generator_dialog->set_hide_on_ok(true);
-	texture_generator_dialog->set_min_size(Size2(940, 680) * EDSCALE);
-	texture_generator_dialog->connect("custom_action", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_action));
+	texture_generator_dialog->set_min_size(Size2(1080, 700) * EDSCALE);
+	texture_generator_dialog->get_ok_button()->hide();
 	add_child(texture_generator_dialog);
-	HBoxContainer *texture_generator_layout = memnew(HBoxContainer);
-	texture_generator_layout->set_custom_minimum_size(Size2(900, 580) * EDSCALE);
-	texture_generator_dialog->add_child(texture_generator_layout);
-	PanelContainer *texture_preview_panel = memnew(PanelContainer);
-	texture_preview_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_preview_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_generator_layout->add_child(texture_preview_panel);
-	VBoxContainer *texture_preview_content = memnew(VBoxContainer);
-	texture_preview_panel->add_child(texture_preview_content);
+	VBoxContainer *texture_generator_root = memnew(VBoxContainer);
+	texture_generator_root->set_custom_minimum_size(Size2(1040, 640) * EDSCALE);
+	texture_generator_dialog->add_child(texture_generator_root);
+
+	HSplitContainer *texture_generator_split = memnew(HSplitContainer);
+	texture_generator_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_generator_root->add_child(texture_generator_split);
+
+	// Left: effect gallery grouped by category.
+	VBoxContainer *texture_type_column = memnew(VBoxContainer);
+	texture_type_column->set_custom_minimum_size(Size2(210, 0) * EDSCALE);
+	texture_generator_split->add_child(texture_type_column);
+	Label *texture_type_header = memnew(Label);
+	texture_type_header->set_text(TTR("Effect type"));
+	texture_type_header->set_theme_type_variation("HeaderSmall");
+	texture_type_column->add_child(texture_type_header);
+	texture_generator_type_tree = memnew(Tree);
+	texture_generator_type_tree->set_hide_root(true);
+	texture_generator_type_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_generator_type_tree->set_hide_folding(true);
+	texture_generator_type_tree->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_type_selected));
+	texture_type_column->add_child(texture_generator_type_tree);
+
+	HSplitContainer *texture_generator_inner_split = memnew(HSplitContainer);
+	texture_generator_inner_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_generator_split->add_child(texture_generator_inner_split);
+
+	// Center: preview stage with background choice and transport.
+	VBoxContainer *texture_preview_column = memnew(VBoxContainer);
+	texture_preview_column->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_preview_column->set_custom_minimum_size(Size2(420, 0) * EDSCALE);
+	texture_generator_inner_split->add_child(texture_preview_column);
+	HBoxContainer *texture_preview_header = memnew(HBoxContainer);
+	texture_preview_column->add_child(texture_preview_header);
+	texture_generator_type_title = memnew(Label);
+	texture_generator_type_title->set_theme_type_variation("HeaderMedium");
+	texture_generator_type_title->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_generator_type_title->set_clip_text(true);
+	texture_preview_header->add_child(texture_generator_type_title);
+	texture_generator_show_sheet = memnew(Button);
+	texture_generator_show_sheet->set_text(TTR("Show Sheet"));
+	texture_generator_show_sheet->set_toggle_mode(true);
+	texture_generator_show_sheet->set_flat(true);
+	texture_generator_show_sheet->set_tooltip_text(TTR("Show the whole sprite sheet instead of the animated frame."));
+	texture_generator_show_sheet->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_show_sheet_toggled));
+	texture_preview_header->add_child(texture_generator_show_sheet);
+	texture_generator_background = memnew(OptionButton);
+	texture_generator_background->add_item(TTR("Checker"));
+	texture_generator_background->add_item(TTR("Black"));
+	texture_generator_background->add_item(TTR("Dark"));
+	texture_generator_background->add_item(TTR("Gray"));
+	texture_generator_background->add_item(TTR("White"));
+	texture_generator_background->select(1);
+	texture_generator_background->set_tooltip_text(TTR("Preview background. Emissive effects are usually judged on black, transparency on the checker."));
+	texture_generator_background->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_background_selected));
+	texture_preview_header->add_child(texture_generator_background);
+	texture_generator_type_description = memnew(Label);
+	texture_generator_type_description->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	texture_generator_type_description->set_modulate(Color(1, 1, 1, 0.65));
+	texture_preview_column->add_child(texture_generator_type_description);
+	AspectRatioContainer *texture_preview_aspect = memnew(AspectRatioContainer);
+	texture_preview_aspect->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_preview_aspect->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_preview_column->add_child(texture_preview_aspect);
+	texture_generator_stage = memnew(PanelContainer);
+	texture_preview_aspect->add_child(texture_generator_stage);
+	texture_generator_checker = memnew(TextureRect);
+	{
+		Ref<Image> checker = Image::create_empty(16, 16, false, Image::FORMAT_RGB8);
+		for (int y = 0; y < 16; y++) {
+			for (int x = 0; x < 16; x++) {
+				const bool odd = ((x / 8) + (y / 8)) & 1;
+				checker->set_pixel(x, y, odd ? Color(0.42, 0.42, 0.42) : Color(0.3, 0.3, 0.3));
+			}
+		}
+		texture_generator_checker->set_texture(ImageTexture::create_from_image(checker));
+	}
+	texture_generator_checker->set_stretch_mode(TextureRect::STRETCH_TILE);
+	texture_generator_checker->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
+	texture_generator_checker->set_texture_filter(CanvasItem::TEXTURE_FILTER_NEAREST);
+	texture_generator_stage->add_child(texture_generator_checker);
 	texture_generator_preview = memnew(TextureRect);
-	texture_generator_preview->set_custom_minimum_size(Size2(490, 460) * EDSCALE);
 	texture_generator_preview->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
 	texture_generator_preview->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
-	texture_generator_preview->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_preview_content->add_child(texture_generator_preview);
+	texture_generator_stage->add_child(texture_generator_preview);
 	HBoxContainer *texture_preview_transport = memnew(HBoxContainer);
-	texture_preview_content->add_child(texture_preview_transport);
-	texture_generator_animate = memnew(CheckButton);
-	texture_generator_animate->set_text(TTR("Animate"));
+	texture_preview_column->add_child(texture_preview_transport);
+	texture_generator_animate = memnew(Button);
+	texture_generator_animate->set_toggle_mode(true);
 	texture_generator_animate->set_pressed(true);
-	texture_generator_animate->set_tooltip_text(TTR("Play the generated texture or sprite sheet in the preview."));
+	texture_generator_animate->set_text(TTR("Pause"));
+	texture_generator_animate->set_tooltip_text(TTR("Play or pause the preview animation."));
 	texture_preview_transport->add_child(texture_generator_animate);
-	Label *texture_generator_time_title = memnew(Label);
-	texture_generator_time_title->set_text(TTR("Time"));
-	texture_preview_transport->add_child(texture_generator_time_title);
 	texture_generator_time = memnew(HSlider);
 	texture_generator_time->set_min(0.0);
 	texture_generator_time->set_max(1.0);
 	texture_generator_time->set_step(0.01);
-	texture_generator_time->set_value(0.0);
 	texture_generator_time->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_generator_time->set_tooltip_text(TTR("Scrub the animation or choose a time sample."));
+	texture_generator_time->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
+	texture_generator_time->set_tooltip_text(TTR("Scrub the animation. For a single texture this also drives the life cycle."));
 	texture_preview_transport->add_child(texture_generator_time);
 	texture_generator_time_label = memnew(Label);
-	texture_generator_time_label->set_text("0.00 s");
-	texture_generator_time_label->set_custom_minimum_size(Size2(48, 0) * EDSCALE);
+	texture_generator_time_label->set_custom_minimum_size(Size2(96, 0) * EDSCALE);
+	texture_generator_time_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_RIGHT);
 	texture_preview_transport->add_child(texture_generator_time_label);
+	texture_generator_frame_label = memnew(Label);
+	texture_generator_frame_label->set_custom_minimum_size(Size2(96, 0) * EDSCALE);
+	texture_generator_frame_label->set_modulate(Color(1, 1, 1, 0.65));
+	texture_preview_transport->add_child(texture_generator_frame_label);
+
+	// Right: compact inspector.
 	ScrollContainer *texture_controls_scroll = memnew(ScrollContainer);
-	texture_controls_scroll->set_custom_minimum_size(Size2(310, 0) * EDSCALE);
-	texture_controls_scroll->set_h_size_flags(Control::SIZE_SHRINK_END);
-	texture_controls_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_controls_scroll->set_custom_minimum_size(Size2(340, 0) * EDSCALE);
 	texture_controls_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
-	texture_generator_layout->add_child(texture_controls_scroll);
+	texture_generator_inner_split->add_child(texture_controls_scroll);
 	VBoxContainer *texture_controls = memnew(VBoxContainer);
 	texture_controls->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_controls->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	texture_controls_scroll->add_child(texture_controls);
-	Label *texture_generator_intro = memnew(Label);
-	texture_generator_intro->set_text(TTR("Build a particle texture or animated sprite sheet inside the editor, preview it, then export it as a project PNG."));
-	texture_generator_intro->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	texture_controls->add_child(texture_generator_intro);
-	HBoxContainer *texture_recipe_actions = memnew(HBoxContainer);
-	texture_controls->add_child(texture_recipe_actions);
-	Button *texture_recipe_load_button = memnew(Button);
-	texture_recipe_load_button->set_text(TTR("Load Recipe"));
-	texture_recipe_load_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_recipe_load_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_recipe_load_pressed));
-	texture_recipe_actions->add_child(texture_recipe_load_button);
-	Button *texture_recipe_save_button = memnew(Button);
-	texture_recipe_save_button->set_text(TTR("Save Recipe"));
-	texture_recipe_save_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	texture_recipe_save_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_recipe_save_pressed));
-	texture_recipe_actions->add_child(texture_recipe_save_button);
-	Label *texture_preset_label = memnew(Label);
-	texture_preset_label->set_text(TTR("Texture type"));
-	texture_controls->add_child(texture_preset_label);
-	texture_generator_preset = memnew(OptionButton);
-	texture_generator_preset->add_separator(TTR("Fire and smoke"));
-	texture_generator_preset->add_item(TTR("Fire"), VFX_TEXTURE_FIRE);
-	texture_generator_preset->add_item(TTR("Smoke"), VFX_TEXTURE_SMOKE);
-	texture_generator_preset->add_item(TTR("Explosion (Fireball)"), VFX_TEXTURE_EXPLOSION);
-	texture_generator_preset->add_item(TTR("Explosion 2 (Shockwave ring)"), VFX_TEXTURE_EXPLOSION_RING);
-	texture_generator_preset->add_item(TTR("Plasma fireball"), VFX_TEXTURE_PLASMA_BURST);
-	texture_generator_preset->add_separator(TTR("Energy and light"));
-	texture_generator_preset->add_item(TTR("Spark streak"), VFX_TEXTURE_SPARK);
-	texture_generator_preset->add_item(TTR("Lightning"), VFX_TEXTURE_LIGHTNING);
-	texture_generator_preset->add_item(TTR("Electric arc"), VFX_TEXTURE_ELECTRIC_ARC);
-	texture_generator_preset->add_item(TTR("Energy ring"), VFX_TEXTURE_RING);
-	texture_generator_preset->add_item(TTR("Shockwave"), VFX_TEXTURE_WAVE_RING);
-	texture_generator_preset->add_item(TTR("Flash / Lens flare"), VFX_TEXTURE_FLASH_LENS);
-	texture_generator_preset->add_item(TTR("Magic circle"), VFX_TEXTURE_MAGIC_CIRCLE);
-	texture_generator_preset->add_separator(TTR("Particles and atmosphere"));
-	texture_generator_preset->add_item(TTR("Bubbles / Bokeh"), VFX_TEXTURE_BUBBLES);
-	texture_generator_preset->add_item(TTR("Cloud"), VFX_TEXTURE_CLOUD);
-	texture_generator_preset->add_item(TTR("Voronoi caustics"), VFX_TEXTURE_VORONOI_CAUSTICS);
-	texture_generator_preset->add_item(TTR("Noise field"), VFX_TEXTURE_NOISE);
-	texture_generator_preset->select(texture_generator_preset->get_item_index(VFX_TEXTURE_FIRE));
-	texture_controls->add_child(texture_generator_preset);
-	Label *texture_resolution_label = memnew(Label);
-	texture_resolution_label->set_text(TTR("Resolution"));
-	texture_controls->add_child(texture_resolution_label);
+
+	auto add_section = [&](const String &p_title, bool p_folded) -> VBoxContainer * {
+		FoldableContainer *section = memnew(FoldableContainer);
+		section->set_title(p_title);
+		section->set_folded(p_folded);
+		texture_controls->add_child(section);
+		VBoxContainer *content = memnew(VBoxContainer);
+		content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		section->add_child(content);
+		return content;
+	};
+	auto add_row = [&](VBoxContainer *p_parent, const String &p_label, Control *p_control, const String &p_tooltip = String()) -> HBoxContainer * {
+		HBoxContainer *row = memnew(HBoxContainer);
+		p_parent->add_child(row);
+		Label *label = memnew(Label);
+		label->set_text(p_label);
+		label->set_custom_minimum_size(Size2(118, 0) * EDSCALE);
+		label->set_tooltip_text(p_tooltip);
+		label->set_mouse_filter(Control::MOUSE_FILTER_PASS);
+		row->add_child(label);
+		p_control->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+		if (!p_tooltip.is_empty()) {
+			p_control->set_tooltip_text(p_tooltip);
+		}
+		row->add_child(p_control);
+		return row;
+	};
+	auto make_slider = [&](real_t p_min, real_t p_max, real_t p_step, real_t p_value) -> EditorSpinSlider * {
+		EditorSpinSlider *slider = memnew(EditorSpinSlider);
+		slider->set_min(p_min);
+		slider->set_max(p_max);
+		slider->set_step(p_step);
+		slider->set_value_no_signal(p_value);
+		slider->set_editing_integer(p_step >= 1.0);
+		slider->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_processing_value_changed));
+		return slider;
+	};
+	auto make_toggle = [&](const String &p_text, const String &p_tooltip) -> CheckButton * {
+		CheckButton *toggle = memnew(CheckButton);
+		toggle->set_text(p_text);
+		toggle->set_tooltip_text(p_tooltip);
+		toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_toggle_changed));
+		return toggle;
+	};
+
+	VBoxContainer *effect_section = add_section(TTR("Effect"), false);
+	texture_generator_param_grid = memnew(GridContainer);
+	texture_generator_param_grid->set_columns(2);
+	texture_generator_param_grid->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	effect_section->add_child(texture_generator_param_grid);
+	HBoxContainer *seed_box = memnew(HBoxContainer);
+	texture_generator_seed = memnew(SpinBox);
+	texture_generator_seed->set_min(0);
+	texture_generator_seed->set_max(99999);
+	texture_generator_seed->set_step(1);
+	texture_generator_seed->set_value(7);
+	texture_generator_seed->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_generator_seed->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_seed_changed));
+	seed_box->add_child(texture_generator_seed);
+	Button *randomize_seed = memnew(Button);
+	randomize_seed->set_text(TTR("Random"));
+	randomize_seed->set_tooltip_text(TTR("Pick a random seed for a new variation."));
+	randomize_seed->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_randomize_seed_pressed));
+	seed_box->add_child(randomize_seed);
+	add_row(effect_section, TTR("Seed"), seed_box, TTR("The seed recreates the same procedural shape."));
+	Button *reset_params = memnew(Button);
+	reset_params->set_text(TTR("Reset to Defaults"));
+	reset_params->set_tooltip_text(TTR("Restore the default parameters and colors of this effect type."));
+	reset_params->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_reset_params_pressed));
+	effect_section->add_child(reset_params);
+
+	VBoxContainer *color_section = add_section(TTR("Color & Tone"), false);
+	texture_generator_color_a = memnew(ColorPickerButton(TTR("Color A")));
+	texture_generator_color_a->set_edit_alpha(false);
+	texture_generator_color_a->set_custom_minimum_size(Size2(0, 24) * EDSCALE);
+	texture_generator_color_a->connect("color_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed));
+	HBoxContainer *color_a_row = add_row(color_section, TTR("Color A"), texture_generator_color_a);
+	texture_generator_color_a_label = Object::cast_to<Label>(color_a_row->get_child(0));
+	texture_generator_color_b = memnew(ColorPickerButton(TTR("Color B")));
+	texture_generator_color_b->set_edit_alpha(false);
+	texture_generator_color_b->set_custom_minimum_size(Size2(0, 24) * EDSCALE);
+	texture_generator_color_b->connect("color_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed));
+	HBoxContainer *color_b_row = add_row(color_section, TTR("Color B"), texture_generator_color_b);
+	texture_generator_color_b_label = Object::cast_to<Label>(color_b_row->get_child(0));
+	texture_generator_exposure = make_slider(0.1, 4.0, 0.01, 1.0);
+	add_row(color_section, TTR("Exposure"), texture_generator_exposure, TTR("Brightness of the HDR result before tone mapping."));
+	texture_generator_opacity = make_slider(0.0, 1.0, 0.01, 1.0);
+	add_row(color_section, TTR("Opacity"), texture_generator_opacity, TTR("Multiplies the alpha channel."));
+
+	VBoxContainer *motion_section = add_section(TTR("Motion & Mapping"), false);
+	texture_generator_speed = make_slider(0.0, 5.0, 0.01, 1.0);
+	add_row(motion_section, TTR("Speed"), texture_generator_speed, TTR("Animation speed of the noise evolution."));
+	texture_generator_rotation = make_slider(-180.0, 180.0, 1.0, 0.0);
+	texture_generator_rotation->set_suffix(U"°");
+	add_row(motion_section, TTR("Rotation"), texture_generator_rotation, TTR("Rotates the effect inside the frame."));
+	texture_generator_polar = make_toggle(TTR("Polar Coordinates"), TTR("Wrap the effect around the center: angle becomes X and radius becomes Y."));
+	motion_section->add_child(texture_generator_polar);
+	texture_generator_tiling = make_toggle(TTR("Seamless Tiling"), TTR("Generate a texture that repeats seamlessly."));
+	motion_section->add_child(texture_generator_tiling);
+
+	VBoxContainer *output_section = add_section(TTR("Output"), false);
 	texture_generator_resolution = memnew(OptionButton);
 	texture_generator_resolution->add_item("128 x 128");
 	texture_generator_resolution->add_item("256 x 256");
 	texture_generator_resolution->add_item("512 x 512");
 	texture_generator_resolution->add_item("1024 x 1024");
 	texture_generator_resolution->add_item("2048 x 2048");
-	texture_generator_resolution->select(1);
-	texture_controls->add_child(texture_generator_resolution);
-	Label *texture_output_label = memnew(Label);
-	texture_output_label->set_text(TTR("Output layout"));
-	texture_controls->add_child(texture_output_label);
+	texture_generator_resolution->select(2);
+	texture_generator_resolution->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_resolution_selected));
+	add_row(output_section, TTR("Resolution"), texture_generator_resolution, TTR("Size of the exported PNG. Sprite sheets split it into frames."));
 	texture_generator_output = memnew(OptionButton);
 	texture_generator_output->add_item(TTR("Single texture"), VFX_TEXTURE_OUTPUT_STILL);
-	texture_generator_output->add_item(TTR("Sprite sheet - 4 x 4"), VFX_TEXTURE_OUTPUT_SHEET_4X4);
-	texture_generator_output->add_item(TTR("Sprite sheet - 8 x 8"), VFX_TEXTURE_OUTPUT_SHEET_8X8);
+	texture_generator_output->add_item(TTR("Sprite sheet 4 x 4"), VFX_TEXTURE_OUTPUT_SHEET_4X4);
+	texture_generator_output->add_item(TTR("Sprite sheet 8 x 8"), VFX_TEXTURE_OUTPUT_SHEET_8X8);
 	texture_generator_output->select(0);
-	texture_controls->add_child(texture_generator_output);
-	texture_generator_fps_label = memnew(Label);
-	texture_generator_fps_label->set_text(TTR("Animation frame rate"));
-	texture_generator_fps_label->hide();
-	texture_controls->add_child(texture_generator_fps_label);
-	texture_generator_fps = memnew(SpinBox);
+	texture_generator_output->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_output_selected));
+	add_row(output_section, TTR("Layout"), texture_generator_output);
+	texture_generator_fps = memnew(EditorSpinSlider);
 	texture_generator_fps->set_min(1);
 	texture_generator_fps->set_max(60);
 	texture_generator_fps->set_step(1);
-	texture_generator_fps->set_value(12);
-	texture_generator_fps->hide();
-	texture_controls->add_child(texture_generator_fps);
-	texture_generator_duration_label = memnew(Label);
-	texture_generator_duration_label->set_text(TTR("Animation duration (s)"));
-	texture_generator_duration_label->hide();
-	texture_controls->add_child(texture_generator_duration_label);
-	texture_generator_duration = memnew(SpinBox);
+	texture_generator_fps->set_value_no_signal(12);
+	texture_generator_fps->set_editing_integer(true);
+	texture_generator_fps->set_suffix(TTR("fps"));
+	texture_generator_fps->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_fps_changed));
+	texture_generator_fps_row = add_row(output_section, TTR("Frame rate"), texture_generator_fps, TTR("Playback rate written to the emitter's animation speed."));
+	texture_generator_duration = memnew(EditorSpinSlider);
 	texture_generator_duration->set_min(0.1);
 	texture_generator_duration->set_max(30.0);
 	texture_generator_duration->set_step(0.1);
-	texture_generator_duration->set_value(2.0);
-	texture_generator_duration->hide();
+	texture_generator_duration->set_value_no_signal(2.0);
+	texture_generator_duration->set_suffix("s");
 	texture_generator_duration->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_duration_changed));
-	texture_controls->add_child(texture_generator_duration);
-	Label *texture_seed_label = memnew(Label);
-	texture_seed_label->set_text(TTR("Seed"));
-	texture_controls->add_child(texture_seed_label);
-	texture_generator_seed = memnew(SpinBox);
-	texture_generator_seed->set_min(0);
-	texture_generator_seed->set_max(99999);
-	texture_generator_seed->set_step(1);
-	texture_generator_seed->set_value(7);
-	texture_controls->add_child(texture_generator_seed);
-	Label *texture_color_a_label = memnew(Label);
-	texture_color_a_label->set_text(TTR("Base color"));
-	texture_controls->add_child(texture_color_a_label);
-	texture_generator_color_a = memnew(ColorPickerButton(TTR("Choose base color")));
-	texture_generator_color_a->set_pick_color(Color(0.95, 0.12, 0.025, 1.0));
-	texture_controls->add_child(texture_generator_color_a);
-	Label *texture_color_b_label = memnew(Label);
-	texture_color_b_label->set_text(TTR("Highlight color"));
-	texture_controls->add_child(texture_color_b_label);
-	texture_generator_color_b = memnew(ColorPickerButton(TTR("Choose highlight color")));
-	texture_generator_color_b->set_pick_color(Color(1.0, 0.82, 0.18, 1.0));
-	texture_controls->add_child(texture_generator_color_b);
-	texture_generator_polar = memnew(CheckButton);
-	texture_generator_polar->set_text(TTR("Polar coordinates"));
-	texture_generator_polar->set_tooltip_text(TTR("Transform cartesian (X, Y) space into polar (angle, radius) space."));
-	texture_generator_polar->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_polar_toggled));
-	texture_controls->add_child(texture_generator_polar);
-	Label *texture_generator_hint = memnew(Label);
-	texture_generator_hint->set_text(TTR("The effect scene keeps a reference to the exported PNG. The seed recreates the same procedural shape."));
-	texture_generator_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	texture_controls->add_child(texture_generator_hint);
+	texture_generator_duration_row = add_row(output_section, TTR("Duration"), texture_generator_duration, TTR("Time span sampled by the sprite sheet frames. The life cycle runs over this span."));
 
-	FoldableContainer *parameters_section = memnew(FoldableContainer);
-	parameters_section->set_title(TTR("Parameters"));
-	parameters_section->set_folded(false);
-	texture_controls->add_child(parameters_section);
-	VBoxContainer *parameters_content = memnew(VBoxContainer);
-	parameters_content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	parameters_section->add_child(parameters_content);
-
-	Label *style_label = memnew(Label);
-	style_label->set_text(TTR("Game style preset"));
-	parameters_content->add_child(style_label);
-	texture_generator_style = memnew(OptionButton);
-	texture_generator_style->add_item(TTR("Realistic (Cinematic)"), VFX_STYLE_REALISTIC);
-	texture_generator_style->add_item(TTR("Medium (Balanced)"), VFX_STYLE_MEDIUM);
-	texture_generator_style->add_item(TTR("Low (Performance / Retro)"), VFX_STYLE_LOW);
-	texture_generator_style->add_item(TTR("Cartoon / Toon (Anime)"), VFX_STYLE_TOON);
-	texture_generator_style->add_item(TTR("Custom"), VFX_STYLE_CUSTOM);
-	texture_generator_style->select(texture_generator_style->get_item_index(VFX_STYLE_REALISTIC));
-	texture_generator_style->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_style_selected));
-	parameters_content->add_child(texture_generator_style);
-
-	auto add_param_spin_row = [&](const String &p_label, real_t p_min, real_t p_max, real_t p_step, real_t p_val, const String &p_tooltip) -> SpinBox * {
-		HBoxContainer *row = memnew(HBoxContainer);
-		parameters_content->add_child(row);
-		Label *label = memnew(Label);
-		label->set_text(p_label);
-		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		row->add_child(label);
-		SpinBox *spin = memnew(SpinBox);
-		spin->set_min(p_min);
-		spin->set_max(p_max);
-		spin->set_step(p_step);
-		spin->set_value(p_val);
-		spin->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
-		spin->set_tooltip_text(p_tooltip);
-		spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_param_changed));
-		row->add_child(spin);
-		return spin;
-	};
-
-	texture_generator_param_speed = add_param_spin_row(TTR("Speed"), 0.1, 5.0, 0.05, 1.0, TTR("Animation speed multiplier."));
-	texture_generator_param_density = add_param_spin_row(TTR("Density"), 0.05, 3.0, 0.05, 1.1, TTR("Overall substance and opacity density."));
-	texture_generator_param_emission = add_param_spin_row(TTR("Emission"), 0.0, 3.0, 0.05, 1.35, TTR("Glow and incandescent highlight intensity."));
-	texture_generator_param_detail = add_param_spin_row(TTR("Turbulence / Detail"), 0.2, 3.0, 0.05, 1.35, TTR("Frequency scale of turbulent micro-details."));
-	texture_generator_param_contrast = add_param_spin_row(TTR("Contrast / Sharpness"), 0.2, 3.0, 0.05, 1.1, TTR("Sharpness and contrast of silhouettes and flame crests."));
-	texture_generator_param_angle = add_param_spin_row(TTR("Rotation (deg)"), -180.0, 180.0, 1.0, 0.0, TTR("Planar rotation angle in degrees."));
-
-	texture_generator_reset_params = memnew(Button);
-	texture_generator_reset_params->set_text(TTR("Reset Parameters"));
-	texture_generator_reset_params->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_reset_params_pressed));
-	parameters_content->add_child(texture_generator_reset_params);
-
-	FoldableContainer *toon_section = memnew(FoldableContainer);
-	toon_section->set_title(TTR("Toon shading"));
-	toon_section->set_folded(true);
-	texture_controls->add_child(toon_section);
-	VBoxContainer *toon_content = memnew(VBoxContainer);
-	toon_content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	toon_section->add_child(toon_content);
-	texture_generator_toon = memnew(CheckButton);
-	texture_generator_toon->set_text(TTR("Enable cel shading"));
-	texture_generator_toon->set_tooltip_text(TTR("Quantize texture luminance and alpha into distinct cel-shaded toon bands."));
-	texture_generator_toon->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_toon_toggled));
-	toon_content->add_child(texture_generator_toon);
-	auto add_toon_spin_row = [&](const String &p_label, real_t p_min, real_t p_max, real_t p_step, real_t p_val) -> SpinBox * {
-		HBoxContainer *row = memnew(HBoxContainer);
-		toon_content->add_child(row);
-		Label *label = memnew(Label);
-		label->set_text(p_label);
-		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		row->add_child(label);
-		SpinBox *spin = memnew(SpinBox);
-		spin->set_min(p_min);
-		spin->set_max(p_max);
-		spin->set_step(p_step);
-		spin->set_value(p_val);
-		spin->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
-		spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_processing_value_changed));
-		row->add_child(spin);
-		return spin;
-	};
-	texture_generator_toon_dark = add_toon_spin_row(TTR("Dark threshold"), 0.0, 1.0, 0.05, 0.5);
-	texture_generator_toon_light = add_toon_spin_row(TTR("Light threshold"), 0.0, 1.0, 0.05, 0.85);
-
-	FoldableContainer *tiling_section = memnew(FoldableContainer);
-	tiling_section->set_title(TTR("Seamless tiling"));
-	tiling_section->set_folded(true);
-	texture_controls->add_child(tiling_section);
-	VBoxContainer *tiling_content = memnew(VBoxContainer);
-	tiling_content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	tiling_section->add_child(tiling_content);
-	texture_generator_tiling = memnew(CheckButton);
-	texture_generator_tiling->set_text(TTR("Enable seamless tiling"));
-	texture_generator_tiling->set_tooltip_text(TTR("Periodic domain boundary wrap for seamless texture repeating."));
-	texture_generator_tiling->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_tiling_toggled));
-	tiling_content->add_child(texture_generator_tiling);
-	auto add_tiling_spin_row = [&](const String &p_label, real_t p_min, real_t p_max, real_t p_step, real_t p_val) -> SpinBox * {
-		HBoxContainer *row = memnew(HBoxContainer);
-		tiling_content->add_child(row);
-		Label *label = memnew(Label);
-		label->set_text(p_label);
-		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		row->add_child(label);
-		SpinBox *spin = memnew(SpinBox);
-		spin->set_min(p_min);
-		spin->set_max(p_max);
-		spin->set_step(p_step);
-		spin->set_value(p_val);
-		spin->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
-		spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_processing_value_changed));
-		row->add_child(spin);
-		return spin;
-	};
-	texture_generator_tiling_radial_mask = add_tiling_spin_row(TTR("Radial mask"), 0.0, 1.0, 0.05, 1.0);
-
-	FoldableContainer *alpha_processing = memnew(FoldableContainer);
-	alpha_processing->set_title(TTR("Alpha processing"));
-	alpha_processing->set_folded(true);
-	texture_controls->add_child(alpha_processing);
-	VBoxContainer *alpha_processing_content = memnew(VBoxContainer);
-	alpha_processing_content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	alpha_processing->add_child(alpha_processing_content);
-	auto add_texture_spin_row = [&](const String &p_label, real_t p_min, real_t p_max, real_t p_step) -> SpinBox * {
-		HBoxContainer *row = memnew(HBoxContainer);
-		alpha_processing_content->add_child(row);
-		Label *label = memnew(Label);
-		label->set_text(p_label);
-		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		row->add_child(label);
-		SpinBox *spin = memnew(SpinBox);
-		spin->set_min(p_min);
-		spin->set_max(p_max);
-		spin->set_step(p_step);
-		spin->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
-		spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_processing_value_changed));
-		row->add_child(spin);
-		return spin;
-	};
-	texture_generator_alpha_threshold = add_texture_spin_row(TTR("Threshold"), 0.0, 0.95, 0.01);
-	texture_generator_alpha_threshold->set_tooltip_text(TTR("Remove alpha values below this threshold and remap the remaining range."));
-	texture_generator_alpha_blur = add_texture_spin_row(TTR("Edge blur"), 0.0, 1.0, 0.05);
-	texture_generator_alpha_blur->set_tooltip_text(TTR("Blend the alpha channel with a soft 3 x 3 blur."));
+	VBoxContainer *post_section = add_section(TTR("Post-processing"), true);
+	texture_generator_toon = make_toggle(TTR("Toon Shading"), TTR("Quantize luminance and alpha into three cel-shaded bands."));
+	post_section->add_child(texture_generator_toon);
+	texture_generator_toon_dark = make_slider(0.0, 1.0, 0.01, 0.5);
+	add_row(post_section, TTR("Toon dark"), texture_generator_toon_dark);
+	texture_generator_toon_light = make_slider(0.0, 1.0, 0.01, 0.85);
+	add_row(post_section, TTR("Toon light"), texture_generator_toon_light);
+	texture_generator_alpha_threshold = make_slider(0.0, 0.95, 0.01, 0.0);
+	add_row(post_section, TTR("Alpha threshold"), texture_generator_alpha_threshold, TTR("Remove alpha values below this threshold and remap the remaining range."));
+	texture_generator_alpha_blur = make_slider(0.0, 1.0, 0.01, 0.0);
+	add_row(post_section, TTR("Alpha blur"), texture_generator_alpha_blur, TTR("Blend the alpha channel with a soft 3 x 3 blur."));
 	texture_generator_alpha_preview = memnew(CheckButton);
-	texture_generator_alpha_preview->set_text(TTR("Preview alpha mask"));
+	texture_generator_alpha_preview->set_text(TTR("Preview Alpha Mask"));
 	texture_generator_alpha_preview->set_tooltip_text(TTR("Show the processed alpha as grayscale. This changes only the preview."));
 	texture_generator_alpha_preview->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_alpha_preview_toggled));
-	alpha_processing_content->add_child(texture_generator_alpha_preview);
-
-	FoldableContainer *normal_map_section = memnew(FoldableContainer);
-	normal_map_section->set_title(TTR("Normal map"));
-	normal_map_section->set_folded(true);
-	texture_controls->add_child(normal_map_section);
-	VBoxContainer *normal_map_content = memnew(VBoxContainer);
-	normal_map_content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	normal_map_section->add_child(normal_map_content);
-	texture_generator_normal_map = memnew(CheckButton);
-	texture_generator_normal_map->set_text(TTR("Export as normal map"));
-	texture_generator_normal_map->set_tooltip_text(TTR("Derive tangent-space normals from the processed alpha shape."));
-	texture_generator_normal_map->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_normal_map_toggled));
-	normal_map_content->add_child(texture_generator_normal_map);
-	auto add_normal_spin_row = [&](const String &p_label, real_t p_min, real_t p_max, real_t p_step, real_t p_val) -> SpinBox * {
-		HBoxContainer *row = memnew(HBoxContainer);
-		normal_map_content->add_child(row);
-		Label *label = memnew(Label);
-		label->set_text(p_label);
-		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		row->add_child(label);
-		SpinBox *spin = memnew(SpinBox);
-		spin->set_min(p_min);
-		spin->set_max(p_max);
-		spin->set_step(p_step);
-		spin->set_value(p_val);
-		spin->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
-		spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_processing_value_changed));
-		row->add_child(spin);
-		return spin;
-	};
-	texture_generator_normal_height_scale = add_normal_spin_row(TTR("Height bump scale"), 0.5, 10.0, 0.5, 3.0);
-
-	FoldableContainer *color_balance = memnew(FoldableContainer);
-	color_balance->set_title(TTR("Color balance"));
-	color_balance->set_folded(true);
-	texture_controls->add_child(color_balance);
-	VBoxContainer *color_balance_content = memnew(VBoxContainer);
-	color_balance_content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	color_balance->add_child(color_balance_content);
-	auto add_tint_row = [&](const String &p_label) -> ColorPickerButton * {
-		HBoxContainer *row = memnew(HBoxContainer);
-		color_balance_content->add_child(row);
-		Label *label = memnew(Label);
-		label->set_text(p_label);
-		label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-		row->add_child(label);
+	post_section->add_child(texture_generator_alpha_preview);
+	texture_generator_normal_map = make_toggle(TTR("Export as Normal Map"), TTR("Derive tangent-space normals from the processed alpha shape."));
+	post_section->add_child(texture_generator_normal_map);
+	texture_generator_normal_height_scale = make_slider(0.5, 10.0, 0.1, 3.0);
+	add_row(post_section, TTR("Normal strength"), texture_generator_normal_height_scale);
+	auto make_tint = [&](const String &p_label) -> ColorPickerButton * {
 		ColorPickerButton *picker = memnew(ColorPickerButton(p_label));
-		picker->set_custom_minimum_size(Size2(90, 0) * EDSCALE);
+		picker->set_edit_alpha(false);
 		picker->set_pick_color(Color(1.0, 1.0, 1.0, 1.0));
+		picker->set_custom_minimum_size(Size2(0, 24) * EDSCALE);
 		picker->connect("color_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed));
-		row->add_child(picker);
+		add_row(post_section, p_label, picker);
 		return picker;
 	};
-	texture_generator_shadows_tint = add_tint_row(TTR("Shadows"));
-	texture_generator_midtones_tint = add_tint_row(TTR("Midtones"));
-	texture_generator_highlights_tint = add_tint_row(TTR("Highlights"));
-	texture_generator_reset_color_balance = memnew(Button);
-	texture_generator_reset_color_balance->set_text(TTR("Reset Balance"));
-	texture_generator_reset_color_balance->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_reset_color_balance_pressed));
-	color_balance_content->add_child(texture_generator_reset_color_balance);
+	texture_generator_shadows_tint = make_tint(TTR("Shadows tint"));
+	texture_generator_midtones_tint = make_tint(TTR("Midtones tint"));
+	texture_generator_highlights_tint = make_tint(TTR("Highlights tint"));
+	Button *reset_balance = memnew(Button);
+	reset_balance->set_text(TTR("Reset Color Balance"));
+	reset_balance->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_reset_color_balance_pressed));
+	post_section->add_child(reset_balance);
 
+	// Footer: recipe actions on the left, export flow on the right.
+	texture_generator_root->add_child(memnew(HSeparator));
+	HBoxContainer *texture_footer = memnew(HBoxContainer);
+	texture_generator_root->add_child(texture_footer);
+	Button *texture_recipe_load_button = memnew(Button);
+	texture_recipe_load_button->set_text(TTR("Load Recipe..."));
+	texture_recipe_load_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_recipe_load_pressed));
+	texture_footer->add_child(texture_recipe_load_button);
+	Button *texture_recipe_save_button = memnew(Button);
+	texture_recipe_save_button->set_text(TTR("Save Recipe..."));
+	texture_recipe_save_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_recipe_save_pressed));
+	texture_footer->add_child(texture_recipe_save_button);
 	texture_generator_status = memnew(Label);
-	texture_generator_status->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	texture_controls->add_child(texture_generator_status);
-	texture_generator_apply_button = texture_generator_dialog->add_button(TTR("Apply to Emitter"), true, "apply");
+	texture_generator_status->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	texture_generator_status->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	texture_generator_status->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+	texture_generator_status->set_modulate(Color(1, 1, 1, 0.75));
+	texture_footer->add_child(texture_generator_status);
+	Button *texture_close_button = memnew(Button);
+	texture_close_button->set_text(TTR("Close"));
+	texture_close_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_close_pressed));
+	texture_footer->add_child(texture_close_button);
+	Button *texture_export_button = memnew(Button);
+	texture_export_button->set_text(TTR("Export PNG..."));
+	texture_export_button->set_tooltip_text(TTR("Render at full resolution and save the texture into the project."));
+	texture_export_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_export_pressed));
+	texture_footer->add_child(texture_export_button);
+	texture_generator_apply_button = memnew(Button);
+	texture_generator_apply_button->set_text(TTR("Apply to Emitter"));
 	texture_generator_apply_button->set_disabled(true);
-	texture_generator_dialog->add_button(TTR("Export PNG"), false, "export");
-	texture_generator_preset->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_preset_selected));
-	texture_generator_resolution->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_resolution_selected));
-	texture_generator_output->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_output_selected));
-	texture_generator_seed->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_seed_changed));
-	texture_generator_fps->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_fps_changed));
+	texture_generator_apply_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_apply_pressed));
+	texture_footer->add_child(texture_generator_apply_button);
+
 	texture_generator_animate->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_animate_toggled));
 	texture_generator_time->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_time_changed));
-	texture_generator_color_a->connect("color_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed));
-	texture_generator_color_b->connect("color_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_color_changed));
-	texture_generator_alpha_threshold->set_value(0.0);
-	texture_generator_alpha_blur->set_value(0.0);
+	_select_texture_type(texture_generator_type, true);
+	_on_texture_generator_background_selected(texture_generator_background->get_selected());
 	_update_texture_time_controls();
-	_regenerate_texture();
 	texture_save_dialog = memnew(EditorFileDialog);
 	texture_save_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
 	texture_save_dialog->set_file_mode(EditorFileDialog::FILE_MODE_SAVE_FILE);

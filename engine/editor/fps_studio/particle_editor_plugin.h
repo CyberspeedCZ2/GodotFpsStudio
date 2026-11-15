@@ -12,6 +12,8 @@
 #include "core/templates/vector.h"
 #include "editor/plugins/editor_plugin.h"
 
+#include "vfx_texture_generator.h"
+
 class Button;
 class Camera3D;
 class CheckButton;
@@ -22,6 +24,8 @@ class ConfirmationDialog;
 class CurveEditor;
 class EditorFileDialog;
 class EditorInspector;
+class EditorSpinSlider;
+class GridContainer;
 class HSlider;
 class HBoxContainer;
 class InputEvent;
@@ -74,52 +78,54 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	EditorFileDialog *texture_recipe_save_dialog = nullptr;
 	EditorFileDialog *texture_recipe_load_dialog = nullptr;
 	AcceptDialog *texture_generator_dialog = nullptr;
+	Tree *texture_generator_type_tree = nullptr;
 	TextureRect *texture_generator_preview = nullptr;
-	CheckButton *texture_generator_animate = nullptr;
+	TextureRect *texture_generator_checker = nullptr;
+	PanelContainer *texture_generator_stage = nullptr;
+	OptionButton *texture_generator_background = nullptr;
+	Button *texture_generator_show_sheet = nullptr;
+	Button *texture_generator_animate = nullptr;
 	HSlider *texture_generator_time = nullptr;
 	Label *texture_generator_time_label = nullptr;
+	Label *texture_generator_frame_label = nullptr;
 	Label *texture_generator_status = nullptr;
-	OptionButton *texture_generator_preset = nullptr;
+	Label *texture_generator_type_title = nullptr;
+	Label *texture_generator_type_description = nullptr;
+	GridContainer *texture_generator_param_grid = nullptr;
+	Vector<EditorSpinSlider *> texture_generator_param_sliders;
 	OptionButton *texture_generator_resolution = nullptr;
 	OptionButton *texture_generator_output = nullptr;
 	SpinBox *texture_generator_seed = nullptr;
-	SpinBox *texture_generator_fps = nullptr;
-	Label *texture_generator_fps_label = nullptr;
-	SpinBox *texture_generator_duration = nullptr;
-	Label *texture_generator_duration_label = nullptr;
+	EditorSpinSlider *texture_generator_fps = nullptr;
+	EditorSpinSlider *texture_generator_duration = nullptr;
+	Control *texture_generator_fps_row = nullptr;
+	Control *texture_generator_duration_row = nullptr;
+	Label *texture_generator_color_a_label = nullptr;
+	Label *texture_generator_color_b_label = nullptr;
 	ColorPickerButton *texture_generator_color_a = nullptr;
 	ColorPickerButton *texture_generator_color_b = nullptr;
-	enum VFXTextureStyle {
-		VFX_STYLE_REALISTIC = 0,
-		VFX_STYLE_MEDIUM = 1,
-		VFX_STYLE_LOW = 2,
-		VFX_STYLE_TOON = 3,
-		VFX_STYLE_CUSTOM = 4,
-	};
-	OptionButton *texture_generator_style = nullptr;
-	SpinBox *texture_generator_param_speed = nullptr;
-	SpinBox *texture_generator_param_density = nullptr;
-	SpinBox *texture_generator_param_emission = nullptr;
-	SpinBox *texture_generator_param_detail = nullptr;
-	SpinBox *texture_generator_param_contrast = nullptr;
-	SpinBox *texture_generator_param_angle = nullptr;
-	Button *texture_generator_reset_params = nullptr;
+	EditorSpinSlider *texture_generator_exposure = nullptr;
+	EditorSpinSlider *texture_generator_opacity = nullptr;
+	EditorSpinSlider *texture_generator_speed = nullptr;
+	EditorSpinSlider *texture_generator_rotation = nullptr;
 	CheckButton *texture_generator_polar = nullptr;
-	CheckButton *texture_generator_toon = nullptr;
-	SpinBox *texture_generator_toon_dark = nullptr;
-	SpinBox *texture_generator_toon_light = nullptr;
 	CheckButton *texture_generator_tiling = nullptr;
-	SpinBox *texture_generator_tiling_radial_mask = nullptr;
+	CheckButton *texture_generator_toon = nullptr;
+	EditorSpinSlider *texture_generator_toon_dark = nullptr;
+	EditorSpinSlider *texture_generator_toon_light = nullptr;
 	ColorPickerButton *texture_generator_shadows_tint = nullptr;
 	ColorPickerButton *texture_generator_midtones_tint = nullptr;
 	ColorPickerButton *texture_generator_highlights_tint = nullptr;
-	Button *texture_generator_reset_color_balance = nullptr;
-	SpinBox *texture_generator_alpha_threshold = nullptr;
-	SpinBox *texture_generator_alpha_blur = nullptr;
+	EditorSpinSlider *texture_generator_alpha_threshold = nullptr;
+	EditorSpinSlider *texture_generator_alpha_blur = nullptr;
 	CheckButton *texture_generator_alpha_preview = nullptr;
 	CheckButton *texture_generator_normal_map = nullptr;
-	SpinBox *texture_generator_normal_height_scale = nullptr;
+	EditorSpinSlider *texture_generator_normal_height_scale = nullptr;
 	Button *texture_generator_apply_button = nullptr;
+	int texture_generator_type = VFXTextureGenerator::TYPE_EXPLOSION;
+	float texture_generator_params[VFXTextureGenerator::MAX_PARAMS] = {};
+	bool texture_generator_thumbnails_ready = false;
+	bool texture_generator_syncing_ui = false;
 	Ref<Image> generated_texture_image;
 	Ref<Texture2D> generated_texture;
 	String generated_texture_path;
@@ -222,26 +228,32 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_reset_view_pressed();
 	void _on_grid_toggled(bool p_enabled);
 	void _on_texture_generator_pressed();
-	void _on_texture_generator_preset_selected(int p_index);
+	void _build_texture_type_list();
+	void _on_texture_generator_type_selected();
+	void _select_texture_type(int p_type, bool p_reset_params);
+	void _rebuild_texture_param_controls();
+	VFXTextureGenerator::Settings _make_texture_settings(double p_time, double p_life, int p_quality) const;
 	void _on_texture_generator_resolution_selected(int p_index);
 	void _on_texture_generator_output_selected(int p_index);
 	void _on_texture_generator_seed_changed(double p_value);
+	void _on_texture_generator_randomize_seed_pressed();
 	void _on_texture_generator_fps_changed(double p_value);
 	void _on_texture_generator_duration_changed(double p_value);
 	void _on_texture_generator_animate_toggled(bool p_enabled);
 	void _on_texture_generator_time_changed(double p_value);
 	void _on_texture_generator_color_changed(const Color &p_color);
-	void _on_texture_generator_action(const String &p_action);
 	void _on_texture_generator_processing_value_changed(double p_value);
-	void _on_texture_generator_style_selected(int p_index);
-	void _on_texture_generator_param_changed(double p_value);
+	void _on_texture_generator_param_changed(double p_value, int p_index);
 	void _on_texture_generator_reset_params_pressed();
-	void _on_texture_generator_polar_toggled(bool p_enabled);
-	void _on_texture_generator_toon_toggled(bool p_enabled);
-	void _on_texture_generator_tiling_toggled(bool p_enabled);
+	void _on_texture_generator_toggle_changed(bool p_enabled);
 	void _on_texture_generator_reset_color_balance_pressed();
 	void _on_texture_generator_alpha_preview_toggled(bool p_enabled);
-	void _on_texture_generator_normal_map_toggled(bool p_enabled);
+	void _on_texture_generator_background_selected(int p_index);
+	void _on_texture_generator_show_sheet_toggled(bool p_enabled);
+	void _on_texture_generator_export_pressed();
+	void _on_texture_generator_apply_pressed();
+	void _on_texture_generator_close_pressed();
+	void _show_texture_generator();
 	void _on_texture_recipe_save_pressed();
 	void _on_texture_recipe_load_pressed();
 	void _on_texture_recipe_save_path_selected(const String &p_path);
