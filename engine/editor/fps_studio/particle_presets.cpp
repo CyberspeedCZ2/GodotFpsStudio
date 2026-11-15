@@ -7,7 +7,9 @@
 
 #include "particle_presets.h"
 
+#include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
+#include "scene/3d/light_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/resources/3d/primitive_meshes.h"
 #include "scene/resources/curve_texture.h"
@@ -151,6 +153,34 @@ void set_colors(TextureRequest &r_request, const Color &p_a, const Color &p_b) {
 
 const Vector2 RANDOM_ANGLE(0.0, 360.0);
 
+// Timed light event. p_duration 0 keeps the light on (with optional flicker).
+void add_light(ParticleEffect3D *p_effect, const String &p_name, const Color &p_color, real_t p_energy, real_t p_range, double p_delay, double p_duration, real_t p_flicker, const Vector3 &p_position) {
+	OmniLight3D *light = memnew(OmniLight3D);
+	light->set_name(p_name);
+	light->set_color(p_color);
+	light->set_param(Light3D::PARAM_ENERGY, p_energy);
+	light->set_param(Light3D::PARAM_RANGE, p_range);
+	light->set_position(p_position);
+	ParticleEffect3D::set_emitter_delay(light, p_delay);
+	ParticleEffect3D::set_emitter_duration(light, p_duration);
+	if (p_flicker > 0.0) {
+		light->set_meta(ParticleEffect3D::META_FLICKER, p_flicker);
+	}
+	p_effect->add_child(light, true);
+	light->set_owner(p_effect);
+}
+
+void add_camera_shake(ParticleEffect3D *p_effect, real_t p_strength, double p_duration, real_t p_radius, double p_delay) {
+	CameraShake3D *shake = memnew(CameraShake3D);
+	shake->set_name("CameraShake");
+	shake->set_strength(p_strength);
+	shake->set_duration(p_duration);
+	shake->set_radius(p_radius);
+	ParticleEffect3D::set_emitter_delay(shake, p_delay);
+	p_effect->add_child(shake, true);
+	shake->set_owner(p_effect);
+}
+
 void build_muzzle_flash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
 	// Muzzle points along -Z (Godot forward).
 	EmitterBuilder flash = add_emitter(p_effect, "Flash", 2, 0.07, true, 1.0, 0.7, BLEND_ADD);
@@ -181,6 +211,8 @@ void build_muzzle_flash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
 	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.15, 1), Vector2(1, 0) }));
 	r_textures.push_back(make_texture(smoke.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
+
+	add_light(p_effect, "LightFlash", Color(1.0, 0.78, 0.45), 5.0, 5.0, 0.0, 0.07, 0.0, Vector3(0, 0, -0.2));
 }
 
 void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -226,6 +258,9 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
 	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.15, 1), Vector2(0.6, 0.8), Vector2(1, 0) }));
 	r_textures.push_back(make_texture(smoke.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
+
+	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
+	add_camera_shake(p_effect, 0.35, 0.6, 30.0, 0.0);
 }
 
 void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -261,6 +296,8 @@ void build_impact_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	set_param(glow_texture, "rays", 4);
 	set_param(glow_texture, "streak", 0.0f);
 	r_textures.push_back(glow_texture);
+
+	add_light(p_effect, "LightFlash", Color(1.0, 0.8, 0.5), 2.5, 3.0, 0.0, 0.1, 0.0, Vector3(0, 0.15, 0));
 }
 
 void build_blood_hit(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -322,6 +359,8 @@ void build_fire(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	smoke.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.0) }));
 	smoke.node->set("preprocess", 3.0);
 	r_textures.push_back(make_texture(smoke.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
+
+	add_light(p_effect, "FireLight", Color(1.0, 0.55, 0.22), 2.5, 6.0, 0.0, 0.0, 0.45, Vector3(0, 0.45, 0));
 }
 
 } // namespace

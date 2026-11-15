@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="CameraShake3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Shakes the active 3D camera for a short time.
+	</brief_description>
+	<description>
+		When [method shake] is called, the active [Camera3D] of the viewport is offset with smooth noise (through [member Camera3D.h_offset] and [member Camera3D.v_offset]) for [member duration] seconds. The intensity decays over time and falls off with the distance between this node and the camera. The original offsets are restored afterwards.
+		As a child of a [ParticleEffect3D], it fires automatically at its start time (see [method ParticleEffect3D.set_emitter_delay]).
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="is_shaking" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] while the camera is being shaken.
+			</description>
+		</method>
+		<method name="shake">
+			<return type="void" />
+			<description>
+				Starts shaking the active camera. A new shake on the same camera keeps the stronger of the two.
+			</description>
+		</method>
+		<method name="stop">
+			<return type="void" />
+			<description>
+				Stops shaking and restores the camera offsets.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="duration" type="float" setter="set_duration" getter="get_duration" default="0.5">
+			Length of the shake in seconds.
+		</member>
+		<member name="frequency" type="float" setter="set_frequency" getter="get_frequency" default="22.0">
+			Speed of the shake noise in Hz.
+		</member>
+		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="20.0">
+			Distance at which the shake fades out completely. [code]0[/code] shakes at any distance.
+		</member>
+		<member name="strength" type="float" setter="set_strength" getter="get_strength" default="0.25">
+			Maximum camera offset in meters at the start of the shake.
+		</member>
+	</members>
+</class>

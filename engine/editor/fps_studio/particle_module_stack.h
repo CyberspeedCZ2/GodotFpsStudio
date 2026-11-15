@@ -43,6 +43,7 @@ public:
 		MODULE_COLLISION,
 		MODULE_SUB_EMITTER,
 		MODULE_RENDER,
+		MODULE_EVENT, // Timed event nodes (light, sound, camera shake, decal).
 		MODULE_MAX,
 	};
 
@@ -90,6 +91,8 @@ private:
 	bool _is_module_optional(int p_module) const;
 	bool _is_module_active(int p_module) const;
 	void _set_module_active(int p_module, bool p_active);
+	void _add_meta_row(int p_module, const String &p_key, const String &p_label, Variant::Type p_type, PropertyHint p_hint, const String &p_hint_string, const Variant &p_default);
+	void _build_event();
 	void _add_row(int p_module, Target p_target, const StringName &p_gpu_property, const StringName &p_cpu_property, const String &p_label, const StringName &p_condition = StringName(), const Vector<int> &p_condition_values = Vector<int>());
 	void _build();
 	void _clear();

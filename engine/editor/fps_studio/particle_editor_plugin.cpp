@@ -44,6 +44,9 @@
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/light_3d.h"
+#include "scene/3d/decal.h"
+#include "scene/3d/camera_shake_3d.h"
+#include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/3d/world_environment.h"
@@ -90,6 +93,10 @@ enum ParticleTemplate {
 	PARTICLE_TEMPLATE_FOUNTAIN = 3,
 	PARTICLE_TEMPLATE_SMOKE = 4,
 	PARTICLE_TEMPLATE_PRESET_BASE = 100, // + FPSParticlePresets::Preset
+	PARTICLE_EVENT_LIGHT = 200,
+	PARTICLE_EVENT_SOUND = 201,
+	PARTICLE_EVENT_SHAKE = 202,
+	PARTICLE_EVENT_DECAL = 203,
 };
 
 enum VFXTextureOutput {
@@ -377,6 +384,43 @@ static Node3D *create_particle_emitter(int p_template, const Ref<QuadMesh> &p_me
 	return emitter;
 }
 
+static Node3D *create_event_node(int p_type) {
+	switch (p_type) {
+		case PARTICLE_EVENT_LIGHT: {
+			OmniLight3D *light = memnew(OmniLight3D);
+			light->set_name("LightFlash");
+			light->set_color(Color(1.0, 0.62, 0.32));
+			light->set_param(Light3D::PARAM_ENERGY, 6.0);
+			light->set_param(Light3D::PARAM_RANGE, 6.0);
+			light->set_position(Vector3(0, 0.5, 0));
+			ParticleEffect3D::set_emitter_duration(light, 0.3);
+			light->set_meta(ParticleEffect3D::META_FLICKER, 0.2);
+			return light;
+		}
+		case PARTICLE_EVENT_SOUND: {
+			AudioStreamPlayer3D *player = memnew(AudioStreamPlayer3D);
+			player->set_name("Sound");
+			player->set_unit_size(10.0);
+			player->set_meta(ParticleEffect3D::META_PITCH_RANDOM, 0.1);
+			return player;
+		}
+		case PARTICLE_EVENT_SHAKE: {
+			CameraShake3D *shake = memnew(CameraShake3D);
+			shake->set_name("CameraShake");
+			return shake;
+		}
+		case PARTICLE_EVENT_DECAL: {
+			Decal *decal = memnew(Decal);
+			decal->set_name("Decal");
+			decal->set_size(Vector3(2.0, 1.0, 2.0));
+			ParticleEffect3D::set_emitter_duration(decal, 6.0);
+			decal->set_meta(ParticleEffect3D::META_FADE, 0.5);
+			return decal;
+		}
+	}
+	return memnew(Node3D);
+}
+
 static void clear_preview_scripts(Node *p_node) {
 	if (!p_node) {
 		return;
@@ -505,6 +549,19 @@ Node *FPSStudioParticleEditorPlugin::_get_edited_emitter() const {
 	return Object::cast_to<Node>(ObjectDB::get_instance(edited_emitter_id));
 }
 
+// Emitters and timed event nodes (lights, sounds, camera shakes, decals).
+static void collect_tracks(Node *p_node, Vector<Node *> &r_tracks) {
+	if (!p_node) {
+		return;
+	}
+	if (ParticleEffect3D::is_track(p_node)) {
+		r_tracks.push_back(p_node);
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		collect_tracks(p_node->get_child(i), r_tracks);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_collect_emitters(Node *p_node, Vector<Node *> &r_emitters) const {
 	if (!p_node) {
 		return;
@@ -617,12 +674,17 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 	TreeItem *root_item = emitter_tree->create_item();
 	Node *effect_root = _get_effect_root();
 	Vector<Node *> emitters;
-	_collect_emitters(effect_root, emitters);
+	collect_tracks(effect_root, emitters);
 	Node *edited_emitter = _get_edited_emitter();
 	TreeItem *selected_item = nullptr;
 	for (Node *emitter : emitters) {
 		TreeItem *item = emitter_tree->create_item(root_item);
 		item->set_text(0, emitter->get_name());
+		item->set_icon(0, EditorNode::get_singleton()->get_object_icon(emitter));
+		Node3D *track_3d = Object::cast_to<Node3D>(emitter);
+		if (track_3d && !track_3d->is_visible()) {
+			item->set_custom_color(0, emitter_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
+		}
 		item->set_tooltip_text(0, String(emitter->get_class()) + "\n" + emitter->get_name() + "\n" + TTR("Double-click to rename"));
 		item->set_editable(0, true);
 		item->set_metadata(0, uint64_t(emitter->get_instance_id()));
@@ -753,7 +815,7 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 
 void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_update_tree) {
 	Node *effect_root = _get_effect_root();
-	if (p_node && !is_particle_node(p_node)) {
+	if (p_node && !ParticleEffect3D::is_track(p_node)) {
 		p_node = nullptr;
 	}
 	if (p_node && effect_root && p_node != effect_root && !effect_root->is_ancestor_of(p_node)) {
@@ -836,7 +898,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	preview_root->add_child(preview_effect);
 
 	Vector<Node *> emitters;
-	_collect_emitters(source, emitters);
+	collect_tracks(source, emitters);
 	// Finite effects loop over their full timeline (delays + emission +
 	// lifetime); continuous ones over the visible timeline span.
 	preview_duration = 0.1;
@@ -844,10 +906,16 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	double max_lifetime = 0.1;
 	bool infinite = false;
 	for (Node *emitter : emitters) {
+		Node3D *track_3d = Object::cast_to<Node3D>(emitter);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
 		double start, emission_end, visual_end;
-		ParticleEffect3D::get_emitter_window(emitter, start, emission_end, visual_end);
+		ParticleEffect3D::get_track_window(emitter, start, emission_end, visual_end);
 		max_start = MAX(max_start, start);
-		max_lifetime = MAX(max_lifetime, double(emitter->get("lifetime")));
+		if (ParticleEffect3D::is_emitter(emitter)) {
+			max_lifetime = MAX(max_lifetime, double(emitter->get("lifetime")));
+		}
 		if (visual_end < 0.0) {
 			infinite = true;
 		} else {
@@ -2229,7 +2297,7 @@ void FPSStudioParticleEditorPlugin::_add_emitter(int p_type) {
 		return;
 	}
 	Node *previous_emitter = _get_edited_emitter();
-	Node3D *emitter = create_particle_emitter(p_type, create_particle_quad());
+	Node3D *emitter = p_type >= PARTICLE_EVENT_LIGHT ? create_event_node(p_type) : create_particle_emitter(p_type, create_particle_quad());
 	emitter->set_name(effect->prevalidate_child_name(emitter, emitter->get_name()));
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(vformat(TTR("Add %s to Particle Effect"), emitter->get_name()));
@@ -2251,12 +2319,14 @@ void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
 	if (!effect || !emitter || emitter == effect || emitter->get_parent() != effect) {
 		return;
 	}
-	Vector<Node *> emitters;
-	_collect_emitters(effect, emitters);
-	if (emitters.size() <= 1) {
+	Vector<Node *> particle_emitters;
+	_collect_emitters(effect, particle_emitters);
+	if (ParticleEffect3D::is_emitter(emitter) && particle_emitters.size() <= 1) {
 		EditorNode::get_singleton()->show_warning(TTR("A particle effect must keep at least one emitter. Add another emitter before removing this one."));
 		return;
 	}
+	Vector<Node *> emitters;
+	collect_tracks(effect, emitters);
 	Node *next_emitter = nullptr;
 	for (Node *candidate : emitters) {
 		if (candidate != emitter) {
@@ -2286,7 +2356,7 @@ void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *
 		return;
 	}
 	Vector<Node *> emitters;
-	_collect_emitters(effect, emitters);
+	collect_tracks(effect, emitters);
 	Node *selected_emitter = p_preferred_emitter;
 	if (!selected_emitter || (selected_emitter != effect && !effect->is_ancestor_of(selected_emitter))) {
 		selected_emitter = emitters.is_empty() ? nullptr : emitters[0];
@@ -2637,6 +2707,8 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Open in Shader Editor") : TTR("Create Node Graph"));
 	if (!emitter) {
 		particle_logic_status->set_text(TTR("No emitter selected"));
+	} else if (!ParticleEffect3D::is_emitter(emitter)) {
+		particle_logic_status->set_text(TTR("Event track - no particle logic"));
 	} else if (!gpu) {
 		particle_logic_status->set_text(TTR("CPU - Built-in simulation"));
 	} else if (visual_shader.is_valid()) {
@@ -3195,7 +3267,7 @@ void FPSStudioParticleEditorPlugin::_apply_preview_solo() {
 	}
 	// Solo is preview only: hide every other track in the preview copy.
 	Vector<Node *> emitters;
-	_collect_emitters(source, emitters);
+	collect_tracks(source, emitters);
 	for (Node *emitter : emitters) {
 		Node *preview_node = preview_effect->get_node_or_null(source->get_path_to(emitter));
 		if (Node3D *preview_3d = Object::cast_to<Node3D>(preview_node)) {
@@ -3573,6 +3645,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_menu->get_popup()->add_item(TTR("Burst"), PARTICLE_TEMPLATE_BURST);
 	add_emitter_menu->get_popup()->add_item(TTR("Fountain"), PARTICLE_TEMPLATE_FOUNTAIN);
 	add_emitter_menu->get_popup()->add_item(TTR("Smoke"), PARTICLE_TEMPLATE_SMOKE);
+	add_emitter_menu->get_popup()->add_separator(TTR("Events"));
+	add_emitter_menu->get_popup()->add_item(TTR("Light Flash"), PARTICLE_EVENT_LIGHT);
+	add_emitter_menu->get_popup()->add_item(TTR("Sound"), PARTICLE_EVENT_SOUND);
+	add_emitter_menu->get_popup()->add_item(TTR("Camera Shake"), PARTICLE_EVENT_SHAKE);
+	add_emitter_menu->get_popup()->add_item(TTR("Decal"), PARTICLE_EVENT_DECAL);
 	add_emitter_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_menu_pressed));
 	emitter_header->add_child(add_emitter_menu);
 	Button *duplicate_emitter_button = memnew(Button);

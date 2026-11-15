@@ -15,6 +15,9 @@
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
+#include "scene/3d/light_3d.h"
+#include "scene/3d/particle_effect_3d.h"
+#include "scene/resources/curve.h"
 #include "scene/gui/button.h"
 #include "scene/gui/foldable_container.h"
 #include "scene/gui/label.h"
@@ -53,6 +56,8 @@ String FPSParticleModuleStack::get_module_name(int p_module) {
 			return TTR("Sub Emitter");
 		case MODULE_RENDER:
 			return TTR("Render");
+		case MODULE_EVENT:
+			return TTR("Event");
 	}
 	return String();
 }
@@ -284,6 +289,124 @@ void FPSParticleModuleStack::_add_row(int p_module, Target p_target, const Strin
 	rows.push_back(row);
 }
 
+void FPSParticleModuleStack::_add_meta_row(int p_module, const String &p_key, const String &p_label, Variant::Type p_type, PropertyHint p_hint, const String &p_hint_string, const Variant &p_default) {
+	Node *node = get_edited_emitter();
+	if (!node || !module_contents[p_module]) {
+		return;
+	}
+	// Metadata is edited through its "metadata/<key>" property path.
+	const String path = "metadata/" + p_key;
+	if (!node->has_meta(p_key)) {
+		node->set_meta(p_key, p_default);
+	}
+	EditorProperty *editor = EditorInspector::instantiate_property_editor(node, p_type, path, p_hint, p_hint_string, PROPERTY_USAGE_DEFAULT);
+	if (!editor) {
+		return;
+	}
+	editor->set_object_and_property(node, path);
+	editor->set_label(p_label);
+	editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	if (p_type == Variant::OBJECT) {
+		editor->set_custom_minimum_size(Size2(160, 0) * EDSCALE);
+	}
+	editor->update_property();
+	editor->connect(SNAME("property_changed"), callable_mp(this, &FPSParticleModuleStack::_on_property_changed).bind(editor));
+	module_contents[p_module]->add_child(editor);
+	PropertyRow row;
+	row.editor = editor;
+	row.target = TARGET_NODE;
+	row.property = path;
+	row.module = p_module;
+	rows.push_back(row);
+}
+
+void FPSParticleModuleStack::_build_event() {
+	Node *node = get_edited_emitter();
+	const ParticleEffect3D::EventKind kind = ParticleEffect3D::get_event_kind(node);
+	String title;
+	String subtitle;
+	switch (kind) {
+		case ParticleEffect3D::EVENT_LIGHT:
+			title = TTR("Light Flash");
+			subtitle = TTR("Light event: intensity follows the curve over its duration.");
+			break;
+		case ParticleEffect3D::EVENT_SOUND:
+			title = TTR("Sound");
+			subtitle = TTR("Sound event: plays once at its start time.");
+			break;
+		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
+			title = TTR("Camera Shake");
+			subtitle = TTR("Shakes the active camera when it fires.");
+			break;
+		case ParticleEffect3D::EVENT_DECAL:
+			title = TTR("Decal");
+			subtitle = TTR("Decal event: appears at its start and fades out.");
+			break;
+		default:
+			break;
+	}
+	header_subtitle->set_text(subtitle);
+	add_module_button->set_disabled(true);
+	FoldableContainer *card = memnew(FoldableContainer);
+	card->set_title(title);
+	cards->add_child(card);
+	VBoxContainer *content = memnew(VBoxContainer);
+	content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	card->add_child(content);
+	module_cards[MODULE_EVENT] = card;
+	module_contents[MODULE_EVENT] = content;
+
+	_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DELAY, TTR("Start Time"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s", 0.0);
+	switch (kind) {
+		case ParticleEffect3D::EVENT_LIGHT: {
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = always on)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,10,0.01,or_greater,suffix:s", 0.3);
+			_add_row(MODULE_EVENT, TARGET_NODE, "light_color", "light_color", TTR("Color"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "light_energy", "light_energy", TTR("Peak Energy"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "omni_range", "omni_range", TTR("Range"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "spot_range", "spot_range", TTR("Range"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "spot_angle", "spot_angle", TTR("Cone Angle"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "shadow_enabled", "shadow_enabled", TTR("Shadows"));
+			Ref<Curve> curve;
+			curve.instantiate();
+			curve->add_point(Vector2(0.0, 0.0));
+			curve->add_point(Vector2(0.1, 1.0));
+			curve->add_point(Vector2(1.0, 0.0));
+			if (!node->has_meta(ParticleEffect3D::META_CURVE)) {
+				node->set_meta(ParticleEffect3D::META_CURVE, curve);
+			}
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_CURVE, TTR("Intensity over Time"), Variant::OBJECT, PROPERTY_HINT_RESOURCE_TYPE, "Curve", curve);
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FLICKER, TTR("Flicker"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01", 0.0);
+		} break;
+		case ParticleEffect3D::EVENT_SOUND:
+			_add_row(MODULE_EVENT, TARGET_NODE, "stream", "stream", TTR("Sound"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "volume_db", "volume_db", TTR("Volume"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "pitch_scale", "pitch_scale", TTR("Pitch"));
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_PITCH_RANDOM, TTR("Pitch Random"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01", 0.1);
+			_add_row(MODULE_EVENT, TARGET_NODE, "unit_size", "unit_size", TTR("Loudness Distance"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "max_distance", "max_distance", TTR("Max Distance"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "bus", "bus", TTR("Bus"));
+			break;
+		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
+			_add_row(MODULE_EVENT, TARGET_NODE, "strength", "strength", TTR("Strength"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "frequency", "frequency", TTR("Frequency"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "duration", "duration", TTR("Duration"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "radius", "radius", TTR("Radius"));
+			break;
+		case ParticleEffect3D::EVENT_DECAL:
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s", 6.0);
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FADE, TTR("Fade Out Part"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0.01,1,0.01", 0.5);
+			_add_row(MODULE_EVENT, TARGET_NODE, "texture_albedo", "texture_albedo", TTR("Texture"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "size", "size", TTR("Size"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "modulate", "modulate", TTR("Tint"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "albedo_mix", "albedo_mix", TTR("Albedo Mix"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "upper_fade", "upper_fade", TTR("Upper Fade"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "lower_fade", "lower_fade", TTR("Lower Fade"));
+			break;
+		default:
+			break;
+	}
+}
+
 void FPSParticleModuleStack::_clear() {
 	rows.clear();
 	for (int i = 0; i < MODULE_MAX; i++) {
@@ -315,12 +438,16 @@ void FPSParticleModuleStack::_build() {
 		add_module_button->set_disabled(true);
 		return;
 	}
+	header_title->set_text(emitter->get_name());
+	if (!ParticleEffect3D::is_emitter(emitter)) {
+		_build_event();
+		return;
+	}
 	const bool gpu = _is_gpu();
 	const bool has_process = _has_process_material();
-	header_title->set_text(emitter->get_name());
 	header_subtitle->set_text(gpu ? (has_process ? TTR("GPU emitter") : TTR("GPU emitter with custom particle shader")) : TTR("CPU emitter"));
 
-	for (int module = 0; module < MODULE_MAX; module++) {
+	for (int module = 0; module < MODULE_EVENT; module++) {
 		const bool process_module = module != MODULE_EMITTER && module != MODULE_RENDER;
 		if (process_module && !has_process) {
 			continue;
@@ -372,6 +499,8 @@ void FPSParticleModuleStack::_build() {
 
 	// Emitter: how many particles, how long and how they are released.
 	_add_row(MODULE_EMITTER, TARGET_NODE, "emitting", "emitting", TTR("Emitting"));
+	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DELAY, TTR("Start Delay"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s", 0.0);
+	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DURATION, TTR("Emission Length (0 = auto)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,60,0.01,or_greater,suffix:s", 0.0);
 	_add_row(MODULE_EMITTER, TARGET_NODE, "amount", "amount", TTR("Max Particles"));
 	_add_row(MODULE_EMITTER, TARGET_NODE, "lifetime", "lifetime", TTR("Lifetime"));
 	_add_row(MODULE_EMITTER, TARGET_PROCESS, "lifetime_randomness", "lifetime_randomness", TTR("Lifetime Random"));
@@ -489,7 +618,7 @@ void FPSParticleModuleStack::_build() {
 }
 
 void FPSParticleModuleStack::_update_visibility() {
-	for (int module = 0; module < MODULE_MAX; module++) {
+	for (int module = 0; module < MODULE_EVENT; module++) {
 		if (module_cards[module]) {
 			module_cards[module]->set_visible(_is_module_active(module));
 		}
@@ -510,8 +639,8 @@ void FPSParticleModuleStack::_update_add_menu() {
 	Node *emitter = get_edited_emitter();
 	const bool gpu = _is_gpu();
 	int available = 0;
-	if (emitter && _has_process_material()) {
-		for (int module = 0; module < MODULE_MAX; module++) {
+	if (emitter && ParticleEffect3D::is_emitter(emitter) && _has_process_material()) {
+		for (int module = 0; module < MODULE_EVENT; module++) {
 			if (!_is_module_optional(module) || _is_module_active(module)) {
 				continue;
 			}

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "core/templates/hash_map.h"
 #include "core/templates/local_vector.h"
 #include "scene/3d/node_3d.h"
 
@@ -24,6 +25,18 @@ class ParticleEffect3D : public Node3D {
 public:
 	static constexpr const char *META_DELAY = "particle_effect_delay";
 	static constexpr const char *META_DURATION = "particle_effect_duration";
+	static constexpr const char *META_CURVE = "particle_effect_curve"; // Curve: light intensity over its duration.
+	static constexpr const char *META_FLICKER = "particle_effect_flicker"; // 0..1 random light flicker.
+	static constexpr const char *META_FADE = "particle_effect_fade"; // 0..1 part of a decal's duration used to fade out.
+	static constexpr const char *META_PITCH_RANDOM = "particle_effect_pitch_random"; // 0..1 random sound pitch.
+
+	enum EventKind {
+		EVENT_NONE,
+		EVENT_LIGHT,
+		EVENT_SOUND,
+		EVENT_CAMERA_SHAKE,
+		EVENT_DECAL,
+	};
 
 private:
 	struct EmitterState {
@@ -34,6 +47,19 @@ private:
 		bool one_shot = false;
 		bool started = false;
 		bool ended = false;
+	};
+
+	struct EventState {
+		ObjectID id;
+		EventKind kind = EVENT_NONE;
+		double delay = 0.0;
+		double duration = 0.0; // <= 0: continuous.
+		bool started = false;
+	};
+	struct EventBase {
+		real_t energy = 1.0;
+		real_t alpha = 1.0;
+		real_t pitch = 1.0;
 	};
 
 	bool autoplay = true;
@@ -47,8 +73,11 @@ private:
 	double elapsed = 0.0;
 	double stop_time = 0.0;
 	LocalVector<EmitterState> emitters;
+	LocalVector<EventState> events;
+	HashMap<ObjectID, EventBase> event_bases;
 
 	void _collect_emitters(Node *p_node);
+	void _update_events();
 	static void _set_emitter_emitting(Node *p_emitter, bool p_emitting, bool p_restart);
 	double _get_max_lifetime() const;
 	void _update(double p_delta);
@@ -81,6 +110,7 @@ public:
 	PackedStringArray get_configuration_warnings() const override;
 
 	static bool is_emitter(const Node *p_node);
+	static EventKind get_event_kind(const Node *p_node);
 	// Nodes shown as tracks on the effect timeline (emitters and timed events).
 	static bool is_track(const Node *p_node);
 	static void get_track_window(const Node *p_node, double &r_start, double &r_active_end, double &r_visual_end);

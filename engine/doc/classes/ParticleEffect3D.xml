@@ -5,6 +5,7 @@
 	</brief_description>
 	<description>
 		Groups [GPUParticles3D] and [CPUParticles3D] emitters into one effect, as authored in the Godot FPS Studio Particle workspace. Each emitter can start after a delay and emit for a limited time (see [method set_emitter_delay] and [method set_emitter_duration]); the effect drives those timings when played, emits [signal finished] once every particle has died and can free itself.
+		Besides emitters, these child nodes are played as timed events: [Light3D] (a flash whose energy follows the [code]particle_effect_curve[/code] metadata [Curve] over its duration, or stays on with optional [code]particle_effect_flicker[/code] when the duration is [code]0[/code]), [AudioStreamPlayer3D] (played at its start time, [code]particle_effect_pitch_random[/code] randomizes the pitch), [CameraShake3D] and [Decal] (fades out over the last [code]particle_effect_fade[/code] part of its duration, or stays when the duration is [code]0[/code]). Hidden emitters and events are muted.
 		Typical one-shot usage from game code:
 		[codeblock]
 		const IMPACT = preload("res://effects/bullet_impact.tscn")

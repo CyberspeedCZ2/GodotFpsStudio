@@ -9,20 +9,64 @@
 
 #include "core/config/engine.h"
 #include "core/object/class_db.h"
+#include "scene/3d/audio_stream_player_3d.h"
+#include "servers/audio/audio_stream.h"
+#include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
+#include "scene/3d/decal.h"
 #include "scene/3d/gpu_particles_3d.h"
+#include "scene/3d/light_3d.h"
+#include "scene/resources/curve.h"
 #include "scene/resources/packed_scene.h"
 
 bool ParticleEffect3D::is_emitter(const Node *p_node) {
 	return Object::cast_to<GPUParticles3D>(p_node) || Object::cast_to<CPUParticles3D>(p_node);
 }
 
+ParticleEffect3D::EventKind ParticleEffect3D::get_event_kind(const Node *p_node) {
+	if (Object::cast_to<Light3D>(p_node)) {
+		return EVENT_LIGHT;
+	}
+	if (Object::cast_to<AudioStreamPlayer3D>(p_node)) {
+		return EVENT_SOUND;
+	}
+	if (Object::cast_to<CameraShake3D>(p_node)) {
+		return EVENT_CAMERA_SHAKE;
+	}
+	if (Object::cast_to<Decal>(p_node)) {
+		return EVENT_DECAL;
+	}
+	return EVENT_NONE;
+}
+
 bool ParticleEffect3D::is_track(const Node *p_node) {
-	return is_emitter(p_node);
+	return is_emitter(p_node) || get_event_kind(p_node) != EVENT_NONE;
+}
+
+// Active length of an event; <= 0 means it stays active (continuous).
+static double get_event_duration(const Node *p_node, ParticleEffect3D::EventKind p_kind) {
+	switch (p_kind) {
+		case ParticleEffect3D::EVENT_SOUND: {
+			const AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(p_node);
+			const double length = player && player->get_stream().is_valid() ? player->get_stream()->get_length() : 0.0;
+			return length > 0.0 ? length / MAX(0.01, double(player->get_pitch_scale())) : 0.5;
+		}
+		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
+			return Object::cast_to<CameraShake3D>(p_node)->get_duration();
+		default:
+			return ParticleEffect3D::get_emitter_duration(p_node);
+	}
 }
 
 void ParticleEffect3D::get_track_window(const Node *p_node, double &r_start, double &r_active_end, double &r_visual_end) {
-	get_emitter_window(p_node, r_start, r_active_end, r_visual_end);
+	if (is_emitter(p_node)) {
+		get_emitter_window(p_node, r_start, r_active_end, r_visual_end);
+		return;
+	}
+	r_start = get_emitter_delay(p_node);
+	const double duration = get_event_duration(p_node, get_event_kind(p_node));
+	r_active_end = duration > 0.0 ? r_start + duration : -1.0;
+	r_visual_end = r_active_end;
 }
 
 static bool is_track_enabled(const Node *p_node) {
@@ -91,6 +135,25 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 		state.lifetime = MAX(0.001, double(p_node->get("lifetime")));
 		state.one_shot = bool(p_node->get("one_shot"));
 		emitters.push_back(state);
+	} else if (get_event_kind(p_node) != EVENT_NONE && is_track_enabled(p_node)) {
+		EventState event;
+		event.id = p_node->get_instance_id();
+		event.kind = get_event_kind(p_node);
+		event.delay = get_emitter_delay(p_node);
+		event.duration = get_event_duration(p_node, event.kind);
+		events.push_back(event);
+		// Remember the authored values once; the effect animates them.
+		if (!event_bases.has(event.id)) {
+			EventBase base;
+			if (Light3D *light = Object::cast_to<Light3D>(p_node)) {
+				base.energy = light->get_param(Light3D::PARAM_ENERGY);
+			} else if (Decal *decal = Object::cast_to<Decal>(p_node)) {
+				base.alpha = decal->get_modulate().a;
+			} else if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(p_node)) {
+				base.pitch = player->get_pitch_scale();
+			}
+			event_bases.insert(event.id, base);
+		}
 	}
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		_collect_emitters(p_node->get_child(i));
@@ -112,9 +175,9 @@ double ParticleEffect3D::get_total_duration() const {
 	while (!stack.is_empty()) {
 		Node *node = stack[stack.size() - 1];
 		stack.resize(stack.size() - 1);
-		if (is_emitter(node) && is_track_enabled(node)) {
+		if (is_track(node) && is_track_enabled(node)) {
 			double start, emission_end, visual_end;
-			get_emitter_window(node, start, emission_end, visual_end);
+			get_track_window(node, start, emission_end, visual_end);
 			if (visual_end < 0.0) {
 				return -1.0;
 			}
@@ -134,6 +197,7 @@ void ParticleEffect3D::play() {
 	}
 	play_pending = false;
 	emitters.clear();
+	events.clear();
 	_collect_emitters(this);
 	for (EmitterState &state : emitters) {
 		Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id));
@@ -175,6 +239,13 @@ void ParticleEffect3D::seek(double p_time) {
 		return;
 	}
 	elapsed = p_time;
+	for (EventState &event : events) {
+		// Don't fire sounds or shakes that were already due before the seek time.
+		if (event.delay < p_time - 0.05) {
+			event.started = true;
+		}
+	}
+	_update_events();
 	for (EmitterState &state : emitters) {
 		Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id));
 		if (!emitter || p_time < state.delay) {
@@ -232,7 +303,15 @@ void ParticleEffect3D::_update(double p_delta) {
 			total = MAX(total, visual_end);
 		}
 	}
-	if (emitters.is_empty()) {
+	_update_events();
+	for (const EventState &event : events) {
+		if (event.duration <= 0.0) {
+			infinite = true;
+		} else {
+			total = MAX(total, event.delay + event.duration);
+		}
+	}
+	if (emitters.is_empty() && events.is_empty()) {
 		// Nothing to play; never loop an empty effect (that would restart forever).
 		_finish();
 		return;
@@ -252,6 +331,90 @@ void ParticleEffect3D::_update(double p_delta) {
 	}
 }
 
+static real_t event_noise(uint64_t p_seed, double p_t) {
+	const double i = Math::floor(p_t);
+	const double f = p_t - i;
+	auto hash = [](uint64_t p_x) -> real_t {
+		p_x ^= p_x >> 33;
+		p_x *= 0xff51afd7ed558ccdull;
+		p_x ^= p_x >> 33;
+		return real_t(p_x & 0xffff) / 65535.0;
+	};
+	const real_t a = hash(uint64_t(int64_t(i)) * 2654435761ull + p_seed);
+	const real_t b = hash(uint64_t(int64_t(i) + 1) * 2654435761ull + p_seed);
+	return a + (b - a) * real_t(f * f * (3.0 - 2.0 * f));
+}
+
+void ParticleEffect3D::_update_events() {
+	for (EventState &event : events) {
+		Node *node = Object::cast_to<Node>(ObjectDB::get_instance(event.id));
+		if (!node) {
+			continue;
+		}
+		const EventBase base = event_bases.has(event.id) ? event_bases[event.id] : EventBase();
+		const double local = elapsed - event.delay;
+		const bool continuous = event.duration <= 0.0;
+		const bool inside = local >= 0.0 && (continuous || local <= event.duration);
+		const double t = continuous ? 0.0 : CLAMP(local / event.duration, 0.0, 1.0);
+		switch (event.kind) {
+			case EVENT_LIGHT: {
+				Light3D *light = Object::cast_to<Light3D>(node);
+				real_t factor = 0.0;
+				if (inside) {
+					factor = 1.0;
+					if (!continuous) {
+						Ref<Curve> curve = node->get_meta(META_CURVE, Ref<Curve>());
+						if (curve.is_valid()) {
+							factor = curve->sample_baked(t);
+						} else {
+							// Default flash: quick attack, smooth decay.
+							factor = t < 0.1 ? real_t(t / 0.1) : real_t(Math::pow(1.0 - (t - 0.1) / 0.9, 2.0));
+						}
+					}
+					const real_t flicker = CLAMP(real_t(double(node->get_meta(META_FLICKER, 0.0))), 0.0, 1.0);
+					if (flicker > 0.0) {
+						factor *= 1.0 - flicker * event_noise(event.id, elapsed * 18.0);
+					}
+				}
+				light->set_param(Light3D::PARAM_ENERGY, base.energy * MAX(real_t(0.0), factor));
+			} break;
+			case EVENT_DECAL: {
+				Decal *decal = Object::cast_to<Decal>(node);
+				real_t alpha = 0.0;
+				if (inside) {
+					alpha = 1.0;
+					if (!continuous) {
+						const double fade = CLAMP(double(node->get_meta(META_FADE, 0.5)), 0.01, 1.0);
+						if (t > 1.0 - fade) {
+							alpha = real_t((1.0 - t) / fade);
+						}
+					}
+				}
+				Color modulate = decal->get_modulate();
+				modulate.a = base.alpha * alpha;
+				decal->set_modulate(modulate);
+			} break;
+			case EVENT_SOUND: {
+				if (!event.started && local >= 0.0) {
+					event.started = true;
+					AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(node);
+					const real_t random = CLAMP(real_t(double(node->get_meta(META_PITCH_RANDOM, 0.0))), 0.0, 1.0);
+					player->set_pitch_scale(MAX(real_t(0.01), base.pitch * (1.0 + random * real_t(Math::randf() * 2.0 - 1.0))));
+					player->play();
+				}
+			} break;
+			case EVENT_CAMERA_SHAKE: {
+				if (!event.started && local >= 0.0) {
+					event.started = true;
+					Object::cast_to<CameraShake3D>(node)->shake();
+				}
+			} break;
+			default:
+				break;
+		}
+	}
+}
+
 void ParticleEffect3D::_finish() {
 	playing = false;
 	stopping = false;
@@ -265,7 +428,7 @@ void ParticleEffect3D::_finish() {
 static bool has_emitter_descendant(const Node *p_node) {
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		const Node *child = p_node->get_child(i);
-		if (ParticleEffect3D::is_emitter(child) || has_emitter_descendant(child)) {
+		if (ParticleEffect3D::is_track(child) || has_emitter_descendant(child)) {
 			return true;
 		}
 	}
@@ -291,12 +454,17 @@ void ParticleEffect3D::_notification(int p_what) {
 			} else if (!Engine::get_singleton()->is_editor_hint()) {
 				// Without autoplay the effect stays silent until play() is called.
 				emitters.clear();
+				events.clear();
 				_collect_emitters(this);
 				for (const EmitterState &state : emitters) {
 					if (Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id))) {
 						_set_emitter_emitting(emitter, false, false);
 					}
 				}
+				// Lights and decals stay dark until the effect plays.
+				elapsed = -1.0;
+				_update_events();
+				elapsed = 0.0;
 			}
 		} break;
 		case NOTIFICATION_INTERNAL_PROCESS: {
