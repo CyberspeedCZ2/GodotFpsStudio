@@ -84,6 +84,8 @@ private:
 	Button *create_material_button = nullptr;
 	Button *generate_texture_button = nullptr;
 	Button *edit_texture_button = nullptr;
+	Label *collision_size_hint = nullptr;
+	Button *collision_fit_button = nullptr;
 
 	bool updating = false;
 
@@ -109,6 +111,8 @@ private:
 	void _history_changed(const StringName &p_property);
 	void _on_generate_texture_pressed();
 	void _on_level_collision_pressed();
+	void _on_fit_collision_size_pressed();
+	void _update_collision_hint();
 	void _on_module_menu_id(int p_id, int p_module);
 	void _apply_module_preset(int p_module, int p_preset);
 	void _copy_module(int p_module);

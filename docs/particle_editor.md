@@ -159,7 +159,7 @@ Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emit
 
 GPU částice samy o sobě nenarážejí na fyzikální tělesa, jen na kolizní uzly částic (`GPUParticlesCollision*`). `ParticleEffect3D` to ve hře řeší automaticky: když se přehraje, najde statickou fyzikální kolizi kolem sebe (`StaticBody3D`, včetně kolizí UniBuilderu, a CSG) a na pozadí z ní napeče dočasný `GPUParticlesCollisionSDF3D`. Žádné kolizní boxy do místností přidávat nemusíš.
 
-1. Emitoru, který se má odrážet (např. **Smoke**), zapni modul **Collision** (+ Module → Collision). Kolize platí jen pro emitory s tímto modulem. **Mode** Rigid, **Bounce** u kouře nízko (0–0,2), **Friction** 0,1–0,5. **Particle Size** je poloměr částice pro kolizi; modul ho nastaví na 0,25 m, u velkých obláčků kouře ho zvyš na 0,4–0,8, jinak částice zapadají do stěn.
+1. Emitoru, který se má odrážet (např. **Smoke**), zapni modul **Collision** (+ Module → Collision). Kolize platí jen pro emitory s tímto modulem. **Mode** Rigid, **Bounce** u kouře nízko (0–0,2), **Friction** 0,1–0,5. **Particle Size** (`collision_base_size`) je poloměr kolizní koule: částice se zastaví právě v této vzdálenosti od povrchu. Při zapnutí modulu se nastaví na čtvrtinu velikosti vykreslené částice (mesh × průměrné Scale), např. jiskra 0,18 m → 0,05 m, obláček kouře 2,4 m → 0,6 m. Když je hodnota moc velká (částice „visí ve vzduchu“) nebo moc malá (zapadají do stěn), karta to oranžově hlásí a tlačítko **Fit Particle Size** ji srovná.
 2. Odraz vyladíš v náhledu přes **View → Collision Test Walls**.
 3. Ve hře to funguje samo. Kořen efektu má skupinu **Level Collision**: `collide_with_level` (výchozí zapnuto) a `level_collision_mask` (fyzikální vrstvy stěn, výchozí 1).
 

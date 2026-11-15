@@ -224,10 +224,11 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 			break;
 		case MODULE_COLLISION:
 			set_prop(process, "collision_mode", p_active ? int(ParticleProcessMaterial::COLLISION_RIGID) : int(ParticleProcessMaterial::COLLISION_DISABLED));
-			if (p_active && gpu && double(emitter->get("collision_base_size")) < 0.05) {
-				// The default 0.01 m makes particles sink into surfaces; start
-				// with a size close to a typical smoke or debris particle.
-				set_prop(emitter, "collision_base_size", 0.25);
+			if (p_active && gpu) {
+				// collision_base_size is the collision radius: too small and
+				// particles sink into surfaces, too big and they stop in the
+				// air. Match it to the drawn particle.
+				set_prop(emitter, "collision_base_size", ParticleEffect3D::get_suggested_collision_size(Object::cast_to<GPUParticles3D>(emitter)));
 			}
 			break;
 		case MODULE_SUB_EMITTER:
@@ -707,6 +708,16 @@ void FPSParticleModuleStack::_build() {
 		collision_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 		collision_note->set_modulate(Color(1, 1, 1, 0.7));
 		collision->add_child(collision_note);
+		collision_size_hint = memnew(Label);
+		collision_size_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		collision_size_hint->add_theme_color_override(SceneStringName(font_color), Color(1.0, 0.72, 0.3));
+		collision_size_hint->hide();
+		collision->add_child(collision_size_hint);
+		collision_fit_button = memnew(Button);
+		collision_fit_button->set_text(TTR("Fit Particle Size"));
+		collision_fit_button->set_tooltip_text(TTR("Set Particle Size (the collision radius) from the particle mesh size and scale, so particles touch surfaces instead of stopping in the air."));
+		collision_fit_button->connect(SceneStringName(pressed), callable_mp(this, &FPSParticleModuleStack::_on_fit_collision_size_pressed));
+		collision->add_child(collision_fit_button);
 		Button *level_collision_button = memnew(Button);
 		level_collision_button->set_text(TTR("Add Collision to Level"));
 		level_collision_button->set_tooltip_text(TTR("Create (or re-bake) a GPUParticlesCollisionSDF3D covering the open Level scene, so particles bounce off its walls and floors. Re-bake after changing the level geometry."));
@@ -782,6 +793,7 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_RENDER, TARGET_NODE, "transform_align", StringName(), TTR("Align"));
 
 	_update_render_card();
+	_update_collision_hint();
 	_update_visibility();
 	_update_add_menu();
 }
@@ -950,6 +962,7 @@ void FPSParticleModuleStack::refresh_values() {
 	}
 	header_title->set_text(emitter->get_name());
 	_update_render_card();
+	_update_collision_hint();
 	_update_visibility();
 	_update_add_menu();
 }
@@ -1316,6 +1329,44 @@ void FPSParticleModuleStack::_on_add_attractor_pressed() {
 
 void FPSParticleModuleStack::_on_generate_texture_pressed() {
 	emit_signal(SNAME("generate_texture_requested"));
+}
+
+void FPSParticleModuleStack::_update_collision_hint() {
+	if (!collision_size_hint || !collision_fit_button) {
+		return;
+	}
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(get_edited_emitter());
+	collision_fit_button->set_visible(gpu != nullptr);
+	if (!gpu) {
+		collision_size_hint->hide();
+		return;
+	}
+	const real_t size = gpu->get_collision_base_size();
+	const real_t suggested = ParticleEffect3D::get_suggested_collision_size(gpu);
+	if (size > suggested * 2.0 && size - suggested > 0.05) {
+		collision_size_hint->set_text(vformat(TTR("Particles stop %.2f m before walls and floors: Particle Size is the collision radius and it is larger than the particle. Suggested: %.2f m."), size, suggested));
+		collision_size_hint->show();
+	} else if (size < suggested * 0.25 && suggested - size > 0.02) {
+		collision_size_hint->set_text(vformat(TTR("Particle Size %.2f m is much smaller than the particle; large particles will sink into surfaces. Suggested: %.2f m."), size, suggested));
+		collision_size_hint->show();
+	} else {
+		collision_size_hint->hide();
+	}
+}
+
+void FPSParticleModuleStack::_on_fit_collision_size_pressed() {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(get_edited_emitter());
+	if (!gpu) {
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(TTR("Fit Particle Collision Size"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_property(gpu, "collision_base_size", ParticleEffect3D::get_suggested_collision_size(gpu));
+	undo_redo->add_undo_property(gpu, "collision_base_size", gpu->get_collision_base_size());
+	undo_redo->add_do_method(this, "_history_changed", StringName("collision_base_size"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("collision_base_size"));
+	undo_redo->commit_action();
 }
 
 void FPSParticleModuleStack::_on_level_collision_pressed() {

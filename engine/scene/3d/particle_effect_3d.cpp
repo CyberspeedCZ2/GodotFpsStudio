@@ -350,6 +350,29 @@ static void push_shape_faces(Vector<Face3> &r_faces, const Transform3D &p_xform,
 	}
 }
 
+real_t ParticleEffect3D::get_suggested_collision_size(const GPUParticles3D *p_gpu) {
+	ERR_FAIL_NULL_V(p_gpu, 0.05);
+	// collision_base_size is the collision sphere radius: particles stop this
+	// far from a surface. Use a quarter of the drawn particle (its visual
+	// centre sits a bit above the surface, soft edges may overlap it).
+	real_t visual = 0.2;
+	const Ref<Mesh> mesh = p_gpu->get_draw_passes() > 0 ? p_gpu->get_draw_pass_mesh(0) : Ref<Mesh>();
+	if (const QuadMesh *quad = Object::cast_to<QuadMesh>(mesh.ptr())) {
+		visual = MIN(quad->get_size().x, quad->get_size().y);
+	} else if (mesh.is_valid()) {
+		const Vector3 size = mesh->get_aabb().size;
+		visual = MAX(MAX(size.x, size.y), size.z);
+		const real_t smallest_nonzero = MIN(size.x > 0.0 ? size.x : visual, MIN(size.y > 0.0 ? size.y : visual, size.z > 0.0 ? size.z : visual));
+		visual = smallest_nonzero;
+	}
+	real_t scale = 1.0;
+	const Ref<ParticleProcessMaterial> material = p_gpu->get_process_material();
+	if (material.is_valid()) {
+		scale = (material->get_param_min(ParticleProcessMaterial::PARAM_SCALE) + material->get_param_max(ParticleProcessMaterial::PARAM_SCALE)) * 0.5;
+	}
+	return CLAMP(visual * scale * 0.25, real_t(0.01), real_t(2.0));
+}
+
 bool ParticleEffect3D::emitter_uses_collision(const Node *p_node) {
 	const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node);
 	if (!gpu || !gpu->is_visible_in_tree()) {
@@ -670,8 +693,12 @@ void ParticleEffect3D::_update_level_collision() {
 	if (faces.size() <= LEVEL_COLLISION_SYNC_FACES) {
 		GPUParticlesCollisionSDF3D *baker = memnew(GPUParticlesCollisionSDF3D);
 		configure_level_collision_baker(baker, region);
-		const Ref<Texture3D> texture = sdf_image_to_texture(baker->bake_faces(faces, LEVEL_COLLISION_BAND));
+		const Ref<Image> image = baker->bake_faces(faces, LEVEL_COLLISION_BAND);
+		const Ref<Texture3D> texture = sdf_image_to_texture(image);
 		memdelete(baker);
+		if (OS::get_singleton()->is_stdout_verbose() && texture.is_valid()) {
+			texture->set_meta("_debug_sdf_image", image); // Lets tests sample the field.
+		}
 		print_verbose(vformat("ParticleEffect3D: baked level collision for %s from %d faces in %.1f ms (%s).", get_name(), faces.size(), (OS::get_singleton()->get_ticks_usec() - bake_start) / 1000.0, region));
 		if (texture.is_valid()) {
 			cache_level_collision(space_rid, region, texture);
@@ -1058,6 +1085,7 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("update_level_collision"), &ParticleEffect3D::update_level_collision);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_level_collision_cache"), &ParticleEffect3D::clear_level_collision_cache);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("emitter_uses_collision", "emitter"), &ParticleEffect3D::emitter_uses_collision);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_suggested_collision_size", "emitter"), &ParticleEffect3D::get_suggested_collision_size);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("apply_collision_substeps", "emitter", "shell"), &ParticleEffect3D::apply_collision_substeps);
 	ClassDB::bind_method(D_METHOD("play"), &ParticleEffect3D::play);
 	ClassDB::bind_method(D_METHOD("stop"), &ParticleEffect3D::stop);

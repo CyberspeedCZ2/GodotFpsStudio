@@ -142,6 +142,8 @@ public:
 	// Raises fixed_fps so one simulation step moves less than the collider
 	// shell plus the particle size (stops fast particles tunnelling through walls).
 	static void apply_collision_substeps(GPUParticles3D *p_gpu, real_t p_shell);
+	// A collision_base_size (collision radius) that matches the drawn particle.
+	static real_t get_suggested_collision_size(const GPUParticles3D *p_gpu);
 	static EventKind get_event_kind(const Node *p_node);
 	// Nodes shown as tracks on the effect timeline (emitters and timed events).
 	static bool is_track(const Node *p_node);
