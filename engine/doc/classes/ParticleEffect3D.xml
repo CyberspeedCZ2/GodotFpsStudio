@@ -26,6 +26,12 @@
 				Raises the emitter's [member GPUParticles3D.fixed_fps] (up to 240) so that one simulation step moves a particle less than half of [param shell] plus its collision size. The speed is estimated from the process material.
 			</description>
 		</method>
+		<method name="clear_pool" qualifiers="static">
+			<return type="void" />
+			<description>
+				Frees all pooled (finished, waiting) effects created by [method spawn] and [method prewarm].
+			</description>
+		</method>
 		<method name="clear_level_collision_cache" qualifiers="static">
 			<return type="void" />
 			<description>
@@ -37,6 +43,13 @@
 			<param index="0" name="emitter" type="Node" />
 			<description>
 				Returns [code]true[/code] for a visible [GPUParticles3D] whose process material collides: [member ParticleProcessMaterial.collision_mode] is not disabled, or its shader reads [code]COLLIDED[/code].
+			</description>
+		</method>
+		<method name="get_pooled_count" qualifiers="static">
+			<return type="int" />
+			<param index="0" name="scene" type="PackedScene" />
+			<description>
+				Returns how many finished instances of [param scene] wait in the pool for [method spawn].
 			</description>
 		</method>
 		<method name="is_level_collision_ready" qualifiers="static">
@@ -90,6 +103,15 @@
 				Same as [method play].
 			</description>
 		</method>
+		<method name="prewarm" qualifiers="static">
+			<return type="int" />
+			<param index="0" name="scene" type="PackedScene" />
+			<param index="1" name="parent" type="Node" />
+			<param index="2" name="count" type="int" />
+			<description>
+				Instantiates [param count] silent instances of [param scene] under [param parent] and puts them in the pool, so the next [method spawn] calls reuse them instead of instantiating (e.g. call it at level load for bullet impacts). Returns how many were created; at most 64 instances wait per scene.
+			</description>
+		</method>
 		<method name="prepare_level_collision" qualifiers="static">
 			<return type="bool" />
 			<param index="0" name="level_root" type="Node" />
@@ -127,7 +149,7 @@
 			<param index="1" name="parent" type="Node" />
 			<param index="2" name="transform" type="Transform3D" />
 			<description>
-				Instantiates [param scene] (whose root must be a [ParticleEffect3D]) under [param parent] at the global [param transform], enables [member auto_free] and plays it.
+				Plays [param scene] (whose root must be a [ParticleEffect3D]) under [param parent] at the global [param transform] with [member auto_free] enabled. A finished instance of the same scene waiting in the pool is reused (and moved to [param parent] if needed); otherwise the scene is instantiated. When the effect finishes it returns to the pool instead of being freed, and connections to [signal finished] made for this use are removed. See [method prewarm].
 			</description>
 		</method>
 		<method name="update_level_collision">

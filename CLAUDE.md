@@ -50,6 +50,7 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Kolizní oblast je nejvýš 20 m kolem efektu, rozlišení SDF 16/32/64 podle velikosti (buňka ~0,15–0,31 m), pás `clamp(6 buněk, 0,6, 1,5 m)`.
 - Test všech presetů: doplněk `addons/lt` vytvoří přes menu Library všech 17 a potvrzuje dialog „Discard“.
 - Sdílená kolize levelu: `ParticleEffect3D::prepare_level_collision` (strom → tvary StaticBody3D/CSG → dlaždice 16+2×2 m, 64³, úlohy WorkerThreadPool se sériovým `bake_faces(..., false)`, jinak deadlock vnořených skupinových úloh). Spustí ji první kolizní efekt; po `is_level_collision_ready` efekty nepečou. Okamžité pečení má vysokou prioritu. Test `level_test.gd`, na herním levelu `gametest/game_level_test.gd` (skript mimo herní repo).
+- Pooling: `spawn()` vrací dohrané efekty do zásobníku podle PackedScene (max 64), bez skrývání (skrývání zpomalovalo), `prewarm`, `clear_pool`, odpojí `finished`. Test `pool_test.gd`, měření na `Explosion_01.tscn` uživatele v `gametest/pool_game.gd` (jen čtení).
 - Headless editor testy spouštěj s `--language en` (izolované nastavení jinak přepne editor do češtiny).
 - Inspirace od uživatele: Model workspace (záložky vlevo, svislé záložky vpravo) pro šetření místem.
 

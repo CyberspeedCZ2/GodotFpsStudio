@@ -163,6 +163,15 @@ func _on_hit(position: Vector3, normal: Vector3) -> void:
     ParticleEffect3D.spawn(IMPACT, get_tree().current_scene, Transform3D(basis, position))
 ```
 
+
+### Recyklace efektů (pooling)
+
+`ParticleEffect3D.spawn()` dohrané efekty neruší, ale vrací je do zásobníku podle scény a další `spawn()` stejné scény je použije znovu (nejvýš 64 čekajících na scénu). Rychlá palba tak nevytváří novou instanci scény a nové buffery částic pro každý výstřel. Na efektu Explosion je znovupoužití ~0,09 ms oproti ~0,14 ms za nový efekt (bez GPU části, kterou headless test nezměří).
+
+- `ParticleEffect3D.prewarm(IMPACT, get_tree().current_scene, 16)` při načtení levelu vytvoří efekty dopředu, takže ani první výstřely nic nevytvářejí.
+- Připojení na signál `finished` platí jen pro jedno použití; při návratu do zásobníku se odpojí (kromě `CONNECT_PERSIST`).
+- `ParticleEffect3D.clear_pool()` zásobník uvolní (např. při změně levelu; efekty pod uvolněnou scénou zmizí s ní).
+
 ## Particle Logic
 
 **Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře jeho kód přímo v záložce **Particle Logic** (stejný editor kódu jako Godotův Shader Editor, se zvýrazněním a kontrolou chyb). Změny kódu se projeví v náhledu hned. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.

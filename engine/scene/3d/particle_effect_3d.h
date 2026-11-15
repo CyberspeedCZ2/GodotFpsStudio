@@ -77,6 +77,7 @@ private:
 	bool level_collision_retry = false;
 	bool level_collision_pending = false;
 	AABB level_collision_pending_region;
+	ObjectID pool_scene_id; // Set by spawn(): finished instances return to this scene's pool.
 
 	bool playing = false;
 	bool stopping = false;
@@ -93,6 +94,9 @@ private:
 	double _get_max_lifetime() const;
 	void _update(double p_delta);
 	void _finish();
+	bool _release_to_pool();
+	static ParticleEffect3D *_take_from_pool(const Ref<PackedScene> &p_scene);
+	static ParticleEffect3D *_instantiate_pooled(const Ref<PackedScene> &p_scene, Node *p_parent);
 	bool _get_level_collision_region(AABB &r_region) const;
 	void _update_level_collision();
 	void _set_level_collision(const AABB &p_region, const Ref<Texture3D> &p_texture);
@@ -166,7 +170,14 @@ public:
 	// Instantiates p_scene under p_parent at p_transform, plays it and frees
 	// it when finished. Returns the new effect (nullptr if the scene root is
 	// not a ParticleEffect3D).
+	// Finished spawned effects are hidden and reused by later spawn() calls of
+	// the same scene (up to 64 waiting per scene), so rapid fire does not
+	// instantiate a scene per shot.
 	static ParticleEffect3D *spawn(const Ref<PackedScene> &p_scene, Node *p_parent, const Transform3D &p_transform);
+	// Creates p_count hidden instances in advance (e.g. at level load).
+	static int prewarm(const Ref<PackedScene> &p_scene, Node *p_parent, int p_count);
+	static int get_pooled_count(const Ref<PackedScene> &p_scene);
+	static void clear_pool();
 
 	ParticleEffect3D();
 };

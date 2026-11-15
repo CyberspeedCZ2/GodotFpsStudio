@@ -246,6 +246,11 @@ void ParticleEffect3D::play() {
 	_update(0.0);
 }
 
+namespace {
+constexpr int EFFECT_POOL_MAX_FREE = 64;
+HashMap<ObjectID, LocalVector<ObjectID>> effect_pools; // PackedScene -> free effects.
+} // namespace
+
 // --- Level collision --------------------------------------------------------
 // GPU particles ignore physics bodies; they only collide with
 // GPUParticlesCollision3D nodes. To make "collision" just work against walls
@@ -812,6 +817,7 @@ void ParticleEffect3D::_level_tile_baked(int64_t p_bake) {
 
 void ParticleEffect3D::clear_level_collision_cache() {
 	level_collision_cache.clear();
+	effect_pools.clear();
 	// Forget the shared level bakes too; the next colliding effect re-bakes.
 	for (const LevelCollisionState &state : level_states) {
 		if (Node *manager = Object::cast_to<Node>(ObjectDB::get_instance(state.manager))) {
@@ -1216,8 +1222,102 @@ void ParticleEffect3D::_finish() {
 	set_process_internal(false);
 	emit_signal(SceneStringName(finished));
 	if (auto_free && !Engine::get_singleton()->is_editor_hint() && is_inside_tree()) {
-		queue_free();
+		if (!_release_to_pool()) {
+			queue_free();
+		}
 	}
+}
+
+// --- Pooling ----------------------------------------------------------------
+// spawn() reuses finished instances of the same scene instead of
+// instantiating a new one per shot. Pooled effects stay in the tree, hidden.
+
+bool ParticleEffect3D::_release_to_pool() {
+	if (pool_scene_id.is_null() || is_queued_for_deletion()) {
+		return false;
+	}
+	LocalVector<ObjectID> &pool = effect_pools[pool_scene_id];
+	if (int(pool.size()) >= EFFECT_POOL_MAX_FREE) {
+		return false;
+	}
+	// finished connections belong to the use that just ended.
+	List<Connection> connections;
+	get_signal_connection_list(SceneStringName(finished), &connections);
+	for (const Connection &connection : connections) {
+		if (!(connection.flags & CONNECT_PERSIST)) {
+			disconnect(SceneStringName(finished), connection.callable);
+		}
+	}
+	// No need to hide it: a finished effect has no live particles, its lights
+	// and decals are faded out and its sounds are done. Hiding would only
+	// propagate visibility changes through the whole effect twice per use.
+	pool.push_back(get_instance_id());
+	return true;
+}
+
+ParticleEffect3D *ParticleEffect3D::_take_from_pool(const Ref<PackedScene> &p_scene) {
+	HashMap<ObjectID, LocalVector<ObjectID>>::Iterator pool = effect_pools.find(p_scene->get_instance_id());
+	if (!pool) {
+		return nullptr;
+	}
+	while (!pool->value.is_empty()) {
+		const ObjectID id = pool->value[pool->value.size() - 1];
+		pool->value.remove_at(pool->value.size() - 1);
+		ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(id));
+		if (effect && effect->is_inside_tree() && !effect->is_queued_for_deletion() && !effect->playing) {
+			return effect;
+		}
+	}
+	return nullptr;
+}
+
+ParticleEffect3D *ParticleEffect3D::_instantiate_pooled(const Ref<PackedScene> &p_scene, Node *p_parent) {
+	Node *instance = p_scene->instantiate();
+	ERR_FAIL_NULL_V(instance, nullptr);
+	ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(instance);
+	if (!effect) {
+		memdelete(instance);
+		ERR_FAIL_V_MSG(nullptr, "The scene root is not a ParticleEffect3D. Save the effect from the Particle workspace.");
+	}
+	effect->set_auto_free(true);
+	effect->set_autoplay(false);
+	effect->pool_scene_id = p_scene->get_instance_id();
+	p_parent->add_child(effect);
+	return effect;
+}
+
+int ParticleEffect3D::prewarm(const Ref<PackedScene> &p_scene, Node *p_parent, int p_count) {
+	ERR_FAIL_COND_V(p_scene.is_null(), 0);
+	ERR_FAIL_NULL_V(p_parent, 0);
+	int created = 0;
+	LocalVector<ObjectID> &pool = effect_pools[p_scene->get_instance_id()];
+	for (int i = 0; i < p_count && int(pool.size()) < EFFECT_POOL_MAX_FREE; i++) {
+		ParticleEffect3D *effect = _instantiate_pooled(p_scene, p_parent);
+		if (!effect) {
+			break;
+		}
+		// Without autoplay it stays silent (lights and decals dark) until used.
+		pool.push_back(effect->get_instance_id());
+		created++;
+	}
+	return created;
+}
+
+int ParticleEffect3D::get_pooled_count(const Ref<PackedScene> &p_scene) {
+	ERR_FAIL_COND_V(p_scene.is_null(), 0);
+	HashMap<ObjectID, LocalVector<ObjectID>>::Iterator pool = effect_pools.find(p_scene->get_instance_id());
+	return pool ? int(pool->value.size()) : 0;
+}
+
+void ParticleEffect3D::clear_pool() {
+	for (KeyValue<ObjectID, LocalVector<ObjectID>> &pool : effect_pools) {
+		for (const ObjectID &id : pool.value) {
+			if (Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(id))) {
+				effect->queue_free();
+			}
+		}
+	}
+	effect_pools.clear();
 }
 
 static bool has_emitter_descendant(const Node *p_node) {
@@ -1310,16 +1410,18 @@ double ParticleEffect3D::get_speed_scale() const {
 ParticleEffect3D *ParticleEffect3D::spawn(const Ref<PackedScene> &p_scene, Node *p_parent, const Transform3D &p_transform) {
 	ERR_FAIL_COND_V(p_scene.is_null(), nullptr);
 	ERR_FAIL_NULL_V(p_parent, nullptr);
-	Node *instance = p_scene->instantiate();
-	ERR_FAIL_NULL_V(instance, nullptr);
-	ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(instance);
-	if (!effect) {
-		memdelete(instance);
-		ERR_FAIL_V_MSG(nullptr, "The scene root is not a ParticleEffect3D. Save the effect from the Particle workspace.");
+	ParticleEffect3D *effect = _take_from_pool(p_scene);
+	if (effect) {
+		if (effect->get_parent() != p_parent) {
+			effect->get_parent()->remove_child(effect);
+			p_parent->add_child(effect);
+		}
+	} else {
+		effect = _instantiate_pooled(p_scene, p_parent);
+		if (!effect) {
+			return nullptr;
+		}
 	}
-	effect->set_auto_free(true);
-	effect->set_autoplay(false);
-	p_parent->add_child(effect);
 	if (effect->is_inside_tree()) {
 		effect->set_global_transform(p_transform);
 	} else {
@@ -1344,6 +1446,9 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_level_collision_mask"), &ParticleEffect3D::get_level_collision_mask);
 	ClassDB::bind_method(D_METHOD("update_level_collision"), &ParticleEffect3D::update_level_collision);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_level_collision_cache"), &ParticleEffect3D::clear_level_collision_cache);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("prewarm", "scene", "parent", "count"), &ParticleEffect3D::prewarm);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_pooled_count", "scene"), &ParticleEffect3D::get_pooled_count);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_pool"), &ParticleEffect3D::clear_pool);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("prepare_level_collision", "level_root", "mask"), &ParticleEffect3D::prepare_level_collision, DEFVAL(0xFFFFFFFF));
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("is_level_collision_ready", "node_in_world"), &ParticleEffect3D::is_level_collision_ready);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("emitter_uses_collision", "emitter"), &ParticleEffect3D::emitter_uses_collision);
