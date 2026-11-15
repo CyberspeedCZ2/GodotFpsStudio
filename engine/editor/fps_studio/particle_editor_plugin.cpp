@@ -2040,6 +2040,12 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 	_set_effect_document(effect, String(), true);
 }
 
+void FPSStudioParticleEditorPlugin::_assign_level_owners(Node *p_instance, Node *p_owner) {
+	if (p_instance && p_owner) {
+		set_scene_subtree_owners(p_instance, p_owner);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_restart_preview_at(double p_time) {
 	if (!preview_effect) {
 		return;
@@ -2532,10 +2538,18 @@ void FPSStudioParticleEditorPlugin::_add_effect_to_level() {
 		return;
 	}
 	instance->set_name(scene_root->prevalidate_child_name(instance, effect->get_name()));
+	// A saved effect is added as a scene instance (its children belong to the
+	// effect scene). An unsaved effect is copied into the Level, so all of its
+	// nodes must be owned by the Level root, otherwise saving the Level would
+	// drop the emitters.
+	const bool is_scene_instance = !instance->get_scene_file_path().is_empty();
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(vformat(TTR("Add %s to Level"), effect->get_name()));
 	undo_redo->add_do_method(scene_root, "add_child", instance, true);
 	undo_redo->add_do_method(instance, "set_owner", scene_root);
+	if (!is_scene_instance) {
+		undo_redo->add_do_method(this, "_assign_level_owners", instance, scene_root);
+	}
 	undo_redo->add_do_reference(instance);
 	undo_redo->add_undo_method(scene_root, "remove_child", instance);
 	undo_redo->commit_action();
@@ -3194,6 +3208,7 @@ void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_effect_name_changed"), &FPSStudioParticleEditorPlugin::_on_effect_name_changed);
 	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
 	ClassDB::bind_method(D_METHOD("_apply_emitter_timing", "emitter", "delay", "duration"), &FPSStudioParticleEditorPlugin::_apply_emitter_timing);
+	ClassDB::bind_method(D_METHOD("_assign_level_owners", "instance", "owner"), &FPSStudioParticleEditorPlugin::_assign_level_owners);
 }
 
 void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {

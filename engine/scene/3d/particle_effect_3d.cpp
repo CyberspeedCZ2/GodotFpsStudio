@@ -218,14 +218,21 @@ void ParticleEffect3D::_update(double p_delta) {
 			total = MAX(total, visual_end);
 		}
 	}
+	if (emitters.is_empty()) {
+		// Nothing to play; never loop an empty effect (that would restart forever).
+		_finish();
+		return;
+	}
 	if (stopping) {
 		if (elapsed >= stop_time + _get_max_lifetime()) {
 			_finish();
 		}
 	} else if (!infinite && elapsed >= total) {
-		if (looping) {
+		// Loop only effects with a real duration, and never restart from within
+		// play() itself (p_delta == 0), which would recurse.
+		if (looping && total > 0.0 && p_delta > 0.0) {
 			play();
-		} else {
+		} else if (!looping || total <= 0.0) {
 			_finish();
 		}
 	}
