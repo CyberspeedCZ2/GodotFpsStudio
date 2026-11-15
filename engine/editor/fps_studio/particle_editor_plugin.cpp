@@ -451,7 +451,7 @@ static void clear_preview_transform_origin(Node *p_node) {
 	}
 }
 
-static void copy_preview_properties(Node *p_source, Node *p_preview) {
+static void copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_root = true) {
 	if (!p_source || !p_preview) {
 		return;
 	}
@@ -475,9 +475,16 @@ static void copy_preview_properties(Node *p_source, Node *p_preview) {
 			preview_3d->set_transform(transform);
 		}
 	}
-	p_preview->set("visible", true);
+	// The effect root is always shown; muted (hidden) tracks stay hidden.
+	bool source_visible = true;
+	if (!p_is_root) {
+		bool valid = false;
+		const Variant visible = p_source->get("visible", &valid);
+		source_visible = !valid || bool(visible);
+	}
+	p_preview->set("visible", source_visible);
 	for (int i = 0; i < MIN(p_source->get_child_count(), p_preview->get_child_count()); i++) {
-		copy_preview_properties(p_source->get_child(i), p_preview->get_child(i));
+		copy_preview_properties(p_source->get_child(i), p_preview->get_child(i), false);
 	}
 }
 
@@ -790,7 +797,7 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 		module_stack->edit(p_node);
 	}
 	if (timeline_view) {
-		timeline_view->set_selected_emitter(p_node);
+		timeline_view->set_selected_track(p_node);
 	}
 	if (texture_generator_apply_button) {
 		texture_generator_apply_button->set_disabled(p_node == nullptr);
@@ -860,6 +867,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 		timeline->set_max(preview_duration);
 		timeline->set_value_no_signal(0.0);
 	}
+	_apply_preview_solo();
 	_restart_preview_at(0.0);
 	_set_preview_playing(preview_playing);
 	_frame_preview();
@@ -882,6 +890,7 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	}
 	copy_preview_properties(source, preview_effect);
 	_apply_preview_defaults(preview_effect);
+	_apply_preview_solo();
 	_set_preview_playing(preview_playing);
 }
 
@@ -890,6 +899,9 @@ void FPSStudioParticleEditorPlugin::_set_preview_playing(bool p_playing) {
 	if (play_button) {
 		play_button->set_pressed_no_signal(preview_playing);
 		play_button->set_text(preview_playing ? TTR("Pause") : TTR("Play"));
+	}
+	if (timeline_play_button && timeline_play_button->is_inside_tree()) {
+		timeline_play_button->set_button_icon(timeline_play_button->get_editor_theme_icon(preview_playing ? SNAME("Pause") : SNAME("Play")));
 	}
 	set_preview_speed_recursive(preview_effect, preview_playing ? preview_speed : 0.0);
 	if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(preview_effect)) {
@@ -941,6 +953,12 @@ void FPSStudioParticleEditorPlugin::_on_speed_changed(double p_value) {
 
 void FPSStudioParticleEditorPlugin::_on_loop_toggled(bool p_enabled) {
 	preview_loop = p_enabled;
+	if (preview_loop_toggle) {
+		preview_loop_toggle->set_pressed_no_signal(p_enabled);
+	}
+	if (timeline_loop_button) {
+		timeline_loop_button->set_pressed_no_signal(p_enabled);
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_on_reset_view_pressed() {
@@ -3030,7 +3048,24 @@ void FPSStudioParticleEditorPlugin::_on_curve_changed() {
 }
 
 void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventKey> key = p_event;
+	if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
+		if (key->get_keycode() == Key::SPACE) {
+			_on_timeline_play_toggle();
+		} else if (key->get_keycode() == Key::HOME) {
+			_on_restart_pressed();
+		} else if (key->get_keycode() == Key::F) {
+			_frame_preview();
+		} else {
+			return;
+		}
+		preview_container->accept_event();
+		return;
+	}
 	Ref<InputEventMouseButton> mouse_button = p_event;
+	if (mouse_button.is_valid() && mouse_button->is_pressed()) {
+		preview_container->grab_focus();
+	}
 	if (mouse_button.is_valid()) {
 		const MouseButton button_index = mouse_button->get_button_index();
 		if (button_index == MouseButton::LEFT || button_index == MouseButton::RIGHT) {
@@ -3131,7 +3166,162 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 	_update_preview_camera();
 }
 
+void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
+	if (!timeline_play_button || !timeline_play_button->is_inside_tree()) {
+		return;
+	}
+	Node *toolbar = timeline_play_button->get_parent();
+	for (int i = 0; i < toolbar->get_child_count(); i++) {
+		Button *button = Object::cast_to<Button>(toolbar->get_child(i));
+		if (button && button->has_meta("icon_name")) {
+			button->set_button_icon(button->get_editor_theme_icon(StringName(String(button->get_meta("icon_name")))));
+		}
+	}
+	timeline_play_button->set_button_icon(timeline_play_button->get_editor_theme_icon(preview_playing ? SNAME("Pause") : SNAME("Play")));
+}
+
+void FPSStudioParticleEditorPlugin::_apply_preview_solo() {
+	Node *source = _get_effect_root();
+	Node *solo = Object::cast_to<Node>(ObjectDB::get_instance(solo_emitter_id));
+	if (!source || !preview_effect) {
+		return;
+	}
+	if (solo && !source->is_ancestor_of(solo)) {
+		solo_emitter_id = ObjectID();
+		solo = nullptr;
+	}
+	if (!solo) {
+		return;
+	}
+	// Solo is preview only: hide every other track in the preview copy.
+	Vector<Node *> emitters;
+	_collect_emitters(source, emitters);
+	for (Node *emitter : emitters) {
+		Node *preview_node = preview_effect->get_node_or_null(source->get_path_to(emitter));
+		if (Node3D *preview_3d = Object::cast_to<Node3D>(preview_node)) {
+			if (emitter != solo) {
+				preview_3d->set_visible(false);
+			}
+		}
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_set_emitter_visible(Object *p_emitter, bool p_visible) {
+	Node3D *emitter = Object::cast_to<Node3D>(p_emitter);
+	if (!emitter) {
+		return;
+	}
+	emitter->set_visible(p_visible);
+	_mark_document_dirty();
+	_sync_preview_properties();
+	_restart_preview_at(preview_time);
+	if (timeline_view) {
+		timeline_view->refresh();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_duplicate_emitter(Node *p_emitter) {
+	Node *effect = _get_effect_root();
+	if (!effect || !p_emitter || p_emitter == effect) {
+		return;
+	}
+	Node *parent = p_emitter->get_parent();
+	Node *copy = p_emitter->duplicate(Node::DUPLICATE_SIGNALS | Node::DUPLICATE_SCRIPTS);
+	if (!copy) {
+		return;
+	}
+	// Give the copy its own process material, mesh and draw material so editing
+	// it does not change the original. External textures stay shared.
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(copy)) {
+		if (gpu->get_process_material().is_valid()) {
+			gpu->set_process_material(gpu->get_process_material()->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
+		}
+		for (int pass = 0; pass < gpu->get_draw_passes(); pass++) {
+			if (gpu->get_draw_pass_mesh(pass).is_valid()) {
+				gpu->set_draw_pass_mesh(pass, gpu->get_draw_pass_mesh(pass)->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
+			}
+		}
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(copy)) {
+		if (cpu->get_mesh().is_valid()) {
+			cpu->set_mesh(cpu->get_mesh()->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
+		}
+	}
+	if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(copy)) {
+		if (geometry->get_material_override().is_valid()) {
+			geometry->set_material_override(geometry->get_material_override()->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
+		}
+	}
+	copy->set_name(parent->prevalidate_child_name(copy, String(p_emitter->get_name()) + "Copy"));
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(vformat(TTR("Duplicate %s"), p_emitter->get_name()));
+	undo_redo->add_do_method(parent, "add_child", copy, true);
+	undo_redo->add_do_method(parent, "move_child", copy, p_emitter->get_index() + 1);
+	undo_redo->add_do_method(this, "_assign_level_owners", copy, effect);
+	undo_redo->add_do_method(copy, "set_owner", effect);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", copy);
+	undo_redo->add_do_reference(copy);
+	undo_redo->add_undo_method(parent, "remove_child", copy);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", p_emitter);
+	undo_redo->commit_action();
+}
+
+void FPSStudioParticleEditorPlugin::_on_duplicate_emitter_pressed() {
+	_duplicate_emitter(_get_edited_emitter());
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_track_action(Object *p_track, int p_action) {
+	Node *track = Object::cast_to<Node>(p_track);
+	if (!track) {
+		return;
+	}
+	switch (p_action) {
+		case FPSParticleTimeline::ACTION_DUPLICATE:
+			_duplicate_emitter(track);
+			break;
+		case FPSParticleTimeline::ACTION_RENAME: {
+			_set_edited_emitter(track);
+			if (emitter_tree && emitter_tree->get_selected()) {
+				emitter_tree->grab_focus();
+				emitter_tree->edit_selected(true);
+			}
+		} break;
+		case FPSParticleTimeline::ACTION_DELETE:
+			_set_edited_emitter(track);
+			_remove_selected_emitter();
+			break;
+		case FPSParticleTimeline::ACTION_SOLO:
+			solo_emitter_id = solo_emitter_id == track->get_instance_id() ? ObjectID() : track->get_instance_id();
+			if (timeline_view) {
+				timeline_view->set_solo_track(Object::cast_to<Node>(ObjectDB::get_instance(solo_emitter_id)));
+			}
+			_sync_preview_properties();
+			_restart_preview_at(preview_time);
+			break;
+		case FPSParticleTimeline::ACTION_TOGGLE_VISIBLE: {
+			Node3D *track_3d = Object::cast_to<Node3D>(track);
+			if (!track_3d) {
+				break;
+			}
+			EditorUndoRedoManager *undo_redo = get_undo_redo();
+			undo_redo->create_action(track_3d->is_visible() ? TTR("Mute Track") : TTR("Unmute Track"), UndoRedo::MERGE_DISABLE, track);
+			undo_redo->add_do_method(this, "_set_emitter_visible", track, !track_3d->is_visible());
+			undo_redo->add_undo_method(this, "_set_emitter_visible", track, track_3d->is_visible());
+			undo_redo->commit_action();
+		} break;
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_play_toggle() {
+	if (!_get_effect_root()) {
+		return;
+	}
+	_set_preview_playing(!preview_playing);
+}
+
 void FPSStudioParticleEditorPlugin::_update_time_label() {
+	if (timeline_time_label) {
+		timeline_time_label->set_text(vformat("%s / %s s", String::num(preview_time, 2), String::num(preview_duration, 2)));
+	}
 	if (time_label) {
 		time_label->set_text(vformat("%s / %s s", String::num(preview_time, 2), String::num(preview_duration, 2)));
 	}
@@ -3209,9 +3399,13 @@ void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
 	ClassDB::bind_method(D_METHOD("_apply_emitter_timing", "emitter", "delay", "duration"), &FPSStudioParticleEditorPlugin::_apply_emitter_timing);
 	ClassDB::bind_method(D_METHOD("_assign_level_owners", "instance", "owner"), &FPSStudioParticleEditorPlugin::_assign_level_owners);
+	ClassDB::bind_method(D_METHOD("_set_emitter_visible", "emitter", "visible"), &FPSStudioParticleEditorPlugin::_set_emitter_visible);
 }
 
 void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
+	if (p_visible) {
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons).call_deferred();
+	}
 	if (screen) {
 		screen->set_visible(p_visible);
 	}
@@ -3303,6 +3497,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	screen = workspace;
 	EditorNode::get_singleton()->get_editor_main_screen()->get_control()->add_child(workspace);
 	workspace->hide();
+	workspace->connect(SceneStringName(theme_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons));
 
 	HBoxContainer *document_toolbar = memnew(HBoxContainer);
 	document_toolbar->set_custom_minimum_size(Size2(0, 34) * EDSCALE);
@@ -3380,6 +3575,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_menu->get_popup()->add_item(TTR("Smoke"), PARTICLE_TEMPLATE_SMOKE);
 	add_emitter_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_menu_pressed));
 	emitter_header->add_child(add_emitter_menu);
+	Button *duplicate_emitter_button = memnew(Button);
+	duplicate_emitter_button->set_text(TTR("Duplicate"));
+	duplicate_emitter_button->set_tooltip_text(TTR("Duplicate the selected emitter with its own materials (Ctrl/Cmd+D in the timeline)."));
+	duplicate_emitter_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_duplicate_emitter_pressed));
+	emitter_header->add_child(duplicate_emitter_button);
 	Button *remove_emitter_button = memnew(Button);
 	remove_emitter_button->set_text(TTR("Remove"));
 	remove_emitter_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_remove_selected_emitter));
@@ -3462,6 +3662,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_container->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_mouse_filter(Control::MOUSE_FILTER_STOP);
+	preview_container->set_focus_mode(Control::FOCUS_ALL);
 	preview_container->set_tooltip_text(TTR("Drag with the left or right mouse button to orbit, middle mouse button to pan, and use the wheel to zoom."));
 	preview_container->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_gui_input));
 	preview_panel->add_child(preview_container);
@@ -3558,27 +3759,93 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	speed_spin->set_custom_minimum_size(Size2(84, 0) * EDSCALE);
 	speed_spin->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_speed_changed));
 	transport->add_child(speed_spin);
-	CheckButton *loop_toggle = memnew(CheckButton);
-	loop_toggle->set_text(TTR("Loop"));
-	loop_toggle->set_pressed(preview_loop);
-	loop_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
-	transport->add_child(loop_toggle);
+	preview_loop_toggle = memnew(CheckButton);
+	preview_loop_toggle->set_text(TTR("Loop"));
+	preview_loop_toggle->set_pressed(preview_loop);
+	preview_loop_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
+	transport->add_child(preview_loop_toggle);
 
 	bottom_tabs = memnew(TabContainer);
 	bottom_tabs->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
 	bottom_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	center_split->add_child(bottom_tabs);
+	VBoxContainer *timeline_page = memnew(VBoxContainer);
+	timeline_page->set_name(TTR("Timeline"));
+	bottom_tabs->add_child(timeline_page);
+	HBoxContainer *timeline_toolbar = memnew(HBoxContainer);
+	timeline_page->add_child(timeline_toolbar);
+	timeline_play_button = memnew(Button);
+	timeline_play_button->set_flat(true);
+	timeline_play_button->set_tooltip_text(TTR("Play / Pause (Space)"));
+	timeline_play_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_play_toggle));
+	timeline_toolbar->add_child(timeline_play_button);
+	Button *timeline_restart = memnew(Button);
+	timeline_restart->set_flat(true);
+	timeline_restart->set_tooltip_text(TTR("Restart from the beginning (Home)"));
+	timeline_restart->set_meta("icon_name", "PlayStart");
+	timeline_restart->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_restart_pressed));
+	timeline_toolbar->add_child(timeline_restart);
+	timeline_loop_button = memnew(Button);
+	timeline_loop_button->set_flat(true);
+	timeline_loop_button->set_toggle_mode(true);
+	timeline_loop_button->set_pressed(preview_loop);
+	timeline_loop_button->set_tooltip_text(TTR("Loop the preview over the whole effect"));
+	timeline_loop_button->set_meta("icon_name", "Loop");
+	timeline_loop_button->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
+	timeline_toolbar->add_child(timeline_loop_button);
+	timeline_time_label = memnew(Label);
+	timeline_time_label->set_custom_minimum_size(Size2(130, 0) * EDSCALE);
+	timeline_time_label->set_text("0.00 / 0.00 s");
+	timeline_toolbar->add_child(timeline_time_label);
+	Control *timeline_spacer = memnew(Control);
+	timeline_spacer->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	timeline_toolbar->add_child(timeline_spacer);
+	Label *timeline_hint = memnew(Label);
+	timeline_hint->set_text(TTR("Drag bars to time tracks · right-click for options"));
+	timeline_hint->set_modulate(Color(1, 1, 1, 0.5));
+	timeline_hint->set_clip_text(true);
+	timeline_hint->set_h_size_flags(Control::SIZE_SHRINK_END);
+	timeline_toolbar->add_child(timeline_hint);
+	Button *timeline_snap = memnew(Button);
+	timeline_snap->set_flat(true);
+	timeline_snap->set_toggle_mode(true);
+	timeline_snap->set_pressed(true);
+	timeline_snap->set_tooltip_text(TTR("Snap timing to 0.05 s (hold Shift to bypass)"));
+	timeline_snap->set_meta("icon_name", "Snap");
+	timeline_toolbar->add_child(timeline_snap);
+	Button *timeline_zoom_out = memnew(Button);
+	timeline_zoom_out->set_flat(true);
+	timeline_zoom_out->set_tooltip_text(TTR("Zoom out (Ctrl/Cmd + wheel)"));
+	timeline_zoom_out->set_meta("icon_name", "ZoomLess");
+	timeline_toolbar->add_child(timeline_zoom_out);
+	Button *timeline_zoom_in = memnew(Button);
+	timeline_zoom_in->set_flat(true);
+	timeline_zoom_in->set_tooltip_text(TTR("Zoom in (Ctrl/Cmd + wheel)"));
+	timeline_zoom_in->set_meta("icon_name", "ZoomMore");
+	timeline_toolbar->add_child(timeline_zoom_in);
+	Button *timeline_fit = memnew(Button);
+	timeline_fit->set_text(TTR("Fit"));
+	timeline_fit->set_flat(true);
+	timeline_fit->set_tooltip_text(TTR("Show the whole effect (F)"));
+	timeline_toolbar->add_child(timeline_fit);
 	ScrollContainer *timeline_scroll = memnew(ScrollContainer);
-	timeline_scroll->set_name(TTR("Timeline"));
 	timeline_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
-	bottom_tabs->add_child(timeline_scroll);
+	timeline_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	timeline_page->add_child(timeline_scroll);
 	timeline_view = memnew(FPSParticleTimeline);
 	timeline_view->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	timeline_view->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	timeline_view->connect("scrub_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_scrub));
-	timeline_view->connect("emitter_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_emitter_selected));
+	timeline_view->connect("track_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_emitter_selected));
 	timeline_view->connect("timing_committed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_timing_committed));
+	timeline_view->connect("track_action", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_track_action));
+	timeline_view->connect("play_toggle_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_play_toggle));
+	timeline_view->connect("restart_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_restart_pressed));
 	timeline_scroll->add_child(timeline_view);
+	timeline_snap->connect(SceneStringName(toggled), callable_mp(timeline_view, &FPSParticleTimeline::set_snap_enabled));
+	timeline_zoom_out->connect(SceneStringName(pressed), callable_mp(timeline_view, &FPSParticleTimeline::zoom_out));
+	timeline_zoom_in->connect(SceneStringName(pressed), callable_mp(timeline_view, &FPSParticleTimeline::zoom_in));
+	timeline_fit->connect(SceneStringName(pressed), callable_mp(timeline_view, &FPSParticleTimeline::fit_view));
 	PanelContainer *logic_panel = memnew(PanelContainer);
 	logic_panel->set_name(TTR("Particle Logic"));
 	logic_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);

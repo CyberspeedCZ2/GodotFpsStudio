@@ -17,6 +17,20 @@ bool ParticleEffect3D::is_emitter(const Node *p_node) {
 	return Object::cast_to<GPUParticles3D>(p_node) || Object::cast_to<CPUParticles3D>(p_node);
 }
 
+bool ParticleEffect3D::is_track(const Node *p_node) {
+	return is_emitter(p_node);
+}
+
+void ParticleEffect3D::get_track_window(const Node *p_node, double &r_start, double &r_active_end, double &r_visual_end) {
+	get_emitter_window(p_node, r_start, r_active_end, r_visual_end);
+}
+
+static bool is_track_enabled(const Node *p_node) {
+	// Hidden emitters are muted: they neither play nor extend the effect.
+	const Node3D *node_3d = Object::cast_to<Node3D>(p_node);
+	return !node_3d || node_3d->is_visible();
+}
+
 void ParticleEffect3D::set_emitter_delay(Node *p_emitter, double p_delay) {
 	ERR_FAIL_NULL(p_emitter);
 	if (p_delay <= 0.0) {
@@ -69,7 +83,7 @@ void ParticleEffect3D::_set_emitter_emitting(Node *p_emitter, bool p_emitting, b
 }
 
 void ParticleEffect3D::_collect_emitters(Node *p_node) {
-	if (is_emitter(p_node)) {
+	if (is_emitter(p_node) && is_track_enabled(p_node)) {
 		EmitterState state;
 		state.id = p_node->get_instance_id();
 		state.delay = get_emitter_delay(p_node);
@@ -98,7 +112,7 @@ double ParticleEffect3D::get_total_duration() const {
 	while (!stack.is_empty()) {
 		Node *node = stack[stack.size() - 1];
 		stack.resize(stack.size() - 1);
-		if (is_emitter(node)) {
+		if (is_emitter(node) && is_track_enabled(node)) {
 			double start, emission_end, visual_end;
 			get_emitter_window(node, start, emission_end, visual_end);
 			if (visual_end < 0.0) {

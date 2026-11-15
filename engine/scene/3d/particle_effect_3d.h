@@ -81,6 +81,9 @@ public:
 	PackedStringArray get_configuration_warnings() const override;
 
 	static bool is_emitter(const Node *p_node);
+	// Nodes shown as tracks on the effect timeline (emitters and timed events).
+	static bool is_track(const Node *p_node);
+	static void get_track_window(const Node *p_node, double &r_start, double &r_active_end, double &r_visual_end);
 	static void set_emitter_delay(Node *p_emitter, double p_delay);
 	static double get_emitter_delay(const Node *p_emitter);
 	static void set_emitter_duration(Node *p_emitter, double p_duration);

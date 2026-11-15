@@ -211,6 +211,11 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *selection_label = nullptr;
 	FPSParticleModuleStack *module_stack = nullptr;
 	FPSParticleTimeline *timeline_view = nullptr;
+	Button *timeline_play_button = nullptr;
+	Button *timeline_loop_button = nullptr;
+	Label *timeline_time_label = nullptr;
+	CheckButton *preview_loop_toggle = nullptr;
+	ObjectID solo_emitter_id;
 	Control *module_stack_scroll = nullptr;
 	TabContainer *properties_tabs = nullptr;
 	TabContainer *bottom_tabs = nullptr;
@@ -301,6 +306,13 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _restart_preview_at(double p_time);
 	void _on_timeline_scrub(double p_time);
 	void _on_timeline_emitter_selected(Object *p_emitter);
+	void _on_timeline_track_action(Object *p_track, int p_action);
+	void _on_timeline_play_toggle();
+	void _apply_preview_solo();
+	void _update_toolbar_icons();
+	void _duplicate_emitter(Node *p_emitter);
+	void _on_duplicate_emitter_pressed();
+	void _set_emitter_visible(Object *p_emitter, bool p_visible);
 	void _on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration);
 	void _apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration);
 	Node *_convert_to_effect_root(Node *p_root);
