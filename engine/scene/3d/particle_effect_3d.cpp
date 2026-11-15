@@ -248,8 +248,29 @@ void ParticleEffect3D::_finish() {
 	}
 }
 
+static bool has_emitter_descendant(const Node *p_node) {
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		const Node *child = p_node->get_child(i);
+		if (ParticleEffect3D::is_emitter(child) || has_emitter_descendant(child)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+PackedStringArray ParticleEffect3D::get_configuration_warnings() const {
+	PackedStringArray warnings = Node3D::get_configuration_warnings();
+	if (!has_emitter_descendant(this)) {
+		warnings.push_back(RTR("This effect has no emitters, so nothing will be visible. Add GPUParticles3D or CPUParticles3D children, or instance an effect scene saved from the Particle workspace."));
+	}
+	return warnings;
+}
+
 void ParticleEffect3D::_notification(int p_what) {
 	switch (p_what) {
+		case NOTIFICATION_CHILD_ORDER_CHANGED: {
+			update_configuration_warnings();
+		} break;
 		case NOTIFICATION_READY: {
 			if (play_pending || (autoplay && !Engine::get_singleton()->is_editor_hint())) {
 				play();

@@ -78,6 +78,8 @@ public:
 	// Seconds until every particle has died, or -1 if an emitter runs forever.
 	double get_total_duration() const;
 
+	PackedStringArray get_configuration_warnings() const override;
+
 	static bool is_emitter(const Node *p_node);
 	static void set_emitter_delay(Node *p_emitter, double p_delay);
 	static double get_emitter_delay(const Node *p_emitter);
