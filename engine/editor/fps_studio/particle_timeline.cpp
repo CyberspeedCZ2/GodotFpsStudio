@@ -16,6 +16,7 @@
 #include "scene/3d/node_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/gui/popup_menu.h"
+#include "scene/gui/scroll_container.h"
 #include "scene/resources/font.h"
 #include "scene/resources/style_box_flat.h"
 
@@ -41,6 +42,17 @@ real_t FPSParticleTimeline::_ruler_height() const {
 	return 24 * EDSCALE;
 }
 
+real_t FPSParticleTimeline::_ruler_top() const {
+	// The ruler stays at the visible top while the track list scrolls.
+	const ScrollContainer *scroll = Object::cast_to<ScrollContainer>(get_parent());
+	return scroll ? real_t(scroll->get_v_scroll()) : real_t(0.0);
+}
+
+bool FPSParticleTimeline::_in_ruler(real_t p_y) const {
+	const real_t top = _ruler_top();
+	return p_y >= top && p_y < top + _ruler_height();
+}
+
 real_t FPSParticleTimeline::_row_height() const {
 	return 28 * EDSCALE;
 }
@@ -58,8 +70,8 @@ real_t FPSParticleTimeline::_time_to_x(double p_time) const {
 }
 
 int FPSParticleTimeline::_row_at(real_t p_y) const {
-	if (p_y < _ruler_height()) {
-		return -1;
+	if (p_y < _ruler_top() + _ruler_height()) {
+		return -1; // Under the (sticky) ruler.
 	}
 	const int row = int((p_y - _ruler_height()) / _row_height());
 	return row < track_ids.size() ? row : -1;
@@ -214,7 +226,7 @@ Size2 FPSParticleTimeline::get_minimum_size() const {
 }
 
 String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
-	if (p_pos.y < _ruler_height()) {
+	if (_in_ruler(p_pos.y)) {
 		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("Shift + drag sets the preview loop region; I / O set its start / end at the playhead, Alt + I or right-click clears it.");
 	}
 	const int row = _row_at(p_pos.y);
@@ -372,7 +384,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			accept_event();
 			return;
 		}
-		if (mb->get_button_index() == MouseButton::RIGHT && mb->is_pressed() && pos.y < _ruler_height() && pos.x >= _name_width()) {
+		if (mb->get_button_index() == MouseButton::RIGHT && mb->is_pressed() && _in_ruler(pos.y) && pos.x >= _name_width()) {
 			context_time = _snap(MAX(0.0, _x_to_time(pos.x)), mb->is_shift_pressed());
 			context_track = ObjectID();
 			context_menu->clear();
@@ -414,7 +426,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		}
 		if (mb->is_pressed()) {
 			grab_focus();
-			if (pos.y < _ruler_height()) {
+			if (_in_ruler(pos.y)) {
 				if (pos.x >= _name_width()) {
 					if (mb->is_shift_pressed()) {
 						// Shift+drag on the ruler draws the loop region.
@@ -542,7 +554,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			} else if (pos.x >= _time_to_x(start) && (active_end < 0.0 || pos.x <= _time_to_x(active_end))) {
 				shape = CURSOR_DRAG;
 			}
-		} else if (pos.y < _ruler_height() && pos.x >= _name_width()) {
+		} else if (_in_ruler(pos.y) && pos.x >= _name_width()) {
 			shape = mm->is_shift_pressed() ? CURSOR_HSPLIT : CURSOR_POINTING_HAND; // Scrub the playhead.
 		}
 		set_default_cursor_shape(shape);
@@ -583,34 +595,20 @@ void FPSParticleTimeline::_notification(int p_what) {
 					break;
 				}
 			}
-			draw_rect(Rect2(_name_width(), 0, size.x - _name_width(), _ruler_height()), Color(0, 0, 0, 0.25));
+			const real_t ruler_top = _ruler_top();
+			const int decimals = step < 0.05 ? 3 : (step < 0.1 ? 2 : (step < 1.0 ? 1 : 0));
+			// Content behind the rows: loop region body and second grid lines.
 			if (has_loop_region()) {
 				const real_t lx0 = MAX(_name_width(), _time_to_x(loop_start));
 				const real_t lx1 = MIN(size.x, _time_to_x(loop_end));
 				if (lx1 > lx0) {
-					const Color loop_color(0.35, 0.75, 1.0);
-					draw_rect(Rect2(lx0, 0, lx1 - lx0, _ruler_height()), Color(loop_color, 0.35));
-					draw_rect(Rect2(lx0, _ruler_height(), lx1 - lx0, size.y - _ruler_height()), Color(loop_color, 0.06));
-					for (real_t edge : { real_t(_time_to_x(loop_start)), real_t(_time_to_x(loop_end)) }) {
-						if (edge >= _name_width() && edge <= size.x) {
-							draw_line(Point2(edge, 0), Point2(edge, size.y), Color(loop_color, 0.7), 1.5 * EDSCALE);
-						}
-					}
+					draw_rect(Rect2(lx0, _ruler_height(), lx1 - lx0, size.y - _ruler_height()), Color(0.35, 0.75, 1.0, 0.06));
 				}
 			}
-			const int decimals = step < 0.05 ? 3 : (step < 0.1 ? 2 : (step < 1.0 ? 1 : 0));
 			for (double t = Math::floor(MAX(0.0, view_start) / step) * step; t <= view_start + view_length + 0.0001; t += step) {
 				const real_t x = _time_to_x(t);
-				if (x < _name_width() - 0.5) {
-					continue;
-				}
-				draw_line(Point2(x, _ruler_height() * 0.55), Point2(x, size.y), Color(font_color, 0.07));
-				draw_line(Point2(x, _ruler_height() * 0.55), Point2(x, _ruler_height()), Color(font_color, 0.4));
-				draw_string(font, Point2(x + 3 * EDSCALE, _ruler_height() * 0.7), String::num(t, decimals) + "s", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.85, dim);
-				// Minor ticks.
-				for (int minor = 1; minor < 5; minor++) {
-					const real_t mx = _time_to_x(t + step * minor / 5.0);
-					draw_line(Point2(mx, _ruler_height() * 0.8), Point2(mx, _ruler_height()), Color(font_color, 0.18));
+				if (x >= _name_width() - 0.5) {
+					draw_line(Point2(x, _ruler_height()), Point2(x, size.y), Color(font_color, 0.07));
 				}
 			}
 
@@ -706,11 +704,47 @@ void FPSParticleTimeline::_notification(int p_what) {
 			const real_t x_play = _time_to_x(current_time);
 			if (x_play >= _name_width() && x_play <= size.x) {
 				const Color play_color(1.0, 0.36, 0.3);
-				draw_line(Point2(x_play, _ruler_height() * 0.4), Point2(x_play, size.y), play_color, 2 * EDSCALE);
+				draw_line(Point2(x_play, ruler_top + _ruler_height()), Point2(x_play, size.y), play_color, 2 * EDSCALE);
+			}
+
+			// Sticky ruler on top of the rows, with the playhead handle.
+			draw_rect(Rect2(0, ruler_top, size.x, _ruler_height()), base);
+			draw_rect(Rect2(0, ruler_top, _name_width(), _ruler_height()), Color(0, 0, 0, 0.12));
+			draw_rect(Rect2(_name_width(), ruler_top, size.x - _name_width(), _ruler_height()), Color(0, 0, 0, 0.25));
+			if (has_loop_region()) {
+				const real_t lx0 = MAX(_name_width(), _time_to_x(loop_start));
+				const real_t lx1 = MIN(size.x, _time_to_x(loop_end));
+				if (lx1 > lx0) {
+					const Color loop_color(0.35, 0.75, 1.0);
+					draw_rect(Rect2(lx0, ruler_top, lx1 - lx0, _ruler_height()), Color(loop_color, 0.35));
+					for (real_t edge : { real_t(_time_to_x(loop_start)), real_t(_time_to_x(loop_end)) }) {
+						if (edge >= _name_width() && edge <= size.x) {
+							draw_line(Point2(edge, 0), Point2(edge, size.y), Color(loop_color, 0.7), 1.5 * EDSCALE);
+						}
+					}
+				}
+			}
+			for (double t = Math::floor(MAX(0.0, view_start) / step) * step; t <= view_start + view_length + 0.0001; t += step) {
+				const real_t x = _time_to_x(t);
+				if (x < _name_width() - 0.5) {
+					continue;
+				}
+				draw_line(Point2(x, ruler_top + _ruler_height() * 0.55), Point2(x, ruler_top + _ruler_height()), Color(font_color, 0.4));
+				draw_string(font, Point2(x + 3 * EDSCALE, ruler_top + _ruler_height() * 0.7), String::num(t, decimals) + "s", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.85, dim);
+				// Minor ticks.
+				for (int minor = 1; minor < 5; minor++) {
+					const real_t mx = _time_to_x(t + step * minor / 5.0);
+					draw_line(Point2(mx, ruler_top + _ruler_height() * 0.8), Point2(mx, ruler_top + _ruler_height()), Color(font_color, 0.18));
+				}
+			}
+
+			if (x_play >= _name_width() && x_play <= size.x) {
+				const Color play_color(1.0, 0.36, 0.3);
+				draw_line(Point2(x_play, ruler_top + _ruler_height() * 0.4), Point2(x_play, ruler_top + _ruler_height()), play_color, 2 * EDSCALE);
 				Vector<Point2> handle;
-				handle.push_back(Point2(x_play - 6 * EDSCALE, 0));
-				handle.push_back(Point2(x_play + 6 * EDSCALE, 0));
-				handle.push_back(Point2(x_play, _ruler_height() * 0.5));
+				handle.push_back(Point2(x_play - 6 * EDSCALE, ruler_top));
+				handle.push_back(Point2(x_play + 6 * EDSCALE, ruler_top));
+				handle.push_back(Point2(x_play, ruler_top + _ruler_height() * 0.5));
 				draw_colored_polygon(handle, play_color);
 			}
 			draw_line(Point2(_name_width(), 0), Point2(_name_width(), size.y), Color(font_color, 0.12));

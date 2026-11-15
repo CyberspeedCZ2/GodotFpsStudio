@@ -6063,6 +6063,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_view->connect("restart_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_restart_pressed));
 	timeline_view->connect("loop_region_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed));
 	timeline_scroll->add_child(timeline_view);
+	// The timeline draws its ruler at the visible top; redraw while scrolling.
+	timeline_scroll->get_v_scroll_bar()->connect(SceneStringName(value_changed), callable_mp((CanvasItem *)timeline_view, &CanvasItem::queue_redraw).unbind(1));
 	timeline_snap->connect(SceneStringName(toggled), callable_mp(timeline_view, &FPSParticleTimeline::set_snap_enabled));
 	timeline_zoom_out->connect(SceneStringName(pressed), callable_mp(timeline_view, &FPSParticleTimeline::zoom_out));
 	timeline_zoom_in->connect(SceneStringName(pressed), callable_mp(timeline_view, &FPSParticleTimeline::zoom_in));

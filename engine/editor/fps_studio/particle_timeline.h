@@ -77,6 +77,8 @@ private:
 
 	real_t _name_width() const;
 	real_t _ruler_height() const;
+	real_t _ruler_top() const;
+	bool _in_ruler(real_t p_y) const;
 	real_t _row_height() const;
 	real_t _timeline_width() const;
 	double _x_to_time(real_t p_x) const;
