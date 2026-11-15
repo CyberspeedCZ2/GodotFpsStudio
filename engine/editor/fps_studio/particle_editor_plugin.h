@@ -10,6 +10,7 @@
 #include "core/math/color.h"
 #include "core/object/object_id.h"
 #include "core/object/ref_counted.h"
+#include "core/templates/local_vector.h"
 #include "core/templates/vector.h"
 #include "editor/plugins/editor_plugin.h"
 
@@ -53,6 +54,7 @@ class TreeItem;
 class TextureRect;
 class VisualShader;
 class VisualShaderEditor;
+class WindowWrapper;
 class VBoxContainer;
 class Image;
 class ImageTexture;
@@ -232,6 +234,20 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Control *module_stack_scroll = nullptr;
 	TabContainer *properties_tabs = nullptr;
 	TabContainer *bottom_tabs = nullptr;
+	Control *left_panel_root = nullptr;
+	Control *right_panel_root = nullptr;
+	Control *preview_panel_root = nullptr;
+	Control *bottom_panel_root = nullptr;
+	WindowWrapper *bottom_window_wrapper = nullptr;
+	MenuButton *layout_menu = nullptr;
+	Button *bottom_maximize_button = nullptr;
+	Button *bottom_float_button = nullptr;
+	LocalVector<Button *> layout_icon_buttons;
+	bool show_left_panel = true;
+	bool show_right_panel = true;
+	bool show_preview_panel = true;
+	bool show_bottom_panel = true;
+	bool bottom_float_on_return = false;
 	Button *modules_mode_button = nullptr;
 
 	ObjectID effect_root_id;
@@ -393,9 +409,20 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _update_particle_graph_controls();
 	void _restore_panel_layout();
 	void _on_panel_split_drag_ended();
+	void _on_layout_menu_id(int p_id);
+	void _set_panel_visible(int p_panel, bool p_visible);
+	void _apply_panel_visibility();
+	void _update_layout_menu();
+	void _reset_panel_layout();
+	void _toggle_bottom_maximized();
+	void _toggle_bottom_floating();
+	void _on_bottom_window_visibility_changed(bool p_visible);
+	void _on_bottom_tab_changed(int p_tab);
+	void _show_bottom_tab(int p_tab);
+	void _ensure_bottom_panel_share(real_t p_share);
+	bool _is_bottom_floating() const;
 	void _on_particle_graph_button_pressed();
 	void _create_particle_graph();
-	void _open_particle_graph(const Ref<VisualShader> &p_visual_shader);
 	Ref<VisualShader> _get_particle_visual_shader(Node *p_emitter) const;
 	void _update_time_label();
 	void _mark_document_dirty();

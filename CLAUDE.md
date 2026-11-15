@@ -30,8 +30,13 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Add to Level u neuloženého efektu zahazoval emitory při uložení levelu.
 - Dvojitý reimport vygenerovaných textur („Task 'reimport' already exists“).
 
+### Rozložení Particle workspace (2026-11-15)
+- Panely Emitters, Preview, Timeline & Logic a Properties jdou zavřít křížkem a znovu otevřít přes menu **Layout**. Spodní panel jde maximalizovat (skryje náhled) nebo oddělit do vlastního okna (`WindowWrapper`). Viditelnost panelů se ukládá do `get_window_layout`.
+- Graf VisualShader se edituje jen inline v Particle Logic, tlačítko „Open in Shader Editor“ je pryč. Náhled má minimální výšku 140 px.
+- Ověřeno headless testem (`addons/lt/plugin.gd` ve scratchpadu), ručně v GUI zatím ne.
+
 ## Co se právě řešilo
-Poslední zadání: „vylepšit Particle na maximum“ ve čtyřech etapách — časová osa 2.0, události v ose, moduly 2.0, náhled 2.0. Všechny etapy jsou implementované, otestované headless testy a pushnuté. Čeká se na zpětnou vazbu uživatele z GUI.
+Poslední zadání: přepracovat rozložení Particle workspace (zavírání a otevírání panelů, graf bez vytlačení náhledu). Hotovo a pushnuto, čeká se na ruční test v GUI. Potom pokračovat zpětnou vazbou k funkcím Particle (časová osa, události, moduly, náhled).
 
 ## Ověření a jeho hranice
 - Headless testy jsou editorový doplněk v dočasném projektu ve scratchpadu (`addons/fxtest/plugin.gd`, režimy `FXTEST=1|presets|timeline|level|events|modules|preview`) a skripty `rt.gd`/`ev.gd` pro runtime. Nejsou součástí repozitáře; při ztrátě scratchpadu je napiš znovu.

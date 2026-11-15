@@ -17,6 +17,16 @@ Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 - **Uprostřed:** 3D náhled s menu **View** a transportem (Play/Pause, Restart, čas, statistiky, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
 - **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
 
+Panely jde zavřít a znovu otevřít. Každý panel má v záhlaví křížek a menu **Layout** v horní liště obsahuje:
+
+- přepínače **Emitters & Library**, **Preview**, **Timeline & Logic** a **Properties**,
+- **Open Timeline** / **Open Particle Logic** (otevře spodní panel na dané záložce, i když byl zavřený),
+- **Maximize (Hide Preview)** (spodní panel zabere celý střed; totéž dělá tlačítko vpravo nahoře ve spodním panelu),
+- **Separate Window** (přesune Timeline & Logic do samostatného okna, zavřením okna se panel vrátí zpět),
+- **Reset Layout** (vše zobrazí a vrátí výchozí rozměry).
+
+Ve středu je vždy aspoň náhled nebo spodní panel. Náhled má minimální výšku a graf ho už nevytlačí; při přepnutí na Particle Logic s grafem dostane spodní panel aspoň polovinu výšky. Viditelnost panelů se ukládá do rozložení editoru.
+
 ## Vytvoření a ukládání efektu
 
 - **New** nabízí prázdný GPU/CPU efekt, šablony Burst, Fountain, Smoke a skupinu **FPS Presets**. Kořenem nového efektu je `ParticleEffect3D`.
@@ -116,7 +126,7 @@ func _on_hit(position: Vector3, normal: Vector3) -> void:
 
 **Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře ho v Shader Editoru pro vlastní logiku v kódu. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.
 
-Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf v záložce **Particle Logic**. Nahrazení materiálu se nejprve potvrdí a jde vrátit přes Undo. **Open in Shader Editor** otevře graf ve velkém Shader Editoru. `VisualShader` je výpočet jednoho emitoru, neřídí hierarchii ani načasování efektu. CPU particles shaderový graf nemají.
+Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf v záložce **Particle Logic**. Nahrazení materiálu se nejprve potvrdí a jde vrátit přes Undo. Graf se upravuje přímo v této záložce (bez otevírání Godotova Shader Editoru); pro víc místa použij maximalizaci nebo samostatné okno. `VisualShader` je výpočet jednoho emitoru, neřídí hierarchii ani načasování efektu. CPU particles shaderový graf nemají.
 
 ## 3D náhled a simulace
 

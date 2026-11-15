@@ -33,6 +33,7 @@
 #include "editor/file_system/editor_file_system.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/gui/editor_spin_slider.h"
+#include "editor/gui/window_wrapper.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/curve_editor_plugin.h"
 #include "editor/scene/material_editor_plugin.h"
@@ -100,6 +101,28 @@ enum ParticleTemplate {
 	PARTICLE_EVENT_SHAKE = 202,
 	PARTICLE_EVENT_DECAL = 203,
 };
+
+enum ParticleLayoutPanel {
+	PARTICLE_PANEL_LEFT = 0,
+	PARTICLE_PANEL_PREVIEW = 1,
+	PARTICLE_PANEL_BOTTOM = 2,
+	PARTICLE_PANEL_RIGHT = 3,
+};
+
+enum ParticleLayoutMenu {
+	PARTICLE_LAYOUT_LEFT = PARTICLE_PANEL_LEFT,
+	PARTICLE_LAYOUT_PREVIEW = PARTICLE_PANEL_PREVIEW,
+	PARTICLE_LAYOUT_BOTTOM = PARTICLE_PANEL_BOTTOM,
+	PARTICLE_LAYOUT_RIGHT = PARTICLE_PANEL_RIGHT,
+	PARTICLE_LAYOUT_SHOW_TIMELINE = 10,
+	PARTICLE_LAYOUT_SHOW_LOGIC = 11,
+	PARTICLE_LAYOUT_MAXIMIZE_BOTTOM = 20,
+	PARTICLE_LAYOUT_FLOAT_BOTTOM = 21,
+	PARTICLE_LAYOUT_RESET = 30,
+};
+
+static const int PARTICLE_BOTTOM_TAB_TIMELINE = 0;
+static const int PARTICLE_BOTTOM_TAB_LOGIC = 1;
 
 enum VFXTextureOutput {
 	VFX_TEXTURE_OUTPUT_STILL = 0,
@@ -2713,7 +2736,8 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	if (convert_shader_button) {
 		convert_shader_button->set_disabled(!gpu || !Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
 	}
-	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Open in Shader Editor") : TTR("Create Node Graph"));
+	particle_graph_button->set_text(TTR("Create Node Graph"));
+	particle_graph_button->set_visible(!visual_shader.is_valid());
 	if (!emitter) {
 		particle_logic_status->set_text(TTR("No emitter selected"));
 	} else if (!ParticleEffect3D::is_emitter(emitter)) {
@@ -2732,7 +2756,7 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 			particle_graph_editor->set_shader_preview_visible(false);
 			particle_graph_editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 			particle_graph_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-			particle_graph_editor->set_custom_minimum_size(Size2(0, 300) * EDSCALE);
+			particle_graph_editor->set_custom_minimum_size(Size2(0, 120) * EDSCALE);
 			particle_logic_content->add_child(particle_graph_editor);
 		}
 		if (particle_graph_editor) {
@@ -2761,7 +2785,8 @@ void FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed() {
 	}
 	Ref<VisualShader> visual_shader = _get_particle_visual_shader(gpu);
 	if (visual_shader.is_valid()) {
-		_open_particle_graph(visual_shader);
+		// The graph is edited inline; just bring it into view.
+		_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
 		return;
 	}
 	if (gpu->get_process_material().is_valid()) {
@@ -2823,16 +2848,12 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	_mark_document_dirty();
 	_sync_preview_properties();
 	_update_particle_graph_controls();
+	_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
 	if (particle_graph_editor) {
 		particle_graph_editor->fit_graph_to_content();
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_open_particle_graph(const Ref<VisualShader> &p_visual_shader) {
-	if (p_visual_shader.is_valid()) {
-		EditorNode::get_singleton()->edit_item(p_visual_shader.ptr(), this);
-	}
-}
 
 static void make_lifetime_curve(const Ref<Curve> &p_curve, bool p_fade_out) {
 	if (p_curve.is_null()) {
@@ -3436,6 +3457,9 @@ void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
 		}
 	}
 	timeline_play_button->set_button_icon(timeline_play_button->get_editor_theme_icon(preview_playing ? SNAME("Pause") : SNAME("Play")));
+	for (Button *button : layout_icon_buttons) {
+		button->set_button_icon(button->get_editor_theme_icon(StringName(String(button->get_meta("icon_name")))));
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_apply_preview_solo() {
@@ -3671,6 +3695,15 @@ void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
 	if (p_visible) {
 		callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons).call_deferred();
 	}
+	// A detached Timeline & Logic window belongs to this workspace: dock it
+	// while another workspace is active and detach it again on return.
+	if (!p_visible && _is_bottom_floating()) {
+		bottom_float_on_return = true;
+		bottom_window_wrapper->set_window_enabled(false);
+	} else if (p_visible && bottom_float_on_return) {
+		bottom_float_on_return = false;
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_toggle_bottom_floating).call_deferred();
+	}
 	if (screen) {
 		screen->set_visible(p_visible);
 	}
@@ -3698,6 +3731,14 @@ void FPSStudioParticleEditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) 
 	if (p_layout.is_null() || !p_layout->has_section("ParticleWorkspace")) {
 		return;
 	}
+	show_left_panel = p_layout->get_value("ParticleWorkspace", "show_emitters", true);
+	show_preview_panel = p_layout->get_value("ParticleWorkspace", "show_preview", true);
+	show_bottom_panel = p_layout->get_value("ParticleWorkspace", "show_timeline_logic", true);
+	show_right_panel = p_layout->get_value("ParticleWorkspace", "show_properties", true);
+	if (!show_preview_panel && !show_bottom_panel) {
+		show_preview_panel = true;
+	}
+	_apply_panel_visibility();
 	if (!p_layout->has_section_key("ParticleWorkspace", "main_split_ratio") ||
 			!p_layout->has_section_key("ParticleWorkspace", "properties_split_ratio") ||
 			!p_layout->has_section_key("ParticleWorkspace", "logic_split_ratio")) {
@@ -3714,6 +3755,10 @@ void FPSStudioParticleEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) 
 	if (p_layout.is_null() || !main_panel_split || !preview_properties_split || !preview_logic_split) {
 		return;
 	}
+	p_layout->set_value("ParticleWorkspace", "show_emitters", show_left_panel);
+	p_layout->set_value("ParticleWorkspace", "show_preview", show_preview_panel);
+	p_layout->set_value("ParticleWorkspace", "show_timeline_logic", show_bottom_panel);
+	p_layout->set_value("ParticleWorkspace", "show_properties", show_right_panel);
 	const real_t main_extent = main_panel_split->get_size().width;
 	const real_t properties_extent = preview_properties_split->get_size().width;
 	const real_t logic_extent = preview_logic_split->get_size().height;
@@ -3742,6 +3787,208 @@ void FPSStudioParticleEditorPlugin::_restore_panel_layout() {
 }
 
 void FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended() {
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
+}
+
+bool FPSStudioParticleEditorPlugin::_is_bottom_floating() const {
+	return bottom_window_wrapper && bottom_window_wrapper->get_window_enabled();
+}
+
+void FPSStudioParticleEditorPlugin::_set_panel_visible(int p_panel, bool p_visible) {
+	switch (p_panel) {
+		case PARTICLE_PANEL_LEFT: {
+			show_left_panel = p_visible;
+		} break;
+		case PARTICLE_PANEL_RIGHT: {
+			show_right_panel = p_visible;
+		} break;
+		case PARTICLE_PANEL_PREVIEW: {
+			show_preview_panel = p_visible;
+			if (!p_visible) {
+				// The center column always shows something: hiding the preview
+				// docks and shows Timeline & Logic in its place.
+				if (_is_bottom_floating()) {
+					bottom_window_wrapper->set_window_enabled(false);
+				}
+				show_bottom_panel = true;
+			}
+		} break;
+		case PARTICLE_PANEL_BOTTOM: {
+			if (!p_visible && _is_bottom_floating()) {
+				bottom_window_wrapper->set_window_enabled(false);
+			}
+			show_bottom_panel = p_visible;
+			if (!p_visible) {
+				show_preview_panel = true;
+			}
+		} break;
+		default:
+			return;
+	}
+	_apply_panel_visibility();
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_apply_panel_visibility() {
+	if (!left_panel_root || !right_panel_root || !preview_panel_root || !bottom_window_wrapper) {
+		return;
+	}
+	const bool floating = _is_bottom_floating();
+	left_panel_root->set_visible(show_left_panel);
+	right_panel_root->set_visible(show_right_panel);
+	preview_panel_root->set_visible(show_preview_panel);
+	bottom_window_wrapper->set_visible(show_bottom_panel && !floating);
+	if (bottom_maximize_button) {
+		bottom_maximize_button->set_pressed_no_signal(!show_preview_panel);
+		bottom_maximize_button->set_visible(!floating);
+	}
+	if (bottom_float_button) {
+		bottom_float_button->set_visible(bottom_window_wrapper->is_window_available());
+		bottom_float_button->set_tooltip_text(floating ? TTR("Dock Timeline & Logic back into the workspace.") : TTR("Move Timeline & Logic into a separate window. Closing the window docks it back."));
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_update_layout_menu() {
+	if (!layout_menu) {
+		return;
+	}
+	PopupMenu *popup = layout_menu->get_popup();
+	const bool floating = _is_bottom_floating();
+	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_LEFT), show_left_panel);
+	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_PREVIEW), show_preview_panel);
+	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_BOTTOM), show_bottom_panel);
+	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_RIGHT), show_right_panel);
+	popup->set_item_checked(popup->get_item_index(PARTICLE_LAYOUT_MAXIMIZE_BOTTOM), show_bottom_panel && !show_preview_panel);
+	popup->set_item_disabled(popup->get_item_index(PARTICLE_LAYOUT_MAXIMIZE_BOTTOM), floating);
+	const int float_index = popup->get_item_index(PARTICLE_LAYOUT_FLOAT_BOTTOM);
+	popup->set_item_checked(float_index, floating);
+	popup->set_item_disabled(float_index, !bottom_window_wrapper || !bottom_window_wrapper->is_window_available());
+}
+
+void FPSStudioParticleEditorPlugin::_on_layout_menu_id(int p_id) {
+	switch (p_id) {
+		case PARTICLE_LAYOUT_LEFT: {
+			_set_panel_visible(PARTICLE_PANEL_LEFT, !show_left_panel);
+		} break;
+		case PARTICLE_LAYOUT_PREVIEW: {
+			_set_panel_visible(PARTICLE_PANEL_PREVIEW, !show_preview_panel);
+		} break;
+		case PARTICLE_LAYOUT_BOTTOM: {
+			_set_panel_visible(PARTICLE_PANEL_BOTTOM, !show_bottom_panel);
+		} break;
+		case PARTICLE_LAYOUT_RIGHT: {
+			_set_panel_visible(PARTICLE_PANEL_RIGHT, !show_right_panel);
+		} break;
+		case PARTICLE_LAYOUT_SHOW_TIMELINE: {
+			_show_bottom_tab(PARTICLE_BOTTOM_TAB_TIMELINE);
+		} break;
+		case PARTICLE_LAYOUT_SHOW_LOGIC: {
+			_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
+		} break;
+		case PARTICLE_LAYOUT_MAXIMIZE_BOTTOM: {
+			_toggle_bottom_maximized();
+		} break;
+		case PARTICLE_LAYOUT_FLOAT_BOTTOM: {
+			_toggle_bottom_floating();
+		} break;
+		case PARTICLE_LAYOUT_RESET: {
+			_reset_panel_layout();
+		} break;
+	}
+	_update_layout_menu();
+}
+
+void FPSStudioParticleEditorPlugin::_reset_panel_layout() {
+	if (_is_bottom_floating()) {
+		bottom_window_wrapper->set_window_enabled(false);
+	}
+	show_left_panel = true;
+	show_right_panel = true;
+	show_preview_panel = true;
+	show_bottom_panel = true;
+	_apply_panel_visibility();
+	for (SplitContainer *split : { main_panel_split, preview_properties_split, preview_logic_split }) {
+		if (split) {
+			split->set_split_offset(0);
+		}
+	}
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_toggle_bottom_maximized() {
+	if (_is_bottom_floating()) {
+		return;
+	}
+	if (show_preview_panel) {
+		_set_panel_visible(PARTICLE_PANEL_PREVIEW, false);
+	} else {
+		_set_panel_visible(PARTICLE_PANEL_PREVIEW, true);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_toggle_bottom_floating() {
+	if (!bottom_window_wrapper || !bottom_window_wrapper->is_window_available()) {
+		return;
+	}
+	const bool make_floating = !_is_bottom_floating();
+	if (make_floating) {
+		// The detached panel leaves the whole center column to the preview.
+		show_bottom_panel = true;
+		show_preview_panel = true;
+	}
+	bottom_window_wrapper->set_window_enabled(make_floating);
+	_apply_panel_visibility();
+}
+
+void FPSStudioParticleEditorPlugin::_on_bottom_window_visibility_changed(bool p_visible) {
+	if (!p_visible) {
+		// Closing the separate window docks the panel back into the workspace.
+		show_bottom_panel = true;
+	}
+	_apply_panel_visibility();
+}
+
+void FPSStudioParticleEditorPlugin::_show_bottom_tab(int p_tab) {
+	if (!bottom_tabs) {
+		return;
+	}
+	if (!show_bottom_panel) {
+		_set_panel_visible(PARTICLE_PANEL_BOTTOM, true);
+	}
+	bottom_tabs->set_current_tab(p_tab);
+	if (_is_bottom_floating()) {
+		bottom_window_wrapper->grab_window_focus();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_bottom_tab_changed(int p_tab) {
+	// A node graph needs room: give Particle Logic about half of the column
+	// when it is shown, but never shrink a panel the user made larger.
+	if (p_tab == PARTICLE_BOTTOM_TAB_LOGIC && particle_graph_editor && particle_graph_editor->is_visible()) {
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_ensure_bottom_panel_share).call_deferred(0.5);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_ensure_bottom_panel_share(real_t p_share) {
+	if (!preview_logic_split || !bottom_window_wrapper || _is_bottom_floating() || !show_preview_panel || !bottom_window_wrapper->is_visible_in_tree()) {
+		return;
+	}
+	const real_t total = preview_logic_split->get_size().y;
+	const real_t bottom_height = bottom_window_wrapper->get_size().y;
+	if (total <= 0.0) {
+		return;
+	}
+	const real_t desired = total * p_share;
+	if (bottom_height >= desired - 1.0) {
+		return;
+	}
+	preview_logic_split->set_split_offset(preview_logic_split->get_split_offset() - int(Math::round(desired - bottom_height)));
 	if (EditorNode::get_singleton()) {
 		EditorNode::get_singleton()->save_editor_layout_delayed();
 	}
@@ -3812,6 +4059,29 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_to_level_button->set_tooltip_text(TTR("Create an instance of the complete particle effect in the open Level scene."));
 	add_to_level_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_add_effect_to_level));
 	document_toolbar->add_child(add_to_level_button);
+	layout_menu = memnew(MenuButton);
+	layout_menu->set_text(TTR("Layout"));
+	layout_menu->set_flat(false);
+	layout_menu->set_tooltip_text(TTR("Show, hide, maximize or detach the workspace panels."));
+	{
+		PopupMenu *layout_popup = layout_menu->get_popup();
+		layout_popup->add_separator(TTR("Panels"));
+		layout_popup->add_check_item(TTR("Emitters & Library"), PARTICLE_LAYOUT_LEFT);
+		layout_popup->add_check_item(TTR("Preview"), PARTICLE_LAYOUT_PREVIEW);
+		layout_popup->add_check_item(TTR("Timeline & Logic"), PARTICLE_LAYOUT_BOTTOM);
+		layout_popup->add_check_item(TTR("Properties"), PARTICLE_LAYOUT_RIGHT);
+		layout_popup->add_separator(TTR("Timeline & Logic"));
+		layout_popup->add_item(TTR("Open Timeline"), PARTICLE_LAYOUT_SHOW_TIMELINE);
+		layout_popup->add_item(TTR("Open Particle Logic"), PARTICLE_LAYOUT_SHOW_LOGIC);
+		layout_popup->add_check_item(TTR("Maximize (Hide Preview)"), PARTICLE_LAYOUT_MAXIMIZE_BOTTOM);
+		layout_popup->add_check_item(TTR("Separate Window"), PARTICLE_LAYOUT_FLOAT_BOTTOM);
+		layout_popup->add_separator();
+		layout_popup->add_item(TTR("Reset Layout"), PARTICLE_LAYOUT_RESET);
+		layout_popup->set_hide_on_checkable_item_selection(false);
+		layout_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_layout_menu_id));
+		layout_popup->connect("about_to_popup", callable_mp(this, &FPSStudioParticleEditorPlugin::_update_layout_menu));
+	}
+	document_toolbar->add_child(layout_menu);
 
 	HSplitContainer *main_split = memnew(HSplitContainer);
 	main_panel_split = main_split;
@@ -3821,6 +4091,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	workspace->add_child(main_split);
 
 	VBoxContainer *left_panel = memnew(VBoxContainer);
+	left_panel_root = left_panel;
 	left_panel->set_custom_minimum_size(Size2(220, 0) * EDSCALE);
 	main_split->add_child(left_panel);
 	HBoxContainer *emitter_header = memnew(HBoxContainer);
@@ -3854,6 +4125,15 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	remove_emitter_button->set_text(TTR("Remove"));
 	remove_emitter_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_remove_selected_emitter));
 	emitter_header->add_child(remove_emitter_button);
+	{
+		Button *close_left = memnew(Button);
+		close_left->set_flat(true);
+		close_left->set_tooltip_text(TTR("Hide the Emitters panel (reopen it from Layout)."));
+		close_left->set_meta("icon_name", "Close");
+		close_left->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_set_panel_visible).bind(int(PARTICLE_PANEL_LEFT), false));
+		emitter_header->add_child(close_left);
+		layout_icon_buttons.push_back(close_left);
+	}
 	emitter_tree = memnew(Tree);
 	emitter_tree->set_hide_root(true);
 	emitter_tree->set_custom_minimum_size(Size2(0, 140) * EDSCALE);
@@ -3899,6 +4179,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	center_right_split->add_child(center_split);
 
 	VBoxContainer *preview_panel = memnew(VBoxContainer);
+	preview_panel_root = preview_panel;
 	preview_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_panel->set_stretch_ratio(2.4);
@@ -3943,9 +4224,19 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	texture_generator_button->set_tooltip_text(TTR("Create and export a procedural VFX texture for a particle emitter."));
 	texture_generator_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_pressed));
 	preview_toolbar->add_child(texture_generator_button);
+	{
+		Button *close_preview = memnew(Button);
+		close_preview->set_flat(true);
+		close_preview->set_tooltip_text(TTR("Hide the preview and give its space to Timeline & Logic (reopen it from Layout)."));
+		close_preview->set_meta("icon_name", "Close");
+		close_preview->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_set_panel_visible).bind(int(PARTICLE_PANEL_PREVIEW), false));
+		preview_toolbar->add_child(close_preview);
+		layout_icon_buttons.push_back(close_preview);
+	}
 
 	preview_container = memnew(SubViewportContainer);
 	preview_container->set_stretch(true);
+	preview_container->set_custom_minimum_size(Size2(0, 140) * EDSCALE);
 	preview_container->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_mouse_filter(Control::MOUSE_FILTER_STOP);
@@ -4068,10 +4359,53 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_loop_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
 	transport->add_child(preview_loop_toggle);
 
+	// Timeline & Logic live in a panel that can be closed, maximized (hiding
+	// the preview) or detached into its own window through WindowWrapper.
+	bottom_window_wrapper = memnew(WindowWrapper);
+	bottom_window_wrapper->set_window_title(TTR("Particle Timeline & Logic"));
+	bottom_window_wrapper->set_margins_enabled(true);
+	bottom_window_wrapper->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	bottom_window_wrapper->connect("window_visibility_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_bottom_window_visibility_changed));
+	center_split->add_child(bottom_window_wrapper);
+	Control *bottom_panel = memnew(Control);
+	bottom_panel_root = bottom_panel;
+	bottom_panel->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
+	bottom_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	bottom_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	bottom_window_wrapper->set_wrapped_control(bottom_panel);
 	bottom_tabs = memnew(TabContainer);
-	bottom_tabs->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
-	bottom_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	center_split->add_child(bottom_tabs);
+	bottom_tabs->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	bottom_tabs->connect("tab_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_bottom_tab_changed));
+	bottom_panel->add_child(bottom_tabs);
+	{
+		HBoxContainer *bottom_actions = memnew(HBoxContainer);
+		bottom_actions->set_anchors_and_offsets_preset(Control::PRESET_TOP_RIGHT);
+		bottom_actions->set_h_grow_direction(Control::GROW_DIRECTION_BEGIN);
+		bottom_actions->add_theme_constant_override("separation", 0);
+		bottom_panel->add_child(bottom_actions);
+		bottom_maximize_button = memnew(Button);
+		bottom_maximize_button->set_flat(true);
+		bottom_maximize_button->set_toggle_mode(true);
+		bottom_maximize_button->set_tooltip_text(TTR("Maximize Timeline & Logic (hides the preview). Click again to restore."));
+		bottom_maximize_button->set_meta("icon_name", "ExpandBottomDock");
+		bottom_maximize_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_toggle_bottom_maximized));
+		bottom_actions->add_child(bottom_maximize_button);
+		layout_icon_buttons.push_back(bottom_maximize_button);
+		bottom_float_button = memnew(Button);
+		bottom_float_button->set_flat(true);
+		bottom_float_button->set_tooltip_text(TTR("Move Timeline & Logic into a separate window. Closing the window docks it back."));
+		bottom_float_button->set_meta("icon_name", "MakeFloating");
+		bottom_float_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_toggle_bottom_floating));
+		bottom_actions->add_child(bottom_float_button);
+		layout_icon_buttons.push_back(bottom_float_button);
+		Button *close_bottom = memnew(Button);
+		close_bottom->set_flat(true);
+		close_bottom->set_tooltip_text(TTR("Hide Timeline & Logic (reopen it from Layout)."));
+		close_bottom->set_meta("icon_name", "Close");
+		close_bottom->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_set_panel_visible).bind(int(PARTICLE_PANEL_BOTTOM), false));
+		bottom_actions->add_child(close_bottom);
+		layout_icon_buttons.push_back(close_bottom);
+	}
 	VBoxContainer *timeline_page = memnew(VBoxContainer);
 	timeline_page->set_name(TTR("Timeline"));
 	bottom_tabs->add_child(timeline_page);
@@ -4181,6 +4515,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	logic_content->add_child(particle_logic_hint);
 
 	VBoxContainer *right_panel = memnew(VBoxContainer);
+	right_panel_root = right_panel;
 	right_panel->set_custom_minimum_size(Size2(360, 0) * EDSCALE);
 	right_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	right_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -4206,6 +4541,15 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	advanced_mode_button->set_tooltip_text(TTR("Show every native property of the emitter, its process material and its mesh."));
 	advanced_mode_button->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_properties_mode_toggled).bind(true));
 	properties_mode_bar->add_child(advanced_mode_button);
+	{
+		Button *close_right = memnew(Button);
+		close_right->set_flat(true);
+		close_right->set_tooltip_text(TTR("Hide the Properties panel (reopen it from Layout)."));
+		close_right->set_meta("icon_name", "Close");
+		close_right->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_set_panel_visible).bind(int(PARTICLE_PANEL_RIGHT), false));
+		properties_mode_bar->add_child(close_right);
+		layout_icon_buttons.push_back(close_right);
+	}
 	ScrollContainer *module_scroll = memnew(ScrollContainer);
 	module_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 	module_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
