@@ -126,13 +126,13 @@ Presety jsou v menu **Library**, v panelu knihovny a v **New → FPS Presets**, 
 | --- | --- | --- |
 | Weapons | Muzzle Flash | záblesk, plamenné jazyky, jiskry a kouř (směr −Z) |
 | Weapons | Bullet Tracer | jeden rychlý zářící pruh podél −Z (spawn u ústí hlavně) |
-| Impacts | Bullet Impact (Dust) | prachový obláček, úlomky a několik jisker (normála +Y) |
-| Impacts | Bullet Impact (Wood) | hnědý prach a třísky (normála +Y) |
-| Impacts | Impact Sparks (Metal) | jiskry s krátkou září (normála +Y) |
-| Impacts | Blood Hit | krvavá mlha a kapky (směr +Z) |
+| Impacts | Bullet Impact (Dust) | prachový obláček, úlomky, několik jisker a decal díry v betonu (normála +Y) |
+| Impacts | Bullet Impact (Wood) | hnědý prach, třísky a decal díry ve dřevě (normála +Y) |
+| Impacts | Impact Sparks (Metal) | jiskry s krátkou září a decal díry v kovu (normála +Y) |
+| Impacts | Blood Hit | krvavá mlha, kapky (směr +Z) a krvavý decal na zdi za zásahem (do 2 m) |
 | Impacts | Glass Shatter | střepy, které se točí a odrážejí od podlahy (kolize), záblesky, zvuk; tabule čelem k +Z |
 | Impacts | Water Splash | sloupec kapek, mlha a plochý kruh na hladině (+Y), zvuk |
-| Explosions & Fire | Explosion | záblesk, ohnivá koule (sheet 8×8), jiskry s kolizí, rázová vlna, kouř, světlo, otřes, zvuk, zranění |
+| Explosions & Fire | Explosion | záblesk, ohnivá koule (sheet 8×8), jiskry s kolizí, rázová vlna, kouř, decal spáleniny (20 s), světlo, otřes, zvuk, zranění |
 | Explosions & Fire | Fire | animované plameny (sheet 4×4), jiskry, kouř a mihotavé světlo |
 | Explosions & Fire | Smoke Grenade | hustá kouřová clona na 8 s, která vyplní místnost a drží se od stěn (kolize), zvuk |
 | Explosions & Fire | Signal Flare | červené jádro, jiskry s kolizí, červený kouř, mihotavé světlo, zvuk |
@@ -141,6 +141,8 @@ Presety jsou v menu **Library**, v panelu knihovny a v **New → FPS Presets**, 
 | Environment | Electric Sparks | opakované modré jiskry s kolizí, elektrický oblouk, blikající světlo, zvuk |
 | Environment | Dust Puff (Landing) | plochý prstenec prachu po zemi (dopad, těžký krok) |
 | Environment | Ambient Dust | pomalu poletující prach v prostoru 6 × 3 × 6 m |
+
+Decaly v presetech promítají podél své osy −Y (u zásahů do povrchu s normálou +Y), díry po kulkách zůstanou 12 s, spálenina 20 s, krev 15 s a pak se rozplynou. Efekt žije, dokud decal nezmizí, takže se do zásobníku (pooling) vrátí až potom.
 
 Presety si spočítají `visibility_aabb` podle rychlosti, gravitace a doby života (pád jen ve směru gravitace), místo jednotné krychle 16 m. Aditivní emitory se neřadí podle hloubky (`DRAW_ORDER_INDEX`), řazení platí jen pro průhledné.
 
@@ -225,11 +227,16 @@ Generátor je samostatný modul `engine/editor/fps_studio/vfx_texture_generator.
 - Energetické efekty (Spark, Lightning, Electric Burst, Muzzle Flash / Flare, Energy Ring, Shockwave, Magic Circle, Bokeh, Plasma Sun) se počítají analyticky jako HDR emise a prochází stejným tone mapperem. Proto mají měkký fotografický přechod místo plochých barevných pásů. Blesky jsou fraktální polyline z midpoint displacement s větvemi.
 - Caustics a Noise jsou vzory podporující skutečně bezešvé dlaždicování (periodický šum a periodické Voronoi buňky).
 - Emisivní světlo zvyšuje alfu, takže textura s běžným alpha blendingem vypadá na černém pozadí stejně jako aditivní výsledek.
+- **Decals** (Bullet Hole, Scorch / Burn Mark, Glass Crack, Splatter) jsou neemisivní textury s barvou a alfou pro uzly `Decal`; mimo stopu je alfa 0.
+  - *Bullet Hole*: tmavá díra se stínovanou stěnou, odštípnutý povrch, radiální praskliny a saze. Parametr **Surface**: 0 beton/omítka, 1 kov (ohnuté osvětlené lístky kolem díry, bez prasklin), 2 dřevo (odštěpek protažený podél vláken, třísky). Barva B je barva povrchu (beton šedá, dřevo hnědá).
+  - *Scorch / Burn Mark*: tmavé saze přecházející do spáleného okraje, roztřepený obrys, radiální pruhy výbuchu a ohořelý kruh. **Blast streaks = 0** dá spáleninu po ohni bez pruhů.
+  - *Glass Crack*: pavučina radiálních a kruhových prasklin, rozdrcená matná zóna a průhledná díra.
+  - *Splatter*: krev, olej nebo barva; roztřepená skvrna, kapky a protažené kapky ve směru +X (otoč přes Rotation).
 - Kód je napsán nově. Neobsahuje ani nepřekládá shadery EffectTextureMakeru ani shadery ze Shadertoy; EffectTextureMaker slouží pouze jako vizuální reference.
 
 ### Ovládání
 
-- **Levý panel** obsahuje galerii typů s náhledy, seskupenou do kategorií Fire & Explosions, Smoke & Clouds, Energy & Light, Shapes a Noise & Patterns.
+- **Levý panel** obsahuje galerii typů s náhledy, seskupenou do kategorií Fire & Explosions, Smoke & Clouds, Energy & Light, Shapes, Noise & Patterns a Decals.
 - **Střed** ukazuje čtvercový náhled s volbou pozadí (Checker, Black, Dark, Gray, White), přepínač **Show Sheet** pro celý sprite sheet a transport (Play/Pause, časová osa, čas a číslo snímku). Při přehrávání a tažení posuvníků se náhled počítá v rychlé draft kvalitě; po pozastavení se překreslí v plné kvalitě.
 - **Pravý inspektor** má sbalovací sekce:
   - *Effect* — parametry specifické pro vybraný typ (např. u exploze Radius, Billows, Billow size, Detail, Fire, Smoke, Density, Light angle, Life cycle), Seed s tlačítkem Random a Reset to Defaults.
@@ -237,7 +244,7 @@ Generátor je samostatný modul `engine/editor/fps_studio/vfx_texture_generator.
   - *Motion & Mapping* — Speed, Rotation, Polar Coordinates a Seamless Tiling (jen pro vzory).
   - *Output* — Resolution do 2048 px, Layout (samostatná textura, sheet 4×4 nebo 8×8), Frame rate a Duration.
   - *Post-processing* — Toon shading, prahování a rozmazání alfy, náhled alfa masky, export normal mapy a color balance.
-- **Spodní lišta**: Load Recipe a Save Recipe vlevo, stav uprostřed, vpravo Close, Export PNG a Apply to Emitter. Apply to Emitter je aktivní až po exportu, protože emitor uchovává odkaz na projektový PNG. Nastaví `StandardMaterial3D`, `BILLBOARD_PARTICLES`, dělení atlasu a rychlost animace podle Frame rate.
+- **Spodní lišta**: Load Recipe a Save Recipe vlevo, stav uprostřed, vpravo Close, Export PNG a Apply to Emitter. Apply to Emitter je aktivní až po exportu, protože emitor uchovává odkaz na projektový PNG. Nastaví `StandardMaterial3D`, `BILLBOARD_PARTICLES`, dělení atlasu a rychlost animace podle Frame rate. U vybrané stopy **Decal** nastaví přímo její texturu (`texture_albedo`), se zapnutým exportem normal mapy její `texture_normal`. Karta Decal má tlačítko **Generate Decal Texture...**, které otevře generátor na kategorii Decals.
 - Recepty `.cfg` verze 3 ukládají typ, globální volby, postprocesy a parametry typu podle stabilních klíčů v sekci `[params]`. Recepty verze 1 a 2 se načtou se stejným typem, barvami, rychlostí a rotací; ostatní parametry dostanou výchozí hodnoty nového generátoru.
 
 ## Implementace

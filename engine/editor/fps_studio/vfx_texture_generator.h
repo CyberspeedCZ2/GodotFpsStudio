@@ -36,6 +36,11 @@ enum TypeID {
 	TYPE_CAUSTICS = 13,
 	TYPE_ELECTRIC_ARC = 14,
 	TYPE_EXPLOSION_RING = 15,
+	// Decals (straight albedo + alpha, for Decal nodes).
+	TYPE_BULLET_HOLE = 16,
+	TYPE_SCORCH = 17,
+	TYPE_GLASS_CRACK = 18,
+	TYPE_SPLATTER = 19,
 };
 
 static constexpr int MAX_PARAMS = 10;

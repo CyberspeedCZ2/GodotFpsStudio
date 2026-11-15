@@ -9,6 +9,7 @@
 
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/camera_shake_3d.h"
+#include "scene/3d/decal.h"
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/light_3d.h"
@@ -208,6 +209,35 @@ AudioStreamPlayer3D *add_sound_slot(ParticleEffect3D *p_effect, real_t p_unit_si
 	return sound;
 }
 
+// Decal event projecting along its local -Y (surface normal of impact presets
+// is +Y). The texture comes from the generator's Decals category.
+Decal *add_decal(ParticleEffect3D *p_effect, const String &p_name, const Vector3 &p_size, double p_duration, double p_fade, const Transform3D &p_transform = Transform3D()) {
+	Decal *decal = memnew(Decal);
+	decal->set_name(p_name);
+	decal->set_size(p_size);
+	decal->set_transform(p_transform);
+	decal->set_normal_fade(0.3); // Avoid stretching on surfaces at a steep angle.
+	ParticleEffect3D::set_emitter_duration(decal, p_duration);
+	decal->set_meta(ParticleEffect3D::META_FADE, p_fade);
+	p_effect->add_child(decal, true);
+	decal->set_owner(p_effect);
+	return decal;
+}
+
+TextureRequest make_bullet_hole_texture(Node *p_decal, const String &p_file_name, int p_surface, const Color &p_surface_color) {
+	TextureRequest request = make_texture(p_decal, VFXTextureGenerator::TYPE_BULLET_HOLE, p_file_name, 256);
+	set_param(request, "surface", float(p_surface));
+	set_colors(request, Color(0.04, 0.035, 0.03), p_surface_color);
+	if (p_surface == 1) {
+		set_param(request, "cracks", 0.0f);
+		set_param(request, "soot", 0.35f);
+	} else if (p_surface == 2) {
+		set_param(request, "cracks", 5.0f);
+		set_param(request, "chip_size", 0.32f);
+	}
+	return request;
+}
+
 void build_muzzle_flash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
 	// Muzzle points along -Z (Godot forward).
 	EmitterBuilder flash = add_emitter(p_effect, "Flash", 2, 0.07, true, 1.0, 0.7, BLEND_ADD);
@@ -290,6 +320,11 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
 	add_camera_shake(p_effect, 0.85, 0.75, 6.0, 35.0, 0.0);
 	{
+		Decal *scorch = add_decal(p_effect, "Scorch", Vector3(4.5, 3.0, 4.5), 20.0, 0.3);
+		ParticleEffect3D::set_emitter_delay(scorch, 0.05);
+		r_textures.push_back(make_texture(scorch, VFXTextureGenerator::TYPE_SCORCH, "decal_scorch", 512));
+	}
+	{
 		add_sound_slot(p_effect, 12.0, 120.0);
 		RadialDamage3D *damage = memnew(RadialDamage3D);
 		damage->set_name("Damage");
@@ -320,6 +355,9 @@ void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	sparks.set("direction", Vector3(0, 1, 0)).set("spread", 50.0).set("initial_velocity", Vector2(3.0, 7.0)).set("gravity", Vector3(0, -9.8, 0));
 	sparks.process->set_color_ramp(make_ramp({ { 0.0f, Color(1.0, 0.9, 0.6, 1.0) }, { 1.0f, Color(1.0, 0.4, 0.1, 0.0) } }));
 	r_textures.push_back(make_texture(sparks.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
+
+	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.22, 0.3, 0.22), 12.0, 0.2);
+	r_textures.push_back(make_bullet_hole_texture(hole, "decal_bullet_hole_concrete", 0, Color(0.62, 0.6, 0.56)));
 }
 
 void build_impact_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -337,6 +375,9 @@ void build_impact_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	r_textures.push_back(glow_texture);
 
 	add_light(p_effect, "LightFlash", Color(1.0, 0.8, 0.5), 2.5, 3.0, 0.0, 0.1, 0.0, Vector3(0, 0.15, 0));
+
+	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.16, 0.3, 0.16), 12.0, 0.2);
+	r_textures.push_back(make_bullet_hole_texture(hole, "decal_bullet_hole_metal", 1, Color(0.7, 0.72, 0.75)));
 }
 
 void build_blood_hit(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -358,6 +399,11 @@ void build_blood_hit(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	set_param(drop_texture, "glow", 0.2f);
 	set_param(drop_texture, "flicker", 0.0f);
 	r_textures.push_back(drop_texture);
+
+	// Splatter on the wall behind the target: projects along +Z up to 2 m.
+	Decal *splatter = add_decal(p_effect, "Splatter", Vector3(0.9, 2.0, 0.9), 15.0, 0.25, Transform3D(Basis::from_euler(Vector3(-Math::PI * 0.5, 0, 0)), Vector3(0, 0, 1.0)));
+	ParticleEffect3D::set_emitter_delay(splatter, 0.05);
+	r_textures.push_back(make_texture(splatter, VFXTextureGenerator::TYPE_SPLATTER, "decal_blood_splatter", 256));
 }
 
 void build_smoke_plume(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -423,6 +469,9 @@ void build_wood_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	set_param(splinter_texture, "glow", 0.1f);
 	set_param(splinter_texture, "flicker", 0.0f);
 	r_textures.push_back(splinter_texture);
+
+	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.24, 0.3, 0.24), 12.0, 0.2);
+	r_textures.push_back(make_bullet_hole_texture(hole, "decal_bullet_hole_wood", 2, Color(0.72, 0.55, 0.34)));
 }
 
 void build_water_splash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -737,19 +786,19 @@ String get_preset_description(int p_preset) {
 		case PRESET_MUZZLE_FLASH:
 			return "One-shot flash, flame tongues, sparks and a smoke puff along -Z.";
 		case PRESET_EXPLOSION:
-			return "Flash, volumetric fireball sprite sheet, sparks, shockwave and lingering smoke.";
+			return "Flash, volumetric fireball sprite sheet, colliding sparks, shockwave, smoke, scorch decal, light, shake, sound and damage.";
 		case PRESET_BULLET_IMPACT:
-			return "Dust puff, debris chips and a few sparks along +Y (surface normal).";
+			return "Dust puff, debris chips, a few sparks and a concrete bullet hole decal along +Y (surface normal).";
 		case PRESET_IMPACT_SPARKS:
-			return "Bright metal sparks with a short glow along +Y.";
+			return "Bright metal sparks, a short glow and a metal bullet hole decal along +Y.";
 		case PRESET_BLOOD_HIT:
-			return "Blood mist and droplets along +Z.";
+			return "Blood mist and droplets along +Z, with a splatter decal on the wall behind.";
 		case PRESET_SMOKE_PLUME:
 			return "Continuous rising smoke column with turbulence.";
 		case PRESET_FIRE:
 			return "Continuous animated flames, embers and smoke.";
 		case PRESET_WOOD_IMPACT:
-			return "Wood dust and splinters along +Y (surface normal).";
+			return "Wood dust, splinters and a wood bullet hole decal along +Y (surface normal).";
 		case PRESET_WATER_SPLASH:
 			return "Droplet column, mist and a flat ripple on the water (+Y), with a sound slot.";
 		case PRESET_GLASS_SHATTER:

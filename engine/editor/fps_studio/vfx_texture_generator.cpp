@@ -304,7 +304,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 16;
+constexpr int TYPE_COUNT = 20;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -487,6 +487,49 @@ struct TypeTable {
 			add_param(t, "threshold", "Alpha threshold", 0.0f, 1.0f, 0.01f, 0.0f, "Values below become transparent.");
 			types[i++] = t;
 		}
+		{
+			TypeInfo t = make_type(TYPE_BULLET_HOLE, "Bullet Hole", "Decals", "Bullet hole decal: dark hole, chipped surface, cracks and soot. Surface: concrete, metal (bent rim) or wood (splinters).", 0.04f, 0.035f, 0.03f, 0.62f, 0.6f, 0.56f, "Hole / soot color", "Chipped surface color", false, false);
+			add_param(t, "hole_size", "Hole size", 0.02f, 0.3f, 0.005f, 0.09f, "Radius of the dark hole.");
+			add_param(t, "chip_size", "Chipped area", 0.0f, 0.9f, 0.01f, 0.4f, "Radius of the chipped, freshly exposed surface around the hole.");
+			add_param(t, "cracks", "Cracks", 0.0f, 16.0f, 1.0f, 7.0f, "Number of radial cracks.");
+			add_param(t, "crack_length", "Crack length", 0.0f, 1.0f, 0.01f, 0.65f, "How far the cracks reach.");
+			add_param(t, "roughness", "Roughness", 0.0f, 1.0f, 0.01f, 0.6f, "Irregularity of the hole and the chipped edge.");
+			add_param(t, "soot", "Soot", 0.0f, 1.0f, 0.01f, 0.45f, "Dark powder burn around the hole.");
+			add_param(t, "surface", "Surface", 0.0f, 2.0f, 1.0f, 0.0f, "0 = concrete / plaster, 1 = metal (bent bright rim), 2 = wood (splinters along the grain).");
+			types[i++] = t;
+		}
+		{
+			TypeInfo t = make_type(TYPE_SCORCH, "Scorch / Burn Mark", "Decals", "Explosion scorch with radial blast streaks, or a burn mark (streaks 0). Dark soot core fading to a burnt edge.", 0.03f, 0.025f, 0.02f, 0.26f, 0.16f, 0.09f, "Soot color", "Burnt edge color", false, false);
+			add_param(t, "radius", "Radius", 0.2f, 0.95f, 0.01f, 0.72f, "Size of the mark.");
+			add_param(t, "irregularity", "Irregularity", 0.0f, 1.0f, 0.01f, 0.5f, "Ragged outline.");
+			add_param(t, "darkness", "Darkness", 0.0f, 1.0f, 0.01f, 0.85f, "Opacity of the soot core.");
+			add_param(t, "streaks", "Blast streaks", 0.0f, 48.0f, 1.0f, 18.0f, "Radial streaks from the blast. 0 gives a burn mark.");
+			add_param(t, "streak_strength", "Streak strength", 0.0f, 1.0f, 0.01f, 0.6f, "Length and opacity of the streaks.");
+			add_param(t, "char_ring", "Char ring", 0.0f, 1.0f, 0.01f, 0.35f, "Darker charred ring inside the mark.");
+			add_param(t, "detail", "Detail", 1.0f, 12.0f, 0.1f, 5.0f, "Scale of the soot noise.");
+			types[i++] = t;
+		}
+		{
+			TypeInfo t = make_type(TYPE_GLASS_CRACK, "Glass Crack", "Decals", "Bullet hit in glass: spider-web of radial and ring cracks around a crushed hole.", 0.92f, 0.96f, 1.0f, 0.8f, 0.86f, 0.92f, "Crack color", "Crushed glass color", false, false);
+			add_param(t, "hole_size", "Hole size", 0.0f, 0.2f, 0.005f, 0.035f, "Radius of the hole (0 = only cracks).");
+			add_param(t, "radial", "Radial cracks", 3.0f, 32.0f, 1.0f, 12.0f, "Number of cracks from the centre.");
+			add_param(t, "rings", "Ring cracks", 0.0f, 8.0f, 1.0f, 4.0f, "Concentric cracks between the radial ones.");
+			add_param(t, "reach", "Reach", 0.3f, 1.0f, 0.01f, 0.9f, "Length of the radial cracks.");
+			add_param(t, "line_width", "Line width", 0.001f, 0.02f, 0.0005f, 0.004f, "Width of the crack lines.");
+			add_param(t, "crushed", "Crushed zone", 0.0f, 1.0f, 0.01f, 0.5f, "Frosted crushed glass around the hole.");
+			add_param(t, "jaggedness", "Jaggedness", 0.0f, 1.0f, 0.01f, 0.5f, "Wobble of the cracks.");
+			types[i++] = t;
+		}
+		{
+			TypeInfo t = make_type(TYPE_SPLATTER, "Splatter", "Decals", "Blood, oil or paint splatter: a ragged blob, droplets and elongated drops thrown in one direction (+X).", 0.18f, 0.0f, 0.0f, 0.45f, 0.02f, 0.02f, "Thick color", "Thin color", false, false);
+			add_param(t, "size", "Size", 0.1f, 0.6f, 0.01f, 0.32f, "Radius of the main blob.");
+			add_param(t, "droplets", "Droplets", 0.0f, 64.0f, 1.0f, 24.0f, "Number of droplets around the blob.");
+			add_param(t, "spread", "Spread", 0.0f, 1.0f, 0.01f, 0.7f, "How far droplets fly.");
+			add_param(t, "direction", "Direction", 0.0f, 1.0f, 0.01f, 0.45f, "Bias of the droplets and streaks towards +X (use Rotation to aim).");
+			add_param(t, "raggedness", "Raggedness", 0.0f, 1.0f, 0.01f, 0.6f, "Irregular edge of the blob.");
+			add_param(t, "variation", "Thickness variation", 0.0f, 1.0f, 0.01f, 0.5f, "Darker thick areas inside the splatter.");
+			types[i++] = t;
+		}
 	}
 };
 
@@ -656,6 +699,28 @@ void setup_frame(FrameContext &c, const Settings &s) {
 			c.disks[i][1] = std::sin(a + drift) * d;
 			c.disks[i][2] = r;
 			c.disks[i][3] = rng.range(0.55f, 1.0f);
+		}
+		c.disk_count = count;
+	} else if (s.type == TYPE_SPLATTER) {
+		Rng rng(s.seed * 2903u + 5u);
+		const float size = param(c, 0);
+		const int count = int(clampf(param(c, 1), 0.0f, 64.0f));
+		const float spread = param(c, 2);
+		const float bias = param(c, 3);
+		for (int i = 0; i < count; i++) {
+			// Biased towards +X: blend a random angle towards 0.
+			float a = rng.range(-PI, PI) * (1.0f - bias * 0.7f);
+			const float dist = size * (0.9f + spread * rng.next() * 1.8f);
+			const float far = saturate((dist - size) / maxf(spread * size * 1.8f, 1e-3f));
+			const float radius = size * (0.03f + 0.17f * rng.next()) * (1.0f - 0.6f * far);
+			c.disks[i][0] = std::cos(a) * dist;
+			c.disks[i][1] = std::sin(a) * dist;
+			c.disks[i][2] = radius;
+			// Far drops are stretched along their flight direction.
+			c.disks[i][3] = 1.0f + far * (1.0f + 2.5f * bias) * rng.next();
+			if (std::fabs(c.disks[i][0]) > 0.97f || std::fabs(c.disks[i][1]) > 0.97f) {
+				c.disks[i][2] = 0.0f;
+			}
 		}
 		c.disk_count = count;
 	}
@@ -1401,6 +1466,276 @@ void render_2d(const FrameContext &c, float x, float y, float *r_px) {
 	write_pixel(r_px, V3(), 0.0f, s);
 }
 
+
+/* Decals ----------------------------------------------------------------- */
+// Non-emissive albedo + alpha for Decal nodes. Outside the mark alpha is 0.
+
+inline float hash_angle(uint32_t p_seed, int p_index) {
+	return hash01(hash3i(p_index, 17, 3, p_seed));
+}
+
+// Distance from (x, y) to a crack that leaves the centre at angle a0 and
+// wobbles with radius.
+inline float radial_crack_distance(float x, float y, float r, float a0, float wobble, uint32_t seed, int index) {
+	const float a = a0 + wobble * gnoise3(r * 6.0f, float(index) * 3.7f, 0.0f, seed + 31u) * 0.35f;
+	return std::fabs(-std::sin(a) * x + std::cos(a) * y);
+}
+
+void render_decal(const FrameContext &c, float x, float y, float *r_px) {
+	const Settings &s = *c.s;
+	const V3 &ca = c.color_a;
+	const V3 &cb = c.color_b;
+	const float r = len2(x, y);
+	const float angle = std::atan2(y, x);
+	const V3 dir(std::cos(angle), std::sin(angle), 0.0f);
+	switch (s.type) {
+		case TYPE_BULLET_HOLE: {
+			const float hole = param(c, 0);
+			const float chip = maxf(param(c, 1), hole);
+			const int cracks = int(param(c, 2) + 0.5f);
+			const float crack_len = param(c, 3);
+			const float rough = param(c, 4);
+			const float soot = param(c, 5);
+			const int surface = int(param(c, 6) + 0.5f);
+			// Wood: the chipped area stretches along the grain (Y).
+			const float ex = surface == 2 ? x * 1.7f : x;
+			const float er = len2(ex, y);
+			const float edge_noise = fbm(V3(dir.x * 2.5f, dir.y * 2.5f, 0.0f) + seed_offset(s.seed), 4, 0.55f, s.seed);
+			const float rr = er * (1.0f + rough * 0.45f * edge_noise);
+			const float grain = fbm(V3(x * 3.0f, y * 28.0f, 0.0f) + seed_offset(s.seed + 5u), 3, 0.5f, s.seed + 5u);
+			V3 color = cb;
+			float alpha = 0.0f;
+			// Chipped, freshly exposed surface.
+			if (chip > hole && surface != 1) {
+				const float chunk = fbm(V3(x * 9.0f, y * 9.0f, 0.0f) + seed_offset(s.seed + 2u), 4, 0.55f, s.seed + 2u);
+				const float edge = chip * (0.85f + 0.3f * chunk);
+				const float a_chip = smoothstepf(edge, edge - 0.02f, rr);
+				const float shade = 0.85f + 0.3f * chunk + (surface == 2 ? 0.2f * grain : 0.0f);
+				color = cb * shade;
+				alpha = a_chip;
+			}
+			// Soot / powder burn.
+			if (soot > 0.0f) {
+				const float sr = maxf(chip, hole * 2.0f) * 1.5f;
+				const float n = fbm(V3(x * 6.0f, y * 6.0f, 0.0f) + seed_offset(s.seed + 9u), 4, 0.5f, s.seed + 9u) * 0.5f + 0.5f;
+				const float k = saturate(1.0f - rr / sr) * soot * (0.6f + 0.6f * n);
+				color = mix3(color, ca, saturate(k * 1.2f));
+				alpha = maxf(alpha, saturate(k * 1.1f));
+			}
+			// Metal: bent, lit petals around the hole.
+			if (surface == 1) {
+				const float petal_n = gnoise3(angle * 2.0f, 0.0f, 0.0f, s.seed + 21u);
+				const float petals = std::cos(angle * 7.0f + petal_n * 3.0f) * 0.5f + 0.5f;
+				const float rim_r = hole * (1.9f + 0.6f * petals);
+				const float rim = smoothstepf(rim_r, rim_r - hole * 0.25f, rr) * smoothstepf(hole * 0.95f, hole * 1.1f, rr);
+				// Petals bend towards the viewer: lit on one side, shaded on the other.
+				const float facing = std::cos(angle - 2.2f) * 0.5f + 0.5f;
+				const float lit = saturate(0.25f + 0.9f * facing * (0.5f + 0.5f * petals));
+				const V3 bright = mix3(cb, V3(1.0f, 1.0f, 1.0f), 0.45f);
+				const V3 metal_color = mix3(ca * 2.5f, bright, lit);
+				color = mix3(color, metal_color, rim);
+				alpha = maxf(alpha, rim);
+			}
+			// Radial cracks (concrete) / splinters (wood).
+			if (cracks > 0 && surface != 1) {
+				const float reach = chip + crack_len * (0.95f - chip);
+				for (int k = 0; k < cracks; k++) {
+					const float a0 = (float(k) + hash_angle(s.seed, k) * 0.8f) / float(cracks) * TAU;
+					const float len = reach * (0.55f + 0.45f * hash_angle(s.seed + 7u, k));
+					float d;
+					float along;
+					if (surface == 2) {
+						// Splinters run along the grain, up or down.
+						const float sx = (hash_angle(s.seed + 11u, k) - 0.5f) * chip * 1.2f;
+						const float sign = (k & 1) ? 1.0f : -1.0f;
+						d = std::fabs(x - sx - 0.04f * gnoise3(y * 8.0f, float(k), 0.0f, s.seed));
+						along = y * sign;
+						if (along < 0.0f) {
+							continue;
+						}
+					} else {
+						d = radial_crack_distance(x, y, r, a0, rough + 0.3f, s.seed, k);
+						along = x * std::cos(a0) + y * std::sin(a0);
+						if (along < 0.0f) {
+							continue;
+						}
+					}
+					if (along > len) {
+						continue;
+					}
+					const float taper = 1.0f - along / len;
+					const float w = 0.006f + 0.008f * taper;
+					const float line = smoothstepf(w, w * 0.3f, d) * taper;
+					if (line > 0.0f) {
+						color = mix3(color, ca, line);
+						alpha = maxf(alpha, line);
+					}
+				}
+			}
+			// The hole itself with a shaded inner wall.
+			const float hole_r = hole * (1.0f + rough * 0.3f * edge_noise);
+			const float wall_r = hole_r * (surface == 1 ? 1.12f : 1.35f);
+			if (r < wall_r) {
+				const float wall = smoothstepf(wall_r, hole_r * 0.7f, r);
+				color = mix3(color, ca * 0.6f, wall);
+				alpha = maxf(alpha, smoothstepf(wall_r, hole_r, r));
+			}
+			write_flat(r_px, color, alpha, s);
+			return;
+		}
+		case TYPE_SCORCH: {
+			const float radius = param(c, 0);
+			const float irr = param(c, 1);
+			const float darkness = param(c, 2);
+			const int streaks = int(param(c, 3) + 0.5f);
+			const float streak_strength = param(c, 4);
+			const float char_ring = param(c, 5);
+			const float detail = param(c, 6);
+			const float outline = fbm(V3(dir.x * 1.8f, dir.y * 1.8f, 0.0f) + seed_offset(s.seed), 4, 0.55f, s.seed);
+			const float edge = radius * (1.0f + irr * 0.4f * outline);
+			const float t = r / maxf(edge, 1e-3f); // 0 centre .. 1 edge
+			const float n = fbm(V3(x * detail, y * detail, 0.0f) + seed_offset(s.seed + 3u), 5, 0.55f, s.seed + 3u) * 0.5f + 0.5f;
+			float density = saturate(1.0f - t);
+			density = std::pow(density, 0.6f) * (0.65f + 0.55f * n);
+			// Radial streaks reaching past the edge.
+			if (streaks > 0 && streak_strength > 0.0f) {
+				float streak = 0.0f;
+				for (int k = 0; k < streaks; k++) {
+					const float a0 = hash_angle(s.seed + 13u, k) * TAU;
+					const float width = 0.02f + 0.06f * hash_angle(s.seed + 17u, k);
+					float da = std::fabs(angle - a0);
+					da = minf(da, TAU - da);
+					const float len = edge * (1.0f + streak_strength * (0.4f + 0.8f * hash_angle(s.seed + 19u, k)));
+					const float across = std::exp(-(da * da) / (width * width));
+					const float fall = saturate(1.0f - r / len);
+					streak = maxf(streak, across * fall * streak_strength);
+				}
+				density = maxf(density, streak * (0.55f + 0.45f * n));
+			}
+			// Charred ring.
+			if (char_ring > 0.0f) {
+				const float ring = std::exp(-std::pow((t - 0.45f) / 0.12f, 2.0f)) * char_ring * (0.7f + 0.5f * n);
+				density = saturate(density + ring * 0.5f);
+			}
+			const float alpha = saturate(density * darkness * 1.25f);
+			const V3 color = mix3(ca, cb, saturate(t * 1.1f - n * 0.25f));
+			write_flat(r_px, color, alpha, s);
+			return;
+		}
+		case TYPE_GLASS_CRACK: {
+			const float hole = param(c, 0);
+			const int radial = int(param(c, 1) + 0.5f);
+			const int rings = int(param(c, 2) + 0.5f);
+			const float reach = param(c, 3);
+			const float lw = param(c, 4);
+			const float crushed = param(c, 5);
+			const float jag = param(c, 6);
+			float line = 0.0f;
+			// Radial cracks.
+			int sector = 0;
+			float sector_a0 = 0.0f;
+			float sector_a1 = TAU;
+			for (int k = 0; k < radial; k++) {
+				const float a0 = (float(k) + (hash_angle(s.seed, k) - 0.5f) * 0.7f) / float(radial) * TAU;
+				const float len = reach * (0.6f + 0.4f * hash_angle(s.seed + 3u, k));
+				const float along = x * std::cos(a0) + y * std::sin(a0);
+				if (along > 0.0f && along < len) {
+					const float d = radial_crack_distance(x, y, r, a0, jag, s.seed, k);
+					const float w = lw * (1.0f + 1.5f * (1.0f - along / len));
+					line = maxf(line, smoothstepf(w, w * 0.25f, d));
+				}
+			}
+			// Ring cracks: chords between neighbouring radial cracks.
+			if (rings > 0 && radial > 0) {
+				float a = angle < 0.0f ? angle + TAU : angle;
+				const float base = a / TAU * float(radial);
+				sector = int(std::floor(base));
+				for (int k = sector - 1; k <= sector + 1; k++) {
+					const int k0 = ((k % radial) + radial) % radial;
+					const int k1 = (k0 + 1) % radial;
+					sector_a0 = (float(k) + (hash_angle(s.seed, k0) - 0.5f) * 0.7f) / float(radial) * TAU;
+					sector_a1 = (float(k + 1) + (hash_angle(s.seed, k1) - 0.5f) * 0.7f) / float(radial) * TAU;
+					for (int j = 1; j <= rings; j++) {
+						const float base_r = reach * (float(j) / float(rings + 1));
+						const float r0 = base_r * (0.8f + 0.4f * hash01(hash3i(j, k0, 1, s.seed)));
+						const float r1 = base_r * (0.8f + 0.4f * hash01(hash3i(j, k1, 1, s.seed)));
+						// A ring segment only joins cracks that reach that far.
+						const float len0 = reach * (0.6f + 0.4f * hash_angle(s.seed + 3u, k0));
+						const float len1 = reach * (0.6f + 0.4f * hash_angle(s.seed + 3u, k1));
+						if (r0 > len0 * 0.95f || r1 > len1 * 0.95f) {
+							continue;
+						}
+						if (hash01(hash3i(j, k0, 2, s.seed)) < 0.2f) {
+							continue; // Some segments are missing.
+						}
+						const float px = std::cos(sector_a0) * r0, py = std::sin(sector_a0) * r0;
+						const float qx = std::cos(sector_a1) * r1, qy = std::sin(sector_a1) * r1;
+						const float vx = qx - px, vy = qy - py;
+						const float h = saturate(((x - px) * vx + (y - py) * vy) / maxf(vx * vx + vy * vy, 1e-6f));
+						const float d = len2(x - px - vx * h, y - py - vy * h);
+						line = maxf(line, smoothstepf(lw, lw * 0.25f, d) * 0.85f);
+					}
+				}
+			}
+			float alpha = line * 0.9f;
+			V3 color = ca;
+			// Crushed frosted zone and hole.
+			if (crushed > 0.0f) {
+				const float cr = maxf(hole * 4.0f, 0.15f) * (0.7f + 0.8f * crushed);
+				const float n = fbm(V3(x * 30.0f, y * 30.0f, 0.0f) + seed_offset(s.seed + 5u), 3, 0.5f, s.seed + 5u) * 0.5f + 0.5f;
+				const float frost = saturate(std::pow(saturate(1.0f - r / cr), 0.7f) * crushed * (0.7f + 0.9f * n) * 1.3f);
+				if (frost > alpha) {
+					color = mix3(ca, cb, 0.6f);
+				}
+				alpha = maxf(alpha, saturate(frost));
+			}
+			if (hole > 0.0f) {
+				const float edge = hole * (1.0f + 0.3f * gnoise3(dir.x * 3.0f, dir.y * 3.0f, 0.0f, s.seed + 9u));
+				if (r < edge) {
+					alpha = 0.0f; // Real hole: see-through.
+				} else if (r < edge + lw * 3.0f) {
+					color = ca;
+					alpha = 1.0f;
+				}
+			}
+			write_flat(r_px, color, alpha, s);
+			return;
+		}
+		case TYPE_SPLATTER: {
+			const float size = param(c, 0);
+			const float spread = param(c, 2);
+			const float bias = param(c, 3);
+			const float ragged = param(c, 4);
+			const float variation = param(c, 5);
+			// Main blob with a ragged outline, pushed towards +X.
+			const float bx = x + size * bias * 0.4f;
+			const float br = len2(bx, y);
+			const float outline = fbm(V3(std::cos(std::atan2(y, bx)) * 2.2f, std::sin(std::atan2(y, bx)) * 2.2f, 0.0f) + seed_offset(s.seed), 4, 0.6f, s.seed);
+			float field = size * (1.0f + ragged * 0.5f * outline) - br;
+			// Droplets and elongated drops (precomputed in setup_frame).
+			for (int i = 0; i < c.disk_count; i++) {
+				const float dx = x - c.disks[i][0];
+				const float dy = y - c.disks[i][1];
+				const float stretch = c.disks[i][3];
+				const float da = std::atan2(c.disks[i][1], c.disks[i][0]);
+				const float ux = dx * std::cos(da) + dy * std::sin(da);
+				const float uy = -dx * std::sin(da) + dy * std::cos(da);
+				field = maxf(field, c.disks[i][2] - len2(ux / stretch, uy));
+			}
+			(void)spread;
+			const float alpha = smoothstepf(-0.004f, 0.004f, field);
+			const float thick = saturate(field / maxf(size * 0.5f, 1e-3f));
+			const float n = fbm(V3(x * 7.0f, y * 7.0f, 0.0f) + seed_offset(s.seed + 4u), 3, 0.5f, s.seed + 4u) * 0.5f + 0.5f;
+			const V3 color = mix3(cb, ca, saturate(thick * variation * 1.5f + (n - 0.5f) * variation));
+			write_flat(r_px, color, alpha, s);
+			return;
+		}
+		default:
+			break;
+	}
+	write_flat(r_px, V3(), 0.0f, s);
+}
+
 // Tileable 2D patterns. (u, v) in 0..1 texture space.
 void render_pattern(const FrameContext &c, float u, float v, float *r_px) {
 	const Settings &s = *c.s;
@@ -1519,6 +1854,12 @@ void render_pixel(const FrameContext &c, int px, int py, int size, float *r_out)
 			break;
 		case TYPE_CLOUD:
 			render_smoke(c, x, y, r_out, true);
+			break;
+		case TYPE_BULLET_HOLE:
+		case TYPE_SCORCH:
+		case TYPE_GLASS_CRACK:
+		case TYPE_SPLATTER:
+			render_decal(c, x, y, r_out);
 			break;
 		default:
 			render_2d(c, x, y, r_out);

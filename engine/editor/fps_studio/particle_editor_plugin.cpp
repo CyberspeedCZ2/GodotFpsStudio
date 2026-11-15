@@ -1898,7 +1898,7 @@ bool FPSStudioParticleEditorPlugin::_export_generated_texture(const String &p_pa
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_apply_pressed() {
-	if (texture_generator_normal_map->is_pressed()) {
+	if (texture_generator_normal_map->is_pressed() && !Object::cast_to<Decal>(_get_edited_emitter())) {
 		EditorNode::get_singleton()->show_warning(TTR("Normal maps are exported as project textures and cannot be applied as an unlit particle color texture."));
 		return;
 	}
@@ -1963,7 +1963,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 		return;
 	}
 	if (texture_generator_apply_button) {
-		texture_generator_apply_button->set_disabled(texture_generator_normal_map->is_pressed() || _get_edited_emitter() == nullptr);
+		texture_generator_apply_button->set_disabled((texture_generator_normal_map->is_pressed() && !Object::cast_to<Decal>(_get_edited_emitter())) || _get_edited_emitter() == nullptr);
 	}
 	if (texture_generator_status) {
 		const String message = texture_generator_normal_map->is_pressed() ? TTR("Exported normal map: %s") : TTR("Exported: %s");
@@ -2201,6 +2201,25 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 		EditorNode::get_singleton()->show_warning(TTR("Select a particle emitter before applying a texture."));
 		return;
 	}
+	if (Decal *decal = Object::cast_to<Decal>(emitter)) {
+		// Decal tracks take the texture directly (albedo, or normal map).
+		const bool normal = texture_generator_normal_map->is_pressed();
+		EditorUndoRedoManager *decal_undo = get_undo_redo();
+		decal_undo->create_action_for_history(normal ? TTR("Apply Generated Decal Normal Map") : TTR("Apply Generated Decal Texture"), EditorUndoRedoManager::GLOBAL_HISTORY);
+		decal_undo->force_fixed_history();
+		const StringName property = normal ? StringName("texture_normal") : StringName("texture_albedo");
+		decal_undo->add_do_property(decal, property, generated_texture);
+		decal_undo->add_undo_property(decal, property, decal->get(property));
+		decal_undo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter);
+		decal_undo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter);
+		decal_undo->commit_action();
+		if (module_stack) {
+			module_stack->refresh_values();
+		}
+		_mark_document_dirty();
+		_sync_preview_properties();
+		return;
+	}
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
 	CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(emitter);
 	const int frames = generated_texture_frame_columns;
@@ -2354,6 +2373,12 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 	}
 	for (const FPSParticlePresets::TextureRequest &request : textures) {
 		Ref<Texture2D> texture = _bake_preset_texture(request.settings, request.file_name, request.resolution, request.columns, request.sheet_duration);
+		if (Decal *decal = Object::cast_to<Decal>(request.emitter)) {
+			if (texture.is_valid()) {
+				decal->set_texture(Decal::TEXTURE_ALBEDO, texture);
+			}
+			continue;
+		}
 		Ref<Material> material = FPSParticleModuleStack::get_draw_material(request.emitter);
 		BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(material.ptr());
 		if (texture.is_null() || !base_material) {
@@ -2505,9 +2530,23 @@ void FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture() {
 		_build_texture_type_list();
 	}
 	// Continue editing the recipe saved next to the emitter's current texture.
-	Ref<Material> material = FPSParticleModuleStack::get_draw_material(emitter);
-	BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(material.ptr());
-	Ref<Texture2D> texture = base_material ? base_material->get_texture(BaseMaterial3D::TEXTURE_ALBEDO) : Ref<Texture2D>();
+	Ref<Texture2D> texture;
+	Decal *decal = Object::cast_to<Decal>(emitter);
+	if (decal) {
+		texture = decal->get_texture(Decal::TEXTURE_ALBEDO);
+		// Start a decal track on a decal type.
+		const VFXTextureGenerator::TypeInfo *current = VFXTextureGenerator::get_type_info(texture_generator_type);
+		if (!current || String::utf8(current->category) != "Decals") {
+			_select_texture_type(VFXTextureGenerator::TYPE_SCORCH, true);
+		}
+		if (texture_generator_normal_map) {
+			texture_generator_normal_map->set_pressed_no_signal(false);
+		}
+	} else {
+		Ref<Material> material = FPSParticleModuleStack::get_draw_material(emitter);
+		BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(material.ptr());
+		texture = base_material ? base_material->get_texture(BaseMaterial3D::TEXTURE_ALBEDO) : Ref<Texture2D>();
+	}
 	if (texture.is_valid() && !texture->get_path().is_empty()) {
 		const String recipe_path = texture->get_path().get_basename() + ".vfx.cfg";
 		if (FileAccess::exists(recipe_path)) {

@@ -510,6 +510,14 @@ void FPSParticleModuleStack::_build_event() {
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s", 6.0);
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FADE, TTR("Fade Out Part"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0.01,1,0.01", 0.5);
 			_add_row(MODULE_EVENT, TARGET_NODE, "texture_albedo", "texture_albedo", TTR("Texture"));
+			{
+				Button *generate = memnew(Button);
+				generate->set_text(TTR("Generate Decal Texture..."));
+				generate->set_tooltip_text(TTR("Open the Texture Generator on the Decals category (bullet hole, scorch / burn mark, glass crack, splatter). Apply sets this decal's texture; with Normal Map enabled it sets the decal normal map."));
+				generate->connect(SceneStringName(pressed), callable_mp(this, &FPSParticleModuleStack::_on_generate_texture_pressed));
+				module_contents[MODULE_EVENT]->add_child(generate);
+			}
+			_add_row(MODULE_EVENT, TARGET_NODE, "texture_normal", "texture_normal", TTR("Normal Map"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "size", "size", TTR("Size"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "modulate", "modulate", TTR("Tint"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "albedo_mix", "albedo_mix", TTR("Albedo Mix"));
