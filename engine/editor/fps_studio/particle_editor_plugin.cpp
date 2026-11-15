@@ -35,6 +35,7 @@
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/curve_editor_plugin.h"
+#include "editor/scene/material_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "modules/visual_shader/editor/visual_shader_editor_plugin.h"
@@ -43,6 +44,7 @@
 #include "scene/3d/camera_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
+#include "scene/3d/gpu_particles_collision_3d.h"
 #include "scene/3d/light_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/camera_shake_3d.h"
@@ -936,6 +938,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 		timeline->set_value_no_signal(0.0);
 	}
 	_apply_preview_solo();
+	_update_preview_bounds();
 	_restart_preview_at(0.0);
 	_set_preview_playing(preview_playing);
 	_frame_preview();
@@ -959,6 +962,7 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	copy_preview_properties(source, preview_effect);
 	_apply_preview_defaults(preview_effect);
 	_apply_preview_solo();
+	_update_preview_bounds();
 	_set_preview_playing(preview_playing);
 }
 
@@ -2706,6 +2710,9 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
 	Ref<VisualShader> visual_shader = _get_particle_visual_shader(emitter);
 	particle_graph_button->set_disabled(!gpu);
+	if (convert_shader_button) {
+		convert_shader_button->set_disabled(!gpu || !Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
+	}
 	particle_graph_button->set_text(visual_shader.is_valid() ? TTR("Open in Shader Editor") : TTR("Create Node Graph"));
 	if (!emitter) {
 		particle_logic_status->set_text(TTR("No emitter selected"));
@@ -3240,6 +3247,183 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 	_update_preview_camera();
 }
 
+void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
+	PopupMenu *popup = preview_view_menu->get_popup();
+	if (p_id >= 0 && p_id <= 3) {
+		for (int i = 0; i <= 3; i++) {
+			popup->set_item_checked(popup->get_item_index(i), i == p_id);
+		}
+		_apply_preview_environment(p_id);
+		return;
+	}
+	const int index = popup->get_item_index(p_id);
+	const bool checked = !popup->is_item_checked(index);
+	popup->set_item_checked(index, checked);
+	switch (p_id) {
+		case 10:
+			_on_grid_toggled(checked);
+			break;
+		case 11:
+			if (preview_environment.is_valid()) {
+				preview_environment->set_glow_enabled(checked);
+				preview_environment->set_glow_intensity(0.9);
+				preview_environment->set_glow_bloom(0.08);
+				preview_environment->set_glow_hdr_bleed_threshold(0.85);
+			}
+			break;
+		case 12:
+			preview_show_bounds = checked;
+			_update_preview_bounds();
+			break;
+		case 13:
+			if (preview_floor_collision) {
+				preview_floor_collision->set_visible(checked);
+			}
+			break;
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_apply_preview_environment(int p_preset) {
+	preview_environment_preset = p_preset;
+	if (preview_environment.is_null() || !preview_key_light) {
+		return;
+	}
+	struct Look {
+		Color background;
+		Color ambient;
+		real_t ambient_energy;
+		real_t key, fill, rim;
+		Color key_color;
+	};
+	static const Look looks[] = {
+		{ Color(0.035, 0.046, 0.065), Color(0.48, 0.53, 0.64), 0.72, 1.45, 0.48, 0.65, Color(0.9, 0.94, 1.0) }, // Studio
+		{ Color(0.52, 0.66, 0.86), Color(0.78, 0.84, 0.95), 1.0, 2.3, 0.6, 0.2, Color(1.0, 0.96, 0.88) }, // Daylight
+		{ Color(0.006, 0.008, 0.016), Color(0.2, 0.24, 0.36), 0.18, 0.12, 0.08, 0.05, Color(0.6, 0.7, 1.0) }, // Night
+		{ Color(0.11, 0.1, 0.09), Color(0.62, 0.55, 0.47), 0.55, 0.9, 0.3, 0.25, Color(1.0, 0.85, 0.65) }, // Interior
+	};
+	const Look &look = looks[CLAMP(p_preset, 0, 3)];
+	preview_environment->set_bg_color(look.background);
+	preview_environment->set_ambient_light_color(look.ambient);
+	preview_environment->set_ambient_light_energy(look.ambient_energy);
+	preview_key_light->set_param(Light3D::PARAM_ENERGY, look.key);
+	preview_key_light->set_color(look.key_color);
+	preview_fill_light->set_param(Light3D::PARAM_ENERGY, look.fill);
+	preview_rim_light->set_param(Light3D::PARAM_ENERGY, look.rim);
+}
+
+void FPSStudioParticleEditorPlugin::_update_preview_bounds() {
+	if (!preview_effect) {
+		return;
+	}
+	Node *source = _get_effect_root();
+	Node *emitter = _get_edited_emitter();
+	// Remove old overlays from every preview emitter.
+	Vector<Node *> preview_emitters;
+	_collect_emitters(preview_effect, preview_emitters);
+	for (Node *preview_emitter : preview_emitters) {
+		Node *old = preview_emitter->get_node_or_null(NodePath("PreviewBounds"));
+		if (old) {
+			preview_emitter->remove_child(old);
+			old->queue_free();
+		}
+	}
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
+	if (!preview_show_bounds || !source || !gpu || !source->is_ancestor_of(gpu)) {
+		return;
+	}
+	Node3D *target = Object::cast_to<Node3D>(preview_effect->get_node_or_null(source->get_path_to(gpu)));
+	if (!target) {
+		return;
+	}
+	const AABB box = gpu->get_visibility_aabb();
+	Ref<StandardMaterial3D> material;
+	material.instantiate();
+	material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+	material->set_albedo(Color(1.0, 0.8, 0.2, 0.9));
+	material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+	material->set_flag(BaseMaterial3D::FLAG_DISABLE_DEPTH_TEST, true);
+	Ref<ImmediateMesh> mesh;
+	mesh.instantiate();
+	mesh->surface_begin(Mesh::PRIMITIVE_LINES, material);
+	for (int i = 0; i < 12; i++) {
+		Vector3 a, b;
+		box.get_edge(i, a, b);
+		mesh->surface_add_vertex(a);
+		mesh->surface_add_vertex(b);
+	}
+	mesh->surface_end();
+	MeshInstance3D *overlay = memnew(MeshInstance3D);
+	overlay->set_name("PreviewBounds");
+	overlay->set_mesh(mesh);
+	overlay->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+	target->add_child(overlay);
+}
+
+void FPSStudioParticleEditorPlugin::_update_preview_stats() {
+	if (!preview_stats_label) {
+		return;
+	}
+	Node *source = _get_effect_root();
+	if (!source) {
+		preview_stats_label->set_text(String());
+		return;
+	}
+	Vector<Node *> tracks;
+	collect_tracks(source, tracks);
+	int visible_tracks = 0;
+	int max_particles = 0;
+	for (Node *track : tracks) {
+		Node3D *track_3d = Object::cast_to<Node3D>(track);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
+		visible_tracks++;
+		if (ParticleEffect3D::is_emitter(track)) {
+			max_particles += int(track->get("amount"));
+		}
+	}
+	String text = vformat(TTR("%d tracks, %d particles max"), visible_tracks, max_particles);
+	if (preview_viewport) {
+		const int draw_calls = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_DRAW_CALLS_IN_FRAME);
+		const int primitives = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_PRIMITIVES_IN_FRAME);
+		text += vformat(TTR(", %d draws, %s tris"), draw_calls, primitives >= 1000 ? String::num(primitives / 1000.0, 1) + "k" : itos(primitives));
+	}
+	preview_stats_label->set_text(text);
+}
+
+void FPSStudioParticleEditorPlugin::_on_convert_shader_pressed() {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
+	if (!gpu) {
+		return;
+	}
+	Ref<ParticleProcessMaterial> process = gpu->get_process_material();
+	if (process.is_null()) {
+		return;
+	}
+	Ref<ParticleProcessMaterialConversionPlugin> converter;
+	converter.instantiate();
+	Ref<ShaderMaterial> shader_material = converter->convert(process);
+	// Never replace working modules with an empty shader (e.g. when the
+	// renderer cannot provide the generated code).
+	if (shader_material.is_null() || shader_material->get_shader().is_null() || shader_material->get_shader()->get_code().strip_edges().is_empty()) {
+		EditorNode::get_singleton()->show_warning(TTR("Could not convert the process material to shader code. The emitter was left unchanged."));
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Convert Particle Modules to Shader Code"), UndoRedo::MERGE_DISABLE, gpu);
+	undo_redo->add_do_property(gpu, "process_material", shader_material);
+	undo_redo->add_undo_property(gpu, "process_material", process);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", gpu);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", gpu);
+	undo_redo->commit_action();
+	if (module_stack) {
+		module_stack->edit(gpu);
+	}
+	if (shader_material->get_shader().is_valid()) {
+		EditorNode::get_singleton()->push_item(shader_material->get_shader().ptr());
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
 	if (!timeline_play_button || !timeline_play_button->is_inside_tree()) {
 		return;
@@ -3426,6 +3610,13 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			// the preview runs as fast as the renderer allows. Playback changes only
 			// the live preview; an exported PNG stays valid for Apply to Emitter.
 			_regenerate_texture(true);
+		}
+	}
+	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree()) {
+		preview_stats_accumulator += get_process_delta_time();
+		if (preview_stats_accumulator >= 0.25) {
+			preview_stats_accumulator = 0.0;
+			_update_preview_stats();
 		}
 	}
 	if (p_what == NOTIFICATION_PROCESS && texture_preview_task >= 0) {
@@ -3724,12 +3915,29 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	reset_view_button->set_tooltip_text(TTR("Frame the full particle effect in the preview."));
 	reset_view_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_reset_view_pressed));
 	preview_toolbar->add_child(reset_view_button);
-	CheckButton *grid_toggle = memnew(CheckButton);
-	grid_toggle->set_text(TTR("Grid"));
-	grid_toggle->set_pressed(true);
-	grid_toggle->set_tooltip_text(TTR("Show or hide the preview grid."));
-	grid_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_grid_toggled));
-	preview_toolbar->add_child(grid_toggle);
+	preview_view_menu = memnew(MenuButton);
+	preview_view_menu->set_text(TTR("View"));
+	preview_view_menu->set_flat(false);
+	preview_view_menu->set_tooltip_text(TTR("Preview environment and debug overlays."));
+	{
+		PopupMenu *view_popup = preview_view_menu->get_popup();
+		view_popup->add_separator(TTR("Environment"));
+		view_popup->add_radio_check_item(TTR("Studio (dark)"), 0);
+		view_popup->add_radio_check_item(TTR("Daylight"), 1);
+		view_popup->add_radio_check_item(TTR("Night"), 2);
+		view_popup->add_radio_check_item(TTR("Interior"), 3);
+		view_popup->set_item_checked(view_popup->get_item_index(0), true);
+		view_popup->add_separator(TTR("Overlays"));
+		view_popup->add_check_item(TTR("Grid"), 10);
+		view_popup->set_item_checked(view_popup->get_item_index(10), true);
+		view_popup->add_check_item(TTR("Glow (Bloom)"), 11);
+		view_popup->add_check_item(TTR("Emitter Bounds"), 12);
+		view_popup->add_check_item(TTR("Floor Collision"), 13);
+		view_popup->set_item_tooltip(view_popup->get_item_index(13), TTR("Add a collision floor to the preview so the Collision module can be tested."));
+		view_popup->set_hide_on_checkable_item_selection(false);
+		view_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_view_menu_id));
+	}
+	preview_toolbar->add_child(preview_view_menu);
 	Button *texture_generator_button = memnew(Button);
 	texture_generator_button->set_text(TTR("Texture Generator..."));
 	texture_generator_button->set_tooltip_text(TTR("Create and export a procedural VFX texture for a particle emitter."));
@@ -3759,7 +3967,6 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	document_host->set_process_mode(Node::PROCESS_MODE_DISABLED);
 	preview_root->add_child(document_host);
 
-	Ref<Environment> preview_environment;
 	preview_environment.instantiate();
 	preview_environment->set_background(Environment::BG_COLOR);
 	preview_environment->set_bg_color(Color(0.035, 0.046, 0.065));
@@ -3771,22 +3978,34 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	world_environment->set_environment(preview_environment);
 	preview_root->add_child(world_environment);
 	DirectionalLight3D *key_light = memnew(DirectionalLight3D);
+	preview_key_light = key_light;
 	key_light->set_rotation(Vector3(Math::deg_to_rad(-38.0), Math::deg_to_rad(-26.0), 0.0));
 	key_light->set_param(Light3D::PARAM_ENERGY, 1.45);
 	key_light->set_color(Color(0.9, 0.94, 1.0));
 	preview_root->add_child(key_light);
 	DirectionalLight3D *fill_light = memnew(DirectionalLight3D);
+	preview_fill_light = fill_light;
 	fill_light->set_rotation(Vector3(Math::deg_to_rad(-18.0), Math::deg_to_rad(148.0), Math::deg_to_rad(12.0)));
 	fill_light->set_param(Light3D::PARAM_ENERGY, 0.48);
 	fill_light->set_color(Color(0.34, 0.56, 1.0));
 	preview_root->add_child(fill_light);
 	DirectionalLight3D *rim_light = memnew(DirectionalLight3D);
+	preview_rim_light = rim_light;
 	rim_light->set_rotation(Vector3(Math::deg_to_rad(-16.0), Math::deg_to_rad(-145.0), Math::deg_to_rad(-18.0)));
 	rim_light->set_param(Light3D::PARAM_ENERGY, 0.65);
 	rim_light->set_color(Color(1.0, 0.66, 0.42));
 	preview_root->add_child(rim_light);
 	preview_grid = create_particle_preview_grid();
 	preview_root->add_child(preview_grid);
+	{
+		GPUParticlesCollisionBox3D *floor = memnew(GPUParticlesCollisionBox3D);
+		floor->set_name("PreviewFloorCollision");
+		floor->set_size(Vector3(60.0, 0.2, 60.0));
+		floor->set_position(Vector3(0.0, -0.2, 0.0));
+		floor->set_visible(false);
+		preview_root->add_child(floor);
+		preview_floor_collision = floor;
+	}
 	preview_camera = memnew(Camera3D);
 	preview_camera->set_perspective(55.0, 0.03, 1000.0);
 	preview_root->add_child(preview_camera);
@@ -3826,6 +4045,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	time_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 	time_label_container->add_child(time_label);
 	time_label->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	preview_stats_label = memnew(Label);
+	preview_stats_label->set_modulate(Color(1, 1, 1, 0.6));
+	preview_stats_label->set_tooltip_text(TTR("Visible tracks, maximum particles of visible emitters, draw calls and primitives rendered in the preview."));
+	preview_stats_label->set_mouse_filter(Control::MOUSE_FILTER_PASS);
+	transport->add_child(preview_stats_label);
 	Label *speed_label = memnew(Label);
 	speed_label->set_text(TTR("Speed"));
 	transport->add_child(speed_label);
@@ -3880,7 +4104,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_spacer->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	timeline_toolbar->add_child(timeline_spacer);
 	Label *timeline_hint = memnew(Label);
-	timeline_hint->set_text(TTR("Drag bars to time tracks · right-click for options"));
+	timeline_hint->set_text(TTR("Drag bars to time tracks, right-click for options"));
 	timeline_hint->set_modulate(Color(1, 1, 1, 0.5));
 	timeline_hint->set_clip_text(true);
 	timeline_hint->set_h_size_flags(Control::SIZE_SHRINK_END);
@@ -3942,6 +4166,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_logic_status->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	particle_logic_status->set_clip_text(true);
 	logic_header->add_child(particle_logic_status);
+	convert_shader_button = memnew(Button);
+	convert_shader_button->set_text(TTR("Convert to Shader Code"));
+	convert_shader_button->set_tooltip_text(TTR("Replace the module settings with the equivalent particle shader code (same look), for custom behavior written in code. Undoable."));
+	convert_shader_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_convert_shader_pressed));
+	logic_header->add_child(convert_shader_button);
 	particle_graph_button = memnew(Button);
 	particle_graph_button->set_text(TTR("Create Node Graph"));
 	particle_graph_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed));

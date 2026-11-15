@@ -157,6 +157,15 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [x] Headless testy v dočasném projektu: úprava vlastnosti a Undo, přidání modulu, Apply textury a Undo, Undo načasování, vytvoření všech presetů, runtime načasování a `spawn()` s automatickým uvolněním.
 - [ ] Ruční ověření nového UI, náhledu presetů a časové osy v GUI editoru.
 
+### 9. Particle editor na maximum — hotovo (2026-11-15), čeká na ruční ověření
+
+- [x] Časová osa 2.0: zoom/posun, lišta s přehráváním, ztlumení a solo stop, kontextové menu, zkratky, duplikace emitoru s vlastními zdroji, značka konce.
+- [x] Události: záblesk světla s křivkou, zvuk, nový uzel `CameraShake3D`, decal s mizením; runtime v `ParticleEffect3D`, karty v zásobníku, stopy v časové ose, události v presetech.
+- [x] Moduly 2.0: křivky přes život, presety modulů, kopírování/vložení/reset, moduly Trails a Attractors, Mesh v Render; Undo v globální historii bez konfliktů.
+- [x] Náhled 2.0: prostředí Studio/Daylight/Night/Interior, Glow, hranice emitoru, kolizní podlaha, statistiky, převod modulů na shader kód.
+- [x] Headless testy: moduly, presety modulů, trails/attractors, časová osa, události, náhled, presety, Add to Level, runtime událostí.
+- [ ] Ruční ověření v GUI (vzhled, zkratky, převod na shader kód, záblesky světla a otřes kamery v náhledu i ve hře).
+
 ## Analýza reference: EffectTextureMaker
 
 Pro další rozvoj byl 2026-11-13 zkontrolován [anglický popis EffectTextureMakeru](https://mebiusbox.github.io/en/docs/lab/effect_texture_maker) a přiložené screenshoty jeho ovládání. Jde o širší procedurální nástroj než náš současný generátor. Dokumentace reference uvádí desítky předloh, normal mapu, sprite sheet, color balance, maximum 2048 px, časové efekty, polar conversion, toon shading, tiling, alpha PNG a ukládání/načítání nastavení v JSON.

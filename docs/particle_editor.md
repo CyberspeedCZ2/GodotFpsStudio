@@ -13,8 +13,8 @@ Při návrhu práce s efekty zohledňujeme také [tutoriál ohně a jisker od Le
 Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 
 - **Horní lišta dokumentu:** název efektu (dvojklik přejmenuje), stav uložení, **New**, **Open...**, **Save** a **Add to Level**.
-- **Vlevo:** seznam **Emitters** s tlačítky **Add** a **Remove**. Pod ním je sbalovací **Effect Library** se skupinou **FPS Presets** a nedávnými efekty; dvojklik vytvoří efekt z presetu nebo otevře soubor.
-- **Uprostřed:** 3D náhled s transportem (Play/Pause, Restart, čas, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
+- **Vlevo:** seznam stop (emitory i události) s ikonami a tlačítky **Add**, **Duplicate** a **Remove**. Pod ním je sbalovací **Effect Library** se skupinou **FPS Presets** a nedávnými efekty; dvojklik vytvoří efekt z presetu nebo otevře soubor.
+- **Uprostřed:** 3D náhled s menu **View** a transportem (Play/Pause, Restart, čas, statistiky, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
 - **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
 
 ## Vytvoření a ukládání efektu
@@ -38,7 +38,11 @@ Každý emitor se upravuje jako svislý zásobník karet. Karty obsahují vybran
 | Size over Life | velikost min/max a karta Scale over Life s presety |
 | Render | náhled textury, **Generate Texture...**, textura, tint, blend (Mix/Add…), shading, natočení (billboard), barva částic, soft particles, velikost quadu, řazení, zarovnání |
 
-Volitelné moduly přidá **+ Module** a odebere křížek v záhlaví karty: **Rotation**, **Sprite Sheet Animation** (rychlost, počáteční snímek, sloupce, řádky, smyčka), **Turbulence**, **Collision** a **Sub Emitter**. Turbulence, Collision a Sub Emitter jsou jen pro GPU emitory. Odebrání vrátí hodnoty modulu do vypnutého stavu. Pokud GPU emitor používá vlastní particle `VisualShader`, procesní moduly se skryjí a logika se upravuje v Particle Logic.
+Karta Emitter obsahuje i **Start Delay** a **Emission Length** (stejné hodnoty jako tažení v časové ose). Moduly mají řádky „… over Life“ s křivkami (`CurveTexture`) pro radiální rychlost, limit rychlosti, zrychlení, odpor, odstín, velikost podle rychlosti, úhel, rotaci a rychlost sprite sheetu. Render nabízí **Mesh** pro mesh částice (např. úlomky).
+
+Menu **⋮** v záhlaví každé karty nabízí presety modulu (např. Fountain, Explosion (Radial), Gentle Rise, Forward Cone; Earth Gravity, Buoyant Smoke, Zero Gravity; barvy Fire, Smoke, Sparks, Magic; velikost Grow, Shrink, Pop In and Out; Additive Glow, Soft Alpha, Lit by Scene), **Copy Module**, **Paste Module** (do stejného modulu jiného emitoru) a **Reset to Defaults**. Vše jde vrátit přes Undo.
+
+Volitelné moduly přidá **+ Module** a odebere křížek v záhlaví karty: **Rotation**, **Sprite Sheet Animation** (rychlost, počáteční snímek, sloupce, řádky, smyčka), **Turbulence**, **Collision**, **Sub Emitter**, **Trails** (ribbon stopa, délka, šířka, segmenty, šířka podél stopy; materiál se přepne do trail módu) a **Attractors** (přidá `GPUParticlesAttractorSphere3D` k emitoru, tlačítkem Add Attractor další). Turbulence, Collision, Sub Emitter, Trails a Attractors jsou jen pro GPU emitory. Odebrání vrátí hodnoty modulu do vypnutého stavu. Pokud GPU emitor používá vlastní particle `VisualShader`, procesní moduly se skryjí a logika se upravuje v Particle Logic.
 
 Emitor bez particle materiálu nabídne v modulu Render **Create Particle Material** (unshaded, billboard, barva z částic).
 
@@ -50,11 +54,30 @@ Rychlost animace sprite sheetu odpovídá tomu, jak Godot počítá snímky (`an
 
 ## Časová osa
 
-Záložka **Timeline** zobrazuje řádek pro každý emitor: plný pruh je doba emise, slabší pokračování je doba, kdy částice ještě dožívají. Nekonečně emitující emitor končí symbolem ∞.
+Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh je doba aktivity (emise), slabší pokračování doba, kdy částice ještě dožívají. Nekonečná stopa končí symbolem ∞. Přerušovaná čára **End** označuje konec efektu, červený playhead aktuální čas. Pruhy emitorů ukazují počet částic a životnost.
 
-- Kliknutí nebo tažení v pravítku posouvá náhled (scrub).
-- Tažením pruhu se mění **zpoždění startu**, tažením pravého okraje **délka emise**. Krok je 0,05 s, Shift přichytávání vypne. Dvojklik vrátí délku na výchozí chování emitoru.
+- **Lišta:** Play/Pause, Restart, Loop, čas, přichytávání (Snap), zoom a **Fit**.
+- **Zoom a posun:** Ctrl/Cmd + kolečko nebo gesto zoomuje kolem kurzoru, Shift + kolečko, prostřední tlačítko nebo trackpad posouvá.
+- **Scrub:** kliknutí nebo tažení v pravítku.
+- **Načasování:** tažením pruhu se mění start, tažením pravého okraje délka. Krok 0,05 s, Shift přichytávání dočasně vypne. Dvojklik na pruh vrátí délku na výchozí chování.
+- **Oko** stopu ztlumí (skryje; ukládá se a respektuje ji i hra), **S** ji sólově přehraje jen v náhledu.
+- **Pravé tlačítko:** Duplicate, Rename, Visible, Solo in Preview, Reset Timing, Delete.
+- **Zkratky** (s fokusem na časové ose): mezerník Play/Pause, Home Restart, F Fit, Delete smazat, Ctrl/Cmd+D duplikovat, H ztlumit, S solo. Mezerník, Home a F fungují i v 3D náhledu.
+- Duplikát emitoru dostane vlastní process material, mesh i materiál (textury zůstávají sdílené).
 - Změny jdou přes Undo/Redo a náhled se řídí stejným načasováním jako hra. Délka smyčky náhledu je celá délka efektu.
+
+## Události
+
+**Add → Events** přidá k efektu časované události, které `ParticleEffect3D` přehrává spolu s emitory (v náhledu i ve hře):
+
+| Událost | Uzel | Chování |
+| --- | --- | --- |
+| Light Flash | `OmniLight3D` (funguje i `SpotLight3D`) | intenzita sleduje křivku **Intensity over Time** během délky; délka 0 = trvale svítí; **Flicker** přidá mihotání |
+| Sound | `AudioStreamPlayer3D` | přehraje se jednou ve svém čase; **Pitch Random** náhodně mění výšku |
+| Camera Shake | `CameraShake3D` | otřese aktivní kamerou (síla, frekvence, délka, dosah) |
+| Decal | `Decal` | objeví se ve svém čase a během **Fade Out Part** zmizí; délka 0 = zůstane |
+
+Události mají v zásobníku vlastní kartu (čas, délka a vlastnosti) a v časové ose žlutou stopu. Světla a decaly efekt animuje přes intenzitu a průhlednost, takže viditelnost dál slouží jako přepínač ztlumení. Presety Explosion, Muzzle Flash a Impact Sparks obsahují záblesk světla, Explosion i otřes kamery a Fire trvalé mihotavé světlo.
 
 Načasování se ukládá jako metadata emitoru (`particle_effect_delay`, `particle_effect_duration`).
 
@@ -91,20 +114,24 @@ func _on_hit(position: Vector3, normal: Vector3) -> void:
 
 ## Particle Logic
 
+**Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře ho v Shader Editoru pro vlastní logiku v kódu. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.
+
 Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf v záložce **Particle Logic**. Nahrazení materiálu se nejprve potvrdí a jde vrátit přes Undo. **Open in Shader Editor** otevře graf ve velkém Shader Editoru. `VisualShader` je výpočet jednoho emitoru, neřídí hierarchii ani načasování efektu. CPU particles shaderový graf nemají.
 
 ## 3D náhled a simulace
 
 Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport` s vlastním prostředím, světly, kamerou a mřížkou. Chybějící draw mesh nebo process material doplní pouze náhledová kopie.
 
-- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** efekt znovu orámuje, **Grid** zapíná mřížku.
+- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** efekt znovu orámuje.
+- Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru) a **Floor Collision** (kolizní podlaha pro modul Collision).
+- Statistiky v transportu: viditelné stopy, maximum částic, draw cally a trojúhelníky náhledu.
 - **Play/Pause**, **Restart**, časový posuvník, **Speed** a **Loop** ovládají simulaci. Posun na jiný čas restartuje efekt a přehraje ho dopředu (`ParticleEffect3D.seek`); jde o přiblížení, ne přesnou rekonstrukci stavu.
 - Změna načasování na časové ose zachová polohu kamery.
 
 ## Současné hranice a další práce
 
 - Šířky hlavních panelů se ukládají do rozvržení editoru.
-- Nové UI (zásobník modulů, časová osa, presety) je ověřeno headless testy v dočasném projektu, ne zatím ručně v GUI.
+- Nové UI (zásobník modulů, časová osa 2.0, události, presety modulů, náhled 2.0) je ověřeno headless testy v dočasném projektu, ne zatím ručně v GUI. Převod na shader kód headless renderer neumí (vrací prázdný kód); v GUI je potřeba ho ověřit ručně.
 - Náhled kopíruje podstrom efektu; kolizní nebo attractor uzly mimo efekt se do simulace nepřidají.
 - Presety dopadu míří podél +Y (normála povrchu), krev podél +Z a muzzle flash podél −Z.
 
