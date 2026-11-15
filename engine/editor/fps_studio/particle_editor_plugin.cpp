@@ -780,7 +780,16 @@ void FPSStudioParticleEditorPlugin::_update_document_toolbar_layout() {
 		}
 		available = MIN(available, screen->get_viewport()->get_visible_rect().size.x - screen->get_global_position().x);
 	}
-	const bool compact = screen && available > 0.0 && available < 1200.0 * EDSCALE;
+	bool compact = compact_layout;
+	if (screen && available > 0.0) {
+		const real_t needed = screen->get_combined_minimum_size().x;
+		if (!compact_layout) {
+			wide_layout_min_width = needed;
+			compact = available < 1200.0 * EDSCALE || needed > available + 1.0;
+		} else {
+			compact = available < MAX(real_t(1200.0 * EDSCALE), wide_layout_min_width);
+		}
+	}
 	if (compact != compact_layout) {
 		compact_layout = compact;
 		_apply_compact_layout();
@@ -3886,12 +3895,14 @@ void FPSStudioParticleEditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) 
 	if (p_layout.is_null() || !p_layout->has_section("ParticleWorkspace")) {
 		return;
 	}
+	// Side panels keep their state; the preview and the Timeline always come
+	// back on start so a freshly opened workspace is never missing them.
 	show_left_panel = p_layout->get_value("ParticleWorkspace", "show_emitters", true);
-	show_preview_panel = p_layout->get_value("ParticleWorkspace", "show_preview", true);
-	show_bottom_panel = p_layout->get_value("ParticleWorkspace", "show_timeline_logic", true);
 	show_right_panel = p_layout->get_value("ParticleWorkspace", "show_properties", true);
-	if (!show_preview_panel && !show_bottom_panel) {
-		show_preview_panel = true;
+	show_preview_panel = true;
+	show_bottom_panel = true;
+	if (bottom_tabs) {
+		bottom_tabs->set_current_tab(PARTICLE_BOTTOM_TAB_TIMELINE);
 	}
 	_apply_panel_visibility();
 	if (!p_layout->has_section_key("ParticleWorkspace", "main_split_ratio") ||
@@ -3911,8 +3922,6 @@ void FPSStudioParticleEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) 
 		return;
 	}
 	p_layout->set_value("ParticleWorkspace", "show_emitters", show_left_panel);
-	p_layout->set_value("ParticleWorkspace", "show_preview", show_preview_panel);
-	p_layout->set_value("ParticleWorkspace", "show_timeline_logic", show_bottom_panel);
 	p_layout->set_value("ParticleWorkspace", "show_properties", show_right_panel);
 	const real_t main_extent = main_panel_split->get_size().width;
 	const real_t properties_extent = preview_properties_split->get_size().width;
@@ -4492,6 +4501,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline->set_value(0.0);
 	timeline->set_editable(false);
 	timeline->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	timeline->set_custom_minimum_size(Size2(120, 0) * EDSCALE);
 	timeline->connect(SceneStringName(value_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_changed));
 	transport->add_child(timeline);
 	Control *time_label_container = memnew(Control);
@@ -4512,7 +4522,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_stats_label->set_clip_text(true);
 	preview_stats_label->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
 	preview_stats_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	preview_stats_label->set_stretch_ratio(0.8);
+	preview_stats_label->set_stretch_ratio(0.5);
 	transport->add_child(preview_stats_label);
 	speed_label = memnew(Label);
 	speed_label->set_text(TTR("Speed"));

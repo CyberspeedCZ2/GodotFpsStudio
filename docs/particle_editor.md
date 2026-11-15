@@ -25,7 +25,7 @@ Panely jde zavřít a znovu otevřít. Každý panel má v záhlaví křížek a
 - **Separate Window** (přesune Timeline & Logic do samostatného okna; zavřením okna nebo křížkem v něm se panel vrátí na původní místo),
 - **Reset Layout** (vše zobrazí a vrátí výchozí rozměry).
 
-Ve středu je vždy aspoň náhled nebo spodní panel. Náhled má minimální výšku a graf ho už nevytlačí; při přepnutí na Particle Logic s grafem dostane spodní panel aspoň polovinu výšky. Viditelnost panelů se ukládá do rozložení editoru. V užším okně (pod 1200 px) se lišty zhustí: Layout, Duplicate, Remove, Reset View, Pause a Restart jsou jen ikony, statistiky a popisek Speed se skryjí a postranní panely se zúží, aby se celé prostředí vešlo.
+Ve středu je vždy aspoň náhled nebo spodní panel. Náhled má minimální výšku a graf ho už nevytlačí; při přepnutí na Particle Logic s grafem dostane spodní panel aspoň polovinu výšky. Viditelnost bočních panelů (Emitters, Properties) se ukládá do rozložení editoru. Náhled a Timeline jsou po spuštění editoru vždy zobrazené. V užším okně (pod 1200 px) se lišty zhustí: Layout, Duplicate, Remove, Reset View, Pause a Restart jsou jen ikony, statistiky a popisek Speed se skryjí a postranní panely se zúží, aby se celé prostředí vešlo.
 
 ## Vytvoření a ukládání efektu
 

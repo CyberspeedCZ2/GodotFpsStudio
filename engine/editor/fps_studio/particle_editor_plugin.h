@@ -252,6 +252,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool show_bottom_panel = true;
 	bool bottom_float_on_return = false;
 	bool compact_layout = false;
+	real_t wide_layout_min_width = 0.0;
 	Button *duplicate_emitter_button = nullptr;
 	Button *remove_emitter_button = nullptr;
 	Button *reset_view_button = nullptr;
