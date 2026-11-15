@@ -11786,10 +11786,13 @@ void fragment() {
 Node3DEditor::~Node3DEditor() {
 	singleton = nullptr;
 	memdelete(preview_node);
-	if (preview_sun_dangling && preview_sun) {
+	// Free the preview nodes whenever they are outside the tree. The dangling
+	// flags only cover nodes removed after being added; with the preview sun
+	// or environment disabled from the start they were never parented.
+	if (preview_sun && (preview_sun_dangling || !preview_sun->get_parent())) {
 		memdelete(preview_sun);
 	}
-	if (preview_env_dangling && preview_environment) {
+	if (preview_environment && (preview_env_dangling || !preview_environment->get_parent())) {
 		memdelete(preview_environment);
 	}
 }
