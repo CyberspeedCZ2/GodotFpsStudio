@@ -163,7 +163,11 @@ GPU částice samy o sobě nenarážejí na fyzikální tělesa, jen na kolizní
 2. Odraz vyladíš v náhledu přes **View → Collision Test Walls**.
 3. Ve hře to funguje samo. Kořen efektu má skupinu **Level Collision**: `collide_with_level` (výchozí zapnuto) a `level_collision_mask` (fyzikální vrstvy stěn, výchozí 1).
 
-Jak to funguje: pečená oblast je součet `visibility_aabb` emitorů s kolizí (nejvýš 64 m na osu), rozlišení 64 buněk na nejdelší osu. Pečení běží na pozadí (hlavní vlákno ~0,3 ms), kolize se objeví zhruba za desetinu sekundy; efekt, který se přehraje znovu na stejném místě, použije sdílenou cache. Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()`.
+Jak to funguje: pečená oblast je součet `visibility_aabb` emitorů s kolizí (nejvýš 64 m na osu), rozlišení 64 buněk na nejdelší osu, přesné vzdálenosti jen v pásu 1,5 m kolem stěn. Pečení proběhne hned při `play()` (na testovacím levelu ~15 ms jednou pro dané místo), takže kolize platí už pro první jiskry; efekt přehraný znovu na stejném místě použije sdílenou cache. U velmi složité geometrie (přes 20 000 trojúhelníků v oblasti) se peče na pozadí. Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()`.
+
+Kolize platí pro každý GPU emitor, který ji používá: modul Collision (`ParticleProcessMaterial.collision_mode`) i vlastní shader nebo Visual Shader, který čte `COLLIDED` (např. po Convert to Shader Code). CPUParticles3D kolize v Godotu neumí.
+
+Rychlé částice (jiskry) by mezi dvěma kroky simulace přeskočily tenkou stěnu. Efekt proto emitorům s kolizí zvýší `fixed_fps` tak, aby se částice za krok posunula méně než o tloušťku kolize plus svou velikost (nejvýš 240 kroků za sekundu); totéž dělá náhled. Rychlost se odhaduje z Initial Velocity, gravitace a zrychlení.
 
 Volitelně: tlačítko **Add Collision to Level** v kartě Collision přidá do levelu trvalý uzel `ParticleCollision` napečený z meshů, aby byla kolize vidět i ve viewportu Level editoru. Data se uloží vedle levelu (`<level>.ParticleCollision_data.exr`), level pak ulož.
 

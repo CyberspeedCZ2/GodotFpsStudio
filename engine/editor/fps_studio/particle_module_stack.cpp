@@ -703,7 +703,7 @@ void FPSParticleModuleStack::_build() {
 	{
 		VBoxContainer *collision = module_contents[MODULE_COLLISION];
 		Label *collision_note = memnew(Label);
-		collision_note->set_text(TTR("In the game, the effect bounces particles off walls and floors that have physics collision (StaticBody3D) automatically: when it plays, it bakes the collision shapes around it in the background (ParticleEffect3D > Level Collision). Enable this module on every emitter that should bounce, e.g. Smoke. Test bouncing here with View > Collision Test Walls. Add Collision to Level is optional: it also shows the collision in the Level editor viewport."));
+		collision_note->set_text(TTR("In the game, the effect bounces particles off walls and floors that have physics collision (StaticBody3D) automatically: when it plays, it bakes the collision shapes around it in the background (ParticleEffect3D > Level Collision). Enable this module on every emitter that should bounce, e.g. Smoke or Sparks; fast particles get extra simulation steps so they do not pass through thin walls. Test bouncing here with View > Collision Test Walls. Add Collision to Level is optional: it also shows the collision in the Level editor viewport."));
 		collision_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 		collision_note->set_modulate(Color(1, 1, 1, 0.7));
 		collision->add_child(collision_note);

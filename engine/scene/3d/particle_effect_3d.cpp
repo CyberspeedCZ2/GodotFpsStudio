@@ -17,6 +17,10 @@
 #include "scene/3d/decal.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "core/math/convex_hull.h"
+#include "core/os/os.h"
+#include "scene/resources/particle_process_material.h"
+#include "scene/resources/material.h"
+#include "scene/resources/shader.h"
 #include "core/object/callable_mp.h"
 #include "core/object/worker_thread_pool.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
@@ -346,7 +350,7 @@ static void push_shape_faces(Vector<Face3> &r_faces, const Transform3D &p_xform,
 	}
 }
 
-static bool emitter_uses_collision(const Node *p_node) {
+bool ParticleEffect3D::emitter_uses_collision(const Node *p_node) {
 	const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node);
 	if (!gpu || !gpu->is_visible_in_tree()) {
 		return false;
@@ -357,7 +361,49 @@ static bool emitter_uses_collision(const Node *p_node) {
 	}
 	bool valid = false;
 	const Variant mode = material->get("collision_mode", &valid);
-	return valid && int(mode) != 0;
+	if (valid) {
+		return int(mode) != 0;
+	}
+	// ShaderMaterial / VisualShader process shaders (e.g. Convert to Shader
+	// Code) respond to collisions themselves through COLLIDED.
+	if (const ShaderMaterial *shader_material = Object::cast_to<ShaderMaterial>(material.ptr())) {
+		const Ref<Shader> shader = shader_material->get_shader();
+		return shader.is_valid() && shader->get_code().contains("COLLIDED");
+	}
+	return false;
+}
+
+// Exact SDF distances are only needed close to the walls; farther cells keep
+// this value so the bake skips far geometry.
+static constexpr float LEVEL_COLLISION_BAND = 1.5;
+// Solid shell behind each collision face, in SDF cells.
+static constexpr float LEVEL_COLLISION_THICKNESS = 1.5;
+static constexpr int LEVEL_COLLISION_MAX_FPS = 240;
+
+static void configure_level_collision_baker(GPUParticlesCollisionSDF3D *p_baker, const AABB &p_region) {
+	p_baker->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+	p_baker->set_size(p_region.size);
+	p_baker->set_thickness(LEVEL_COLLISION_THICKNESS);
+}
+
+// GPU particles only collide where they are at each simulation step, so a
+// fast particle can jump over a thin wall between two steps. Raise the
+// emitter's fixed FPS until one step moves less than the collision shell.
+void ParticleEffect3D::apply_collision_substeps(GPUParticles3D *p_gpu, real_t p_shell) {
+	real_t speed = 20.0;
+	const Ref<ParticleProcessMaterial> material = p_gpu->get_process_material();
+	if (material.is_valid()) {
+		speed = material->get_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY) +
+				material->get_gravity().length() * MIN(real_t(p_gpu->get_lifetime()), real_t(1.0)) +
+				Math::abs(material->get_param_max(ParticleProcessMaterial::PARAM_RADIAL_ACCEL)) * 0.5 +
+				Math::abs(material->get_param_max(ParticleProcessMaterial::PARAM_LINEAR_ACCEL)) * 0.5;
+	}
+	speed *= MAX(real_t(p_gpu->get_speed_scale()), real_t(1.0));
+	const real_t safe_step = MAX(real_t(0.05), (p_shell + p_gpu->get_collision_base_size()) * 0.5);
+	const int fps = CLAMP(int(Math::ceil(speed / safe_step)), 1, LEVEL_COLLISION_MAX_FPS);
+	if (fps > p_gpu->get_fixed_fps()) {
+		p_gpu->set_fixed_fps(fps);
+	}
 }
 
 bool ParticleEffect3D::_get_level_collision_region(AABB &r_region) const {
@@ -417,6 +463,7 @@ struct LevelCollisionCacheEntry {
 LocalVector<LevelCollisionCacheEntry> level_collision_cache;
 uint64_t level_collision_clock = 0;
 constexpr uint32_t LEVEL_COLLISION_CACHE_SIZE = 16;
+constexpr int LEVEL_COLLISION_SYNC_FACES = 20000;
 
 Ref<Texture3D> find_cached_level_collision(const RID &p_space, const AABB &p_region) {
 	for (LevelCollisionCacheEntry &entry : level_collision_cache) {
@@ -468,7 +515,7 @@ Ref<Texture3D> sdf_image_to_texture(const Ref<Image> &p_image) {
 
 void level_collision_bake_task(void *p_userdata) {
 	LevelCollisionBake *bake = static_cast<LevelCollisionBake *>(p_userdata);
-	bake->image = bake->baker->bake_faces(bake->faces);
+	bake->image = bake->baker->bake_faces(bake->faces, LEVEL_COLLISION_BAND);
 	callable_mp_static(&ParticleEffect3D::_level_collision_bake_done).call_deferred(int64_t(p_userdata));
 }
 } // namespace
@@ -528,6 +575,14 @@ void ParticleEffect3D::_update_level_collision() {
 	const Vector3 center = region.get_center().snappedf(1.0);
 	const Vector3 size = (region.size + Vector3(1, 1, 1)).ceil();
 	region = AABB(center - size * 0.5, size);
+
+	const real_t shell = region.get_longest_axis_size() / 64.0 * LEVEL_COLLISION_THICKNESS;
+	for (const EmitterState &state : emitters) {
+		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(state.id));
+		if (emitter_uses_collision(gpu)) {
+			apply_collision_substeps(gpu, shell);
+		}
+	}
 
 	if (level_collision_id.is_valid() && level_collision_region == region) {
 		return; // A looping or replayed effect that did not move keeps its bake.
@@ -609,13 +664,28 @@ void ParticleEffect3D::_update_level_collision() {
 		_set_level_collision(AABB(), Ref<Texture3D>());
 		return;
 	}
-	print_verbose(vformat("ParticleEffect3D: baking level collision for %s from %d faces (%s).", get_name(), faces.size(), region));
+	// The narrow band bake is a few milliseconds, so the collision exists
+	// before the first particles reach a wall (fast sparks at t = 0).
+	const uint64_t bake_start = OS::get_singleton()->get_ticks_usec();
+	if (faces.size() <= LEVEL_COLLISION_SYNC_FACES) {
+		GPUParticlesCollisionSDF3D *baker = memnew(GPUParticlesCollisionSDF3D);
+		configure_level_collision_baker(baker, region);
+		const Ref<Texture3D> texture = sdf_image_to_texture(baker->bake_faces(faces, LEVEL_COLLISION_BAND));
+		memdelete(baker);
+		print_verbose(vformat("ParticleEffect3D: baked level collision for %s from %d faces in %.1f ms (%s).", get_name(), faces.size(), (OS::get_singleton()->get_ticks_usec() - bake_start) / 1000.0, region));
+		if (texture.is_valid()) {
+			cache_level_collision(space_rid, region, texture);
+		}
+		level_collision_pending = false;
+		_set_level_collision(region, texture);
+		return;
+	}
+	print_verbose(vformat("ParticleEffect3D: baking level collision for %s from %d faces in the background (%s).", get_name(), faces.size(), region));
 
-	// Bake on a worker thread; the collider appears when it is ready.
+	// Large levels bake on a worker thread; the collider appears when ready.
 	LevelCollisionBake *bake = memnew(LevelCollisionBake);
 	bake->baker = memnew(GPUParticlesCollisionSDF3D);
-	bake->baker->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
-	bake->baker->set_size(region.size);
+	configure_level_collision_baker(bake->baker, region);
 	bake->faces = faces;
 	bake->space = space_rid;
 	bake->region = region;
@@ -987,6 +1057,8 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_level_collision_mask"), &ParticleEffect3D::get_level_collision_mask);
 	ClassDB::bind_method(D_METHOD("update_level_collision"), &ParticleEffect3D::update_level_collision);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_level_collision_cache"), &ParticleEffect3D::clear_level_collision_cache);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("emitter_uses_collision", "emitter"), &ParticleEffect3D::emitter_uses_collision);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("apply_collision_substeps", "emitter", "shell"), &ParticleEffect3D::apply_collision_substeps);
 	ClassDB::bind_method(D_METHOD("play"), &ParticleEffect3D::play);
 	ClassDB::bind_method(D_METHOD("stop"), &ParticleEffect3D::stop);
 	ClassDB::bind_method(D_METHOD("restart"), &ParticleEffect3D::restart);

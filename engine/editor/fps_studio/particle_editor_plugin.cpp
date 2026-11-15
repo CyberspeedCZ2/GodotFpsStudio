@@ -491,6 +491,10 @@ static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad) {
 		if (gpu->get_draw_pass_mesh(0).is_null()) {
 			gpu->set_draw_pass_mesh(0, p_quad);
 		}
+		// Same anti-tunnelling steps as in the game (test walls are 0.2 m thick).
+		if (ParticleEffect3D::emitter_uses_collision(gpu)) {
+			ParticleEffect3D::apply_collision_substeps(gpu, 0.2);
+		}
 		gpu->set_emitting(true);
 	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
 		if (cpu->get_mesh().is_null()) {

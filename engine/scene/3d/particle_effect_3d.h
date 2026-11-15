@@ -12,6 +12,8 @@
 #include "scene/3d/node_3d.h"
 #include "scene/resources/texture.h"
 
+class GPUParticles3D;
+
 class PackedScene;
 
 // Root node of a reusable particle effect authored in the Particle workspace.
@@ -134,6 +136,12 @@ public:
 	PackedStringArray get_configuration_warnings() const override;
 
 	static bool is_emitter(const Node *p_node);
+	// True for visible GPU emitters whose process material collides
+	// (collision_mode, or a shader that reads COLLIDED).
+	static bool emitter_uses_collision(const Node *p_node);
+	// Raises fixed_fps so one simulation step moves less than the collider
+	// shell plus the particle size (stops fast particles tunnelling through walls).
+	static void apply_collision_substeps(GPUParticles3D *p_gpu, real_t p_shell);
 	static EventKind get_event_kind(const Node *p_node);
 	// Nodes shown as tracks on the effect timeline (emitters and timed events).
 	static bool is_track(const Node *p_node);

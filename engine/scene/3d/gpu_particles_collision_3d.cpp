@@ -359,7 +359,7 @@ void GPUParticlesCollisionSDF3D::_compute_sdf_z(uint32_t p_z, ComputeSDFParams *
 
 			Vector3 pos = params->cell_offset + Vector3(x, y, p_z) * params->cell_size;
 
-			cell = 1e20;
+			cell = params->max_distance;
 
 			_find_closest_distance(pos, params->bvh, 0, params->triangles, params->thickness, cell);
 		}
@@ -487,7 +487,7 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake() {
 	return ret;
 }
 
-Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces) {
+Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces, float p_max_distance) {
 	static const int subdivs[RESOLUTION_MAX] = { 16, 32, 64, 128, 256, 512 };
 	const int subdiv = subdivs[get_resolution()];
 	AABB aabb(-size / 2, size);
@@ -506,10 +506,10 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces) 
 	if (faces.size() <= 1) {
 		return Ref<Image>();
 	}
-	return _bake_sdf(faces, aabb, cell_size, sdf_size, false);
+	return _bake_sdf(faces, aabb, cell_size, sdf_size, false, p_max_distance > 0.0 ? p_max_distance : 1e20);
 }
 
-Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, const AABB &aabb, float cell_size, const Vector3i &sdf_size, bool p_report_progress) {
+Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, const AABB &aabb, float cell_size, const Vector3i &sdf_size, bool p_report_progress, float p_max_distance) {
 	LocalVector<FacePos> face_pos;
 
 	face_pos.resize(faces.size());
@@ -541,6 +541,7 @@ Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, cons
 
 	ComputeSDFParams params;
 	params.report_progress = p_report_progress;
+	params.max_distance = p_max_distance;
 	params.cells = (float *)cells_data.ptrw();
 	params.size = sdf_size;
 	params.cell_size = cell_size;
