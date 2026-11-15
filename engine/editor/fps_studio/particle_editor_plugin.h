@@ -304,6 +304,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration);
 	void _apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration);
 	Node *_convert_to_effect_root(Node *p_root);
+	void _create_preset_document(int p_preset);
+	Ref<Texture2D> _bake_preset_texture(const VFXTextureGenerator::Settings &p_settings, const String &p_file_name, int p_resolution, int p_columns, double p_duration);
 	void _on_module_stack_property_edited(const String &p_property);
 	void _on_module_stack_generate_texture();
 	String _get_auto_texture_path() const;

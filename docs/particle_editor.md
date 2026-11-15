@@ -1,6 +1,6 @@
 # Pracovní prostředí Particle
 
-Particle workspace je samostatný editor opakovaně použitelných 3D efektů. Efekt upravuje mimo aktivní Level a do herní scény se přidává až příkazem **Add to Level**.
+Particle workspace je samostatný editor opakovaně použitelných 3D efektů. Efekt upravuje mimo aktivní Level a do herní scény se přidává příkazem **Add to Level**, nebo se spouští z kódu přes `ParticleEffect3D`.
 
 ![Konceptuální podoba Particle workspace](images/particle_workspace_concept.png)
 
@@ -8,43 +8,105 @@ Render je vizuální reference pro rozložení UI. Levá část představuje kni
 
 Při návrhu práce s efekty zohledňujeme také [tutoriál ohně a jisker od Le Lu](https://www.youtube.com/watch?v=Y1ZBzIiP-v4) a [EffectTextureMaker od Mebiusbox](https://mebiusbox.github.io/contents/EffectTextureMaker/). Oheň, kouř a jiskry se skládají z více emitterů; sprite a další VFX textury jsou samostatné obrazové zdroje. Z Particle workspace je nyní dostupný první nativní generátor: vytváří průhledné textury, ukládá je jako PNG a umí je přiřadit vybranému emitoru. Efektová scéna pak uchovává běžný odkaz na PNG asset.
 
+## Rozložení
+
+Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
+
+- **Horní lišta dokumentu:** název efektu (dvojklik přejmenuje), stav uložení, **New**, **Open...**, **Save** a **Add to Level**.
+- **Vlevo:** seznam **Emitters** s tlačítky **Add** a **Remove**. Pod ním je sbalovací **Effect Library** se skupinou **FPS Presets** a nedávnými efekty; dvojklik vytvoří efekt z presetu nebo otevře soubor.
+- **Uprostřed:** 3D náhled s transportem (Play/Pause, Restart, čas, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
+- **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
+
 ## Vytvoření a ukládání efektu
 
-- **New** vytvoří prázdný dokument efektu s kořenovým `Node3D` a připraveným GPU nebo CPU emitorem. Nabízí také předvolby Burst, Fountain a Smoke.
-- **Open** načte efektovou scénu `.tscn` do Particle workspace. Panel **Effects** zobrazuje nedávno otevřené efekty a umí je filtrovat.
-- **Save** nebo **Save As** ukládá celý dokument, včetně více emitorů, jejich potomků a navázaných zdrojů, jako `.tscn`. Běžné materiály a křivky zůstávají nativní Godot resources. Particle `VisualShader` je součástí zdrojů emitoru a lze ho také uložit samostatně jako `.tres`. Obrázková textura se ukládá samostatně (typicky `.png`) a emitter na ni odkazuje přes renderer materiál.
-- Název rootu efektu změníš dvojklikem na jeho titulek v horním záhlaví. Dialog upraví název uzlu podle pravidel Godotu a změnu můžeš vrátit přes Undo/Redo.
-- Starší scéna, jejímž kořenem je přímo `GPUParticles3D` nebo `CPUParticles3D`, se při otevření zachová jako efekt. Nový dokument používá `Node3D` kořen.
-- **Add to Level** přidá instanci celého otevřeného efektu do právě upravované Level scény přes editorové Undo/Redo.
+- **New** nabízí prázdný GPU/CPU efekt, šablony Burst, Fountain, Smoke a skupinu **FPS Presets**. Kořenem nového efektu je `ParticleEffect3D`.
+- **Open** načte efektovou scénu `.tscn`. Starší efekt s kořenem `Node3D` se při otevření převede na `ParticleEffect3D` (potomci, transformace a metadata zůstanou); změna se zapíše při dalším uložení. Scéna, jejímž kořenem je přímo `GPUParticles3D` nebo `CPUParticles3D`, se zachová.
+- **Save** ukládá celý dokument včetně emitorů, načasování a navázaných zdrojů jako `.tscn`. Textury jsou samostatné PNG soubory, na které odkazuje materiál emitoru.
+- **Add to Level** přidá instanci efektu do právě upravované Level scény přes Undo/Redo.
 
-Neexistuje žádný pevně vybraný `BubbleParticles`. Při otevření workspace je efektový dokument prázdný; obsah aktuální Level scény se do něj automaticky nepřenáší.
+## Zásobník modulů
 
-## Emitory a vlastnosti
+Každý emitor se upravuje jako svislý zásobník karet. Karty obsahují vybrané nativní vlastnosti `GPUParticles3D` a `ParticleProcessMaterial` (nebo `CPUParticles3D`) s Godotovými editory vlastností, včetně min/max posuvníků pro rozsahy. Každá změna jde přes Undo/Redo a hned se projeví v náhledu.
 
-Levý panel rozděluje nedávné soubory efektů a strom emitorů. **Add** přidá GPU/CPU emitter nebo předvolbu, **Remove** odstraní vybraný uzel. Dvojklikem na název v hierarchii emitter přejmenuješ; změna podporuje Undo/Redo a při duplicitním názvu dostane uzel volný název. Efekt může obsahovat více particle uzlů; výběr v hierarchii určuje, který emitor se upravuje v pravých kartách **Emitter**, **Process** a **Renderer**.
+| Modul | Obsah |
+| --- | --- |
+| Emitter | Emitting, Max Particles, Lifetime, náhodnost životnosti, One Shot, Burst (explosiveness), Randomness, Prewarm, Speed Scale, Local Space, Fixed FPS |
+| Spawn Shape | tvar emise; zobrazuje jen parametry zvoleného tvaru (poloměr, rozměr boxu, prstenec), offset a měřítko |
+| Initial Velocity | směr, rozptyl, plochost, rychlost min/max, dědění rychlosti |
+| Forces | gravitace, lineární, radiální a tangenciální zrychlení, odpor |
+| Color over Life | základní barva, gradient přes život, náhodná barva, záře přes život, variace odstínu a karta Alpha over Life s presety |
+| Size over Life | velikost min/max a karta Scale over Life s presety |
+| Render | náhled textury, **Generate Texture...**, textura, tint, blend (Mix/Add…), shading, natočení (billboard), barva částic, soft particles, velikost quadu, řazení, zarovnání |
 
-Vlastnosti upravují Godotovy vestavěné `EditorInspector` panely. Pokud GPU emitor používá `ParticleProcessMaterial`, karta Process zobrazuje křivky Alpha over Life a Scale over Life ještě před úplným inspektorem, aby byly rychle dostupné. **Presets** nabízí pro Alpha Fade Out (Linear/Smooth), Fade In, Fade In and Out a Hold then Fade; pro Scale Grow, Shrink, Grow and Shrink, Hold then Grow a Steady. Preset vytvoří křivku, pokud zatím neexistuje. Křivky jsou nativní `CurveTexture` resources a změny presetů i bodů lze vrátit přes Undo/Redo. Ostatní vlastnosti zůstávají dostupné v kompletním inspektoru.
+Volitelné moduly přidá **+ Module** a odebere křížek v záhlaví karty: **Rotation**, **Sprite Sheet Animation** (rychlost, počáteční snímek, sloupce, řádky, smyčka), **Turbulence**, **Collision** a **Sub Emitter**. Turbulence, Collision a Sub Emitter jsou jen pro GPU emitory. Odebrání vrátí hodnoty modulu do vypnutého stavu. Pokud GPU emitor používá vlastní particle `VisualShader`, procesní moduly se skryjí a logika se upravuje v Particle Logic.
 
-Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf ve spodním panelu **Particle Logic**. Nový graf obsahuje připojený SphereEmitter pro tvar spawnu a ConeVelocity pro počáteční rychlost; při otevření se přizpůsobí dostupné ploše. Náhled shaderu je ve vloženém panelu skrytý, aby graf dostal více místa. Panel Particle Logic se bez vybraného emitoru skryje. Nahrazení existujícího materiálu se nejprve potvrdí a změnu lze vrátit přes Undo. Pokud emitor už particle `VisualShader` používá, spodní panel zobrazuje jeho graf a tlačítko **Open in Shader Editor** jej navíc otevře ve velkém Shader Editoru. Výběr jiného GPU emitoru přepne vložený graf na jeho materiál. CPU particles nemají particle shader graph.
+Emitor bez particle materiálu nabídne v modulu Render **Create Particle Material** (unshaded, billboard, barva z částic).
 
-`VisualShader` je graf výpočtu shaderu pro vybraný GPU emitor. Neřídí hierarchii, počet emitorů ani celý efekt. Vztahy a společné uložení emitorů řeší strom scény `.tscn`; shaderový graf je zdroj použitý jedním emitorem. Workspace proto tyto vrstvy rozlišuje.
+## Generátor textur v modulu Render
+
+**Generate Texture...** otevře VFX Texture Generator pro vybraný emitor. Pokud jeho současná textura má vedle sebe recept `.vfx.cfg`, generátor ho načte a pokračuje v úpravách. **Apply to Emitter** texturu vykreslí v plném rozlišení a uloží ji vedle efektu do složky `textures/` (u neuloženého efektu do `res://vfx_textures/`) jako `<efekt>_<emitor>.png` spolu s receptem. Pak ji přiřadí materiálu emitoru: zachová blend, tint i soft particles, nastaví billboard a dělení sprite sheetu. Krok jde vrátit přes Undo.
+
+Rychlost animace sprite sheetu odpovídá tomu, jak Godot počítá snímky (`anim_speed` 1 přehraje celý sheet jednou za život částice): sheet s životním cyklem (exploze) se přehraje jednou za život, ostatní sheety ve své délce Duration.
+
+## Časová osa
+
+Záložka **Timeline** zobrazuje řádek pro každý emitor: plný pruh je doba emise, slabší pokračování je doba, kdy částice ještě dožívají. Nekonečně emitující emitor končí symbolem ∞.
+
+- Kliknutí nebo tažení v pravítku posouvá náhled (scrub).
+- Tažením pruhu se mění **zpoždění startu**, tažením pravého okraje **délka emise**. Krok je 0,05 s, Shift přichytávání vypne. Dvojklik vrátí délku na výchozí chování emitoru.
+- Změny jdou přes Undo/Redo a náhled se řídí stejným načasováním jako hra. Délka smyčky náhledu je celá délka efektu.
+
+Načasování se ukládá jako metadata emitoru (`particle_effect_delay`, `particle_effect_duration`).
+
+## FPS presety
+
+| Preset | Emitory |
+| --- | --- |
+| Muzzle Flash | záblesk, plamenné jazyky, jiskry a kouř (směr −Z) |
+| Explosion | záblesk, objemová ohnivá koule jako sprite sheet 8×8 s životním cyklem, jiskry, rázová vlna, zpožděný kouř |
+| Bullet Impact (Dust) | prachový obláček, úlomky a několik jisker (normála +Y) |
+| Impact Sparks (Metal) | jiskry s krátkou září (normála +Y) |
+| Blood Hit | krvavá mlha a kapky (směr +Z) |
+| Smoke Plume | nepřetržitý stoupající sloup kouře s turbulencí |
+| Fire | animované plameny (sheet 4×4), jiskry a kouř |
+
+Textury presetů vytvoří generátor do `res://vfx_textures/` a vedle nich uloží recepty. Existující soubor se znovu použije, takže presety sdílí např. `smoke_puff.png` a další vytvoření je rychlé. Vlastní úprava takové textury se projeví ve všech efektech, které ji používají.
+
+## Spuštění efektu ze hry
+
+Kořen efektu `ParticleEffect3D` je runtime uzel enginu:
+
+- `autoplay` přehraje efekt při vstupu do scény ve spuštěné hře, `looping` konečný efekt opakuje, `auto_free` ho po dokončení uvolní.
+- `play()`, `stop()` (nové částice přestanou vznikat, existující dožijí) a signál `finished`.
+- `ParticleEffect3D.spawn(scene, parent, transform)` vytvoří, umístí a přehraje jednorázový efekt a po dokončení ho uvolní:
+
+```gdscript
+const IMPACT = preload("res://effects/bullet_impact.tscn")
+
+func _on_hit(position: Vector3, normal: Vector3) -> void:
+    # Presety dopadu míří podél +Y; otoč +Y do normály povrchu.
+    var basis := Basis(Quaternion(Vector3.UP, normal.normalized()))
+    ParticleEffect3D.spawn(IMPACT, get_tree().current_scene, Transform3D(basis, position))
+```
+
+## Particle Logic
+
+Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf v záložce **Particle Logic**. Nahrazení materiálu se nejprve potvrdí a jde vrátit přes Undo. **Open in Shader Editor** otevře graf ve velkém Shader Editoru. `VisualShader` je výpočet jednoho emitoru, neřídí hierarchii ani načasování efektu. CPU particles shaderový graf nemají.
 
 ## 3D náhled a simulace
 
-Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport`, s vlastním prostředím, světly, kamerou a referenční mřížkou. Chybějící draw mesh nebo GPU process material doplní pouze náhledová kopie; editovaný efekt se tím nemění.
+Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport` s vlastním prostředím, světly, kamerou a mřížkou. Chybějící draw mesh nebo process material doplní pouze náhledová kopie.
 
-- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení náhled posouvá a kolečko přibližuje.
-- **Reset View** znovu orámuje rozsah emitovaných particle uzlů. **Grid** zapíná referenční mřížku.
-- **Play/Pause**, **Restart**, časová osa, **Speed** a **Loop** ovládají lokální simulaci. Smyčka je výchozím stavem zapnutá.
-- Časová osa má délku nejdelší životnosti emitoru. Posun na jiné místo resetuje particle uzly a přehrává simulaci dopředu do zvoleného času; nejde o přímý skok na přesně rekonstruovaný stav.
+- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** efekt znovu orámuje, **Grid** zapíná mřížku.
+- **Play/Pause**, **Restart**, časový posuvník, **Speed** a **Loop** ovládají simulaci. Posun na jiný čas restartuje efekt a přehraje ho dopředu (`ParticleEffect3D.seek`); jde o přiblížení, ne přesnou rekonstrukci stavu.
+- Změna načasování na časové ose zachová polohu kamery.
 
 ## Současné hranice a další práce
 
-- Šířky hlavních panelů se ukládají do rozvržení editoru a při dalším spuštění obnoví. Při úzkém okně se zkracuje document toolbar a časový popisek přehrávání je v pevně širokém ořezávacím kontejneru, aby jeho měnící se čísla nerozhazovala minimální šířku panelů. Uživatel potvrdil, že cukání pravé strany při pohybu časové osy už nepozoruje.
-- Dvojklik na název emitoru ve stromu zahájí přejmenování; změna se objeví také v popisku náhledu a lze ji vrátit přes Undo/Redo.
-- Křivky Alpha a Scale mají účelové presety i nativní CurveEditor. Další parametry procesu zatím nemají vlastní zjednodušené křivkové karty.
-- **Texture Generator (VFX Texture Generator)** otevírá nativní nástroj pro procedurální VFX textury a animované sprite sheety. Podrobnosti jsou v části [VFX Texture Generator](#vfx-texture-generator).
-- Náhled kopíruje podstrom uloženého efektu. Kolizní nebo attractor uzly, které jsou mimo tento podstrom ve scéně Level, se do simulace nepřidají.
+- Šířky hlavních panelů se ukládají do rozvržení editoru.
+- Nové UI (zásobník modulů, časová osa, presety) je ověřeno headless testy v dočasném projektu, ne zatím ručně v GUI.
+- Náhled kopíruje podstrom efektu; kolizní nebo attractor uzly mimo efekt se do simulace nepřidají.
+- Presety dopadu míří podél +Y (normála povrchu), krev podél +Z a muzzle flash podél −Z.
 
 ## VFX Texture Generator
 

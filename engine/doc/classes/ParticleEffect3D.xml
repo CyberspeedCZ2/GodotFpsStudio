@@ -10,7 +10,7 @@
 		const IMPACT = preload("res://effects/bullet_impact.tscn")
 
 		func _on_bullet_hit(position: Vector3, normal: Vector3) -&gt; void:
-		    var xform := Transform3D(Basis.looking_at(normal), position)
+		    var xform := Transform3D(Basis(Quaternion(Vector3.UP, normal.normalized())), position)
 		    ParticleEffect3D.spawn(IMPACT, get_tree().current_scene, xform)
 		[/codeblock]
 	</description>

@@ -8,6 +8,7 @@
 #include "particle_editor_plugin.h"
 
 #include "particle_module_stack.h"
+#include "particle_presets.h"
 #include "particle_timeline.h"
 #include "vfx_texture_generator.h"
 
@@ -88,6 +89,7 @@ enum ParticleTemplate {
 	PARTICLE_TEMPLATE_BURST = 2,
 	PARTICLE_TEMPLATE_FOUNTAIN = 3,
 	PARTICLE_TEMPLATE_SMOKE = 4,
+	PARTICLE_TEMPLATE_PRESET_BASE = 100, // + FPSParticlePresets::Preset
 };
 
 enum VFXTextureOutput {
@@ -532,13 +534,34 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 	effects_tree->clear();
 	TreeItem *root = effects_tree->create_item();
 	const String filter = effect_filter ? effect_filter->get_text().to_lower() : String();
+	const Color header_color = effects_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor));
+
+	TreeItem *presets = effects_tree->create_item(root);
+	presets->set_text(0, TTR("FPS Presets"));
+	presets->set_selectable(0, false);
+	presets->set_custom_color(0, header_color);
+	for (int preset = 0; preset < FPSParticlePresets::PRESET_MAX; preset++) {
+		const String name = FPSParticlePresets::get_preset_name(preset);
+		if (!filter.is_empty() && !name.to_lower().contains(filter)) {
+			continue;
+		}
+		TreeItem *item = effects_tree->create_item(presets);
+		item->set_text(0, name);
+		item->set_tooltip_text(0, FPSParticlePresets::get_preset_description(preset) + "\n" + TTR("Double-click to create a new effect from this preset."));
+		item->set_metadata(0, vformat("preset:%d", preset));
+	}
+
+	TreeItem *recent = effects_tree->create_item(root);
+	recent->set_text(0, TTR("Recent Effects"));
+	recent->set_selectable(0, false);
+	recent->set_custom_color(0, header_color);
 	TreeItem *selected = nullptr;
 	for (const String &path : recent_effect_paths) {
 		const String name = path.get_file().get_basename();
 		if (!filter.is_empty() && !name.to_lower().contains(filter) && !path.to_lower().contains(filter)) {
 			continue;
 		}
-		TreeItem *item = effects_tree->create_item(root);
+		TreeItem *item = effects_tree->create_item(recent);
 		item->set_text(0, name);
 		item->set_tooltip_text(0, path);
 		item->set_metadata(0, path);
@@ -549,10 +572,11 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 	if (selected) {
 		selected->select(0);
 	}
-	if (root->get_child_count() == 0) {
-		TreeItem *empty_item = effects_tree->create_item(root);
+	if (recent->get_child_count() == 0) {
+		TreeItem *empty_item = effects_tree->create_item(recent);
 		empty_item->set_text(0, TTR("No recent effects"));
 		empty_item->set_selectable(0, false);
+		empty_item->set_custom_color(0, header_color);
 	}
 }
 
@@ -1901,6 +1925,100 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 	_sync_preview_properties();
 }
 
+Ref<Texture2D> FPSStudioParticleEditorPlugin::_bake_preset_texture(const VFXTextureGenerator::Settings &p_settings, const String &p_file_name, int p_resolution, int p_columns, double p_duration) {
+	const String directory = "res://vfx_textures";
+	const String path = directory.path_join(p_file_name + ".png");
+	// Presets share textures; reuse a previously baked (or user-edited) file.
+	if (FileAccess::exists(path)) {
+		Ref<Texture2D> existing = ResourceLoader::load(path, "Texture2D");
+		if (existing.is_valid()) {
+			return existing;
+		}
+	}
+	const int columns = MAX(1, p_columns);
+	const int frame_size = p_resolution / columns;
+	const int frame_count = columns * columns;
+	Ref<Image> atlas = Image::create_empty(p_resolution, p_resolution, false, Image::FORMAT_RGBA8);
+	for (int frame = 0; frame < frame_count; frame++) {
+		VFXTextureGenerator::Settings settings = p_settings;
+		settings.quality = 1;
+		if (frame_count > 1) {
+			settings.time = float(double(frame) / frame_count * p_duration);
+			settings.life = float(frame) / float(frame_count - 1);
+		}
+		Ref<Image> image = render_vfx_texture_frame(settings, frame_size);
+		atlas->blit_rect(image, Rect2i(0, 0, frame_size, frame_size), Point2i((frame % columns) * frame_size, (frame / columns) * frame_size));
+	}
+	if (!DirAccess::exists(directory)) {
+		EditorFileSystem::get_singleton()->make_dir_recursive(directory);
+	}
+	if (atlas->save_png(path) != OK) {
+		return Ref<Texture2D>();
+	}
+	EditorFileSystem::get_singleton()->update_file(path);
+	Vector<String> files;
+	files.push_back(path);
+	EditorFileSystem::get_singleton()->reimport_files(files);
+	// Recipe next to the PNG, so "Generate Texture" can refine it later.
+	Ref<ConfigFile> recipe;
+	recipe.instantiate();
+	recipe->set_value("generator", "version", 3);
+	recipe->set_value("generator", "type", p_settings.type);
+	recipe->set_value("generator", "resolution", p_resolution);
+	recipe->set_value("generator", "output_layout", columns == 1 ? int(VFX_TEXTURE_OUTPUT_STILL) : columns);
+	recipe->set_value("generator", "seed", int(p_settings.seed));
+	recipe->set_value("generator", "fps", 12);
+	recipe->set_value("generator", "time", double(p_settings.time));
+	recipe->set_value("generator", "duration", p_duration);
+	recipe->set_value("generator", "color_a", Color(p_settings.color_a[0], p_settings.color_a[1], p_settings.color_a[2]));
+	recipe->set_value("generator", "color_b", Color(p_settings.color_b[0], p_settings.color_b[1], p_settings.color_b[2]));
+	recipe->set_value("generator", "speed", double(p_settings.speed));
+	recipe->set_value("generator", "rotation", double(p_settings.rotation_degrees));
+	recipe->set_value("generator", "exposure", double(p_settings.exposure));
+	recipe->set_value("generator", "opacity", double(p_settings.opacity));
+	const VFXTextureGenerator::TypeInfo *info = VFXTextureGenerator::get_type_info(p_settings.type);
+	if (info) {
+		for (int i = 0; i < info->param_count; i++) {
+			recipe->set_value("params", String::utf8(info->params[i].key), p_settings.params[i]);
+		}
+	}
+	recipe->save(path.get_basename() + ".vfx.cfg");
+	return ResourceLoader::load(path, "Texture2D", ResourceFormatLoader::CACHE_MODE_REPLACE);
+}
+
+void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
+	Vector<FPSParticlePresets::TextureRequest> textures;
+	ParticleEffect3D *effect = FPSParticlePresets::create_preset(p_preset, textures);
+	if (!effect) {
+		return;
+	}
+	for (const FPSParticlePresets::TextureRequest &request : textures) {
+		Ref<Texture2D> texture = _bake_preset_texture(request.settings, request.file_name, request.resolution, request.columns, request.sheet_duration);
+		Ref<Material> material = FPSParticleModuleStack::get_draw_material(request.emitter);
+		BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(material.ptr());
+		if (texture.is_null() || !base_material) {
+			continue;
+		}
+		base_material->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, texture);
+		if (request.columns > 1) {
+			base_material->set_particles_anim_h_frames(request.columns);
+			base_material->set_particles_anim_v_frames(request.columns);
+			base_material->set_particles_anim_loop(!request.lifecycle);
+			if (!request.lifecycle) {
+				const double lifetime = double(request.emitter->get("lifetime"));
+				const double speed = MAX(0.01, lifetime / MAX(0.01, request.sheet_duration));
+				if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(request.emitter)) {
+					Ref<Material> process = gpu->get_process_material();
+					if (process.is_valid()) {
+						process->set("anim_speed", Vector2(speed, speed));
+					}
+				}
+			}
+		}
+	}
+	_set_effect_document(effect, String(), true);
+}
+
 void FPSStudioParticleEditorPlugin::_restart_preview_at(double p_time) {
 	if (!preview_effect) {
 		return;
@@ -2039,6 +2157,10 @@ void FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture() {
 }
 
 void FPSStudioParticleEditorPlugin::_create_effect_document(int p_template) {
+	if (p_template >= PARTICLE_TEMPLATE_PRESET_BASE) {
+		_create_preset_document(p_template - PARTICLE_TEMPLATE_PRESET_BASE);
+		return;
+	}
 	ParticleEffect3D *effect = memnew(ParticleEffect3D);
 	if (p_template == PARTICLE_TEMPLATE_BURST) {
 		effect->set_name("BurstEffect");
@@ -2159,6 +2281,18 @@ void FPSStudioParticleEditorPlugin::_on_effect_activated() {
 		return;
 	}
 	const String path = item->get_metadata(0);
+	if (path.begins_with("preset:")) {
+		const int template_type = PARTICLE_TEMPLATE_PRESET_BASE + path.trim_prefix("preset:").to_int();
+		if (effect_dirty) {
+			pending_new_template = template_type;
+			pending_load_path = String();
+			replace_document_confirmation->set_text(TTR("The current particle effect has unsaved changes. Discard them and create a new effect from the preset?"));
+			replace_document_confirmation->popup_centered();
+		} else {
+			_create_effect_document(template_type);
+		}
+		return;
+	}
 	if (!path.is_empty() && path != effect_path) {
 		if (effect_dirty) {
 			pending_load_path = path;
@@ -3163,6 +3297,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	new_effect_menu->get_popup()->add_item(TTR("Burst"), PARTICLE_TEMPLATE_BURST);
 	new_effect_menu->get_popup()->add_item(TTR("Fountain"), PARTICLE_TEMPLATE_FOUNTAIN);
 	new_effect_menu->get_popup()->add_item(TTR("Smoke"), PARTICLE_TEMPLATE_SMOKE);
+	new_effect_menu->get_popup()->add_separator(TTR("FPS Presets"));
+	for (int preset = 0; preset < FPSParticlePresets::PRESET_MAX; preset++) {
+		new_effect_menu->get_popup()->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_TEMPLATE_PRESET_BASE + preset);
+		new_effect_menu->get_popup()->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+	}
 	new_effect_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_new_effect_menu_pressed));
 	document_toolbar->add_child(new_effect_menu);
 	open_effect_button = memnew(Button);

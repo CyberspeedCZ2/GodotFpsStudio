@@ -726,9 +726,10 @@ ExplosionShape make_explosion_shape(const FrameContext &c, bool p_ring) {
 		if (p_ring) {
 			e.ring_thickness *= mixf(1.0f, 0.6f + 0.6f * expand, lifecycle);
 		}
-		const float cooling = std::pow(1.0f - life, 1.4f);
-		e.fire *= mixf(1.0f, minf(1.0f, cooling * 1.35f), lifecycle);
-		e.smoke = mixf(e.smoke, minf(1.0f, e.smoke + life * 0.85f), lifecycle);
+		// Burn for most of the first half, then cool into smoke.
+		const float cooling = std::pow(1.0f - life, 0.8f);
+		e.fire *= mixf(1.0f, minf(1.0f, cooling * 1.6f), lifecycle);
+		e.smoke = mixf(e.smoke, minf(1.0f, e.smoke + std::pow(life, 1.5f) * 0.75f), lifecycle);
 		e.life_fade = mixf(1.0f, 1.0f - smoothstepf(0.7f, 1.0f, life), lifecycle);
 		e.rise = life * 0.12f * lifecycle;
 	}
@@ -1077,7 +1078,7 @@ void render_explosion(const FrameContext &c, float x, float y, float *r_px, bool
 	// Smoke is lit mostly by the fire inside it, so its lit colour is warm.
 	const V3 smoke_dark(0.015f, 0.012f, 0.011f);
 	// Once the fire cools down the smoke is lit by the neutral key light instead.
-	const V3 smoke_lit = mix3(V3(0.32f, 0.31f, 0.3f), c.color_a * 0.22f + V3(0.03f, 0.03f, 0.03f), saturate(e.fire));
+	const V3 smoke_lit = mix3(V3(0.5f, 0.49f, 0.47f), c.color_a * 0.22f + V3(0.03f, 0.03f, 0.03f), saturate(e.fire));
 	march_medium(r_px, x, y, explosion_bound(e) + e.rise, steps, c, [&](const V3 &p, bool cheap) { return sample_explosion(e, p, cheap); }, true, 1.0f, 0.3f, 22.0f, smoke_dark, smoke_lit);
 }
 

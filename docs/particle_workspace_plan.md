@@ -146,6 +146,17 @@ Závislosti určují pořadí implementace, ne blokování nezávislé dokumenta
 - [ ] Ručně ověřit nové UI generátoru, uložení/načtení receptu v3 (a načtení starého v2), export normal mapy a úpravy alfa kanálu v editoru.
 - [ ] Ověřit alfa export sprite sheetu a přiřazení animovaného sheetu emitoru.
 
+### 8. Přestavba workspace podle UE5 Niagara a HL2 — hotovo (2026-11-15), čeká na ruční ověření
+
+- [x] Zásobník modulů `FPSParticleModuleStack` (`particle_module_stack.cpp`) s nativními editory vlastností, Undo/Redo a volitelnými moduly.
+- [x] Nové rozložení: New/Open v liště dokumentu, emitory nahoře, sbalovací Effect Library, záložky Timeline / Particle Logic, přepínač Modules / All Properties.
+- [x] Generátor textur v modulu Render: Apply uloží PNG + recept vedle efektu a přiřadí ho emitoru s Undo; opravena rychlost sprite sheetu.
+- [x] Runtime uzel `ParticleEffect3D` (`scene/3d/particle_effect_3d.cpp`): zpoždění a délka emise podle metadat, `play`/`stop`/`seek`, signál `finished`, `auto_free`, statický `spawn()`.
+- [x] Časová osa emitorů (`particle_timeline.cpp`) s tažením zpoždění a délky, scrubbingem a Undo.
+- [x] Sedm FPS presetů (`particle_presets.cpp`) s texturami z generátoru v `res://vfx_textures/`.
+- [x] Headless testy v dočasném projektu: úprava vlastnosti a Undo, přidání modulu, Apply textury a Undo, Undo načasování, vytvoření všech presetů, runtime načasování a `spawn()` s automatickým uvolněním.
+- [ ] Ruční ověření nového UI, náhledu presetů a časové osy v GUI editoru.
+
 ## Analýza reference: EffectTextureMaker
 
 Pro další rozvoj byl 2026-11-13 zkontrolován [anglický popis EffectTextureMakeru](https://mebiusbox.github.io/en/docs/lab/effect_texture_maker) a přiložené screenshoty jeho ovládání. Jde o širší procedurální nástroj než náš současný generátor. Dokumentace reference uvádí desítky předloh, normal mapu, sprite sheet, color balance, maximum 2048 px, časové efekty, polar conversion, toon shading, tiling, alpha PNG a ukládání/načítání nastavení v JSON.
