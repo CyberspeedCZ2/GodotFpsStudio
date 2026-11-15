@@ -1101,6 +1101,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 		timeline->set_value_no_signal(0.0);
 	}
 	_apply_preview_solo();
+	_apply_preview_event_toggles();
 	_update_preview_bounds();
 	_update_event_radii();
 	_restart_preview_at(0.0);
@@ -1126,6 +1127,7 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	copy_preview_properties(source, preview_effect);
 	_apply_preview_defaults(preview_effect);
 	_apply_preview_solo();
+	_apply_preview_event_toggles();
 	_update_preview_bounds();
 	_update_event_radii();
 	_set_preview_playing(preview_playing);
@@ -3820,6 +3822,15 @@ void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
 				preview_floor->set_visible(checked);
 			}
 			break;
+		case 16:
+			preview_play_sound = checked;
+			// Re-copying the source restores the volume when sound is turned back on.
+			_sync_preview_properties();
+			break;
+		case 17:
+			preview_play_shake = checked;
+			_sync_preview_properties();
+			break;
 	}
 }
 
@@ -4086,6 +4097,32 @@ void FPSStudioParticleEditorPlugin::_apply_preview_solo() {
 			}
 		}
 	}
+}
+
+static void apply_preview_event_toggles(Node *p_node, bool p_sound, bool p_shake) {
+	if (!p_node) {
+		return;
+	}
+	if (!p_sound) {
+		if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(p_node)) {
+			player->stop();
+			player->set_volume_db(-80.0);
+		}
+	}
+	if (!p_shake) {
+		if (CameraShake3D *shake = Object::cast_to<CameraShake3D>(p_node)) {
+			shake->stop();
+			shake->set_strength(0.0);
+		}
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		apply_preview_event_toggles(p_node->get_child(i), p_sound, p_shake);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_apply_preview_event_toggles() {
+	// Preview only: the edited effect keeps its sound volume and shake strength.
+	apply_preview_event_toggles(preview_effect, preview_play_sound, preview_play_shake);
 }
 
 void FPSStudioParticleEditorPlugin::_set_emitter_visible(Object *p_emitter, bool p_visible) {
@@ -4900,6 +4937,14 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->add_check_item(TTR("Damage & Shake Radius"), 14);
 		view_popup->set_item_checked(view_popup->get_item_index(14), preview_show_radii);
 		view_popup->set_item_tooltip(view_popup->get_item_index(14), TTR("Rings around Damage (red) and Camera Shake (blue) events: inner = full strength, outer = fade out."));
+		view_popup->add_separator(TTR("Events"));
+		view_popup->add_check_item(TTR("Sound"), 16);
+		view_popup->set_item_checked(view_popup->get_item_index(16), preview_play_sound);
+		view_popup->set_item_tooltip(view_popup->get_item_index(16), TTR("Play Sound events in the preview. Preview only; the effect itself is unchanged."));
+		view_popup->add_check_item(TTR("Camera Shake"), 17);
+		view_popup->set_item_checked(view_popup->get_item_index(17), preview_play_shake);
+		view_popup->set_item_tooltip(view_popup->get_item_index(17), TTR("Shake the preview camera on Camera Shake events. Preview only; the effect itself is unchanged."));
+		view_popup->add_separator();
 		view_popup->add_check_item(TTR("Collision Test Walls"), 13);
 		view_popup->set_item_tooltip(view_popup->get_item_index(13), TTR("Add a collision floor and three see-through walls to the preview to tune the Collision module (bounce, friction, particle size)."));
 		view_popup->set_hide_on_checkable_item_selection(false);
@@ -4935,6 +4980,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_viewport->set_size(Vector2i(1280, 720));
 	preview_viewport->set_update_mode(SubViewport::UPDATE_WHEN_VISIBLE);
 	preview_viewport->set_use_own_world_3d(true);
+	// Without a 3D listener AudioStreamPlayer3D nodes in the preview stay silent.
+	preview_viewport->set_as_audio_listener_3d(true);
 	preview_container->add_child(preview_viewport);
 	preview_root = memnew(Node3D);
 	preview_root->set_name("ParticlePreviewWorld");

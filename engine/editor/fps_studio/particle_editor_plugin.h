@@ -235,6 +235,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	int preview_environment_preset = 0;
 	bool preview_show_bounds = false;
 	bool preview_show_radii = true;
+	bool preview_play_sound = true;
+	bool preview_play_shake = true;
 	Node3D *preview_radii_root = nullptr;
 	MeshInstance3D *preview_floor = nullptr;
 	Control *module_stack_scroll = nullptr;
@@ -361,6 +363,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_timeline_track_action(Object *p_track, int p_action);
 	void _on_timeline_play_toggle();
 	void _apply_preview_solo();
+	void _apply_preview_event_toggles();
 	void _update_toolbar_icons();
 	void _on_preview_view_menu_id(int p_id);
 	void _apply_preview_environment(int p_preset);
