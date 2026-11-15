@@ -586,6 +586,20 @@ void ParticleEffect3D::_level_collision_bake_done(int64_t p_bake) {
 	memdelete(bake);
 }
 
+void ParticleEffect3D::_attach_level_manager(ObjectID p_root, ObjectID p_manager) {
+	Node3D *manager = Object::cast_to<Node3D>(ObjectDB::get_instance(p_manager));
+	if (!manager || manager->get_parent()) {
+		return;
+	}
+	Node *root = Object::cast_to<Node>(ObjectDB::get_instance(p_root));
+	if (!root || !root->is_inside_tree()) {
+		memdelete(manager); // The level went away before the manager was attached.
+		return;
+	}
+	root->add_child(manager, false, INTERNAL_MODE_BACK);
+	manager->set_global_transform(Transform3D());
+}
+
 void ParticleEffect3D::_set_level_collision(const AABB &p_region, const Ref<Texture3D> &p_texture) {
 	GPUParticlesCollisionSDF3D *sdf = Object::cast_to<GPUParticlesCollisionSDF3D>(ObjectDB::get_instance(level_collision_id));
 	if (p_texture.is_null() || !collide_with_level || !is_inside_tree()) {
@@ -753,9 +767,19 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 	}
 	bounds = bounds.grow(1.0).intersection(AABB(bounds.get_center() - Vector3(1, 1, 1) * LEVEL_MAX_EXTENT * 0.5, Vector3(1, 1, 1) * LEVEL_MAX_EXTENT));
 
+	// The root may be busy adding children (an effect dropped into the level
+	// starts its preview while the editor adds it), so the world comes from
+	// the viewport and a new manager is attached deferred.
+	Viewport *viewport = p_root->get_viewport();
+	const Ref<World3D> world = viewport ? viewport->find_world_3d() : Ref<World3D>();
+	const RID space = world.is_valid() ? world->get_space() : RID();
+
 	// Replace an earlier bake of the same level.
 	Node3D *manager = nullptr;
-	for (int i = 0; i < p_root->get_child_count(true); i++) {
+	if (const LevelCollisionState *existing = find_level_state(space)) {
+		manager = Object::cast_to<Node3D>(ObjectDB::get_instance(existing->manager));
+	}
+	for (int i = 0; !manager && i < p_root->get_child_count(true); i++) {
 		if (p_root->get_child(i, true)->get_name() == StringName("LevelParticleCollision")) {
 			manager = Object::cast_to<Node3D>(p_root->get_child(i, true));
 		}
@@ -769,11 +793,9 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 	} else {
 		manager = memnew(Node3D);
 		manager->set_name("LevelParticleCollision");
-		p_root->add_child(manager, false, INTERNAL_MODE_BACK);
 		manager->set_as_top_level(true);
-		manager->set_global_transform(Transform3D());
+		callable_mp_static(&ParticleEffect3D::_attach_level_manager).call_deferred(p_root->get_instance_id(), manager->get_instance_id());
 	}
-	const RID space = manager->get_world_3d().is_valid() ? manager->get_world_3d()->get_space() : RID();
 	LevelCollisionState *state = find_level_state(space);
 	if (!state) {
 		level_states.push_back(LevelCollisionState());

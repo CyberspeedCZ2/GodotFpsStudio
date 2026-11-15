@@ -140,6 +140,7 @@ public:
 	static bool prepare_level_collision(Node *p_root, uint32_t p_mask = 0xFFFFFFFF);
 	static bool is_level_collision_ready(const Node *p_in_world);
 	static void _level_tile_baked(int64_t p_bake);
+	static void _attach_level_manager(ObjectID p_root, ObjectID p_manager);
 
 	void play();
 	// Plays the effect inside the editor (Level viewport) with level collision,
