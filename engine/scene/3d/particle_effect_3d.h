@@ -10,6 +10,7 @@
 #include "core/templates/hash_map.h"
 #include "core/templates/local_vector.h"
 #include "scene/3d/node_3d.h"
+#include "core/math/face3.h"
 #include "scene/resources/texture.h"
 
 class GPUParticles3D;
@@ -77,6 +78,8 @@ private:
 	bool level_collision_retry = false;
 	bool level_collision_pending = false;
 	AABB level_collision_pending_region;
+	bool editor_preview = false;
+	HashMap<ObjectID, int> editor_saved_fps;
 	ObjectID pool_scene_id; // Set by spawn(): finished instances return to this scene's pool.
 
 	bool playing = false;
@@ -94,6 +97,9 @@ private:
 	double _get_max_lifetime() const;
 	void _update(double p_delta);
 	void _finish();
+	void _restore_editor_preview();
+	void _ensure_editor_level_collision(Node *p_root, uint32_t p_mask);
+	static bool _prepare_level_collision_faces(Node *p_root, const Vector<Face3> &p_faces);
 	bool _release_to_pool();
 	static ParticleEffect3D *_take_from_pool(const Ref<PackedScene> &p_scene);
 	static ParticleEffect3D *_instantiate_pooled(const Ref<PackedScene> &p_scene, Node *p_parent);
@@ -136,6 +142,11 @@ public:
 	static void _level_tile_baked(int64_t p_bake);
 
 	void play();
+	// Plays the effect inside the editor (Level viewport) with level collision,
+	// restoring every animated value afterwards so the scene is not modified.
+	void editor_preview_play();
+	void editor_preview_stop();
+	bool is_editor_previewing() const;
 	void stop();
 	void restart();
 	// Restarts and fast-forwards the effect to p_time (used by editor scrubbing).

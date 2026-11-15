@@ -197,7 +197,9 @@ Kolize platí pro každý GPU emitor, který ji používá: modul Collision (`Pa
 
 Rychlé částice (jiskry) by mezi dvěma kroky simulace přeskočily tenkou stěnu. Efekt proto emitorům s kolizí zvýší `fixed_fps` tak, aby se částice za krok posunula méně než o tloušťku kolize plus svou velikost (nejvýš 240 kroků za sekundu); totéž dělá náhled. Rychlost se odhaduje z Initial Velocity, gravitace a zrychlení.
 
-Volitelně: tlačítko **Add Collision to Level** v kartě Collision přidá do levelu trvalý uzel `ParticleCollision` napečený z meshů, aby byla kolize vidět i ve viewportu Level editoru. Data se uloží vedle levelu (`<level>.ParticleCollision_data.exr`), level pak ulož.
+**Náhled v Level editoru:** když v levelu vybereš uzel `ParticleEffect3D`, v liště 3D viewportu se objeví **Preview Effect** (▶) a Stop. Efekt se přehraje přímo v levelu včetně světel, zvuku a otřesu a částice narážejí do geometrie levelu přes stejné sdílené dlaždice jako ve hře. Dlaždice se přepečou jen tehdy, když se změnila statická kolize. Náhled scénu nemění: po dohrání, po Stop i před uložením vrátí energii světel, průhlednost decalů, `fixed_fps` a `emitting` emitorů. Zranění se v editoru nepočítá.
+
+Volitelně: tlačítko **Add Collision to Level** v kartě Collision přidá do levelu trvalý uzel `ParticleCollision` napečený z meshů, trvalou kolizi uloženou ve scéně (např. pro samostatné GPUParticles3D mimo `ParticleEffect3D`); pro efekty už není potřeba. Data se uloží vedle levelu (`<level>.ParticleCollision_data.exr`), level pak ulož.
 
 ## 3D náhled a simulace
 

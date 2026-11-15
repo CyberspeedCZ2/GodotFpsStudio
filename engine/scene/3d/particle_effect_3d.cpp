@@ -18,6 +18,7 @@
 #include "scene/3d/gpu_particles_3d.h"
 #include "core/math/convex_hull.h"
 #include "core/os/os.h"
+#include "core/templates/hashfuncs.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h"
 #include "scene/resources/particle_process_material.h"
@@ -235,7 +236,7 @@ void ParticleEffect3D::play() {
 			_set_emitter_emitting(emitter, false, true);
 		}
 	}
-	if (!Engine::get_singleton()->is_editor_hint()) {
+	if (!Engine::get_singleton()->is_editor_hint() || editor_preview) {
 		_update_level_collision();
 	}
 	elapsed = 0.0;
@@ -628,6 +629,7 @@ struct LevelCollisionState {
 	int tiles = 0;
 	bool ready = false;
 	uint64_t start_usec = 0;
+	uint32_t faces_hash = 0;
 };
 
 LocalVector<LevelCollisionState> level_states;
@@ -720,6 +722,28 @@ bool ParticleEffect3D::prepare_level_collision(Node *p_root, uint32_t p_mask) {
 	ERR_FAIL_COND_V(!p_root->is_inside_tree(), false);
 	Vector<Face3> faces;
 	collect_level_faces(p_root, p_mask, faces);
+	return _prepare_level_collision_faces(p_root, faces);
+}
+
+static uint32_t hash_level_faces(const Vector<Face3> &p_faces) {
+	return p_faces.is_empty() ? 0u : hash_murmur3_buffer(p_faces.ptr(), p_faces.size() * int(sizeof(Face3)));
+}
+
+void ParticleEffect3D::_ensure_editor_level_collision(Node *p_root, uint32_t p_mask) {
+	// The Level editor re-bakes only when the static geometry changed.
+	Vector<Face3> faces;
+	collect_level_faces(p_root, p_mask, faces);
+	const uint32_t hash = hash_level_faces(faces);
+	Ref<World3D> world = get_world_3d();
+	const LevelCollisionState *state = world.is_valid() ? find_level_state(world->get_space()) : nullptr;
+	if (state && state->faces_hash == hash) {
+		return;
+	}
+	_prepare_level_collision_faces(p_root, faces);
+}
+
+bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector<Face3> &p_faces) {
+	const Vector<Face3> &faces = p_faces;
 	if (faces.size() < 2) {
 		return false;
 	}
@@ -762,6 +786,7 @@ bool ParticleEffect3D::prepare_level_collision(Node *p_root, uint32_t p_mask) {
 	state->tiles = 0;
 	state->ready = false;
 	state->start_usec = OS::get_singleton()->get_ticks_usec();
+	state->faces_hash = hash_level_faces(faces);
 
 	const Vector3i count = Vector3i(((bounds.size - Vector3(1, 1, 1) * 0.01) / LEVEL_TILE_CORE).floor()) + Vector3i(1, 1, 1);
 	for (int z = 0; z < count.z; z++) {
@@ -853,8 +878,20 @@ void ParticleEffect3D::_update_level_collision() {
 	for (const EmitterState &state : emitters) {
 		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(state.id));
 		if (emitter_uses_collision(gpu)) {
+			if (editor_preview && !editor_saved_fps.has(state.id)) {
+				editor_saved_fps[state.id] = gpu->get_fixed_fps(); // Restored after the preview.
+			}
 			apply_collision_substeps(gpu, shell);
 		}
+	}
+
+	if (Engine::get_singleton()->is_editor_hint()) {
+		// Level editor preview: only the shared level tiles (no per-effect bake).
+		Node *edited_root = get_tree()->get_edited_scene_root();
+		if (edited_root && (edited_root == this || edited_root->is_ancestor_of(this))) {
+			_ensure_editor_level_collision(edited_root, level_collision_mask);
+		}
+		return;
 	}
 
 	Ref<World3D> world = get_world_3d();
@@ -1216,10 +1253,65 @@ void ParticleEffect3D::_update_events() {
 	}
 }
 
+void ParticleEffect3D::_restore_editor_preview() {
+	// A Level editor preview animates authored values; put them back so the
+	// scene never saves a preview state.
+	for (const KeyValue<ObjectID, int> &saved : editor_saved_fps) {
+		if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(saved.key))) {
+			gpu->set_fixed_fps(saved.value);
+		}
+	}
+	editor_saved_fps.clear();
+	for (const KeyValue<ObjectID, EventBase> &base : event_bases) {
+		Object *node = ObjectDB::get_instance(base.key);
+		if (Light3D *light = Object::cast_to<Light3D>(node)) {
+			light->set_param(Light3D::PARAM_ENERGY, base.value.energy);
+		} else if (Decal *decal = Object::cast_to<Decal>(node)) {
+			Color modulate = decal->get_modulate();
+			modulate.a = base.value.alpha;
+			decal->set_modulate(modulate);
+		} else if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(node)) {
+			player->set_pitch_scale(base.value.pitch);
+		}
+	}
+	for (const EmitterState &state : emitters) {
+		if (Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id))) {
+			emitter->set("emitting", false);
+		}
+	}
+}
+
+void ParticleEffect3D::editor_preview_play() {
+	if (playing && editor_preview) {
+		_restore_editor_preview();
+	}
+	editor_preview = true;
+	play();
+}
+
+void ParticleEffect3D::editor_preview_stop() {
+	if (!editor_preview) {
+		return;
+	}
+	playing = false;
+	stopping = false;
+	set_process_internal(false);
+	_restore_editor_preview();
+	editor_preview = false;
+}
+
+bool ParticleEffect3D::is_editor_previewing() const {
+	return editor_preview && playing;
+}
+
 void ParticleEffect3D::_finish() {
 	playing = false;
 	stopping = false;
 	set_process_internal(false);
+	if (editor_preview) {
+		_restore_editor_preview();
+		editor_preview = false;
+	}
 	emit_signal(SceneStringName(finished));
 	if (auto_free && !Engine::get_singleton()->is_editor_hint() && is_inside_tree()) {
 		if (!_release_to_pool()) {
@@ -1365,6 +1457,11 @@ void ParticleEffect3D::_notification(int p_what) {
 		case NOTIFICATION_INTERNAL_PROCESS: {
 			_update(get_process_delta_time());
 		} break;
+		case NOTIFICATION_EDITOR_PRE_SAVE: {
+			if (editor_preview) {
+				editor_preview_stop();
+			}
+		} break;
 		case NOTIFICATION_INTERNAL_PHYSICS_PROCESS: {
 			set_physics_process_internal(false);
 			if (level_collision_retry) {
@@ -1445,6 +1542,9 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_level_collision_mask", "mask"), &ParticleEffect3D::set_level_collision_mask);
 	ClassDB::bind_method(D_METHOD("get_level_collision_mask"), &ParticleEffect3D::get_level_collision_mask);
 	ClassDB::bind_method(D_METHOD("update_level_collision"), &ParticleEffect3D::update_level_collision);
+	ClassDB::bind_method(D_METHOD("editor_preview_play"), &ParticleEffect3D::editor_preview_play);
+	ClassDB::bind_method(D_METHOD("editor_preview_stop"), &ParticleEffect3D::editor_preview_stop);
+	ClassDB::bind_method(D_METHOD("is_editor_previewing"), &ParticleEffect3D::is_editor_previewing);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_level_collision_cache"), &ParticleEffect3D::clear_level_collision_cache);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("prewarm", "scene", "parent", "count"), &ParticleEffect3D::prewarm);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_pooled_count", "scene"), &ParticleEffect3D::get_pooled_count);

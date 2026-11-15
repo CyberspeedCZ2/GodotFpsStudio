@@ -30,6 +30,7 @@
 
 #include "register_editor_types.h"
 
+#include "editor/fps_studio/particle_level_preview_plugin.h"
 #include "core/config/engine.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
@@ -225,6 +226,7 @@ void register_editor_types() {
 
 	// This list is alphabetized, and plugins that depend on Node2D are in their own section below.
 	EditorPlugins::add_by_type<AnimationTreeEditorPlugin>();
+	EditorPlugins::add_by_type<ParticleEffectLevelPreviewPlugin>();
 	EditorPlugins::add_by_type<AudioStreamEditorPlugin>();
 	EditorPlugins::add_by_type<AudioStreamRandomizerEditorPlugin>();
 	EditorPlugins::add_by_type<BitMapEditorPlugin>();

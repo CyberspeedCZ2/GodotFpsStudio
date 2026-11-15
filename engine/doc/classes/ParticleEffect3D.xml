@@ -38,6 +38,18 @@
 				Frees the level collision bakes shared between effects. Call it when the static level geometry changes while the game runs, so the next effects bake the new shapes.
 			</description>
 		</method>
+		<method name="editor_preview_play">
+			<return type="void" />
+			<description>
+				Plays the effect inside the editor (used by the Level editor's Preview Effect button), with particles colliding with the shared level collision of the edited scene. Animated values (light energy, decal opacity, sound pitch, emitter [member GPUParticles3D.fixed_fps] and [code]emitting[/code]) are restored when the preview ends, when [method editor_preview_stop] is called and before the scene is saved.
+			</description>
+		</method>
+		<method name="editor_preview_stop">
+			<return type="void" />
+			<description>
+				Stops an editor preview started with [method editor_preview_play] and restores the authored values.
+			</description>
+		</method>
 		<method name="emitter_uses_collision" qualifiers="static">
 			<return type="bool" />
 			<param index="0" name="emitter" type="Node" />
@@ -50,6 +62,12 @@
 			<param index="0" name="scene" type="PackedScene" />
 			<description>
 				Returns how many finished instances of [param scene] wait in the pool for [method spawn].
+			</description>
+		</method>
+		<method name="is_editor_previewing" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] while an editor preview started with [method editor_preview_play] is playing.
 			</description>
 		</method>
 		<method name="is_level_collision_ready" qualifiers="static">
