@@ -7,10 +7,13 @@
 
 #include "particle_editor_plugin.h"
 
+#include "particle_module_stack.h"
 #include "vfx_texture_generator.h"
 
 #include "core/input/input_event.h"
 #include "core/io/config_file.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "core/io/image.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
@@ -732,6 +735,12 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 		restart_button->set_disabled(p_node == nullptr);
 	}
 	_refresh_curve_editors();
+	if (module_stack) {
+		module_stack->edit(p_node);
+	}
+	if (texture_generator_apply_button) {
+		texture_generator_apply_button->set_disabled(p_node == nullptr);
+	}
 	_update_particle_graph_controls();
 	if (p_update_tree) {
 		_update_emitter_tree();
@@ -1283,6 +1292,16 @@ void FPSStudioParticleEditorPlugin::_show_texture_generator_after_recipe() {
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_recipe_save_path_selected(const String &p_path) {
+	String path = p_path;
+	if (path.get_extension().to_lower() != "cfg") {
+		path += ".cfg";
+	}
+	if (_save_texture_recipe(path) && texture_generator_status) {
+		texture_generator_status->set_text(vformat(TTR("Recipe saved: %s"), path.get_file()));
+	}
+}
+
+bool FPSStudioParticleEditorPlugin::_save_texture_recipe(const String &p_path) {
 	Ref<ConfigFile> recipe;
 	recipe.instantiate();
 	recipe->set_value("generator", "version", 3);
@@ -1317,27 +1336,29 @@ void FPSStudioParticleEditorPlugin::_on_texture_recipe_save_path_selected(const 
 			recipe->set_value("params", String::utf8(info->params[i].key), texture_generator_params[i]);
 		}
 	}
-	String path = p_path;
-	if (path.get_extension().to_lower() != "cfg") {
-		path += ".cfg";
-	}
-	const Error save_error = recipe->save(path);
+	const Error save_error = recipe->save(p_path);
 	if (save_error != OK) {
-		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save the texture recipe to %s (error %d)."), path, save_error));
-		return;
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save the texture recipe to %s (error %d)."), p_path, save_error));
+		return false;
 	}
-	if (texture_generator_status) {
-		texture_generator_status->set_text(vformat(TTR("Recipe saved: %s"), path.get_file()));
-	}
+	return true;
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_recipe_load_path_selected(const String &p_path) {
+	if (_load_texture_recipe(p_path, true) && texture_generator_status) {
+		texture_generator_status->set_text(vformat(TTR("Recipe loaded: %s"), p_path.get_file()));
+	}
+}
+
+bool FPSStudioParticleEditorPlugin::_load_texture_recipe(const String &p_path, bool p_report_errors) {
 	Ref<ConfigFile> recipe;
 	recipe.instantiate();
 	const Error load_error = recipe->load(p_path);
 	if (load_error != OK || !recipe->has_section("generator")) {
-		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not load the texture recipe from %s (error %d)."), p_path, load_error));
-		return;
+		if (p_report_errors) {
+			EditorNode::get_singleton()->show_warning(vformat(TTR("Could not load the texture recipe from %s (error %d)."), p_path, load_error));
+		}
+		return false;
 	}
 	const int version = int(recipe->get_value("generator", "version", 1));
 	// Version 1 and 2 recipes stored the same type IDs under "preset".
@@ -1346,8 +1367,10 @@ void FPSStudioParticleEditorPlugin::_on_texture_recipe_load_path_selected(const 
 	const int output = int(recipe->get_value("generator", "output_layout", VFX_TEXTURE_OUTPUT_STILL));
 	const int output_index = texture_generator_output->get_item_index(output);
 	if (!info || output_index < 0) {
-		EditorNode::get_singleton()->show_warning(TTR("The texture recipe contains an unsupported template or output layout."));
-		return;
+		if (p_report_errors) {
+			EditorNode::get_singleton()->show_warning(TTR("The texture recipe contains an unsupported template or output layout."));
+		}
+		return false;
 	}
 	const int resolution = int(recipe->get_value("generator", "resolution", 256));
 	int resolution_index = 1;
@@ -1395,9 +1418,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_recipe_load_path_selected(const 
 	_update_texture_time_controls();
 	_invalidate_texture_export();
 	_regenerate_texture(true);
-	if (texture_generator_status) {
-		texture_generator_status->set_text(vformat(TTR("Recipe loaded: %s"), p_path.get_file()));
-	}
+	return true;
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_export_pressed() {
@@ -1417,10 +1438,64 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_export_pressed() {
 	texture_save_dialog->popup_file_dialog();
 }
 
+String FPSStudioParticleEditorPlugin::_get_auto_texture_path() const {
+	Node *effect = _get_effect_root();
+	Node *emitter = _get_edited_emitter();
+	const String directory = effect_path.is_empty() ? String("res://vfx_textures") : effect_path.get_base_dir().path_join("textures");
+	const String effect_name = effect ? String(effect->get_name()).to_snake_case() : String("effect");
+	const String emitter_name = emitter ? String(emitter->get_name()).to_snake_case() : String("emitter");
+	return directory.path_join(vformat("%s_%s.png", effect_name, emitter_name).validate_filename());
+}
+
+bool FPSStudioParticleEditorPlugin::_export_generated_texture(const String &p_path) {
+	if (!generated_texture_image.is_valid()) {
+		return false;
+	}
+	const String directory = p_path.get_base_dir();
+	if (!DirAccess::exists(directory)) {
+		// Create through the editor filesystem so the folder is known before the
+		// PNG is imported.
+		const Error dir_error = EditorFileSystem::get_singleton()->make_dir_recursive(directory);
+		if (dir_error != OK && dir_error != ERR_ALREADY_EXISTS) {
+			EditorNode::get_singleton()->show_warning(vformat(TTR("Could not create the folder %s (error %d)."), directory, dir_error));
+			return false;
+		}
+	}
+	const Error save_error = generated_texture_image->save_png(p_path);
+	if (save_error != OK) {
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save generated texture to %s (error %d)."), p_path, save_error));
+		return false;
+	}
+	EditorFileSystem::get_singleton()->update_file(p_path);
+	Vector<String> files_to_reimport;
+	files_to_reimport.push_back(p_path);
+	EditorFileSystem::get_singleton()->reimport_files(files_to_reimport);
+	Ref<Texture2D> imported_texture = ResourceLoader::load(p_path, "Texture2D", ResourceFormatLoader::CACHE_MODE_REPLACE);
+	if (imported_texture.is_null()) {
+		EditorNode::get_singleton()->show_warning(TTR("The PNG was saved, but Godot could not load the imported texture."));
+		return false;
+	}
+	generated_texture = imported_texture;
+	generated_texture_path = p_path;
+	// The recipe next to the PNG lets "Generate Texture" continue where it left off.
+	_save_texture_recipe(p_path.get_basename() + ".vfx.cfg");
+	return true;
+}
+
 void FPSStudioParticleEditorPlugin::_on_texture_generator_apply_pressed() {
 	if (texture_generator_normal_map->is_pressed()) {
 		EditorNode::get_singleton()->show_warning(TTR("Normal maps are exported as project textures and cannot be applied as an unlit particle color texture."));
 		return;
+	}
+	if (!_get_edited_emitter()) {
+		EditorNode::get_singleton()->show_warning(TTR("Select a particle emitter before applying a texture."));
+		return;
+	}
+	if (generated_texture_path.is_empty()) {
+		_regenerate_texture();
+		if (!_export_generated_texture(_get_auto_texture_path())) {
+			return;
+		}
 	}
 	_apply_generated_texture();
 	if (texture_generator_status && !generated_texture_path.is_empty()) {
@@ -1437,8 +1512,8 @@ void FPSStudioParticleEditorPlugin::_on_texture_generator_close_pressed() {
 void FPSStudioParticleEditorPlugin::_invalidate_texture_export() {
 	generated_texture_path = String();
 	if (texture_generator_apply_button) {
-		texture_generator_apply_button->set_disabled(true);
-		texture_generator_apply_button->set_tooltip_text(TTR("Export the PNG first; the emitter keeps a reference to the exported project texture."));
+		texture_generator_apply_button->set_disabled(_get_edited_emitter() == nullptr);
+		texture_generator_apply_button->set_tooltip_text(TTR("Render the texture, save it next to the effect (textures folder) and assign it to the selected emitter."));
 	}
 	if (texture_generator_status) {
 		texture_generator_status->set_text(String());
@@ -1464,36 +1539,16 @@ void FPSStudioParticleEditorPlugin::_show_texture_generator_after_export() {
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String &p_path) {
-	if (!generated_texture_image.is_valid()) {
-		texture_generator_return_after_export = false;
-		return;
-	}
 	String path = p_path;
 	if (path.get_extension().to_lower() != "png") {
 		path += ".png";
 	}
-	const Error save_error = generated_texture_image->save_png(path);
-	if (save_error != OK) {
+	if (!_export_generated_texture(path)) {
 		texture_generator_return_after_export = false;
-		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save generated texture to %s (error %d)."), path, save_error));
 		return;
 	}
-	generated_texture_path = path;
-	EditorFileSystem::get_singleton()->update_file(path);
-	Vector<String> files_to_reimport;
-	files_to_reimport.push_back(path);
-	EditorFileSystem::get_singleton()->reimport_files(files_to_reimport);
-	Ref<Texture2D> imported_texture = ResourceLoader::load(path, "Texture2D");
-	if (imported_texture.is_null()) {
-		generated_texture_path = String();
-		texture_generator_return_after_export = false;
-		EditorNode::get_singleton()->show_warning(TTR("The PNG was saved, but Godot could not load the imported texture."));
-		return;
-	}
-	generated_texture = imported_texture;
 	if (texture_generator_apply_button) {
-		texture_generator_apply_button->set_disabled(texture_generator_normal_map->is_pressed());
-		texture_generator_apply_button->set_tooltip_text(TTR("Assign the exported texture to the selected emitter."));
+		texture_generator_apply_button->set_disabled(texture_generator_normal_map->is_pressed() || _get_edited_emitter() == nullptr);
 	}
 	if (texture_generator_status) {
 		const String message = texture_generator_normal_map->is_pressed() ? TTR("Exported normal map: %s") : TTR("Exported: %s");
@@ -1717,10 +1772,7 @@ void FPSStudioParticleEditorPlugin::_regenerate_texture(bool p_preview_only) {
 		_update_texture_preview();
 	}
 	if (texture_generator_apply_button) {
-		texture_generator_apply_button->set_disabled(true);
-	}
-	if (texture_generator_status) {
-		texture_generator_status->set_text(String());
+		texture_generator_apply_button->set_disabled(_get_edited_emitter() == nullptr);
 	}
 }
 
@@ -1734,63 +1786,130 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 		EditorNode::get_singleton()->show_warning(TTR("Select a particle emitter before applying a texture."));
 		return;
 	}
-	Ref<Mesh> mesh;
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
 	CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(emitter);
-	if (gpu) {
-		mesh = gpu->get_draw_pass_mesh(0);
-	} else if (cpu) {
-		mesh = cpu->get_mesh();
+	const int frames = generated_texture_frame_columns;
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Apply Generated Texture"));
+	auto set_prop = [&](Object *p_object, const StringName &p_property, const Variant &p_value) {
+		undo_redo->add_do_property(p_object, p_property, p_value);
+		undo_redo->add_undo_property(p_object, p_property, p_object->get(p_property));
+	};
+	// Reuse the emitter's particle material so blend mode, tint and soft
+	// particle settings survive; create one only when there is none.
+	Ref<Material> existing = FPSParticleModuleStack::get_draw_material(emitter);
+	BaseMaterial3D *material = Object::cast_to<BaseMaterial3D>(existing.ptr());
+	if (material) {
+		set_prop(material, "albedo_texture", generated_texture);
+		set_prop(material, "billboard_mode", int(BaseMaterial3D::BILLBOARD_PARTICLES));
+		if (material->get_transparency() == BaseMaterial3D::TRANSPARENCY_DISABLED) {
+			set_prop(material, "transparency", int(BaseMaterial3D::TRANSPARENCY_ALPHA));
+		}
+		set_prop(material, "particles_anim_h_frames", frames);
+		set_prop(material, "particles_anim_v_frames", frames);
+		set_prop(material, "particles_anim_loop", frames > 1);
+	} else {
+		Ref<StandardMaterial3D> new_material;
+		new_material.instantiate();
+		new_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		new_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		new_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		new_material->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
+		new_material->set_flag(BaseMaterial3D::FLAG_DISABLE_FOG, true);
+		new_material->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, generated_texture);
+		new_material->set_billboard_mode(BaseMaterial3D::BILLBOARD_PARTICLES);
+		new_material->set_particles_anim_h_frames(frames);
+		new_material->set_particles_anim_v_frames(frames);
+		new_material->set_particles_anim_loop(frames > 1);
+		Ref<Mesh> mesh = FPSParticleModuleStack::get_draw_mesh(emitter);
+		Ref<Mesh> new_mesh = mesh.is_valid() ? Ref<Mesh>(mesh->duplicate()) : Ref<Mesh>(create_particle_quad(0.5));
+		if (PrimitiveMesh *primitive = Object::cast_to<PrimitiveMesh>(new_mesh.ptr())) {
+			primitive->set_material(new_material);
+		} else {
+			for (int surface = 0; surface < new_mesh->get_surface_count(); surface++) {
+				new_mesh->surface_set_material(surface, new_material);
+			}
+		}
+		set_prop(emitter, gpu ? StringName("draw_pass_1") : StringName("mesh"), new_mesh);
 	}
-	if (mesh.is_null()) {
-		mesh = create_particle_quad();
-	}
-	Ref<Mesh> unique_mesh = mesh->duplicate(true);
-	if (unique_mesh.is_valid()) {
-		mesh = unique_mesh;
-	}
-	Ref<StandardMaterial3D> material;
-	material.instantiate();
-	material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
-	material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
-	material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
-	material->set_texture(BaseMaterial3D::TEXTURE_ALBEDO, generated_texture);
-	material->set_particles_anim_h_frames(generated_texture_frame_columns);
-	material->set_particles_anim_v_frames(generated_texture_frame_columns);
-	material->set_particles_anim_loop(generated_texture_frame_columns > 1);
-	material->set_billboard_mode(BaseMaterial3D::BILLBOARD_PARTICLES);
-	if (generated_texture_frame_columns > 1) {
+	if (frames > 1) {
+		// anim_speed 1 plays the whole sheet once over a particle's life. Life
+		// cycle sheets (explosions) map exactly onto the lifetime; looping sheets
+		// play at their authored duration.
+		const int lifecycle_index = VFXTextureGenerator::find_param(VFXTextureGenerator::get_type_info(texture_generator_type), "lifecycle");
+		const bool lifecycle = lifecycle_index >= 0 && texture_generator_params[lifecycle_index] > 0.0f;
+		const double lifetime = double(emitter->get("lifetime"));
+		const double sheet_duration = texture_generator_duration ? texture_generator_duration->get_value() : 1.0;
+		const double speed = lifecycle ? 1.0 : MAX(0.01, lifetime / MAX(0.01, sheet_duration));
 		if (gpu) {
 			Ref<Material> process_resource = gpu->get_process_material();
-			ParticleProcessMaterial *process_material = Object::cast_to<ParticleProcessMaterial>(process_resource.ptr());
-			if (process_material) {
-				process_material->set_param_min(ParticleProcessMaterial::PARAM_ANIM_SPEED, generated_texture_fps);
-				process_material->set_param_max(ParticleProcessMaterial::PARAM_ANIM_SPEED, generated_texture_fps);
+			if (ParticleProcessMaterial *process_material = Object::cast_to<ParticleProcessMaterial>(process_resource.ptr())) {
+				set_prop(process_material, "anim_speed", Vector2(speed, speed));
 			}
 		} else if (cpu) {
-			cpu->set_param_min(CPUParticles3D::PARAM_ANIM_SPEED, generated_texture_fps);
-			cpu->set_param_max(CPUParticles3D::PARAM_ANIM_SPEED, generated_texture_fps);
+			set_prop(cpu, "anim_speed_min", speed);
+			set_prop(cpu, "anim_speed_max", speed);
+		}
+		if (material) {
+			set_prop(material, "particles_anim_loop", !lifecycle);
 		}
 	}
-	for (int surface = 0; surface < mesh->get_surface_count(); surface++) {
-		mesh->surface_set_material(surface, material);
-	}
-	// The renderer inspector edits the old mesh by raw Object pointer. Detach it
-	// before replacing the emitter's resource, then bind it to the new mesh while
-	// this local Ref keeps the replacement alive.
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter);
+	undo_redo->commit_action();
 	if (renderer_inspector) {
-		renderer_inspector->edit(nullptr);
+		renderer_inspector->edit(FPSParticleModuleStack::get_draw_mesh(emitter).ptr());
 	}
-	if (gpu) {
-		gpu->set_draw_pass_mesh(0, mesh);
-	} else if (cpu) {
-		cpu->set_mesh(mesh);
-	}
-	if (renderer_inspector) {
-		renderer_inspector->edit(mesh.ptr());
+	if (module_stack) {
+		module_stack->refresh_values();
 	}
 	_mark_document_dirty();
 	_sync_preview_properties();
+}
+
+void FPSStudioParticleEditorPlugin::_on_properties_mode_toggled(bool p_pressed, bool p_advanced) {
+	if (!p_pressed) {
+		return;
+	}
+	if (module_stack_scroll) {
+		module_stack_scroll->set_visible(!p_advanced);
+	}
+	if (properties_tabs) {
+		properties_tabs->set_visible(p_advanced);
+	}
+	if (!p_advanced && module_stack) {
+		module_stack->refresh_values();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_module_stack_property_edited(const String &p_property) {
+	_on_emitter_property_edited(p_property);
+}
+
+void FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture() {
+	Node *emitter = _get_edited_emitter();
+	if (!emitter || !texture_generator_dialog) {
+		return;
+	}
+	if (!texture_generator_thumbnails_ready) {
+		_build_texture_type_list();
+	}
+	// Continue editing the recipe saved next to the emitter's current texture.
+	Ref<Material> material = FPSParticleModuleStack::get_draw_material(emitter);
+	BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(material.ptr());
+	Ref<Texture2D> texture = base_material ? base_material->get_texture(BaseMaterial3D::TEXTURE_ALBEDO) : Ref<Texture2D>();
+	if (texture.is_valid() && !texture->get_path().is_empty()) {
+		const String recipe_path = texture->get_path().get_basename() + ".vfx.cfg";
+		if (FileAccess::exists(recipe_path)) {
+			_load_texture_recipe(recipe_path, false);
+		}
+	}
+	_invalidate_texture_export();
+	if (texture_generator_status) {
+		texture_generator_status->set_text(vformat(TTR("Apply saves to %s"), _get_auto_texture_path()));
+	}
+	_regenerate_texture(true);
+	_show_texture_generator();
 }
 
 void FPSStudioParticleEditorPlugin::_create_effect_document(int p_template) {
@@ -1804,7 +1923,7 @@ void FPSStudioParticleEditorPlugin::_create_effect_document(int p_template) {
 	} else {
 		effect->set_name("ParticleEffect");
 	}
-	Node3D *emitter = create_particle_emitter(p_template, preview_quad);
+	Node3D *emitter = create_particle_emitter(p_template, create_particle_quad());
 	effect->add_child(emitter, true);
 	emitter->set_owner(effect);
 	_set_effect_document(effect, String(), true);
@@ -2167,7 +2286,10 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 	_refresh_curve_editors();
 	_update_particle_graph_controls();
 	_sync_preview_properties();
-	if (p_property == "lifetime") {
+	if (module_stack && module_stack->is_visible_in_tree()) {
+		module_stack->refresh_values();
+	}
+	if (p_property == "lifetime" || p_property == "one_shot") {
 		_rebuild_preview();
 	}
 }
@@ -2560,6 +2682,8 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 		material = Ref<ParticleProcessMaterial>(Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
 	}
 	curve_panel->set_visible(material.is_valid());
+	alpha_curve_card->set_visible(material.is_valid());
+	scale_curve_card->set_visible(material.is_valid());
 	if (material.is_null()) {
 		return;
 	}
@@ -2902,7 +3026,23 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	document_path_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	document_toolbar->add_child(document_path_label);
 	document_status_label = memnew(Label);
+	document_status_label->set_modulate(Color(1, 1, 1, 0.65));
 	document_toolbar->add_child(document_status_label);
+	new_effect_menu = memnew(MenuButton);
+	new_effect_menu->set_text(TTR("New"));
+	new_effect_menu->set_flat(false);
+	new_effect_menu->set_tooltip_text(TTR("Create a new particle effect document."));
+	new_effect_menu->get_popup()->add_item(TTR("Empty GPU Effect"), PARTICLE_TEMPLATE_GPU);
+	new_effect_menu->get_popup()->add_item(TTR("Empty CPU Effect"), PARTICLE_TEMPLATE_CPU);
+	new_effect_menu->get_popup()->add_separator(TTR("Templates"));
+	new_effect_menu->get_popup()->add_item(TTR("Burst"), PARTICLE_TEMPLATE_BURST);
+	new_effect_menu->get_popup()->add_item(TTR("Fountain"), PARTICLE_TEMPLATE_FOUNTAIN);
+	new_effect_menu->get_popup()->add_item(TTR("Smoke"), PARTICLE_TEMPLATE_SMOKE);
+	new_effect_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_new_effect_menu_pressed));
+	document_toolbar->add_child(new_effect_menu);
+	open_effect_button = memnew(Button);
+	open_effect_button->set_text(TTR("Open..."));
+	document_toolbar->add_child(open_effect_button);
 	save_effect_button = memnew(Button);
 	save_effect_button->set_text(TTR("Save"));
 	save_effect_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_save_scene_pressed));
@@ -2923,40 +3063,6 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	VBoxContainer *left_panel = memnew(VBoxContainer);
 	left_panel->set_custom_minimum_size(Size2(220, 0) * EDSCALE);
 	main_split->add_child(left_panel);
-	HBoxContainer *effects_header = memnew(HBoxContainer);
-	left_panel->add_child(effects_header);
-	Label *effects_title = memnew(Label);
-	effects_title->set_text(TTR("Effects"));
-	effects_title->add_theme_font_size_override(SceneStringName(font_size), 15 * EDSCALE);
-	effects_title->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	effects_header->add_child(effects_title);
-	new_effect_menu = memnew(MenuButton);
-	new_effect_menu->set_text(TTR("New"));
-	new_effect_menu->get_popup()->add_item(TTR("New GPU Effect"), PARTICLE_TEMPLATE_GPU);
-	new_effect_menu->get_popup()->add_item(TTR("New CPU Effect"), PARTICLE_TEMPLATE_CPU);
-	new_effect_menu->get_popup()->add_separator(TTR("Templates"));
-	new_effect_menu->get_popup()->add_item(TTR("Burst"), PARTICLE_TEMPLATE_BURST);
-	new_effect_menu->get_popup()->add_item(TTR("Fountain"), PARTICLE_TEMPLATE_FOUNTAIN);
-	new_effect_menu->get_popup()->add_item(TTR("Smoke"), PARTICLE_TEMPLATE_SMOKE);
-	new_effect_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_new_effect_menu_pressed));
-	effects_header->add_child(new_effect_menu);
-	effect_filter = memnew(LineEdit);
-	effect_filter->set_placeholder(TTR("Search effects..."));
-	effect_filter->connect(SceneStringName(text_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_effect_filter_changed));
-	left_panel->add_child(effect_filter);
-	HBoxContainer *effect_file_actions = memnew(HBoxContainer);
-	left_panel->add_child(effect_file_actions);
-	open_effect_button = memnew(Button);
-	open_effect_button->set_text(TTR("Open..."));
-	open_effect_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	effect_file_actions->add_child(open_effect_button);
-	effects_tree = memnew(Tree);
-	effects_tree->set_hide_root(true);
-	effects_tree->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
-	effects_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	effects_tree->connect(SNAME("item_activated"), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_effect_activated));
-	left_panel->add_child(effects_tree);
-
 	HBoxContainer *emitter_header = memnew(HBoxContainer);
 	left_panel->add_child(emitter_header);
 	Label *emitter_title = memnew(Label);
@@ -2980,10 +3086,33 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitter_header->add_child(remove_emitter_button);
 	emitter_tree = memnew(Tree);
 	emitter_tree->set_hide_root(true);
+	emitter_tree->set_custom_minimum_size(Size2(0, 140) * EDSCALE);
 	emitter_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	emitter_tree->set_stretch_ratio(1.4);
 	emitter_tree->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_selected));
 	emitter_tree->connect("item_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_renamed));
 	left_panel->add_child(emitter_tree);
+
+	// Library of effect files below the emitter list; folded away when not needed.
+	FoldableContainer *library_section = memnew(FoldableContainer);
+	library_section->set_title(TTR("Effect Library"));
+	library_section->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	left_panel->add_child(library_section);
+	VBoxContainer *library_content = memnew(VBoxContainer);
+	library_content->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	library_section->add_child(library_content);
+	effect_filter = memnew(LineEdit);
+	effect_filter->set_placeholder(TTR("Search effects..."));
+	effect_filter->set_clear_button_enabled(true);
+	effect_filter->connect(SceneStringName(text_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_effect_filter_changed));
+	library_content->add_child(effect_filter);
+	effects_tree = memnew(Tree);
+	effects_tree->set_hide_root(true);
+	effects_tree->set_custom_minimum_size(Size2(0, 120) * EDSCALE);
+	effects_tree->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	effects_tree->set_tooltip_text(TTR("Double-click an effect to open it."));
+	effects_tree->connect(SNAME("item_activated"), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_effect_activated));
+	library_content->add_child(effects_tree);
 
 	HSplitContainer *center_right_split = memnew(HSplitContainer);
 	preview_properties_split = center_right_split;
@@ -3023,7 +3152,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	grid_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_grid_toggled));
 	preview_toolbar->add_child(grid_toggle);
 	Button *texture_generator_button = memnew(Button);
-	texture_generator_button->set_text(TTR("Texture Generator"));
+	texture_generator_button->set_text(TTR("Texture Generator..."));
 	texture_generator_button->set_tooltip_text(TTR("Create and export a procedural VFX texture for a particle emitter."));
 	texture_generator_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_pressed));
 	preview_toolbar->add_child(texture_generator_button);
@@ -3135,11 +3264,14 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	loop_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
 	transport->add_child(loop_toggle);
 
+	bottom_tabs = memnew(TabContainer);
+	bottom_tabs->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
+	bottom_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	center_split->add_child(bottom_tabs);
 	PanelContainer *logic_panel = memnew(PanelContainer);
-	logic_panel->set_custom_minimum_size(Size2(0, 150) * EDSCALE);
+	logic_panel->set_name(TTR("Particle Logic"));
 	logic_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	logic_panel->set_stretch_ratio(1.0);
-	center_split->add_child(logic_panel);
+	bottom_tabs->add_child(logic_panel);
 	VBoxContainer *logic_content = memnew(VBoxContainer);
 	particle_logic_content = logic_content;
 	logic_panel->add_child(logic_content);
@@ -3162,11 +3294,46 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_logic_hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	logic_content->add_child(particle_logic_hint);
 
-	TabContainer *properties_tabs = memnew(TabContainer);
-	properties_tabs->set_custom_minimum_size(Size2(340, 0) * EDSCALE);
+	VBoxContainer *right_panel = memnew(VBoxContainer);
+	right_panel->set_custom_minimum_size(Size2(360, 0) * EDSCALE);
+	right_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	right_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	center_right_split->add_child(right_panel);
+	HBoxContainer *properties_mode_bar = memnew(HBoxContainer);
+	right_panel->add_child(properties_mode_bar);
+	Ref<ButtonGroup> properties_mode_group;
+	properties_mode_group.instantiate();
+	modules_mode_button = memnew(Button);
+	modules_mode_button->set_text(TTR("Modules"));
+	modules_mode_button->set_toggle_mode(true);
+	modules_mode_button->set_pressed(true);
+	modules_mode_button->set_button_group(properties_mode_group);
+	modules_mode_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	modules_mode_button->set_tooltip_text(TTR("Edit the emitter as a stack of modules (spawn, motion, color, render)."));
+	modules_mode_button->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_properties_mode_toggled).bind(false));
+	properties_mode_bar->add_child(modules_mode_button);
+	Button *advanced_mode_button = memnew(Button);
+	advanced_mode_button->set_text(TTR("All Properties"));
+	advanced_mode_button->set_toggle_mode(true);
+	advanced_mode_button->set_button_group(properties_mode_group);
+	advanced_mode_button->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	advanced_mode_button->set_tooltip_text(TTR("Show every native property of the emitter, its process material and its mesh."));
+	advanced_mode_button->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_properties_mode_toggled).bind(true));
+	properties_mode_bar->add_child(advanced_mode_button);
+	ScrollContainer *module_scroll = memnew(ScrollContainer);
+	module_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
+	module_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	right_panel->add_child(module_scroll);
+	module_stack_scroll = module_scroll;
+	module_stack = memnew(FPSParticleModuleStack);
+	module_stack->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_module_stack_property_edited));
+	module_stack->connect("generate_texture_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture));
+	module_scroll->add_child(module_stack);
+	properties_tabs = memnew(TabContainer);
 	properties_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	properties_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	center_right_split->add_child(properties_tabs);
+	properties_tabs->hide();
+	right_panel->add_child(properties_tabs);
 
 	ScrollContainer *emitter_scroll = memnew(ScrollContainer);
 	emitter_scroll->set_name(TTR("Emitter"));
@@ -3261,6 +3428,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	scale_curve_editor->set_custom_minimum_size(Size2(0, 156) * EDSCALE);
 	scale_curve_card->add_child(scale_curve_editor);
 	curve_panel->hide();
+	// The curve cards are shown inside the Color and Size modules.
+	curve_panel_vbox->remove_child(alpha_curve_card);
+	curve_panel_vbox->remove_child(scale_curve_card);
+	module_stack->set_module_custom_control(FPSParticleModuleStack::MODULE_COLOR, alpha_curve_card);
+	module_stack->set_module_custom_control(FPSParticleModuleStack::MODULE_SIZE, scale_curve_card);
 
 	process_material_inspector = EditorInspector::create_default_inspector();
 	process_material_inspector->set_custom_minimum_size(Size2(0, 250) * EDSCALE);

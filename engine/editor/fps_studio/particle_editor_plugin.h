@@ -25,6 +25,8 @@ class ConfirmationDialog;
 class CurveEditor;
 class EditorFileDialog;
 class EditorInspector;
+class FPSParticleModuleStack;
+class TabContainer;
 class EditorSpinSlider;
 class GridContainer;
 class HSlider;
@@ -206,6 +208,11 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	SpinBox *speed_spin = nullptr;
 	Label *time_label = nullptr;
 	Label *selection_label = nullptr;
+	FPSParticleModuleStack *module_stack = nullptr;
+	Control *module_stack_scroll = nullptr;
+	TabContainer *properties_tabs = nullptr;
+	TabContainer *bottom_tabs = nullptr;
+	Button *modules_mode_button = nullptr;
 
 	ObjectID effect_root_id;
 	ObjectID edited_emitter_id;
@@ -288,6 +295,13 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_apply_pressed();
 	void _on_texture_generator_close_pressed();
 	void _show_texture_generator();
+	void _on_properties_mode_toggled(bool p_pressed, bool p_advanced);
+	void _on_module_stack_property_edited(const String &p_property);
+	void _on_module_stack_generate_texture();
+	String _get_auto_texture_path() const;
+	bool _save_texture_recipe(const String &p_path);
+	bool _load_texture_recipe(const String &p_path, bool p_report_errors);
+	bool _export_generated_texture(const String &p_path);
 	static void _texture_preview_row_func(void *p_userdata, uint32_t p_row);
 	void _start_texture_preview_task();
 	void _poll_texture_preview_task(bool p_wait = false);
