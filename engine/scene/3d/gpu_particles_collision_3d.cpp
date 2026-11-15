@@ -367,7 +367,17 @@ void GPUParticlesCollisionSDF3D::_compute_sdf_z(uint32_t p_z, ComputeSDFParams *
 }
 
 void GPUParticlesCollisionSDF3D::_compute_sdf(ComputeSDFParams *params) {
-	WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &GPUParticlesCollisionSDF3D::_compute_sdf_z, params, params->size.z);
+	if (!params->threaded) {
+		// Called from a worker task: nested group tasks could take every pool
+		// thread while they wait, so compute on this thread.
+		for (int32_t z = 0; z < params->size.z; z++) {
+			_compute_sdf_z(z, params);
+		}
+		return;
+	}
+	// Runtime bakes (no progress dialog) block the game: run them ahead of
+	// background work such as the shared level tiles.
+	WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &GPUParticlesCollisionSDF3D::_compute_sdf_z, params, params->size.z, -1, !params->report_progress, "Bake particle collision SDF");
 	// Without progress reporting, wait directly (polling adds at least 10 ms).
 	while (params->report_progress && !WorkerThreadPool::get_singleton()->is_group_task_completed(group_task)) {
 		OS::get_singleton()->delay_usec(10000);
@@ -487,7 +497,7 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake() {
 	return ret;
 }
 
-Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces, float p_max_distance) {
+Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces, float p_max_distance, bool p_threaded) {
 	static const int subdivs[RESOLUTION_MAX] = { 16, 32, 64, 128, 256, 512 };
 	const int subdiv = subdivs[get_resolution()];
 	AABB aabb(-size / 2, size);
@@ -506,10 +516,10 @@ Ref<Image> GPUParticlesCollisionSDF3D::bake_faces(const Vector<Face3> &p_faces, 
 	if (faces.size() <= 1) {
 		return Ref<Image>();
 	}
-	return _bake_sdf(faces, aabb, cell_size, sdf_size, false, p_max_distance > 0.0 ? p_max_distance : 1e20);
+	return _bake_sdf(faces, aabb, cell_size, sdf_size, false, p_max_distance > 0.0 ? p_max_distance : 1e20, p_threaded);
 }
 
-Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, const AABB &aabb, float cell_size, const Vector3i &sdf_size, bool p_report_progress, float p_max_distance) {
+Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, const AABB &aabb, float cell_size, const Vector3i &sdf_size, bool p_report_progress, float p_max_distance, bool p_threaded) {
 	LocalVector<FacePos> face_pos;
 
 	face_pos.resize(faces.size());
@@ -542,6 +552,7 @@ Ref<Image> GPUParticlesCollisionSDF3D::_bake_sdf(LocalVector<Face3> &faces, cons
 	ComputeSDFParams params;
 	params.report_progress = p_report_progress;
 	params.max_distance = p_max_distance;
+	params.threaded = p_threaded;
 	params.cells = (float *)cells_data.ptrw();
 	params.size = sdf_size;
 	params.cell_size = cell_size;

@@ -39,6 +39,13 @@
 				Returns [code]true[/code] for a visible [GPUParticles3D] whose process material collides: [member ParticleProcessMaterial.collision_mode] is not disabled, or its shader reads [code]COLLIDED[/code].
 			</description>
 		</method>
+		<method name="is_level_collision_ready" qualifiers="static">
+			<return type="bool" />
+			<param index="0" name="node_in_world" type="Node" />
+			<description>
+				Returns [code]true[/code] when the shared level collision (see [method prepare_level_collision]) of the world containing [param node_in_world] has finished baking.
+			</description>
+		</method>
 		<method name="get_elapsed_time" qualifiers="const">
 			<return type="float" />
 			<description>
@@ -81,6 +88,14 @@
 			<return type="void" />
 			<description>
 				Same as [method play].
+			</description>
+		</method>
+		<method name="prepare_level_collision" qualifiers="static">
+			<return type="bool" />
+			<param index="0" name="level_root" type="Node" />
+			<param index="1" name="mask" type="int" default="4294967295" />
+			<description>
+				Bakes the static collision ([StaticBody3D] shapes and CSG with collision in the [param mask] layers) of the whole level under [param level_root] into shared [GPUParticlesCollisionSDF3D] tiles on worker threads. The tiles are internal child nodes of [param level_root] (not saved) and serve every particle effect, so effects stop baking their own collision once [method is_level_collision_ready] is [code]true[/code]. The first effect with collision does this automatically while the game runs; call it when a level loads to have it ready before the first shot. Returns [code]false[/code] when no static collision was found.
 			</description>
 		</method>
 		<method name="seek">

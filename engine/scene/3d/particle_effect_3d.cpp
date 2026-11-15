@@ -18,6 +18,8 @@
 #include "scene/3d/gpu_particles_3d.h"
 #include "core/math/convex_hull.h"
 #include "core/os/os.h"
+#include "scene/main/scene_tree.h"
+#include "scene/main/window.h"
 #include "scene/resources/particle_process_material.h"
 #include "scene/resources/material.h"
 #include "scene/resources/shader.h"
@@ -557,14 +559,10 @@ Ref<Texture3D> sdf_image_to_texture(const Ref<Image> &p_image) {
 
 void level_collision_bake_task(void *p_userdata) {
 	LevelCollisionBake *bake = static_cast<LevelCollisionBake *>(p_userdata);
-	bake->image = bake->baker->bake_faces(bake->faces, get_level_collision_band(bake->region));
+	bake->image = bake->baker->bake_faces(bake->faces, get_level_collision_band(bake->region), false);
 	callable_mp_static(&ParticleEffect3D::_level_collision_bake_done).call_deferred(int64_t(p_userdata));
 }
 } // namespace
-
-void ParticleEffect3D::clear_level_collision_cache() {
-	level_collision_cache.clear();
-}
 
 void ParticleEffect3D::_level_collision_bake_done(int64_t p_bake) {
 	LevelCollisionBake *bake = reinterpret_cast<LevelCollisionBake *>(p_bake);
@@ -605,6 +603,233 @@ void ParticleEffect3D::_set_level_collision(const AABB &p_region, const Ref<Text
 	level_collision_region = p_region;
 }
 
+
+// --- Shared level collision -------------------------------------------------
+// The whole level is baked once into overlapping SDF tiles (16 m cores with
+// 2 m overlap, 64 cells = ~0.31 m) on worker threads. The tiles are collision
+// nodes in the level itself, so every effect (impacts, spawned effects, the
+// Level editor viewport) collides without a per-effect bake.
+
+namespace {
+constexpr real_t LEVEL_TILE_CORE = 16.0;
+constexpr real_t LEVEL_TILE_OVERLAP = 2.0;
+constexpr real_t LEVEL_MAX_EXTENT = 1024.0;
+
+struct LevelCollisionState {
+	ObjectID manager;
+	RID space;
+	uint64_t generation = 0;
+	int pending = 0;
+	int tiles = 0;
+	bool ready = false;
+	uint64_t start_usec = 0;
+};
+
+LocalVector<LevelCollisionState> level_states;
+uint64_t level_generation = 0;
+
+struct LevelTileBake {
+	ObjectID manager;
+	uint64_t generation = 0;
+	Vector<Face3> faces; // Shared, world space.
+	AABB tile;
+	Ref<Image> image;
+};
+
+LevelCollisionState *find_level_state(const RID &p_space) {
+	for (uint32_t i = 0; i < level_states.size(); i++) {
+		if (!ObjectDB::get_instance(level_states[i].manager)) {
+			level_states.remove_at_unordered(i);
+			i--;
+			continue;
+		}
+		if (level_states[i].space == p_space) {
+			return &level_states[i];
+		}
+	}
+	return nullptr;
+}
+
+void collect_level_faces(Node *p_node, uint32_t p_mask, Vector<Face3> &r_faces) {
+	if (Object::cast_to<ParticleEffect3D>(p_node) || !p_node->is_inside_tree()) {
+		return;
+	}
+	if (StaticBody3D *body = Object::cast_to<StaticBody3D>(p_node)) {
+		if (body->get_collision_layer() & p_mask) {
+			List<uint32_t> owners;
+			body->get_shape_owners(&owners);
+			for (const uint32_t owner : owners) {
+				if (body->is_shape_owner_disabled(owner)) {
+					continue;
+				}
+				const Transform3D xform = body->get_global_transform() * body->shape_owner_get_transform(owner);
+				for (int i = 0; i < body->shape_owner_get_shape_count(owner); i++) {
+					const Ref<Shape3D> shape = body->shape_owner_get_shape(owner, i);
+					// An infinite plane would blow up the level bounds.
+					if (shape.is_valid() && !Object::cast_to<WorldBoundaryShape3D>(shape.ptr())) {
+						push_shape_faces(r_faces, xform, shape);
+					}
+				}
+			}
+		}
+	} else if (Node3D *node = Object::cast_to<Node3D>(p_node)) {
+		// CSG roots with collision expose their meshes.
+		if (node->has_method("is_root_shape") && bool(node->call("is_root_shape")) && bool(node->get("use_collision")) && (uint32_t(int64_t(node->get("collision_layer"))) & p_mask)) {
+			const Array meshes = node->call("get_meshes");
+			if (meshes.size() >= 2) {
+				push_mesh_faces(r_faces, node->get_global_transform() * Transform3D(meshes[0]), meshes[1]);
+			}
+		}
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		collect_level_faces(p_node->get_child(i), p_mask, r_faces);
+	}
+}
+
+void level_tile_bake_task(void *p_userdata) {
+	LevelTileBake *bake = static_cast<LevelTileBake *>(p_userdata);
+	const Vector3 center = bake->tile.get_center();
+	const Vector3 half = bake->tile.size * 0.5;
+	Vector<Face3> local;
+	for (const Face3 &face : bake->faces) {
+		if (!face.get_aabb().intersects(bake->tile) || !Geometry3D::triangle_box_overlap(center, half, face.vertex)) {
+			continue;
+		}
+		local.push_back(Face3(face.vertex[0] - center, face.vertex[1] - center, face.vertex[2] - center));
+	}
+	bake->faces = Vector<Face3>(); // Release the shared copy early.
+	if (local.size() >= 2) {
+		GPUParticlesCollisionSDF3D *baker = memnew(GPUParticlesCollisionSDF3D);
+		baker->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+		baker->set_size(bake->tile.size);
+		baker->set_thickness(LEVEL_COLLISION_THICKNESS);
+		bake->image = baker->bake_faces(local, LEVEL_COLLISION_BAND, false);
+		memdelete(baker);
+	}
+	callable_mp_static(&ParticleEffect3D::_level_tile_baked).call_deferred(int64_t(p_userdata));
+}
+} // namespace
+
+bool ParticleEffect3D::prepare_level_collision(Node *p_root, uint32_t p_mask) {
+	ERR_FAIL_NULL_V(p_root, false);
+	ERR_FAIL_COND_V(!p_root->is_inside_tree(), false);
+	Vector<Face3> faces;
+	collect_level_faces(p_root, p_mask, faces);
+	if (faces.size() < 2) {
+		return false;
+	}
+	AABB bounds = faces[0].get_aabb();
+	for (const Face3 &face : faces) {
+		bounds.merge_with(face.get_aabb());
+	}
+	bounds = bounds.grow(1.0).intersection(AABB(bounds.get_center() - Vector3(1, 1, 1) * LEVEL_MAX_EXTENT * 0.5, Vector3(1, 1, 1) * LEVEL_MAX_EXTENT));
+
+	// Replace an earlier bake of the same level.
+	Node3D *manager = nullptr;
+	for (int i = 0; i < p_root->get_child_count(true); i++) {
+		if (p_root->get_child(i, true)->get_name() == StringName("LevelParticleCollision")) {
+			manager = Object::cast_to<Node3D>(p_root->get_child(i, true));
+		}
+	}
+	if (manager) {
+		for (int i = manager->get_child_count() - 1; i >= 0; i--) {
+			Node *tile = manager->get_child(i);
+			manager->remove_child(tile);
+			tile->queue_free();
+		}
+	} else {
+		manager = memnew(Node3D);
+		manager->set_name("LevelParticleCollision");
+		p_root->add_child(manager, false, INTERNAL_MODE_BACK);
+		manager->set_as_top_level(true);
+		manager->set_global_transform(Transform3D());
+	}
+	const RID space = manager->get_world_3d().is_valid() ? manager->get_world_3d()->get_space() : RID();
+	LevelCollisionState *state = find_level_state(space);
+	if (!state) {
+		level_states.push_back(LevelCollisionState());
+		state = &level_states[level_states.size() - 1];
+	}
+	state->manager = manager->get_instance_id();
+	state->space = space;
+	state->generation = ++level_generation;
+	state->pending = 0;
+	state->tiles = 0;
+	state->ready = false;
+	state->start_usec = OS::get_singleton()->get_ticks_usec();
+
+	const Vector3i count = Vector3i(((bounds.size - Vector3(1, 1, 1) * 0.01) / LEVEL_TILE_CORE).floor()) + Vector3i(1, 1, 1);
+	for (int z = 0; z < count.z; z++) {
+		for (int y = 0; y < count.y; y++) {
+			for (int x = 0; x < count.x; x++) {
+				LevelTileBake *bake = memnew(LevelTileBake);
+				bake->manager = state->manager;
+				bake->generation = state->generation;
+				bake->faces = faces;
+				const Vector3 core_position = bounds.position + Vector3(x, y, z) * LEVEL_TILE_CORE;
+				bake->tile = AABB(core_position - Vector3(1, 1, 1) * LEVEL_TILE_OVERLAP, Vector3(1, 1, 1) * (LEVEL_TILE_CORE + LEVEL_TILE_OVERLAP * 2.0));
+				state->pending++;
+				WorkerThreadPool::get_singleton()->add_native_task(&level_tile_bake_task, bake, false, "Particle level collision tile");
+			}
+		}
+	}
+	print_verbose(vformat("ParticleEffect3D: baking level particle collision for %s: %d faces, %d tiles in %s.", p_root->get_name(), faces.size(), state->pending, bounds));
+	return true;
+}
+
+void ParticleEffect3D::_level_tile_baked(int64_t p_bake) {
+	LevelTileBake *bake = reinterpret_cast<LevelTileBake *>(p_bake);
+	Node3D *manager = Object::cast_to<Node3D>(ObjectDB::get_instance(bake->manager));
+	LevelCollisionState *state = nullptr;
+	for (LevelCollisionState &candidate : level_states) {
+		if (candidate.manager == bake->manager && candidate.generation == bake->generation) {
+			state = &candidate;
+		}
+	}
+	if (manager && state) {
+		const Ref<Texture3D> texture = sdf_image_to_texture(bake->image);
+		if (texture.is_valid() && OS::get_singleton()->is_stdout_verbose()) {
+			texture->set_meta("_debug_sdf_image", bake->image); // Lets tests sample the field.
+		}
+		if (texture.is_valid()) {
+			GPUParticlesCollisionSDF3D *tile = memnew(GPUParticlesCollisionSDF3D);
+			tile->set_name("Tile");
+			tile->set_size(bake->tile.size);
+			tile->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+			tile->set_texture(texture);
+			tile->set_position(bake->tile.get_center());
+			manager->add_child(tile, true);
+			state->tiles++;
+		}
+		state->pending--;
+		if (state->pending <= 0) {
+			state->ready = true;
+			print_verbose(vformat("ParticleEffect3D: level particle collision ready: %d tiles in %.1f ms.", state->tiles, (OS::get_singleton()->get_ticks_usec() - state->start_usec) / 1000.0));
+		}
+	}
+	memdelete(bake);
+}
+
+void ParticleEffect3D::clear_level_collision_cache() {
+	level_collision_cache.clear();
+	// Forget the shared level bakes too; the next colliding effect re-bakes.
+	for (const LevelCollisionState &state : level_states) {
+		if (Node *manager = Object::cast_to<Node>(ObjectDB::get_instance(state.manager))) {
+			manager->queue_free();
+		}
+	}
+	level_states.clear();
+}
+
+bool ParticleEffect3D::is_level_collision_ready(const Node *p_in_world) {
+	const Node3D *node = Object::cast_to<Node3D>(p_in_world);
+	if (!node || !node->is_inside_tree() || node->get_world_3d().is_null()) {
+		return false;
+	}
+	const LevelCollisionState *state = find_level_state(node->get_world_3d()->get_space());
+	return state && state->ready;
+}
+
 void ParticleEffect3D::_update_level_collision() {
 	level_collision_retry = false;
 	AABB region;
@@ -626,18 +851,34 @@ void ParticleEffect3D::_update_level_collision() {
 		}
 	}
 
-	if (level_collision_id.is_valid() && level_collision_region == region) {
-		return; // A looping or replayed effect that did not move keeps its bake.
-	}
-	if (level_collision_pending && level_collision_pending_region == region) {
-		return;
-	}
 	Ref<World3D> world = get_world_3d();
 	PhysicsDirectSpaceState3D *space = world.is_valid() ? world->get_direct_space_state() : nullptr;
 	if (!space) {
 		return;
 	}
 	const RID space_rid = world->get_space();
+
+	// Shared level bake: start it with the first colliding effect, and once
+	// it is ready no effect needs its own bake.
+	LevelCollisionState *level = find_level_state(space_rid);
+	if (!level && !Engine::get_singleton()->is_editor_hint()) {
+		Node *level_root = get_tree()->get_current_scene() ? get_tree()->get_current_scene() : get_tree()->get_root();
+		if (prepare_level_collision(level_root, level_collision_mask)) {
+			level = find_level_state(space_rid);
+		}
+	}
+	if (level && level->ready) {
+		level_collision_pending = false;
+		_set_level_collision(AABB(), Ref<Texture3D>());
+		return;
+	}
+
+	if (level_collision_id.is_valid() && level_collision_region == region) {
+		return; // A looping or replayed effect that did not move keeps its bake.
+	}
+	if (level_collision_pending && level_collision_pending_region == region) {
+		return;
+	}
 	const Ref<Texture3D> cached = find_cached_level_collision(space_rid, region);
 	if (cached.is_valid()) {
 		level_collision_pending = false;
@@ -1103,6 +1344,8 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_level_collision_mask"), &ParticleEffect3D::get_level_collision_mask);
 	ClassDB::bind_method(D_METHOD("update_level_collision"), &ParticleEffect3D::update_level_collision);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("clear_level_collision_cache"), &ParticleEffect3D::clear_level_collision_cache);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("prepare_level_collision", "level_root", "mask"), &ParticleEffect3D::prepare_level_collision, DEFVAL(0xFFFFFFFF));
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("is_level_collision_ready", "node_in_world"), &ParticleEffect3D::is_level_collision_ready);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("emitter_uses_collision", "emitter"), &ParticleEffect3D::emitter_uses_collision);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_suggested_collision_size", "emitter"), &ParticleEffect3D::get_suggested_collision_size);
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("apply_collision_substeps", "emitter", "shell"), &ParticleEffect3D::apply_collision_substeps);

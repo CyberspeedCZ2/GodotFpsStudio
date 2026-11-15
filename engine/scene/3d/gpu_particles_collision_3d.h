@@ -161,8 +161,9 @@ private:
 		// Cells farther than this from any face keep this value (narrow band,
 		// lets the BVH skip far geometry).
 		float max_distance = 1e20;
+		bool threaded = true;
 	};
-	Ref<Image> _bake_sdf(LocalVector<Face3> &r_faces, const AABB &p_aabb, float p_cell_size, const Vector3i &p_sdf_size, bool p_report_progress, float p_max_distance = 1e20);
+	Ref<Image> _bake_sdf(LocalVector<Face3> &r_faces, const AABB &p_aabb, float p_cell_size, const Vector3i &p_sdf_size, bool p_report_progress, float p_max_distance = 1e20, bool p_threaded = true);
 
 	void _find_closest_distance(const Vector3 &p_pos, const BVH *p_bvh, uint32_t p_bvh_cell, const Face3 *p_triangles, float p_thickness, float &r_closest_distance);
 	void _compute_sdf_z(uint32_t p_z, ComputeSDFParams *params);
@@ -201,7 +202,8 @@ public:
 	// Bakes triangles given in this node's local space (no scene lookup, no
 	// editor progress). Used for runtime particle collision from physics shapes.
 	// p_max_distance > 0 limits exact distances to a band around the faces.
-	Ref<Image> bake_faces(const Vector<Face3> &p_faces, float p_max_distance = 0.0);
+	// p_threaded = false computes on the calling thread (use it from worker tasks).
+	Ref<Image> bake_faces(const Vector<Face3> &p_faces, float p_max_distance = 0.0, bool p_threaded = true);
 
 	virtual AABB get_aabb() const override;
 

@@ -177,7 +177,10 @@ GPU částice samy o sobě nenarážejí na fyzikální tělesa, jen na kolizní
 2. Odraz vyladíš v náhledu přes **View → Collision Test Walls**.
 3. Ve hře to funguje samo. Kořen efektu má skupinu **Level Collision**: `collide_with_level` (výchozí zapnuto) a `level_collision_mask` (fyzikální vrstvy stěn, výchozí 1).
 
-Jak to funguje: pečená oblast je součet `visibility_aabb` emitorů s kolizí (nejvýš 64 m na osu), rozlišení 64 buněk na nejdelší osu, přesné vzdálenosti jen v pásu 1,5 m kolem stěn. Pečení proběhne hned při `play()` (na testovacím levelu ~15 ms jednou pro dané místo), takže kolize platí už pro první jiskry; efekt přehraný znovu na stejném místě použije sdílenou cache. U velmi složité geometrie (přes 20 000 trojúhelníků v oblasti) se peče na pozadí. Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()`.
+Jak to funguje:
+- **Sdílená kolize celého levelu.** První efekt s kolizí ve hře spustí na pozadí pečení celého levelu (všechna StaticBody3D a CSG s kolizí ve vrstvách `level_collision_mask`) do dlaždic 20 m (jádro 16 m + 2 m překryv, buňka ~0,31 m). Dlaždice jsou uzly `LevelParticleCollision/Tile` pod scénou levelu a platí pro všechny efekty najednou. Jakmile jsou hotové (testovací level ~30 ms, level 60 × 40 m ~100 ms), další efekty, včetně zásahů kulek, žádnou vlastní kolizi nepočítají (~0,03 ms na efekt). Aby byla hotová už před první střelbou, zavolej při načtení levelu `ParticleEffect3D.prepare_level_collision(level_root)`.
+- **Dokud se level peče**, efekt si spočítá vlastní kolizi jen pro svou oblast (nejvýš 20 m kolem efektu, rozlišení podle velikosti, ~10–20 ms), takže platí i pro úplně první výbuch. Efekt přehraný znovu na stejném místě ji vezme z cache.
+- Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()` (další efekt level napeče znovu).
 
 Kolize platí pro každý GPU emitor, který ji používá: modul Collision (`ParticleProcessMaterial.collision_mode`) i vlastní shader nebo Visual Shader, který čte `COLLIDED` (např. po Convert to Shader Code). CPUParticles3D kolize v Godotu neumí.
 

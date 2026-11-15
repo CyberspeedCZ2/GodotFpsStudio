@@ -122,6 +122,14 @@ public:
 	static void _level_collision_bake_done(int64_t p_bake);
 	// Frees shared level collision bakes (call when the level geometry changed).
 	static void clear_level_collision_cache();
+	// Bakes the static collision of the whole level under p_root into shared
+	// SDF tiles on worker threads (nodes under p_root, not saved). Effects use
+	// them once ready instead of baking their own. Returns false when no
+	// static collision was found. Done automatically by the first colliding
+	// effect in a running game; call it at level load to have it ready sooner.
+	static bool prepare_level_collision(Node *p_root, uint32_t p_mask = 0xFFFFFFFF);
+	static bool is_level_collision_ready(const Node *p_in_world);
+	static void _level_tile_baked(int64_t p_bake);
 
 	void play();
 	void stop();
