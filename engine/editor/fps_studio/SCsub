@@ -3,4 +3,16 @@ from misc.utility.scons_hints import *
 
 Import("env")
 
-env.add_source_files(env.editor_sources, "*.cpp")
+GENERATOR_SOURCE = "vfx_texture_generator.cpp"
+
+env.add_source_files(env.editor_sources, [f for f in Glob("*.cpp") if f.name != GENERATOR_SOURCE])
+
+# The procedural VFX generator is a tight per-pixel loop that runs while the
+# preview animates. Dev builds default to -O0, which makes it 6-8x slower, so
+# always compile this one file with optimizations.
+env_vfx = env.Clone()
+if not env.msvc:
+    env_vfx.Append(CCFLAGS=["-O3"])
+else:
+    env_vfx.Append(CCFLAGS=["/O2"])
+env_vfx.add_source_files(env.editor_sources, GENERATOR_SOURCE)

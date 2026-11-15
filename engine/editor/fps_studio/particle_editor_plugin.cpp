@@ -18,6 +18,7 @@
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
 #include "core/object/worker_thread_pool.h"
+#include "core/os/os.h"
 #include "core/string/print_string.h"
 #include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
@@ -114,22 +115,22 @@ static real_t particle_texture_smoothstep(real_t p_edge_a, real_t p_edge_b, real
 struct VFXTextureRenderJob {
 	const VFXTextureGenerator::Settings *settings = nullptr;
 	int size = 0;
-	float *buffer = nullptr;
+	uint8_t *buffer = nullptr;
 };
 
 static void _vfx_texture_render_row(void *p_userdata, uint32_t p_row) {
 	VFXTextureRenderJob *job = static_cast<VFXTextureRenderJob *>(p_userdata);
-	VFXTextureGenerator::render_rows(*job->settings, job->size, job->buffer, int(p_row), int(p_row) + 1);
+	VFXTextureGenerator::render_rows_rgba8(*job->settings, job->size, job->buffer, int(p_row), int(p_row) + 1);
 }
 
 // Renders one frame of the procedural generator on all worker threads.
 static Ref<Image> render_vfx_texture_frame(const VFXTextureGenerator::Settings &p_settings, int p_size) {
-	Vector<float> buffer;
-	buffer.resize(p_size * p_size * 4);
+	PackedByteArray bytes;
+	bytes.resize(p_size * p_size * 4);
 	VFXTextureRenderJob job;
 	job.settings = &p_settings;
 	job.size = p_size;
-	job.buffer = buffer.ptrw();
+	job.buffer = bytes.ptrw();
 	if (p_size >= 32 && WorkerThreadPool::get_singleton()) {
 		const WorkerThreadPool::GroupID group = WorkerThreadPool::get_singleton()->add_native_group_task(_vfx_texture_render_row, &job, p_size, -1, true, "VFX Texture Generator");
 		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group);
@@ -138,18 +139,16 @@ static Ref<Image> render_vfx_texture_frame(const VFXTextureGenerator::Settings &
 			_vfx_texture_render_row(&job, y);
 		}
 	}
-	PackedByteArray bytes;
-	bytes.resize(p_size * p_size * 4);
-	uint8_t *w = bytes.ptrw();
-	const float *r = buffer.ptr();
-	for (int i = 0; i < p_size * p_size * 4; i++) {
-		w[i] = uint8_t(CLAMP(int(Math::round(r[i] * 255.0f)), 0, 255));
-	}
 	return Image::create_from_data(p_size, p_size, false, Image::FORMAT_RGBA8, bytes);
 }
 
 static void process_particle_texture_frame(const Ref<Image> &p_image, real_t p_alpha_threshold, real_t p_alpha_blur, bool p_toon_enabled, real_t p_toon_dark, real_t p_toon_light, const Color &p_shadows_tint, const Color &p_midtones_tint, const Color &p_highlights_tint, bool p_generate_normal_map, real_t p_normal_height_scale, bool p_show_alpha) {
 	if (p_image.is_null()) {
+		return;
+	}
+	const Color white(1.0, 1.0, 1.0, 1.0);
+	if (p_alpha_threshold <= 0.0 && p_alpha_blur <= 0.001 && !p_toon_enabled && !p_generate_normal_map && !p_show_alpha && p_shadows_tint == white && p_midtones_tint == white && p_highlights_tint == white) {
+		// Nothing to do; this is the common case and keeps the preview fast.
 		return;
 	}
 	const int width = p_image->get_width();
@@ -1565,6 +1564,75 @@ void FPSStudioParticleEditorPlugin::_update_texture_preview() {
 	texture_generator_preview_frame = frame_index;
 }
 
+void FPSStudioParticleEditorPlugin::_texture_preview_row_func(void *p_userdata, uint32_t p_row) {
+	TexturePreviewJob *job = static_cast<TexturePreviewJob *>(p_userdata);
+	VFXTextureGenerator::render_rows_rgba8(job->settings, job->size, job->buffer, int(p_row), int(p_row) + 1);
+}
+
+void FPSStudioParticleEditorPlugin::_start_texture_preview_task() {
+	if (texture_preview_task >= 0 || !texture_preview_has_pending || !WorkerThreadPool::get_singleton()) {
+		return;
+	}
+	texture_preview_job = texture_preview_pending;
+	texture_preview_has_pending = false;
+	texture_preview_job.bytes.resize(texture_preview_job.size * texture_preview_job.size * 4);
+	texture_preview_job.buffer = texture_preview_job.bytes.ptrw();
+	texture_preview_job.start_usec = OS::get_singleton()->get_ticks_usec();
+	// Rows render on the pool without blocking the editor; NOTIFICATION_PROCESS
+	// polls for completion.
+	texture_preview_task = WorkerThreadPool::get_singleton()->add_native_group_task(&FPSStudioParticleEditorPlugin::_texture_preview_row_func, &texture_preview_job, texture_preview_job.size, -1, true, "VFX Texture Preview");
+}
+
+void FPSStudioParticleEditorPlugin::_poll_texture_preview_task(bool p_wait) {
+	if (texture_preview_task < 0) {
+		return;
+	}
+	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+	if (!p_wait && !pool->is_group_task_completed(texture_preview_task)) {
+		return;
+	}
+	pool->wait_for_group_task_completion(texture_preview_task);
+	texture_preview_task = -1;
+	TexturePreviewJob &job = texture_preview_job;
+	job.render_usec = OS::get_singleton()->get_ticks_usec() - job.start_usec;
+	job.buffer = nullptr;
+	if (!p_wait && texture_generator_preview && !(texture_generator_show_sheet && texture_generator_show_sheet->is_pressed())) {
+		Ref<Image> image = Image::create_from_data(job.size, job.size, false, Image::FORMAT_RGBA8, job.bytes);
+		process_particle_texture_frame(image, job.alpha_threshold, job.alpha_blur, job.toon_enabled, job.toon_dark, job.toon_light, job.shadows_tint, job.midtones_tint, job.highlights_tint, job.normal_map, job.normal_height_scale, job.show_alpha);
+		// Reuse the GPU texture when the size matches; recreating it every frame is wasteful.
+		if (texture_preview_texture.is_valid() && texture_preview_texture->get_width() == job.size && texture_preview_texture->get_height() == job.size) {
+			texture_preview_texture->update(image);
+		} else {
+			texture_preview_texture = ImageTexture::create_from_image(image);
+		}
+		if (texture_generator_preview->get_texture() != texture_preview_texture) {
+			texture_generator_preview->set_texture(texture_preview_texture);
+		}
+	}
+	if (job.playback) {
+		// Adapt the playback resolution to keep roughly 30+ preview frames per second.
+		if (job.render_usec > 40000 && texture_preview_playback_size > 128) {
+			texture_preview_playback_size -= 32;
+		} else if (job.render_usec < 15000 && texture_preview_playback_size < 256) {
+			texture_preview_playback_size += 32;
+		}
+	}
+	if (p_wait) {
+		return;
+	}
+	if (texture_preview_has_pending) {
+		_start_texture_preview_task();
+	} else if (texture_preview_needs_refine && job.settings.quality == 0) {
+		texture_preview_needs_refine = false;
+		texture_preview_pending = job;
+		texture_preview_pending.settings.quality = 1;
+		texture_preview_pending.size = job.refine_size;
+		texture_preview_pending.playback = false;
+		texture_preview_has_pending = true;
+		_start_texture_preview_task();
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_regenerate_texture(bool p_preview_only) {
 	if (!texture_generator_resolution || !texture_generator_output || !texture_generator_seed || !texture_generator_fps || !texture_generator_duration || !texture_generator_alpha_threshold || !texture_generator_alpha_blur || !texture_generator_alpha_preview || !texture_generator_normal_map || !texture_generator_shadows_tint || !texture_generator_midtones_tint || !texture_generator_highlights_tint || !texture_generator_toon) {
 		return;
@@ -1590,19 +1658,43 @@ void FPSStudioParticleEditorPlugin::_regenerate_texture(bool p_preview_only) {
 	const bool show_sheet = frame_columns > 1 && texture_generator_show_sheet && texture_generator_show_sheet->is_pressed();
 
 	if (p_preview_only && !show_sheet) {
-		const int preview_frame_size = MIN(frame_size, 256);
 		const int frame_index = frame_columns == 1 ? 0 : CLAMP(int(Math::floor((texture_generator_time_value / MAX(0.001, duration)) * frame_count)), 0, frame_count - 1);
 		const real_t sample_time = frame_columns == 1 ? texture_generator_time_value : (real_t(frame_index) / frame_count) * duration;
 		const real_t life = frame_columns == 1 ? texture_generator_time_value / MAX(0.001, duration) : real_t(frame_index) / real_t(MAX(1, frame_count - 1));
-		// Draft quality keeps playback and slider dragging responsive.
+		// While playing, render a draft at an adaptive size so the preview keeps
+		// up. When paused (or after editing a value), a draft appears first and
+		// is refined at full quality once the user stops changing things.
 		const bool playing = texture_generator_animate && texture_generator_animate->is_pressed();
-		const VFXTextureGenerator::Settings settings = _make_texture_settings(sample_time, life, playing ? 0 : 1);
-		Ref<Image> preview_image = render_vfx_texture_frame(settings, preview_frame_size);
-		process_particle_texture_frame(preview_image, alpha_threshold, alpha_blur, toon_enabled, toon_dark, toon_light, shadows_tint, midtones_tint, highlights_tint, generate_normal_map, normal_height_scale, texture_generator_alpha_preview->is_pressed());
-		texture_generator_preview->set_texture(ImageTexture::create_from_image(preview_image));
+		TexturePreviewJob job;
+		job.size = MIN(frame_size, playing ? texture_preview_playback_size : 256);
+		job.refine_size = MIN(frame_size, 512);
+		job.frame_index = frame_index;
+		job.playback = playing;
+		job.settings = _make_texture_settings(sample_time, life, 0);
+		job.alpha_threshold = alpha_threshold;
+		job.alpha_blur = alpha_blur;
+		job.toon_enabled = toon_enabled;
+		job.toon_dark = toon_dark;
+		job.toon_light = toon_light;
+		job.shadows_tint = shadows_tint;
+		job.midtones_tint = midtones_tint;
+		job.highlights_tint = highlights_tint;
+		job.normal_map = generate_normal_map;
+		job.normal_height_scale = normal_height_scale;
+		job.show_alpha = texture_generator_alpha_preview->is_pressed();
+		texture_preview_pending = job;
+		texture_preview_has_pending = true;
+		texture_preview_needs_refine = !playing;
 		texture_generator_preview_frame = frame_index;
+		if (texture_preview_task < 0) {
+			_start_texture_preview_task();
+		}
 		return;
 	}
+	// A full render replaces whatever the preview is working on.
+	_poll_texture_preview_task(true);
+	texture_preview_has_pending = false;
+	texture_preview_needs_refine = false;
 	generated_texture_image = Image::create_empty(size, size, false, Image::FORMAT_RGBA8);
 	for (int frame_index = 0; frame_index < frame_count; frame_index++) {
 		const real_t sample_time = frame_columns == 1 ? texture_generator_time_value : (real_t(frame_index) / frame_count) * duration;
@@ -2651,17 +2743,15 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			if (current_frame != texture_generator_preview_frame) {
 				_regenerate_texture(true);
 			}
-		} else {
-			texture_generator_playback_accumulator += delta;
-			const double refresh_interval = 1.0 / 12.0;
-			if (texture_generator_playback_accumulator >= refresh_interval) {
-				texture_generator_playback_accumulator = Math::fmod(texture_generator_playback_accumulator, refresh_interval);
-				// Playback changes only the live preview. Keep an exported PNG available
-				// for Apply to Emitter until the user changes its generator parameters
-				// or manually scrubs to a different sample.
-				_regenerate_texture(true);
-			}
+		} else if (texture_preview_task < 0 || !texture_preview_has_pending) {
+			// Request the next frame as soon as the previous one is under way, so
+			// the preview runs as fast as the renderer allows. Playback changes only
+			// the live preview; an exported PNG stays valid for Apply to Emitter.
+			_regenerate_texture(true);
 		}
+	}
+	if (p_what == NOTIFICATION_PROCESS && texture_preview_task >= 0) {
+		_poll_texture_preview_task();
 	}
 	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree() && preview_playing && preview_effect) {
 		const double delta = get_process_delta_time();
@@ -2685,6 +2775,10 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			preview_time_label_update_accumulator = Math::fmod(preview_time_label_update_accumulator, 0.1);
 			_update_time_label();
 		}
+	}
+	if (p_what == NOTIFICATION_PREDELETE && texture_preview_task >= 0) {
+		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(texture_preview_task);
+		texture_preview_task = -1;
 	}
 	if (p_what == NOTIFICATION_PREDELETE && preview_effect) {
 		preview_effect->queue_free();

@@ -48,7 +48,7 @@ Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewp
 
 ## VFX Texture Generator
 
-Generátor je samostatný modul `engine/editor/fps_studio/vfx_texture_generator.cpp` bez závislosti na editoru. Plugin ho obaluje do `Image` a vykresluje po řádcích přes `WorkerThreadPool`. Stejný zdroj lze přeložit i mimo engine jako malý nástroj a referenční obrázky tak lze vykreslit bez GUI.
+Generátor je samostatný modul `engine/editor/fps_studio/vfx_texture_generator.cpp` bez závislosti na editoru. Plugin ho obaluje do `Image` a vykresluje po řádcích přes `WorkerThreadPool`. `SCsub` tento jediný soubor kompiluje vždy s `-O3`, protože vývojový build jinak používá `-O0` a generátor by byl 6–8× pomalejší. Náhled se počítá asynchronně: editor spustí skupinu řádků a v `NOTIFICATION_PROCESS` jen zjišťuje, zda je hotová; mezitím čeká pouze nejnovější požadavek. Při přehrávání se rozlišení náhledu přizpůsobuje času výpočtu (128–256 px), po zastavení nebo úpravě hodnoty se nejprve ukáže draft a poté se překreslí v plné kvalitě až do 512 px. Vypnutý post-processing se přeskočí. Stejný zdroj lze přeložit i mimo engine jako malý nástroj a referenční obrázky tak lze vykreslit bez GUI.
 
 ### Vykreslování
 

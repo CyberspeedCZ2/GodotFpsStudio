@@ -1565,4 +1565,23 @@ void render_rows(const Settings &p_settings, int p_size, float *r_rgba, int p_ro
 	}
 }
 
+void render_rows_rgba8(const Settings &p_settings, int p_size, uint8_t *r_rgba8, int p_row_begin, int p_row_end) {
+	if (p_size <= 0 || p_size > 4096 || !r_rgba8) {
+		return;
+	}
+	static thread_local FrameContext context;
+	static thread_local float row[4096 * 4];
+	setup_frame(context, p_settings);
+	for (int py = p_row_begin; py < p_row_end; py++) {
+		for (int px = 0; px < p_size; px++) {
+			render_pixel(context, px, py, p_size, row + px * 4);
+		}
+		uint8_t *out = r_rgba8 + size_t(py) * size_t(p_size) * 4;
+		for (int i = 0; i < p_size * 4; i++) {
+			const float v = row[i] * 255.0f + 0.5f;
+			out[i] = uint8_t(v < 0.0f ? 0.0f : (v > 255.0f ? 255.0f : v));
+		}
+	}
+}
+
 } // namespace VFXTextureGenerator

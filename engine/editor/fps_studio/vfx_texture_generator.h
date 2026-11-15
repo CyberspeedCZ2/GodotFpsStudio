@@ -97,4 +97,8 @@ void apply_type_defaults(Settings &r_settings, bool p_colors = true);
 // r_rgba (p_size * p_size * 4 floats, straight alpha, values 0..1).
 void render_rows(const Settings &p_settings, int p_size, float *r_rgba, int p_row_begin, int p_row_end);
 
+// Same as render_rows, but writes 8-bit RGBA directly into r_rgba8
+// (p_size * p_size * 4 bytes). Supports sizes up to 4096.
+void render_rows_rgba8(const Settings &p_settings, int p_size, uint8_t *r_rgba8, int p_row_begin, int p_row_end);
+
 } // namespace VFXTextureGenerator

@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "core/math/color.h"
 #include "core/object/object_id.h"
 #include "core/object/ref_counted.h"
 #include "core/templates/vector.h"
@@ -49,6 +50,7 @@ class VisualShader;
 class VisualShaderEditor;
 class VBoxContainer;
 class Image;
+class ImageTexture;
 class Texture2D;
 struct Color;
 
@@ -126,6 +128,38 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	float texture_generator_params[VFXTextureGenerator::MAX_PARAMS] = {};
 	bool texture_generator_thumbnails_ready = false;
 	bool texture_generator_syncing_ui = false;
+
+	// Asynchronous preview rendering: one job runs on the WorkerThreadPool while
+	// the newest request waits in texture_preview_pending (older ones are dropped).
+	struct TexturePreviewJob {
+		VFXTextureGenerator::Settings settings;
+		int size = 0;
+		int refine_size = 0;
+		int frame_index = 0;
+		bool playback = false;
+		real_t alpha_threshold = 0.0;
+		real_t alpha_blur = 0.0;
+		bool toon_enabled = false;
+		real_t toon_dark = 0.5;
+		real_t toon_light = 0.85;
+		Color shadows_tint = Color(1, 1, 1, 1);
+		Color midtones_tint = Color(1, 1, 1, 1);
+		Color highlights_tint = Color(1, 1, 1, 1);
+		bool normal_map = false;
+		real_t normal_height_scale = 3.0;
+		bool show_alpha = false;
+		Vector<uint8_t> bytes;
+		uint8_t *buffer = nullptr;
+		uint64_t start_usec = 0;
+		uint64_t render_usec = 0;
+	};
+	TexturePreviewJob texture_preview_job;
+	TexturePreviewJob texture_preview_pending;
+	bool texture_preview_has_pending = false;
+	bool texture_preview_needs_refine = false;
+	int64_t texture_preview_task = -1;
+	int texture_preview_playback_size = 192;
+	Ref<ImageTexture> texture_preview_texture;
 	Ref<Image> generated_texture_image;
 	Ref<Texture2D> generated_texture;
 	String generated_texture_path;
@@ -254,6 +288,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_texture_generator_apply_pressed();
 	void _on_texture_generator_close_pressed();
 	void _show_texture_generator();
+	static void _texture_preview_row_func(void *p_userdata, uint32_t p_row);
+	void _start_texture_preview_task();
+	void _poll_texture_preview_task(bool p_wait = false);
 	void _on_texture_recipe_save_pressed();
 	void _on_texture_recipe_load_pressed();
 	void _on_texture_recipe_save_path_selected(const String &p_path);
