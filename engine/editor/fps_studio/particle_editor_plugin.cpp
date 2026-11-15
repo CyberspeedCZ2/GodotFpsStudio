@@ -15,6 +15,7 @@
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/object/script_language.h"
+#include "core/object/worker_thread_pool.h"
 #include "core/string/print_string.h"
 #include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
@@ -272,6 +273,233 @@ static Color sample_physical_vfx_gradient(real_t p_t, const Color &p_color_a, co
 	return col;
 }
 
+struct VolumetricVec4 {
+	real_t x = 0.0;
+	real_t y = 0.0;
+	real_t z = 0.0;
+	real_t w = 0.0;
+	VolumetricVec4() {}
+	VolumetricVec4(real_t p_x, real_t p_y, real_t p_z, real_t p_w) :
+			x(p_x), y(p_y), z(p_z), w(p_w) {}
+};
+
+static inline Vector3 particle_texture_hash3(const Vector3 &p) {
+	const real_t px = p.dot(Vector3(127.1, 311.7, 74.7));
+	const real_t py = p.dot(Vector3(269.5, 183.3, 246.1));
+	const real_t pz = p.dot(Vector3(113.5, 271.9, 124.6));
+	const real_t sx = Math::sin(px) * real_t(43758.5453123);
+	const real_t sy = Math::sin(py) * real_t(43758.5453123);
+	const real_t sz = Math::sin(pz) * real_t(43758.5453123);
+	return Vector3(
+			real_t(-1.0) + real_t(2.0) * (sx - Math::floor(sx)),
+			real_t(-1.0) + real_t(2.0) * (sy - Math::floor(sy)),
+			real_t(-1.0) + real_t(2.0) * (sz - Math::floor(sz)));
+}
+
+static inline real_t particle_texture_noise3(const Vector3 &p) {
+	const Vector3 i(Math::floor(p.x), Math::floor(p.y), Math::floor(p.z));
+	const Vector3 f = p - i;
+	const Vector3 u(f.x * f.x * (real_t(3.0) - real_t(2.0) * f.x),
+			f.y * f.y * (real_t(3.0) - real_t(2.0) * f.y),
+			f.z * f.z * (real_t(3.0) - real_t(2.0) * f.z));
+	auto d = [&](real_t ox, real_t oy, real_t oz) -> real_t {
+		const Vector3 off(ox, oy, oz);
+		const Vector3 g = particle_texture_hash3(i + off);
+		return g.dot(f - off);
+	};
+	const real_t x00 = Math::lerp(d(0, 0, 0), d(1, 0, 0), u.x);
+	const real_t x10 = Math::lerp(d(0, 1, 0), d(1, 1, 0), u.x);
+	const real_t y0 = Math::lerp(x00, x10, u.y);
+
+	const real_t x01 = Math::lerp(d(0, 0, 1), d(1, 0, 1), u.x);
+	const real_t x11 = Math::lerp(d(0, 1, 1), d(1, 1, 1), u.x);
+	const real_t y1 = Math::lerp(x01, x11, u.y);
+
+	return Math::lerp(y0, y1, u.z);
+}
+
+static inline real_t particle_texture_fbm3(const Vector3 &p) {
+	return particle_texture_noise3(p * real_t(0.6125)) * real_t(0.5) +
+			particle_texture_noise3(p * real_t(0.125)) * real_t(0.25) +
+			particle_texture_noise3(p * real_t(0.25)) * real_t(0.125) +
+			particle_texture_noise3(p * real_t(0.4)) * real_t(0.2);
+}
+
+static inline Vector3 particle_texture_tonemap_filmic(const Vector3 &c) {
+	auto f = [](real_t x) -> real_t {
+		x = MAX(real_t(0.0), x - real_t(0.004));
+		return (x * (real_t(6.2) * x + real_t(0.5))) / (x * (real_t(6.2) * x + real_t(1.7)) + real_t(0.06));
+	};
+	return Vector3(f(c.x), f(c.y), f(c.z));
+}
+
+static inline bool particle_texture_ray_sphere_intersect(const Vector3 &org, const Vector3 &dir, real_t &r_near, real_t &r_far) {
+	const real_t b = dir.dot(org);
+	const real_t c = org.dot(org) - real_t(8.0);
+	const real_t delta = b * b - c;
+	if (delta < 0.0) {
+		return false;
+	}
+	const real_t deltasqrt = Math::sqrt(delta);
+	r_near = -b - deltasqrt;
+	r_far = -b + deltasqrt;
+	return r_far > 0.0;
+}
+
+static inline Color particle_texture_volumetric_explosion(real_t p_u, real_t p_v, real_t p_time, bool p_hollow_ring, real_t p_speed, real_t p_density, real_t p_emission, real_t p_detail, real_t p_contrast, real_t p_angle, const Color &p_color_a, const Color &p_color_b) {
+	const real_t uvx = (p_u - real_t(0.5));
+	const real_t uvy = (p_v - real_t(0.5));
+	const Vector3 rd = Vector3(uvx, uvy, real_t(1.0)).normalized();
+	const Vector3 ro = Vector3(0.0, 0.0, -6.0);
+
+	real_t near_t = 0.0, far_t = 0.0;
+	if (!particle_texture_ray_sphere_intersect(ro, rd, near_t, far_t)) {
+		return Color(0.0, 0.0, 0.0, 0.0);
+	}
+
+	const real_t pan_rad = Math::deg_to_rad(p_angle);
+	const real_t cos_pan = Math::cos(pan_rad);
+	const real_t sin_pan = Math::sin(pan_rad);
+
+	auto map_volume = [&](const Vector3 &p_pos) -> real_t {
+		Vector3 p = p_pos;
+		if (p_angle != 0.0) {
+			const real_t rx = cos_pan * p.x + sin_pan * p.z;
+			const real_t rz = -sin_pan * p.x + cos_pan * p.z;
+			p.x = rx;
+			p.z = rz;
+		}
+		const Vector3 scaled_p = p / real_t(0.6);
+		real_t final_dist = scaled_p.length() - real_t(4.0);
+		final_dist += particle_texture_fbm3(scaled_p * (real_t(50.0) * p_density * p_detail * real_t(0.1)));
+		const real_t spiral = particle_texture_spiral(scaled_p.z * real_t(0.4132) + real_t(333.0),
+				scaled_p.x * real_t(0.4132) + real_t(333.0),
+				scaled_p.y * real_t(0.4132) + real_t(333.0),
+				p_time, p_speed);
+		final_dist += spiral * real_t(3.0);
+		return final_dist * real_t(0.6);
+	};
+
+	real_t t = near_t;
+	real_t ld = 0.0, td = 0.0, w = 0.0;
+	const real_t h = 0.1;
+	VolumetricVec4 sum(0.0, 0.0, 0.0, 0.0);
+
+	const Vector3 col_a_v(p_color_a.r, p_color_a.g, p_color_a.b);
+	const Vector3 col_b_v(p_color_b.r, p_color_b.g, p_color_b.b);
+	const Vector3 light_color = col_a_v.lerp(col_b_v, 0.5);
+
+	for (int i = 0; i < 64; i++) {
+		if (td > 0.9 || t > 10.0 || sum.w > 0.99 || t > far_t) {
+			break;
+		}
+		const Vector3 pos = ro + rd * t;
+		real_t d = map_volume(pos);
+		if (p_hollow_ring) {
+			d = Math::abs(d) + real_t(0.07);
+		}
+		d = MAX(d, real_t(0.03));
+
+		const Vector3 ldst = -pos;
+		const real_t l_dist = MAX(ldst.length(), real_t(0.001));
+
+		const real_t bloom_term = real_t(1.0) / (Math::exp(l_dist * l_dist * l_dist * real_t(0.15)) * real_t(30.0));
+		sum.x += light_color.x * bloom_term;
+		sum.y += light_color.y * bloom_term;
+		sum.z += light_color.z * bloom_term;
+
+		if (d < h) {
+			ld = h - d;
+			w = (real_t(1.0) - td) * ld;
+			td += w + real_t(1.0 / 200.0);
+
+			const real_t clamped_td = CLAMP(td, real_t(0.0), real_t(1.0));
+			const Vector3 smoke_tint = col_a_v * real_t(0.35);
+			const Vector3 base_media = Vector3(1.0, 0.95, 0.9).lerp(smoke_tint, clamped_td);
+			const Vector3 col_center = col_b_v * real_t(7.0);
+			const Vector3 col_edge = col_a_v * real_t(1.5);
+			const real_t mix_factor = CLAMP((l_dist + real_t(0.05)) / real_t(0.9), real_t(0.0), real_t(1.0));
+			const Vector3 col_mix = col_center.lerp(col_edge, mix_factor);
+			const Vector3 c_color(base_media.x * col_mix.x, base_media.y * col_mix.y, base_media.z * col_mix.z);
+
+			VolumetricVec4 col(c_color.x, c_color.y, c_color.z, td);
+			const real_t emiss_factor = sum.w * p_emission * real_t(0.2) / l_dist;
+			sum.x += sum.x * emiss_factor;
+			sum.y += sum.y * emiss_factor;
+			sum.z += sum.z * emiss_factor;
+
+			col.w *= real_t(0.2);
+			col.x *= col.w;
+			col.y *= col.w;
+			col.z *= col.w;
+
+			sum.x += col.x * (real_t(1.0) - sum.w);
+			sum.y += col.y * (real_t(1.0) - sum.w);
+			sum.z += col.z * (real_t(1.0) - sum.w);
+			sum.w += col.w * (real_t(1.0) - sum.w);
+		}
+		td += real_t(1.0 / 70.0);
+		t += MAX(d * real_t(0.08) * MAX(MIN(l_dist, d), real_t(2.0)), real_t(0.01));
+	}
+
+	const real_t sc = (real_t(1.0) / Math::exp(ld * real_t(0.2))) * real_t(0.8);
+	sum.x = CLAMP(sum.x * sc, real_t(0.0), real_t(1.0));
+	sum.y = CLAMP(sum.y * sc, real_t(0.0), real_t(1.0));
+	sum.z = CLAMP(sum.z * sc, real_t(0.0), real_t(1.0));
+	sum.w = CLAMP(sum.w * sc, real_t(0.0), real_t(1.0));
+
+	sum.x = sum.x * sum.x * (real_t(3.0) - real_t(2.0) * sum.x);
+	sum.y = sum.y * sum.y * (real_t(3.0) - real_t(2.0) * sum.y);
+	sum.z = sum.z * sum.z * (real_t(3.0) - real_t(2.0) * sum.z);
+
+	const Vector3 tone = particle_texture_tonemap_filmic(Vector3(sum.x, sum.y, sum.z) * real_t(2.02));
+	real_t alpha = CLAMP(sum.w * real_t(1.6) * p_density, real_t(0.0), real_t(1.0));
+	if (p_contrast != 1.0) {
+		if (p_contrast > 1.0) {
+			alpha = Math::pow(alpha, real_t(1.0 / p_contrast));
+		} else {
+			alpha *= (real_t(0.5) + p_contrast * real_t(0.5));
+		}
+	}
+	return Color(tone.x, tone.y, tone.z, CLAMP(alpha, real_t(0.0), real_t(1.0)));
+}
+
+struct VolumetricExplosionScanlineContext {
+	Ref<Image> image;
+	int size = 0;
+	real_t time = 0.0;
+	bool hollow_ring = false;
+	real_t speed = 1.0;
+	real_t density = 1.0;
+	real_t emission = 1.0;
+	real_t detail = 1.0;
+	real_t contrast = 1.0;
+	real_t angle = 0.0;
+	bool polar_conversion = false;
+	Color color_a;
+	Color color_b;
+};
+
+static void _volumetric_explosion_row_worker(void *p_userdata, uint32_t p_row) {
+	VolumetricExplosionScanlineContext *ctx = static_cast<VolumetricExplosionScanlineContext *>(p_userdata);
+	const int py = int(p_row);
+	const int p_size = ctx->size;
+	real_t v = (real_t(py) + 0.5) / real_t(p_size);
+	for (int px = 0; px < p_size; px++) {
+		real_t u = (real_t(px) + 0.5) / real_t(p_size);
+		if (ctx->polar_conversion) {
+			const real_t x = (u - 0.5) * 2.0;
+			const real_t y = (v - 0.5) * 2.0;
+			const real_t r = Vector2(x, y).length();
+			const real_t angle = Math::atan2(y, x);
+			u = Math::fposmod(real_t(angle / Math::TAU + 0.5), real_t(1.0));
+			v = CLAMP(r, 0.0, 1.0);
+		}
+		const Color c = particle_texture_volumetric_explosion(u, v, ctx->time, ctx->hollow_ring, ctx->speed, ctx->density, ctx->emission, ctx->detail, ctx->contrast, ctx->angle, ctx->color_a, ctx->color_b);
+		ctx->image->set_pixel(px, py, c);
+	}
+}
+
 // Native, deterministic VFX texture recipe. It follows the publicly documented
 // workflow (procedural templates, time samples, sprite sheets and alpha) without
 // embedding or translating the website's shader source.
@@ -279,9 +507,37 @@ static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int 
 	Ref<Image> image;
 	image.instantiate();
 	image->initialize_data(p_size, p_size, false, Image::FORMAT_RGBA8);
+	const real_t detail_scale = CLAMP(p_detail, real_t(0.2), real_t(4.0));
+
+	if (p_preset == VFX_TEXTURE_EXPLOSION || p_preset == VFX_TEXTURE_EXPLOSION_RING) {
+		VolumetricExplosionScanlineContext ctx;
+		ctx.image = image;
+		ctx.size = p_size;
+		ctx.time = p_time;
+		ctx.hollow_ring = (p_preset == VFX_TEXTURE_EXPLOSION_RING);
+		ctx.speed = p_speed;
+		ctx.density = p_density;
+		ctx.emission = p_emission;
+		ctx.detail = detail_scale;
+		ctx.contrast = p_contrast;
+		ctx.angle = p_angle;
+		ctx.polar_conversion = p_polar_conversion;
+		ctx.color_a = p_color_a;
+		ctx.color_b = p_color_b;
+
+		if (p_size >= 64 && WorkerThreadPool::get_singleton()) {
+			WorkerThreadPool::GroupID group = WorkerThreadPool::get_singleton()->add_native_group_task(
+					_volumetric_explosion_row_worker, &ctx, p_size, -1, true, "VFX Volumetric Explosion Scanlines");
+			WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group);
+		} else {
+			for (int y = 0; y < p_size; y++) {
+				_volumetric_explosion_row_worker(&ctx, y);
+			}
+		}
+		return image;
+	}
 	const real_t effective_time = p_time * p_speed;
 	const real_t phase = Math::fposmod(effective_time, real_t(1.0));
-	const real_t detail_scale = CLAMP(p_detail, real_t(0.2), real_t(4.0));
 	for (int py = 0; py < p_size; py++) {
 		real_t v = (real_t(py) + 0.5) / p_size;
 		for (int px = 0; px < p_size; px++) {
@@ -310,7 +566,6 @@ static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int 
 				y = (v - 0.5) * 2.0;
 			}
 
-			const real_t h = 1.0 - v;
 			real_t noise = 0.0;
 			if (p_tiling) {
 				const real_t nu = Math::fposmod(u, real_t(1.0));
@@ -375,64 +630,6 @@ static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int 
 
 				alpha = CLAMP(density * real_t(1.6), real_t(0.0), real_t(0.88)) * CLAMP((real_t(1.0) - radius) * real_t(3.5), real_t(0.0), real_t(1.0));
 				color_mix = CLAMP(shadow * (real_t(0.3) + billow * real_t(0.7)), real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_EXPLOSION) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t z = (radius < real_t(1.0)) ? Math::sqrt(real_t(1.0) - radius * radius) : real_t(0.0);
-
-				const real_t p_scale = real_t(3.5) * detail_scale;
-				const real_t s1 = particle_texture_spiral(z * p_scale * real_t(0.4132) + real_t(333.0),
-						x * p_scale * real_t(0.4132) + real_t(333.0),
-						y * p_scale * real_t(0.4132) + real_t(333.0), phase, p_speed);
-
-				const real_t s2 = particle_texture_spiral(x * p_scale * real_t(2.1) * real_t(0.4132) + real_t(123.0),
-						y * p_scale * real_t(2.1) * real_t(0.4132) + real_t(456.0),
-						z * p_scale * real_t(2.1) * real_t(0.4132) + real_t(789.0), phase * real_t(1.4), p_speed);
-
-				const real_t norm_s1 = CLAMP((s1 + real_t(2.2)) / real_t(1.1), real_t(0.0), real_t(1.0));
-				const real_t norm_s2 = CLAMP((s2 + real_t(2.2)) / real_t(1.1), real_t(0.0), real_t(1.0));
-
-				const real_t ridge1 = Math::pow(CLAMP(real_t(1.0) - Math::abs(norm_s1 - real_t(0.5)) * real_t(2.2), real_t(0.0), real_t(1.0)), real_t(2.4));
-				const real_t ridge2 = Math::pow(CLAMP(real_t(1.0) - Math::abs(norm_s2 - real_t(0.5)) * real_t(2.5), real_t(0.0), real_t(1.0)), real_t(1.8));
-
-				const real_t shell = Math::exp(-Math::pow((radius - real_t(0.52)) / real_t(0.22), real_t(2.0)));
-				const real_t core_bloom = Math::exp(-Math::pow(radius / real_t(0.38), real_t(2.0))) * real_t(0.45);
-
-				real_t fire = shell * (ridge1 * real_t(1.8) + ridge2 * real_t(1.1) + real_t(0.15)) + core_bloom * (real_t(0.6) + ridge1 * real_t(0.4));
-				const real_t soot_mask = CLAMP(real_t(1.0) - (ridge1 * real_t(0.7) + ridge2 * real_t(0.5)), real_t(0.0), real_t(1.0));
-				fire -= soot_mask * real_t(0.35) * CLAMP(radius / real_t(0.6), real_t(0.0), real_t(1.0));
-
-				const real_t fade = CLAMP((real_t(0.98) - radius) * real_t(4.0), real_t(0.0), real_t(1.0));
-				fire = CLAMP(fire * fade, real_t(0.0), real_t(1.2));
-
-				alpha = CLAMP(fire * real_t(1.5), real_t(0.0), real_t(1.0)) * fade;
-				color_mix = CLAMP(fire, real_t(0.0), real_t(1.0));
-			} else if (p_preset == VFX_TEXTURE_EXPLOSION_RING) {
-				const real_t radius = Vector2(x, y).length();
-				const real_t z = (radius < real_t(1.0)) ? Math::sqrt(real_t(1.0) - radius * radius) : real_t(0.0);
-				const real_t shell_dist = Math::abs(radius - real_t(0.58));
-				const real_t shell = Math::exp(-Math::pow(shell_dist / real_t(0.16), real_t(2.0)));
-
-				const real_t p_scale = real_t(3.5) * detail_scale;
-				const real_t s1 = particle_texture_spiral(z * p_scale * real_t(0.4132) + real_t(333.0),
-						x * p_scale * real_t(0.4132) + real_t(333.0),
-						y * p_scale * real_t(0.4132) + real_t(333.0), phase * real_t(1.2), p_speed);
-				const real_t s2 = particle_texture_spiral(x * p_scale * real_t(2.5) * real_t(0.4132) + real_t(111.0),
-						y * p_scale * real_t(2.5) * real_t(0.4132) + real_t(222.0),
-						z * p_scale * real_t(2.5) * real_t(0.4132) + real_t(333.0), phase * real_t(2.0), p_speed);
-
-				const real_t norm_s1 = CLAMP((s1 + real_t(2.2)) / real_t(1.1), real_t(0.0), real_t(1.0));
-				const real_t norm_s2 = CLAMP((s2 + real_t(2.2)) / real_t(1.1), real_t(0.0), real_t(1.0));
-
-				const real_t ridge1 = Math::pow(CLAMP(real_t(1.0) - Math::abs(norm_s1 - real_t(0.5)) * real_t(2.2), real_t(0.0), real_t(1.0)), real_t(2.5));
-				const real_t ridge2 = Math::pow(CLAMP(real_t(1.0) - Math::abs(norm_s2 - real_t(0.5)) * real_t(2.4), real_t(0.0), real_t(1.0)), real_t(2.0));
-
-				const real_t inner_bloom = Math::exp(-Math::pow(radius / real_t(0.28), real_t(2.0))) * real_t(0.35) * norm_s1;
-				real_t fire = shell * (real_t(0.15) + ridge1 * real_t(2.0) + ridge2 * real_t(1.2)) + inner_bloom;
-				const real_t fade = CLAMP((real_t(0.98) - radius) * real_t(4.5), real_t(0.0), real_t(1.0));
-				fire *= fade;
-
-				alpha = CLAMP(fire * real_t(1.5), real_t(0.0), real_t(1.0)) * fade;
-				color_mix = CLAMP(fire, real_t(0.0), real_t(1.0));
 			} else if (p_preset == VFX_TEXTURE_SPARK) {
 				const real_t angle = phase * real_t(Math::TAU);
 				const real_t center_line = real_t(0.5) + real_t(0.55) * (real_t(0.5) - v) + Math::sin(angle) * real_t(0.12);
@@ -514,7 +711,7 @@ static Ref<Image> generate_particle_texture_frame(int p_size, int p_preset, int 
 				const real_t ring_radius = real_t(0.10) + phase * real_t(0.65);
 				const real_t ring_thick = real_t(0.03) + phase * real_t(0.03);
 				const real_t dist_to_crest = radius - ring_radius;
-				const real_t shock_front = real_t(1.0) / (real_t(1.0) + Math::abs(dist_to_crest) * real_t(35.0));
+				const real_t shock_front = real_t(1.0) / (real_t(1.0) + Math::abs(dist_to_crest) / MAX(real_t(0.001), ring_thick * real_t(1.2)));
 				const real_t trailing_ripple = (dist_to_crest < 0.0) ? Math::sin(dist_to_crest * real_t(42.0)) * Math::exp(dist_to_crest * real_t(9.0)) : real_t(0.0);
 				const real_t wave_fbm = particle_texture_fbm(x * real_t(7.0) * detail_scale, y * real_t(7.0) * detail_scale, p_seed, 4);
 
