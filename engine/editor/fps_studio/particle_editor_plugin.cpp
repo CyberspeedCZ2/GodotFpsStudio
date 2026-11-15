@@ -1342,7 +1342,18 @@ static Color vfx_color_from_array(const float *p_color) {
 
 void FPSStudioParticleEditorPlugin::_show_texture_generator() {
 	if (texture_generator_dialog) {
-		texture_generator_dialog->popup_centered_clamped(Size2i(1280, 820) * EDSCALE, 0.9);
+		// Opens at the size the user last gave it.
+		const Size2i size = (texture_generator_size.x > 0 && texture_generator_size.y > 0) ? texture_generator_size : Size2i(Size2i(1280, 820) * EDSCALE);
+		texture_generator_dialog->popup_centered_clamped(size, 0.95);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_texture_generator_visibility_changed() {
+	if (texture_generator_dialog && !texture_generator_dialog->is_visible()) {
+		texture_generator_size = texture_generator_dialog->get_size();
+		if (EditorNode::get_singleton()) {
+			EditorNode::get_singleton()->save_editor_layout_delayed();
+		}
 	}
 }
 
@@ -4470,6 +4481,8 @@ void FPSStudioParticleEditorPlugin::make_visible(bool p_visible) {
 	// while another workspace is active and detach it again on return.
 	if (!p_visible && _is_bottom_floating()) {
 		bottom_float_on_return = true;
+		bottom_window_rect = bottom_window_wrapper->get_window_rect();
+		bottom_window_screen = bottom_window_wrapper->get_window_screen();
 		bottom_window_wrapper->set_window_enabled(false);
 	} else if (p_visible && bottom_float_on_return) {
 		bottom_float_on_return = false;
@@ -4499,29 +4512,49 @@ void FPSStudioParticleEditorPlugin::edited_scene_changed() {
 }
 
 void FPSStudioParticleEditorPlugin::set_window_layout(Ref<ConfigFile> p_layout) {
+	// Without a saved layout (first start) the workspace keeps its defaults;
+	// afterwards every panel, split, tab and window comes back as the user
+	// left it.
 	if (p_layout.is_null() || !p_layout->has_section("ParticleWorkspace")) {
 		return;
 	}
-	// Side panels keep their state; the preview and the Timeline always come
-	// back on start so a freshly opened workspace is never missing them.
-	show_left_panel = p_layout->get_value("ParticleWorkspace", "show_emitters", true);
-	show_right_panel = p_layout->get_value("ParticleWorkspace", "show_properties", true);
-	show_library_panel = p_layout->get_value("ParticleWorkspace", "show_library", false);
-	show_preview_panel = true;
-	show_bottom_panel = true;
+	const String section = "ParticleWorkspace";
+	show_left_panel = p_layout->get_value(section, "show_emitters", true);
+	show_right_panel = p_layout->get_value(section, "show_properties", true);
+	show_library_panel = p_layout->get_value(section, "show_library", false);
+	show_preview_panel = p_layout->get_value(section, "show_preview", true);
+	show_bottom_panel = p_layout->get_value(section, "show_timeline", true);
+	if (!show_preview_panel && !show_bottom_panel) {
+		show_preview_panel = true; // The center column always shows something.
+	}
 	if (bottom_tabs) {
-		bottom_tabs->set_current_tab(PARTICLE_BOTTOM_TAB_TIMELINE);
+		const int tab = p_layout->get_value(section, "bottom_tab", int(PARTICLE_BOTTOM_TAB_TIMELINE));
+		bottom_tabs->set_current_tab(CLAMP(tab, 0, bottom_tabs->get_tab_count() - 1));
+	}
+	bottom_window_rect = p_layout->get_value(section, "timeline_window_rect", Rect2i());
+	bottom_window_screen = p_layout->get_value(section, "timeline_window_screen", -1);
+	texture_generator_size = p_layout->get_value(section, "texture_generator_size", Size2i());
+	// A detached Timeline & Logic window is detached again when the
+	// workspace is shown (it docks while another workspace is active).
+	if (p_layout->get_value(section, "timeline_floating", false) && show_bottom_panel) {
+		if (screen && screen->is_visible_in_tree()) {
+			callable_mp(this, &FPSStudioParticleEditorPlugin::_toggle_bottom_floating).call_deferred();
+		} else {
+			bottom_float_on_return = true;
+		}
 	}
 	_apply_panel_visibility();
-	if (!p_layout->has_section_key("ParticleWorkspace", "main_split_ratio") ||
-			!p_layout->has_section_key("ParticleWorkspace", "properties_split_ratio") ||
-			!p_layout->has_section_key("ParticleWorkspace", "logic_split_ratio")) {
+	if (!p_layout->has_section_key(section, "main_split_ratio") ||
+			!p_layout->has_section_key(section, "properties_split_ratio") ||
+			!p_layout->has_section_key(section, "logic_split_ratio")) {
 		return;
 	}
-	panel_layout_main_ratio = p_layout->get_value("ParticleWorkspace", "main_split_ratio", 0.0);
-	panel_layout_properties_ratio = p_layout->get_value("ParticleWorkspace", "properties_split_ratio", 0.0);
-	panel_layout_logic_ratio = p_layout->get_value("ParticleWorkspace", "logic_split_ratio", 0.0);
+	panel_layout_main_ratio = p_layout->get_value(section, "main_split_ratio", 0.0);
+	panel_layout_properties_ratio = p_layout->get_value(section, "properties_split_ratio", 0.0);
+	panel_layout_logic_ratio = p_layout->get_value(section, "logic_split_ratio", 0.0);
 	panel_layout_pending = true;
+	// Applied once the workspace has a size: the editor often starts on
+	// another workspace, so this also runs when the splits are resized.
 	callable_mp(this, &FPSStudioParticleEditorPlugin::_restore_panel_layout).call_deferred();
 }
 
@@ -4529,18 +4562,47 @@ void FPSStudioParticleEditorPlugin::get_window_layout(Ref<ConfigFile> p_layout) 
 	if (p_layout.is_null() || !main_panel_split || !preview_properties_split || !preview_logic_split) {
 		return;
 	}
-	p_layout->set_value("ParticleWorkspace", "show_emitters", show_left_panel);
-	p_layout->set_value("ParticleWorkspace", "show_properties", show_right_panel);
-	p_layout->set_value("ParticleWorkspace", "show_library", show_library_panel);
+	const String section = "ParticleWorkspace";
+	p_layout->set_value(section, "show_emitters", show_left_panel);
+	p_layout->set_value(section, "show_properties", show_right_panel);
+	p_layout->set_value(section, "show_library", show_library_panel);
+	p_layout->set_value(section, "show_preview", show_preview_panel);
+	p_layout->set_value(section, "show_timeline", show_bottom_panel);
+	if (bottom_tabs) {
+		p_layout->set_value(section, "bottom_tab", bottom_tabs->get_current_tab());
+	}
+	const bool floating = _is_bottom_floating() || bottom_float_on_return;
+	p_layout->set_value(section, "timeline_floating", floating);
+	if (_is_bottom_floating()) {
+		bottom_window_rect = bottom_window_wrapper->get_window_rect();
+		bottom_window_screen = bottom_window_wrapper->get_window_screen();
+	}
+	if (bottom_window_rect.has_area()) {
+		p_layout->set_value(section, "timeline_window_rect", bottom_window_rect);
+		p_layout->set_value(section, "timeline_window_screen", bottom_window_screen);
+	}
+	if (texture_generator_dialog && texture_generator_dialog->is_visible()) {
+		texture_generator_size = texture_generator_dialog->get_size();
+	}
+	if (texture_generator_size.x > 0 && texture_generator_size.y > 0) {
+		p_layout->set_value(section, "texture_generator_size", texture_generator_size);
+	}
+	if (panel_layout_pending) {
+		// Not applied yet (the workspace was never shown): keep the saved split.
+		p_layout->set_value(section, "main_split_ratio", panel_layout_main_ratio);
+		p_layout->set_value(section, "properties_split_ratio", panel_layout_properties_ratio);
+		p_layout->set_value(section, "logic_split_ratio", panel_layout_logic_ratio);
+		return;
+	}
 	const real_t main_extent = main_panel_split->get_size().width;
 	const real_t properties_extent = preview_properties_split->get_size().width;
 	const real_t logic_extent = preview_logic_split->get_size().height;
 	if (main_extent <= 0.0 || properties_extent <= 0.0 || logic_extent <= 0.0) {
-		return;
+		return; // Hidden: the config keeps the previously saved ratios.
 	}
-	p_layout->set_value("ParticleWorkspace", "main_split_ratio", main_panel_split->get_split_offset() / main_extent);
-	p_layout->set_value("ParticleWorkspace", "properties_split_ratio", preview_properties_split->get_split_offset() / properties_extent);
-	p_layout->set_value("ParticleWorkspace", "logic_split_ratio", preview_logic_split->get_split_offset() / logic_extent);
+	p_layout->set_value(section, "main_split_ratio", main_panel_split->get_split_offset() / main_extent);
+	p_layout->set_value(section, "properties_split_ratio", preview_properties_split->get_split_offset() / properties_extent);
+	p_layout->set_value(section, "logic_split_ratio", preview_logic_split->get_split_offset() / logic_extent);
 }
 
 void FPSStudioParticleEditorPlugin::_restore_panel_layout() {
@@ -4550,16 +4612,19 @@ void FPSStudioParticleEditorPlugin::_restore_panel_layout() {
 	const real_t main_extent = main_panel_split->get_size().width;
 	const real_t properties_extent = preview_properties_split->get_size().width;
 	const real_t logic_extent = preview_logic_split->get_size().height;
-	if (main_extent <= 0.0 || properties_extent <= 0.0 || logic_extent <= 0.0) {
+	if (!main_panel_split->is_visible_in_tree() || main_extent <= 0.0 || properties_extent <= 0.0 || logic_extent <= 0.0) {
 		return;
 	}
+	// The workspace settles over a few resizes after it is first shown, and a
+	// split offset does not scale with its container. Keep re-applying the
+	// saved proportions on every resize until the user drags a split.
 	main_panel_split->set_split_offset(Math::round(panel_layout_main_ratio * main_extent));
 	preview_properties_split->set_split_offset(Math::round(panel_layout_properties_ratio * properties_extent));
 	preview_logic_split->set_split_offset(Math::round(panel_layout_logic_ratio * logic_extent));
-	panel_layout_pending = false;
 }
 
 void FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended() {
+	panel_layout_pending = false; // The user's split now wins over the saved one.
 	if (EditorNode::get_singleton()) {
 		EditorNode::get_singleton()->save_editor_layout_delayed();
 	}
@@ -4697,6 +4762,13 @@ void FPSStudioParticleEditorPlugin::_reset_panel_layout() {
 	show_preview_panel = true;
 	show_bottom_panel = true;
 	show_library_panel = false;
+	bottom_window_rect = Rect2i();
+	bottom_window_screen = -1;
+	texture_generator_size = Size2i();
+	panel_layout_pending = false;
+	if (bottom_tabs) {
+		bottom_tabs->set_current_tab(PARTICLE_BOTTOM_TAB_TIMELINE);
+	}
 	_apply_panel_visibility();
 	for (SplitContainer *split : { main_panel_split, preview_properties_split, preview_logic_split }) {
 		if (split) {
@@ -4740,8 +4812,19 @@ void FPSStudioParticleEditorPlugin::_toggle_bottom_floating() {
 		show_bottom_panel = true;
 		show_preview_panel = true;
 	}
-	bottom_window_wrapper->set_window_enabled(make_floating);
+	if (make_floating && bottom_window_rect.has_area()) {
+		bottom_window_wrapper->restore_window(bottom_window_rect, bottom_window_screen);
+	} else {
+		if (!make_floating) {
+			bottom_window_rect = bottom_window_wrapper->get_window_rect();
+			bottom_window_screen = bottom_window_wrapper->get_window_screen();
+		}
+		bottom_window_wrapper->set_window_enabled(make_floating);
+	}
 	_apply_panel_visibility();
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_on_bottom_window_visibility_changed(bool p_visible) {
@@ -4750,6 +4833,9 @@ void FPSStudioParticleEditorPlugin::_on_bottom_window_visibility_changed(bool p_
 		show_bottom_panel = true;
 	}
 	_apply_panel_visibility();
+	if (EditorNode::get_singleton() && !bottom_float_on_return) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_show_bottom_tab(int p_tab) {
@@ -4766,6 +4852,9 @@ void FPSStudioParticleEditorPlugin::_show_bottom_tab(int p_tab) {
 }
 
 void FPSStudioParticleEditorPlugin::_on_bottom_tab_changed(int p_tab) {
+	if (EditorNode::get_singleton()) {
+		EditorNode::get_singleton()->save_editor_layout_delayed();
+	}
 	// A node graph needs room: give Particle Logic about half of the column
 	// when it is shown, but never shrink a panel the user made larger.
 	const bool has_graph = particle_graph_editor && particle_graph_editor->is_visible();
@@ -4787,6 +4876,9 @@ void FPSStudioParticleEditorPlugin::_ensure_bottom_panel_share(real_t p_share) {
 	const real_t desired = total * p_share;
 	if (bottom_height >= desired - 1.0) {
 		return;
+	}
+	if (panel_layout_pending) {
+		_on_panel_split_drag_ended(); // Keep the restored splits; this one changes now.
 	}
 	preview_logic_split->set_split_offset(preview_logic_split->get_split_offset() - int(Math::round(desired - bottom_height)));
 	if (EditorNode::get_singleton()) {
@@ -4932,6 +5024,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	main_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	main_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	main_split->connect("drag_ended", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended));
+	// A saved split waits until the workspace first gets a size.
+	main_split->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_restore_panel_layout), CONNECT_DEFERRED);
 	workspace->add_child(main_split);
 
 	VBoxContainer *left_panel = memnew(VBoxContainer);
@@ -5026,6 +5120,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	center_right_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	center_right_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	center_right_split->connect("drag_ended", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended));
+	center_right_split->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_restore_panel_layout), CONNECT_DEFERRED);
 	main_split->add_child(center_right_split);
 
 	VSplitContainer *center_split = memnew(VSplitContainer);
@@ -5033,6 +5128,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	center_split->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	center_split->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	center_split->connect("drag_ended", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_panel_split_drag_ended));
+	center_split->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_restore_panel_layout), CONNECT_DEFERRED);
 	center_right_split->add_child(center_split);
 
 	VBoxContainer *preview_panel = memnew(VBoxContainer);
@@ -5642,6 +5738,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	rename_effect_dialog->register_text_enter(rename_effect_line_edit);
 
 	texture_generator_dialog = memnew(AcceptDialog);
+	texture_generator_dialog->connect(SceneStringName(visibility_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_texture_generator_visibility_changed));
 	texture_generator_dialog->set_title(TTR("VFX Texture Generator"));
 	texture_generator_dialog->set_min_size(Size2(1080, 700) * EDSCALE);
 	texture_generator_dialog->get_ok_button()->hide();

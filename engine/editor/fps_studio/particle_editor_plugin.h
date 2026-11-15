@@ -265,6 +265,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool show_preview_panel = true;
 	bool show_bottom_panel = true;
 	bool bottom_float_on_return = false;
+	Rect2i bottom_window_rect; // Last rect of the detached Timeline & Logic window.
+	int bottom_window_screen = -1;
+	Size2i texture_generator_size; // Last size of the Texture Generator dialog.
 	bool compact_layout = false;
 	bool applying_workspace_theme = false;
 	real_t wide_layout_min_width = 0.0;
@@ -437,6 +440,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_save_scene_pressed();
 	void _save_emitter_scene(const String &p_path);
 	void _load_particle_scene(const String &p_path);
+	void _on_texture_generator_visibility_changed();
 	void _request_load_particle_scene(const String &p_path);
 	void _confirm_replace_document();
 	void _add_effect_to_level();
