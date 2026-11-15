@@ -10,6 +10,14 @@
 		<link title="Third Person Shooter (TPS) Demo">https://godotengine.org/asset-library/asset/2710</link>
 	</tutorials>
 	<methods>
+		<method name="add_shake_offset">
+			<return type="void" />
+			<param index="0" name="rotation" type="Vector3" />
+			<param index="1" name="translation" type="Vector3" />
+			<description>
+				Adds an additive view offset used for camera shakes: [param rotation] is a local Euler rotation in radians (pitch, yaw, roll) and [param translation] a local movement in meters. The offset is applied on top of the node's transform when rendering and is not saved. Remove it again by adding the negated values. [CameraShake3D] uses this, so shakes from several sources combine.
+			</description>
+		</method>
 		<method name="clear_current">
 			<return type="void" />
 			<param index="0" name="enable_next" type="bool" default="true" />
@@ -52,6 +60,18 @@
 			<return type="RID" />
 			<description>
 				Returns the RID of a pyramid shape encompassing the camera's view frustum, ignoring the camera's near plane. The tip of the pyramid represents the position of the camera.
+			</description>
+		</method>
+		<method name="get_shake_rotation" qualifiers="const">
+			<return type="Vector3" />
+			<description>
+				Returns the current total shake rotation in radians added with [method add_shake_offset].
+			</description>
+		</method>
+		<method name="get_shake_translation" qualifiers="const">
+			<return type="Vector3" />
+			<description>
+				Returns the current total shake translation in meters added with [method add_shake_offset].
 			</description>
 		</method>
 		<method name="is_position_behind" qualifiers="const">

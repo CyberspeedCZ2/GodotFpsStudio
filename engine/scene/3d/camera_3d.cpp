@@ -267,6 +267,10 @@ Transform3D Camera3D::_get_adjusted_camera_transform(const Transform3D &p_xform)
 	Transform3D tr = p_xform.orthonormalized();
 	tr.origin += tr.basis.get_column(1) * v_offset;
 	tr.origin += tr.basis.get_column(0) * h_offset;
+	if (shake_rotation != Vector3() || shake_translation != Vector3()) {
+		tr.origin += tr.basis.xform(shake_translation);
+		tr.basis = tr.basis * Basis::from_euler(shake_rotation);
+	}
 	return tr;
 }
 
@@ -658,6 +662,9 @@ void Camera3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_h_offset"), &Camera3D::get_h_offset);
 	ClassDB::bind_method(D_METHOD("set_v_offset", "offset"), &Camera3D::set_v_offset);
 	ClassDB::bind_method(D_METHOD("get_v_offset"), &Camera3D::get_v_offset);
+	ClassDB::bind_method(D_METHOD("add_shake_offset", "rotation", "translation"), &Camera3D::add_shake_offset);
+	ClassDB::bind_method(D_METHOD("get_shake_rotation"), &Camera3D::get_shake_rotation);
+	ClassDB::bind_method(D_METHOD("get_shake_translation"), &Camera3D::get_shake_translation);
 	ClassDB::bind_method(D_METHOD("set_cull_mask", "mask"), &Camera3D::set_cull_mask);
 	ClassDB::bind_method(D_METHOD("get_cull_mask"), &Camera3D::get_cull_mask);
 	ClassDB::bind_method(D_METHOD("set_environment", "env"), &Camera3D::set_environment);
@@ -828,6 +835,24 @@ void Camera3D::set_h_offset(real_t p_offset) {
 
 real_t Camera3D::get_h_offset() const {
 	return h_offset;
+}
+
+void Camera3D::add_shake_offset(const Vector3 &p_rotation, const Vector3 &p_translation) {
+	shake_rotation += p_rotation;
+	shake_translation += p_translation;
+	if (shake_rotation.is_zero_approx() && shake_translation.is_zero_approx()) {
+		shake_rotation = Vector3();
+		shake_translation = Vector3();
+	}
+	_update_camera();
+}
+
+Vector3 Camera3D::get_shake_rotation() const {
+	return shake_rotation;
+}
+
+Vector3 Camera3D::get_shake_translation() const {
+	return shake_translation;
 }
 
 Vector3 Camera3D::get_doppler_tracked_velocity() const {

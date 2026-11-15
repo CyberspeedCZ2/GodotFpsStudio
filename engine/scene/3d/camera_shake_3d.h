@@ -17,20 +17,28 @@
 class CameraShake3D : public Node3D {
 	GDCLASS(CameraShake3D, Node3D);
 
-	real_t strength = 0.25;
-	real_t frequency = 22.0;
-	double duration = 0.5;
-	real_t radius = 20.0;
+	real_t strength = 0.6;
+	real_t frequency = 18.0;
+	double duration = 0.6;
+	real_t radius = 30.0;
+	real_t inner_radius = 4.0;
+	Vector3 max_rotation_degrees = Vector3(3.0, 3.0, 4.0);
+	real_t max_offset = 0.03;
 
 	bool active = false;
 	double elapsed = 0.0;
-	real_t applied_strength = 0.0;
+	double pending_time = 0.0;
+	real_t intensity = 0.0;
 	ObjectID camera_id;
-	real_t camera_h_offset = 0.0;
-	real_t camera_v_offset = 0.0;
+	Vector3 applied_rotation;
+	Vector3 applied_translation;
 	uint32_t noise_seed = 0;
 
-	void _restore_camera();
+	Camera3D *_get_shaken_camera() const;
+	real_t _get_falloff(const Camera3D *p_camera) const;
+	bool _try_start();
+	void _apply_offset(const Vector3 &p_rotation, const Vector3 &p_translation);
+	void _update_processing();
 
 protected:
 	void _notification(int p_what);
@@ -45,6 +53,12 @@ public:
 	double get_duration() const;
 	void set_radius(real_t p_radius);
 	real_t get_radius() const;
+	void set_inner_radius(real_t p_radius);
+	real_t get_inner_radius() const;
+	void set_max_rotation_degrees(const Vector3 &p_degrees);
+	Vector3 get_max_rotation_degrees() const;
+	void set_max_offset(real_t p_offset);
+	real_t get_max_offset() const;
 
 	void shake();
 	void stop();

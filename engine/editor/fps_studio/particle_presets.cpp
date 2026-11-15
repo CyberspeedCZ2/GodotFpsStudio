@@ -170,11 +170,12 @@ void add_light(ParticleEffect3D *p_effect, const String &p_name, const Color &p_
 	light->set_owner(p_effect);
 }
 
-void add_camera_shake(ParticleEffect3D *p_effect, real_t p_strength, double p_duration, real_t p_radius, double p_delay) {
+void add_camera_shake(ParticleEffect3D *p_effect, real_t p_strength, double p_duration, real_t p_inner_radius, real_t p_radius, double p_delay) {
 	CameraShake3D *shake = memnew(CameraShake3D);
 	shake->set_name("CameraShake");
 	shake->set_strength(p_strength);
 	shake->set_duration(p_duration);
+	shake->set_inner_radius(p_inner_radius);
 	shake->set_radius(p_radius);
 	ParticleEffect3D::set_emitter_delay(shake, p_delay);
 	p_effect->add_child(shake, true);
@@ -260,7 +261,7 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	r_textures.push_back(make_texture(smoke.node, VFXTextureGenerator::TYPE_SMOKE, "smoke_puff", 256));
 
 	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
-	add_camera_shake(p_effect, 0.35, 0.6, 30.0, 0.0);
+	add_camera_shake(p_effect, 0.85, 0.75, 6.0, 35.0, 0.0);
 }
 
 void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {

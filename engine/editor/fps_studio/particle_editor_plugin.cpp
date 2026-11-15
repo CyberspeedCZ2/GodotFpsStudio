@@ -3694,6 +3694,87 @@ void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
 		button->set_button_icon(button->get_editor_theme_icon(StringName(String(button->get_meta("icon_name")))));
 	}
 	_apply_compact_layout();
+	_apply_workspace_theme();
+}
+
+void FPSStudioParticleEditorPlugin::_apply_workspace_theme() {
+	// Setting an override on the workspace root emits its theme_changed signal,
+	// which calls back into here; ignore that re-entry.
+	if (applying_workspace_theme || !screen || !screen->is_inside_tree()) {
+		return;
+	}
+	applying_workspace_theme = true;
+	// Colors come from the active editor theme so the workspace matches the
+	// rest of Godot in any theme: panels use the base (dock) color on top of
+	// the darker editor background, separated by the split gaps.
+	const Color background = screen->get_theme_color(SNAME("background"), EditorStringName(Editor));
+	const Color surface = screen->get_theme_color(SNAME("base_color"), EditorStringName(Editor));
+	const Color accent = screen->get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
+	const Color mono = screen->get_theme_color(SNAME("mono_color"), EditorStringName(Editor));
+	const Color font = screen->get_theme_color(SceneStringName(font_color), EditorStringName(Editor));
+	const real_t radius = 4 * EDSCALE;
+	const real_t margin = 4 * EDSCALE;
+	auto make_surface = [&](const Color &p_color, real_t p_radius, real_t p_margin_h, real_t p_margin_v) {
+		Ref<StyleBoxFlat> style;
+		style.instantiate();
+		style->set_bg_color(p_color);
+		style->set_corner_radius_all(p_radius);
+		style->set_content_margin_individual(p_margin_h, p_margin_v, p_margin_h, p_margin_v);
+		style->set_border_width_all(Math::round(EDSCALE));
+		style->set_border_color(Color(mono, 0.06));
+		return style;
+	};
+
+	Ref<StyleBoxFlat> root_style = make_surface(background, 0, margin, margin);
+	root_style->set_border_width_all(0);
+	workspace_background->add_theme_style_override(SceneStringName(panel), root_style);
+	if (Control *workspace = Object::cast_to<Control>(workspace_background->get_child(0))) {
+		workspace->add_theme_constant_override("separation", Math::round(margin));
+	}
+	document_toolbar_surface->add_theme_style_override(SceneStringName(panel), make_surface(surface, radius, 8 * EDSCALE, 2 * EDSCALE));
+	const Ref<StyleBoxFlat> panel_style = make_surface(surface, radius, margin, margin);
+	left_surface->add_theme_style_override(SceneStringName(panel), panel_style);
+	preview_surface->add_theme_style_override(SceneStringName(panel), panel_style);
+	right_surface->add_theme_style_override(SceneStringName(panel), panel_style);
+	if (bottom_tabs) {
+		Ref<StyleBoxFlat> tabs_panel = make_surface(surface, 0, margin, margin);
+		tabs_panel->set_corner_radius(CORNER_BOTTOM_LEFT, radius);
+		tabs_panel->set_corner_radius(CORNER_BOTTOM_RIGHT, radius);
+		bottom_tabs->add_theme_style_override(SceneStringName(panel), tabs_panel);
+		Ref<StyleBoxFlat> tabbar = make_surface(surface.lerp(background, 0.45), 0, 0, 0);
+		tabbar->set_corner_radius(CORNER_TOP_LEFT, radius);
+		tabbar->set_corner_radius(CORNER_TOP_RIGHT, radius);
+		bottom_tabs->add_theme_style_override(SNAME("tabbar_background"), tabbar);
+		Ref<StyleBoxFlat> tab_selected = make_surface(surface, 0, 12 * EDSCALE, 4 * EDSCALE);
+		tab_selected->set_border_width_all(0);
+		tab_selected->set_border_width(SIDE_TOP, Math::round(2 * EDSCALE));
+		tab_selected->set_border_color(accent);
+		tab_selected->set_corner_radius(CORNER_TOP_LEFT, radius);
+		tab_selected->set_corner_radius(CORNER_TOP_RIGHT, radius);
+		bottom_tabs->add_theme_style_override(SNAME("tab_selected"), tab_selected);
+		bottom_tabs->add_theme_color_override(SNAME("font_selected_color"), font);
+	}
+	if (emitter_tree) {
+		// Same selection look as the Model workspace: accent strip + tint.
+		Ref<StyleBoxFlat> selected;
+		selected.instantiate();
+		selected->set_bg_color(Color(accent, 0.2));
+		selected->set_border_width(SIDE_LEFT, Math::round(2 * EDSCALE));
+		selected->set_border_color(accent);
+		emitter_tree->add_theme_style_override(SNAME("selected"), selected);
+		emitter_tree->add_theme_style_override(SNAME("selected_focus"), selected);
+		emitter_tree->add_theme_color_override(SNAME("font_selected_color"), font);
+		Ref<StyleBoxEmpty> transparent;
+		transparent.instantiate();
+		emitter_tree->add_theme_style_override(SceneStringName(panel), transparent);
+		if (effects_tree) {
+			effects_tree->add_theme_style_override(SNAME("selected"), selected);
+			effects_tree->add_theme_style_override(SNAME("selected_focus"), selected);
+			effects_tree->add_theme_color_override(SNAME("font_selected_color"), font);
+			effects_tree->add_theme_style_override(SceneStringName(panel), transparent);
+		}
+	}
+	applying_workspace_theme = false;
 }
 
 void FPSStudioParticleEditorPlugin::_apply_preview_solo() {
@@ -4273,19 +4354,26 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_quad = create_particle_quad();
 	_load_recent_effects();
 
+	// The workspace sits on the editor background color; every panel is its
+	// own surface on top of it (see _apply_workspace_theme), like Godot's docks.
+	workspace_background = memnew(PanelContainer);
+	workspace_background->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	workspace_background->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	screen = workspace_background;
+	EditorNode::get_singleton()->get_editor_main_screen()->get_control()->add_child(workspace_background);
+	workspace_background->hide();
+	workspace_background->connect(SceneStringName(theme_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons));
+	workspace_background->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout));
 	VBoxContainer *workspace = memnew(VBoxContainer);
-	workspace->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	workspace->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	screen = workspace;
-	EditorNode::get_singleton()->get_editor_main_screen()->get_control()->add_child(workspace);
-	workspace->hide();
-	workspace->connect(SceneStringName(theme_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons));
-	workspace->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout));
+	workspace_background->add_child(workspace);
 
 	HBoxContainer *document_toolbar = memnew(HBoxContainer);
 	document_toolbar->set_custom_minimum_size(Size2(0, 34) * EDSCALE);
 	document_toolbar->connect("resized", callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout));
-	workspace->add_child(document_toolbar);
+	document_toolbar_surface = memnew(PanelContainer);
+	workspace->add_child(document_toolbar_surface);
+	document_toolbar_surface->add_child(document_toolbar);
 	document_title = memnew(Label);
 	document_title->add_theme_font_size_override(SceneStringName(font_size), 16 * EDSCALE);
 	document_title->set_h_size_flags(Control::SIZE_SHRINK_BEGIN);
@@ -4383,9 +4471,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	workspace->add_child(main_split);
 
 	VBoxContainer *left_panel = memnew(VBoxContainer);
-	left_panel_root = left_panel;
-	left_panel->set_custom_minimum_size(Size2(220, 0) * EDSCALE);
-	main_split->add_child(left_panel);
+	left_surface = memnew(PanelContainer);
+	left_panel_root = left_surface;
+	left_surface->set_custom_minimum_size(Size2(220, 0) * EDSCALE);
+	main_split->add_child(left_surface);
+	left_surface->add_child(left_panel);
 	HBoxContainer *emitter_header = memnew(HBoxContainer);
 	left_panel->add_child(emitter_header);
 	Label *emitter_title = memnew(Label);
@@ -4478,11 +4568,13 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	center_right_split->add_child(center_split);
 
 	VBoxContainer *preview_panel = memnew(VBoxContainer);
-	preview_panel_root = preview_panel;
-	preview_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	preview_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	preview_panel->set_stretch_ratio(2.4);
-	center_split->add_child(preview_panel);
+	preview_surface = memnew(PanelContainer);
+	preview_panel_root = preview_surface;
+	preview_surface->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	preview_surface->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	preview_surface->set_stretch_ratio(2.4);
+	center_split->add_child(preview_surface);
+	preview_surface->add_child(preview_panel);
 	HBoxContainer *preview_toolbar = memnew(HBoxContainer);
 	preview_panel->add_child(preview_toolbar);
 	selection_label = memnew(Label);
@@ -4822,11 +4914,13 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	logic_content->add_child(particle_logic_hint);
 
 	VBoxContainer *right_panel = memnew(VBoxContainer);
-	right_panel_root = right_panel;
-	right_panel->set_custom_minimum_size(Size2(360, 0) * EDSCALE);
-	right_panel->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	right_panel->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	center_right_split->add_child(right_panel);
+	right_surface = memnew(PanelContainer);
+	right_panel_root = right_surface;
+	right_surface->set_custom_minimum_size(Size2(360, 0) * EDSCALE);
+	right_surface->set_h_size_flags(Control::SIZE_EXPAND_FILL);
+	right_surface->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	center_right_split->add_child(right_surface);
+	right_surface->add_child(right_panel);
 	HBoxContainer *properties_mode_bar = memnew(HBoxContainer);
 	right_panel->add_child(properties_mode_bar);
 	Ref<ButtonGroup> properties_mode_group;

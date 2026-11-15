@@ -4,7 +4,9 @@
 		Shakes the active 3D camera for a short time.
 	</brief_description>
 	<description>
-		When [method shake] is called, the active [Camera3D] of the viewport is offset with smooth noise (through [member Camera3D.h_offset] and [member Camera3D.v_offset]) for [member duration] seconds. The intensity decays over time and falls off with the distance between this node and the camera. The original offsets are restored afterwards.
+		When [method shake] is called, the current [Camera3D] of the viewport is rotated (pitch, yaw and roll) and slightly moved with smooth noise for [member duration] seconds. The shake is applied through [method Camera3D.add_shake_offset], an additive view offset, so it works with any player controller and combines with the game's own camera motion (head bob, recoil) instead of overwriting it.
+		The intensity is [member strength] multiplied by the distance falloff: full strength within [member inner_radius], fading to zero at [member radius]. It decays smoothly over the duration.
+		If no camera is current yet when [method shake] is called (for example an effect with autoplay starting together with the level), the shake waits up to half a second for one.
 		As a child of a [ParticleEffect3D], it fires automatically at its start time (see [method ParticleEffect3D.set_emitter_delay]).
 	</description>
 	<tutorials>
@@ -19,28 +21,45 @@
 		<method name="shake">
 			<return type="void" />
 			<description>
-				Starts shaking the active camera. A new shake on the same camera keeps the stronger of the two.
+				Starts shaking the current camera. A new shake on the same camera keeps the stronger of the two.
 			</description>
 		</method>
 		<method name="stop">
 			<return type="void" />
 			<description>
-				Stops shaking and restores the camera offsets.
+				Stops shaking and removes this node's offset from the camera.
 			</description>
 		</method>
 	</methods>
 	<members>
-		<member name="duration" type="float" setter="set_duration" getter="get_duration" default="0.5">
+		<member name="duration" type="float" setter="set_duration" getter="get_duration" default="0.6">
 			Length of the shake in seconds.
 		</member>
-		<member name="frequency" type="float" setter="set_frequency" getter="get_frequency" default="22.0">
-			Speed of the shake noise in Hz.
+		<member name="frequency" type="float" setter="set_frequency" getter="get_frequency" default="18.0">
+			Speed of the shake noise in Hz. Low values sway, high values rattle.
 		</member>
-		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="20.0">
-			Distance at which the shake fades out completely. [code]0[/code] shakes at any distance.
+		<member name="inner_radius" type="float" setter="set_inner_radius" getter="get_inner_radius" default="4.0">
+			Distance from this node within which the camera shakes at full [member strength].
 		</member>
-		<member name="strength" type="float" setter="set_strength" getter="get_strength" default="0.25">
-			Maximum camera offset in meters at the start of the shake.
+		<member name="max_offset" type="float" setter="set_max_offset" getter="get_max_offset" default="0.03">
+			Maximum sideways and vertical camera movement in meters at full intensity.
+		</member>
+		<member name="max_rotation_degrees" type="Vector3" setter="set_max_rotation_degrees" getter="get_max_rotation_degrees" default="Vector3(3, 3, 4)">
+			Maximum camera rotation in degrees at full intensity: pitch (X), yaw (Y) and roll (Z).
+		</member>
+		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="30.0">
+			Distance at which the shake fades out completely. [code]0[/code] shakes at full strength at any distance.
+		</member>
+		<member name="strength" type="float" setter="set_strength" getter="get_strength" default="0.6">
+			Intensity of the shake from [code]0[/code] to [code]1[/code] (values above [code]1[/code] exaggerate it). It scales [member max_rotation_degrees] and [member max_offset].
 		</member>
 	</members>
+	<signals>
+		<signal name="shake_started">
+			<param index="0" name="intensity" type="float" />
+			<description>
+				Emitted when a shake starts, with the intensity after distance falloff. Connect it to drive extra game feedback such as controller rumble.
+			</description>
+		</signal>
+	</signals>
 </class>

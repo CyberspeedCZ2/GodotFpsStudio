@@ -238,6 +238,11 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	TabContainer *properties_tabs = nullptr;
 	TabContainer *bottom_tabs = nullptr;
 	Control *left_panel_root = nullptr;
+	PanelContainer *workspace_background = nullptr;
+	PanelContainer *document_toolbar_surface = nullptr;
+	PanelContainer *left_surface = nullptr;
+	PanelContainer *preview_surface = nullptr;
+	PanelContainer *right_surface = nullptr;
 	Control *right_panel_root = nullptr;
 	Control *preview_panel_root = nullptr;
 	Control *bottom_panel_root = nullptr;
@@ -256,6 +261,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool show_bottom_panel = true;
 	bool bottom_float_on_return = false;
 	bool compact_layout = false;
+	bool applying_workspace_theme = false;
 	real_t wide_layout_min_width = 0.0;
 	Button *duplicate_emitter_button = nullptr;
 	Button *remove_emitter_button = nullptr;
@@ -434,6 +440,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _toggle_bottom_maximized();
 	void _on_bottom_close_pressed();
 	void _apply_compact_layout();
+	void _apply_workspace_theme();
 	void _toggle_bottom_floating();
 	void _on_bottom_window_visibility_changed(bool p_visible);
 	void _on_bottom_tab_changed(int p_tab);

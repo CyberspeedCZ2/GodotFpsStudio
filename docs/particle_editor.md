@@ -10,6 +10,8 @@ Při návrhu práce s efekty zohledňujeme také [tutoriál ohně a jisker od Le
 
 ## Rozložení
 
+Vzhled používá barvy aktuálního motivu Godotu: pozadí workspace má barvu pozadí editoru a každý panel (horní lišta, Emitters, náhled, Timeline & Logic, Properties) je samostatná plocha v barvě panelů s mezerou mezi nimi. Vybraná položka seznamu má akcentní proužek jako v Model workspace.
+
 Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 
 - **Horní lišta dokumentu:** název efektu (dvojklik přejmenuje), stav uložení, **New**, **Open...**, **Save** a **Add to Level**.
@@ -100,8 +102,10 @@ Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh
 | --- | --- | --- |
 | Light Flash | `OmniLight3D` (funguje i `SpotLight3D`) | intenzita sleduje křivku **Intensity over Time** během délky; délka 0 = trvale svítí; **Flicker** přidá mihotání |
 | Sound | `AudioStreamPlayer3D` | přehraje se jednou ve svém čase; **Pitch Random** náhodně mění výšku |
-| Camera Shake | `CameraShake3D` | otřese aktivní kamerou (síla, frekvence, délka, dosah) |
+| Camera Shake | `CameraShake3D` | otřese aktuální kamerou: náklon/otočení/převrácení a jemný posun (síla, délka, frekvence, max. rotace, max. posun, poloměr plné síly a útlumu) |
 | Decal | `Decal` | objeví se ve svém čase a během **Fade Out Part** zmizí; délka 0 = zůstane |
+
+Otřes kamery funguje v náhledu i ve hře bez úprav herního kódu. Engine ho přidává ke kameře jako samostatný posun pohledu (`Camera3D.add_shake_offset`), takže nepřepisuje rotaci, kterou nastavuje skript hráče, a sčítá se s pohupováním hlavy nebo zpětným rázem. **Strength** je 0–1 (trauma), plnou sílu má kamera do **Full Strength Radius**, k **Fade Out Radius** plynule slábne. Pokud efekt startuje současně s levelem a kamera ještě není aktivní, otřes na ni až 0,5 s počká. Signál `shake_started(intensity)` lze napojit na další odezvu ve hře (vibrace ovladače).
 
 Události mají v zásobníku vlastní kartu (čas, délka a vlastnosti) a v časové ose žlutou stopu. Světla a decaly efekt animuje přes intenzitu a průhlednost, takže viditelnost dál slouží jako přepínač ztlumení. Presety Explosion, Muzzle Flash a Impact Sparks obsahují záblesk světla, Explosion i otřes kamery a Fire trvalé mihotavé světlo.
 

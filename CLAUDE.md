@@ -40,6 +40,9 @@ Stav k 2026-11-15, větev `codex/black-default-fps-level` (pushnuto, poslední c
 - Uživatel potvrdil, že rozložení v GUI funguje dobře.
 - Effect Library je přesunutá do menu **Library** v horní liště, panel knihovny je ve výchozím stavu skrytý (`show_library` v layoutu). Seznam emitorů má barvy stop (`FPSParticleTimeline::get_track_color`) a sloupec s typem.
 - Zkratky Layout: `particle_workspace/*` přes `ED_SHORTCUT` (Alt+0–9 jako **fyzické** klávesy kvůli české klávesnici, kde je na „1“ znak „+“; přenastavitelné v Editor Settings → Shortcuts), přeposílá je MenuButton Layout, takže platí jen v Particle.
+- Vzhled: `_apply_workspace_theme` (barvy z motivu editoru: `background` pro pozadí, `base_color` pro panely, `accent_color` pro výběr a vybranou záložku). Pozor na re-entry: override na kořeni vyvolá theme_changed → hlídá `applying_workspace_theme` (bez něj se editor zasekl).
+- CameraShake3D 2.0: rotační trauma otřes přes nový `Camera3D::add_shake_offset` (aditivní, neukládá se), `inner_radius`, `max_rotation_degrees`, `max_offset`, čekání až 0,5 s na kameru, signál `shake_started`. Ověřeno headless runtime testem (`shake_test*.gd` ve scratchpadu).
+- Ve hře: uzel `Explosion` ve `fps_level.tscn` je stará vložená kopie bez LightFlash/CameraShake; uživatel ho má nahradit (efekt uložit jako .tscn a znovu Add to Level). Herní repo needitovat bez žádosti.
 - Inspirace od uživatele: Model workspace (záložky vlevo, svislé záložky vpravo) pro šetření místem.
 
 ## Co se právě řešilo

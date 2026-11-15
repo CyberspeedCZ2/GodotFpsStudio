@@ -468,9 +468,12 @@ void FPSParticleModuleStack::_build_event() {
 			break;
 		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
 			_add_row(MODULE_EVENT, TARGET_NODE, "strength", "strength", TTR("Strength"));
-			_add_row(MODULE_EVENT, TARGET_NODE, "frequency", "frequency", TTR("Frequency"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "duration", "duration", TTR("Duration"));
-			_add_row(MODULE_EVENT, TARGET_NODE, "radius", "radius", TTR("Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "frequency", "frequency", TTR("Frequency"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "max_rotation_degrees", "max_rotation_degrees", TTR("Max Rotation (Pitch, Yaw, Roll)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "max_offset", "max_offset", TTR("Max Offset"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "inner_radius", "inner_radius", TTR("Full Strength Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "radius", "radius", TTR("Fade Out Radius"));
 			break;
 		case ParticleEffect3D::EVENT_DECAL:
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s", 6.0);

@@ -73,6 +73,9 @@ private:
 	InterpolatedProperty<real_t> _far = 4000.0;
 	real_t v_offset = 0.0;
 	real_t h_offset = 0.0;
+	// Additive, unsaved view offset used by camera shakes (see CameraShake3D).
+	Vector3 shake_rotation;
+	Vector3 shake_translation;
 	KeepAspect keep_aspect = KEEP_HEIGHT;
 
 	RID camera;
@@ -200,6 +203,10 @@ public:
 
 	void set_h_offset(real_t p_offset);
 	real_t get_h_offset() const;
+
+	void add_shake_offset(const Vector3 &p_rotation, const Vector3 &p_translation);
+	Vector3 get_shake_rotation() const;
+	Vector3 get_shake_translation() const;
 
 	void set_doppler_tracking(DopplerTracking p_tracking);
 	DopplerTracking get_doppler_tracking() const;
