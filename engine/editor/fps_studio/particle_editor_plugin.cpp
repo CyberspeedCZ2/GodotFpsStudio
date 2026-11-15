@@ -34,6 +34,7 @@
 #include "editor/file_system/editor_file_system.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/gui/editor_spin_slider.h"
+#include "editor/gui/editor_toaster.h"
 #include "editor/gui/window_wrapper.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/curve_editor_plugin.h"
@@ -48,6 +49,9 @@
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
+#include "scene/3d/physics/character_body_3d.h"
+#include "servers/audio/audio_stream.h"
+#include "scene/3d/physics/rigid_body_3d.h"
 #include "scene/3d/light_3d.h"
 #include "scene/3d/decal.h"
 #include "scene/3d/camera_shake_3d.h"
@@ -2529,8 +2533,19 @@ void FPSStudioParticleEditorPlugin::_add_emitter(int p_type) {
 		_create_effect_document(p_type);
 		return;
 	}
+	_add_track_node(p_type >= PARTICLE_EVENT_LIGHT ? create_event_node(p_type) : create_particle_emitter(p_type, create_particle_quad()));
+}
+
+void FPSStudioParticleEditorPlugin::_add_track_node(Node3D *p_track) {
+	Node *effect = _get_effect_root();
+	if (!effect || !p_track) {
+		if (p_track) {
+			memdelete(p_track);
+		}
+		return;
+	}
 	Node *previous_emitter = _get_edited_emitter();
-	Node3D *emitter = p_type >= PARTICLE_EVENT_LIGHT ? create_event_node(p_type) : create_particle_emitter(p_type, create_particle_quad());
+	Node3D *emitter = p_track;
 	emitter->set_name(effect->prevalidate_child_name(emitter, emitter->get_name()));
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(vformat(TTR("Add %s to Particle Effect"), emitter->get_name()));
@@ -2544,6 +2559,191 @@ void FPSStudioParticleEditorPlugin::_add_emitter(int p_type) {
 	undo_redo->commit_action();
 	_set_edited_emitter(emitter);
 	_mark_document_dirty();
+}
+
+static Vector<String> get_dropped_audio_files(const Variant &p_data) {
+	Vector<String> files;
+	const Dictionary data = p_data;
+	if (String(data.get("type", "")) != "files") {
+		return files;
+	}
+	const Vector<String> paths = data.get("files", Vector<String>());
+	for (const String &path : paths) {
+		const String type = ResourceLoader::get_resource_type(path);
+		if (!type.is_empty() && ClassDB::is_parent_class(type, "AudioStream")) {
+			files.push_back(path);
+		}
+	}
+	return files;
+}
+
+bool FPSStudioParticleEditorPlugin::_can_drop_on_emitter_tree(const Point2 &p_point, const Variant &p_data) const {
+	return _get_effect_root() && !get_dropped_audio_files(p_data).is_empty();
+}
+
+void FPSStudioParticleEditorPlugin::_drop_on_emitter_tree(const Point2 &p_point, const Variant &p_data) {
+	const Vector<String> files = get_dropped_audio_files(p_data);
+	if (files.is_empty() || !_get_effect_root()) {
+		return;
+	}
+	// Dropped onto an existing Sound track: replace its sound.
+	TreeItem *item = emitter_tree->get_item_at_position(p_point);
+	if (item && files.size() == 1) {
+		AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(ObjectDB::get_instance(ObjectID(uint64_t(item->get_metadata(0)))));
+		Ref<AudioStream> stream = ResourceLoader::load(files[0]);
+		if (player && stream.is_valid()) {
+			EditorUndoRedoManager *undo_redo = get_undo_redo();
+			undo_redo->create_action(TTR("Set Sound"));
+			undo_redo->add_do_property(player, "stream", stream);
+			undo_redo->add_undo_property(player, "stream", player->get_stream());
+			undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", player);
+			undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", player);
+			undo_redo->commit_action();
+			_mark_document_dirty();
+			return;
+		}
+	}
+	for (const String &path : files) {
+		Ref<AudioStream> stream = ResourceLoader::load(path);
+		if (stream.is_null()) {
+			continue;
+		}
+		AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(create_event_node(PARTICLE_EVENT_SOUND));
+		player->set_stream(stream);
+		player->set_name(path.get_file().get_basename().to_pascal_case());
+		_add_track_node(player);
+	}
+}
+
+static void merge_level_mesh_bounds(Node *p_node, AABB &r_bounds, bool &r_has_bounds) {
+	// Moving things are not baked: they would leave ghost collision behind.
+	if (Object::cast_to<CharacterBody3D>(p_node) || Object::cast_to<RigidBody3D>(p_node) || Object::cast_to<ParticleEffect3D>(p_node) || Object::cast_to<GPUParticlesCollision3D>(p_node)) {
+		return;
+	}
+	if (MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node)) {
+		if (mesh_instance->is_visible_in_tree() && mesh_instance->get_mesh().is_valid()) {
+			const AABB bounds = mesh_instance->get_global_transform().xform(mesh_instance->get_aabb());
+			if (r_has_bounds) {
+				r_bounds.merge_with(bounds);
+			} else {
+				r_bounds = bounds;
+				r_has_bounds = true;
+			}
+		}
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		merge_level_mesh_bounds(p_node->get_child(i), r_bounds, r_has_bounds);
+	}
+}
+
+static void hide_dynamic_nodes(Node *p_node, Vector<Node3D *> &r_hidden) {
+	Node3D *node_3d = Object::cast_to<Node3D>(p_node);
+	if (node_3d && node_3d->is_visible() && (Object::cast_to<CharacterBody3D>(p_node) || Object::cast_to<RigidBody3D>(p_node) || Object::cast_to<ParticleEffect3D>(p_node))) {
+		node_3d->set_visible(false);
+		r_hidden.push_back(node_3d);
+		return;
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		hide_dynamic_nodes(p_node->get_child(i), r_hidden);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_bake_level_particle_collision() {
+	Node3D *level = Object::cast_to<Node3D>(EditorNode::get_singleton()->get_edited_scene());
+	if (!level) {
+		EditorNode::get_singleton()->show_warning(TTR("Open a 3D Level scene first. The particle collision is baked from its walls, floors and props."));
+		return;
+	}
+	AABB bounds;
+	bool has_bounds = false;
+	merge_level_mesh_bounds(level, bounds, has_bounds);
+	if (!has_bounds) {
+		EditorNode::get_singleton()->show_warning(TTR("The open Level scene has no visible meshes to bake particle collision from."));
+		return;
+	}
+	bounds = bounds.grow(1.0);
+
+	const String node_name = "ParticleCollision";
+	GPUParticlesCollisionSDF3D *existing = Object::cast_to<GPUParticlesCollisionSDF3D>(level->get_node_or_null(NodePath(node_name)));
+	GPUParticlesCollisionSDF3D *sdf = existing ? existing : memnew(GPUParticlesCollisionSDF3D);
+	const Vector3 old_size = existing ? existing->get_size() : Vector3();
+	const Transform3D old_transform = existing ? existing->get_transform() : Transform3D();
+	const Ref<Texture3D> old_texture = existing ? existing->get_texture() : Ref<Texture3D>();
+	if (!existing) {
+		sdf->set_name(node_name);
+		level->add_child(sdf, true); // Temporarily, the bake searches meshes from its parent.
+	}
+	const real_t longest = bounds.get_longest_axis_size();
+	sdf->set_resolution(longest > 80.0 ? GPUParticlesCollisionSDF3D::RESOLUTION_256 : GPUParticlesCollisionSDF3D::RESOLUTION_128);
+	sdf->set_size(bounds.size);
+	sdf->set_global_transform(Transform3D(Basis(), bounds.get_center()));
+	const Transform3D new_transform = sdf->get_transform();
+
+	Vector<Node3D *> hidden;
+	hide_dynamic_nodes(level, hidden);
+	Ref<Image> image = sdf->bake();
+	for (Node3D *node : hidden) {
+		node->set_visible(true);
+	}
+	if (!existing) {
+		level->remove_child(sdf);
+	}
+	if (image.is_null()) {
+		if (!existing) {
+			memdelete(sdf);
+		} else {
+			existing->set_size(old_size);
+			existing->set_transform(old_transform);
+		}
+		EditorNode::get_singleton()->show_warning(TTR("No level geometry was found to bake particle collision from."));
+		return;
+	}
+
+	const String scene_path = level->get_scene_file_path();
+	const String data_path = scene_path.is_empty() ? String("res://particle_collision_data.exr") : scene_path.get_basename() + "." + node_name + "_data.exr";
+	Ref<ConfigFile> config;
+	config.instantiate();
+	if (FileAccess::exists(data_path + ".import")) {
+		config->load(data_path + ".import");
+	}
+	config->set_value("remap", "importer", "3d_texture");
+	config->set_value("remap", "type", "CompressedTexture3D");
+	if (!config->has_section_key("params", "compress/mode")) {
+		config->set_value("params", "compress/mode", 3);
+	}
+	config->set_value("params", "compress/channel_pack", 1);
+	config->set_value("params", "mipmaps/generate", false);
+	config->set_value("params", "slices/horizontal", 1);
+	config->set_value("params", "slices/vertical", image->get_meta("depth"));
+	config->save(data_path + ".import");
+	if (image->save_exr(data_path, false) != OK) {
+		if (!existing) {
+			memdelete(sdf);
+		}
+		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save the particle collision data to %s."), data_path));
+		return;
+	}
+	ResourceLoader::import(data_path);
+	Ref<Texture3D> texture = ResourceLoader::load(data_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Bake Particle Collision"), UndoRedo::MERGE_DISABLE, level);
+	if (!existing) {
+		sdf->set_texture(texture);
+		undo_redo->add_do_method(level, "add_child", sdf, true);
+		undo_redo->add_do_method(sdf, "set_owner", level);
+		undo_redo->add_do_reference(sdf);
+		undo_redo->add_undo_method(level, "remove_child", sdf);
+	} else {
+		undo_redo->add_do_property(sdf, "size", bounds.size);
+		undo_redo->add_do_property(sdf, "transform", new_transform);
+		undo_redo->add_do_property(sdf, "texture", texture);
+		undo_redo->add_undo_property(sdf, "size", old_size);
+		undo_redo->add_undo_property(sdf, "transform", old_transform);
+		undo_redo->add_undo_property(sdf, "texture", old_texture);
+	}
+	undo_redo->commit_action();
+	EditorToaster::get_singleton()->popup_str(vformat(TTR("Particle collision baked into %s (%s). Particles with the Collision module now bounce off the level. Save the level to keep it."), level->get_name(), data_path.get_file()));
 }
 
 void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
@@ -4617,6 +4817,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitter_tree->set_stretch_ratio(1.4);
 	emitter_tree->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_selected));
 	emitter_tree->connect("item_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_renamed));
+	emitter_tree->set_drag_forwarding(Callable(), callable_mp(this, &FPSStudioParticleEditorPlugin::_can_drop_on_emitter_tree), callable_mp(this, &FPSStudioParticleEditorPlugin::_drop_on_emitter_tree));
+	emitter_tree->set_tooltip_text(TTR("Drop audio files here to add Sound events (or onto a Sound track to replace its sound)."));
 	left_panel->add_child(emitter_tree);
 
 	// Library of effect files below the emitter list; folded away when not needed.
@@ -4698,8 +4900,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->add_check_item(TTR("Damage & Shake Radius"), 14);
 		view_popup->set_item_checked(view_popup->get_item_index(14), preview_show_radii);
 		view_popup->set_item_tooltip(view_popup->get_item_index(14), TTR("Rings around Damage (red) and Camera Shake (blue) events: inner = full strength, outer = fade out."));
-		view_popup->add_check_item(TTR("Floor Collision"), 13);
-		view_popup->set_item_tooltip(view_popup->get_item_index(13), TTR("Add a collision floor to the preview so the Collision module can be tested."));
+		view_popup->add_check_item(TTR("Collision Test Walls"), 13);
+		view_popup->set_item_tooltip(view_popup->get_item_index(13), TTR("Add a collision floor and three see-through walls to the preview to tune the Collision module (bounce, friction, particle size)."));
 		view_popup->set_hide_on_checkable_item_selection(false);
 		view_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_view_menu_id));
 	}
@@ -4774,13 +4976,47 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_grid = create_particle_preview_grid();
 	preview_root->add_child(preview_grid);
 	{
+		// Collision test room: a floor and three walls the particles can hit,
+		// with see-through walls so bouncing can be tuned in the preview.
+		Node3D *room = memnew(Node3D);
+		room->set_name("PreviewCollisionRoom");
+		room->set_visible(false);
+		preview_root->add_child(room);
+		preview_floor_collision = room;
 		GPUParticlesCollisionBox3D *floor = memnew(GPUParticlesCollisionBox3D);
-		floor->set_name("PreviewFloorCollision");
+		floor->set_name("FloorCollision");
 		floor->set_size(Vector3(60.0, 0.2, 60.0));
-		floor->set_position(Vector3(0.0, -0.2, 0.0));
-		floor->set_visible(false);
-		preview_root->add_child(floor);
-		preview_floor_collision = floor;
+		floor->set_position(Vector3(0.0, -0.1, 0.0));
+		room->add_child(floor);
+		Ref<StandardMaterial3D> wall_material;
+		wall_material.instantiate();
+		wall_material->set_albedo(Color(0.55, 0.62, 0.75, 0.18));
+		wall_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		wall_material->set_cull_mode(BaseMaterial3D::CULL_DISABLED);
+		wall_material->set_shading_mode(BaseMaterial3D::SHADING_MODE_UNSHADED);
+		const struct {
+			Vector3 position;
+			Vector3 size;
+		} walls[] = {
+			{ Vector3(-3.0, 2.0, 0.0), Vector3(0.2, 4.0, 6.0) },
+			{ Vector3(3.0, 2.0, 0.0), Vector3(0.2, 4.0, 6.0) },
+			{ Vector3(0.0, 2.0, -3.0), Vector3(6.0, 4.0, 0.2) },
+		};
+		for (const auto &wall : walls) {
+			GPUParticlesCollisionBox3D *collision = memnew(GPUParticlesCollisionBox3D);
+			collision->set_size(wall.size);
+			collision->set_position(wall.position);
+			room->add_child(collision);
+			Ref<BoxMesh> box;
+			box.instantiate();
+			box->set_size(wall.size);
+			box->set_material(wall_material);
+			MeshInstance3D *visual = memnew(MeshInstance3D);
+			visual->set_mesh(box);
+			visual->set_cast_shadows_setting(GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+			visual->set_position(wall.position);
+			room->add_child(visual);
+		}
 	}
 	{
 		// Visible ground plane, off by default (View > Floor).
@@ -5073,6 +5309,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	module_stack = memnew(FPSParticleModuleStack);
 	module_stack->connect("property_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_module_stack_property_edited));
 	module_stack->connect("generate_texture_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture));
+	module_stack->connect("level_collision_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_bake_level_particle_collision));
 	module_scroll->add_child(module_stack);
 	properties_tabs = memnew(TabContainer);
 	properties_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);

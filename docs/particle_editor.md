@@ -106,6 +106,8 @@ Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh
 | Damage | `RadialDamage3D` | zraní vše, co má `take_damage()`: plné zranění do vnitřního poloměru, k vnějšímu klesá na nulu; krytí za překážkou zranění sníží nebo zastaví; fyzikální objekty odhodí |
 | Decal | `Decal` | objeví se ve svém čase a během **Fade Out Part** zmizí; délka 0 = zůstane |
 
+**Zvuk exploze:** preset Explosion má prázdnou stopu **Sound**. Vyber ji a v kartě zvol audio soubor, nebo přetáhni audio soubor z FileSystemu přímo na stopu v seznamu emitorů. Přetažení mimo existující Sound stopu přidá novou Sound událost se jménem souboru.
+
 **Damage** volá na zasaženém uzlu (nebo jeho rodiči) metodu `take_damage` s tolika parametry, kolik jich přijímá: `(amount)`, `(amount, hit_position)` nebo `(amount, hit_position, hit_direction)`. Funguje tak pro hráče, NPC i předměty bez úprav kódu. Postava s více kolizemi nebo hitboxy dostane zranění jen jednou. Krytí: z místa výbuchu jde 9 paprsků na střed a rohy cíle (vrstvy **Cover Layers**). Plně schovaný cíl nedostane nic, částečně krytý poměrnou část (např. 4 z 9 paprsků = 44 %). V editoru a v náhledu se nikomu zranění nedává. Preset Explosion obsahuje Damage 90 (plné do 2 m, nula v 7 m).
 
 Dosah Damage (červeně) a Camera Shake (modře) je vidět jako kruhy: vnitřní plná síla, vnější útlum. V náhledu je zapíná **View → Damage & Shake Radius** (výchozí zapnuto, vybraná událost svítí víc), v Level editoru jsou vidět jako gizmo.
@@ -153,12 +155,21 @@ func _on_hit(position: Vector3, normal: Vector3) -> void:
 
 Tlačítko **Create Node Graph** změní procesní materiál vybraného GPU emitoru na nativní `VisualShader` v režimu `particles` a zobrazí jeho graf v záložce **Particle Logic**. Nahrazení materiálu se nejprve potvrdí a jde vrátit přes Undo. Graf se upravuje přímo v této záložce (bez otevírání Godotova Shader Editoru); pro víc místa použij maximalizaci nebo samostatné okno. `VisualShader` je výpočet jednoho emitoru, neřídí hierarchii ani načasování efektu. CPU particles shaderový graf nemají.
 
+## Kolize částic se stěnami
+
+GPU částice nenarážejí na fyzikální tělesa (StaticBody, CharacterBody), jen na kolizní uzly částic (`GPUParticlesCollision*`). Postup, aby se kouř odrážel od stěn:
+
+1. Emitoru zapni modul **Collision** (+ Module → Collision). **Mode** Rigid, **Bounce** u kouře nízko (0–0,2), **Friction** 0,1–0,5. **Particle Size** je poloměr částice pro kolizi; modul ho nastaví na 0,25 m, u velkých obláčků kouře ho zvyš na 0,4–0,8, jinak částice zapadají do stěn.
+2. Odraz vyladíš v náhledu přes **View → Collision Test Walls**.
+3. V kartě Collision klikni **Add Collision to Level**. Do otevřeného levelu se přidá uzel `ParticleCollision` (`GPUParticlesCollisionSDF3D`) napečený z viditelných meshů levelu. Hráč, pohyblivá tělesa a efekty se nepečou. Data se uloží vedle levelu (`<level>.ParticleCollision_data.exr`). Level pak ulož.
+4. Po změně geometrie levelu klikni znovu (přepeče stejný uzel, jde vrátit přes Undo).
+
 ## 3D náhled a simulace
 
 Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport` s vlastním prostředím, světly, kamerou a mřížkou. Chybějící draw mesh nebo process material doplní pouze náhledová kopie.
 
 - Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** efekt znovu orámuje.
-- Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru), **Floor** (viditelná podlaha, výchozí vypnuto), **Damage & Shake Radius** (kruhy dosahu, výchozí zapnuto) a **Floor Collision** (kolizní podlaha pro modul Collision).
+- Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru), **Floor** (viditelná podlaha, výchozí vypnuto), **Damage & Shake Radius** (kruhy dosahu, výchozí zapnuto) a **Collision Test Walls** (kolizní podlaha a tři průhledné stěny pro ladění modulu Collision).
 - Statistiky v transportu: viditelné stopy, maximum částic, draw cally a trojúhelníky náhledu.
 - **Play/Pause**, **Restart**, časový posuvník, **Speed** a **Loop** ovládají simulaci. Posun na jiný čas restartuje efekt a přehraje ho dopředu (`ParticleEffect3D.seek`); jde o přiblížení, ne přesnou rekonstrukci stavu.
 - Změna načasování na časové ose zachová polohu kamery.

@@ -378,6 +378,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Ref<Texture2D> _bake_preset_texture(const VFXTextureGenerator::Settings &p_settings, const String &p_file_name, int p_resolution, int p_columns, double p_duration);
 	void _on_module_stack_property_edited(const String &p_property);
 	void _on_module_stack_generate_texture();
+	void _bake_level_particle_collision();
+	void _add_track_node(Node3D *p_track);
+	bool _can_drop_on_emitter_tree(const Point2 &p_point, const Variant &p_data) const;
+	void _drop_on_emitter_tree(const Point2 &p_point, const Variant &p_data);
 	String _get_auto_texture_path() const;
 	bool _save_texture_recipe(const String &p_path);
 	bool _load_texture_recipe(const String &p_path, bool p_report_errors);

@@ -13,6 +13,7 @@
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/themes/editor_scale.h"
+#include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
@@ -223,6 +224,11 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 			break;
 		case MODULE_COLLISION:
 			set_prop(process, "collision_mode", p_active ? int(ParticleProcessMaterial::COLLISION_RIGID) : int(ParticleProcessMaterial::COLLISION_DISABLED));
+			if (p_active && gpu && double(emitter->get("collision_base_size")) < 0.05) {
+				// The default 0.01 m makes particles sink into surfaces; start
+				// with a size close to a typical smoke or debris particle.
+				set_prop(emitter, "collision_base_size", 0.25);
+			}
 			break;
 		case MODULE_SUB_EMITTER:
 			set_prop(process, "sub_emitter_mode", p_active ? int(ParticleProcessMaterial::SUB_EMITTER_AT_END) : int(ParticleProcessMaterial::SUB_EMITTER_DISABLED));
@@ -462,6 +468,15 @@ void FPSParticleModuleStack::_build_event() {
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FLICKER, TTR("Flicker"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01", 0.0);
 		} break;
 		case ParticleEffect3D::EVENT_SOUND:
+			if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(get_edited_emitter())) {
+				if (player->get_stream().is_null()) {
+					Label *hint = memnew(Label);
+					hint->set_text(TTR("No sound yet: pick an audio file below, or drag one from the FileSystem onto this track in the emitter list."));
+					hint->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+					hint->set_modulate(Color(1.0, 0.85, 0.5));
+					module_contents[MODULE_EVENT]->add_child(hint);
+				}
+			}
 			_add_row(MODULE_EVENT, TARGET_NODE, "stream", "stream", TTR("Sound"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "volume_db", "volume_db", TTR("Volume"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "pitch_scale", "pitch_scale", TTR("Pitch"));
@@ -685,6 +700,19 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_COLLISION, TARGET_PROCESS, "collision_bounce", StringName(), TTR("Bounce"));
 	_add_row(MODULE_COLLISION, TARGET_PROCESS, "collision_use_scale", StringName(), TTR("Use Scale"));
 	_add_row(MODULE_COLLISION, TARGET_NODE, "collision_base_size", StringName(), TTR("Particle Size"));
+	{
+		VBoxContainer *collision = module_contents[MODULE_COLLISION];
+		Label *collision_note = memnew(Label);
+		collision_note->set_text(TTR("GPU particles do not collide with physics bodies, only with particle collision nodes. Add Collision to Level bakes the level's walls, floors and props into one collision field (players and moving bodies are left out). Test bouncing here with View > Collision Test Walls."));
+		collision_note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		collision_note->set_modulate(Color(1, 1, 1, 0.7));
+		collision->add_child(collision_note);
+		Button *level_collision_button = memnew(Button);
+		level_collision_button->set_text(TTR("Add Collision to Level"));
+		level_collision_button->set_tooltip_text(TTR("Create (or re-bake) a GPUParticlesCollisionSDF3D covering the open Level scene, so particles bounce off its walls and floors. Re-bake after changing the level geometry."));
+		level_collision_button->connect(SceneStringName(pressed), callable_mp(this, &FPSParticleModuleStack::_on_level_collision_pressed));
+		collision->add_child(level_collision_button);
+	}
 
 	_add_row(MODULE_SUB_EMITTER, TARGET_NODE, "sub_emitter", StringName(), TTR("Emitter"));
 	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_mode", StringName(), TTR("Trigger"));
@@ -930,6 +958,7 @@ void FPSParticleModuleStack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_history_changed", "property"), &FPSParticleModuleStack::_history_changed);
 	ADD_SIGNAL(MethodInfo("property_edited", PropertyInfo(Variant::STRING, "property")));
 	ADD_SIGNAL(MethodInfo("generate_texture_requested"));
+	ADD_SIGNAL(MethodInfo("level_collision_requested"));
 }
 
 /* Module presets ---------------------------------------------------------- */
@@ -1287,6 +1316,10 @@ void FPSParticleModuleStack::_on_add_attractor_pressed() {
 
 void FPSParticleModuleStack::_on_generate_texture_pressed() {
 	emit_signal(SNAME("generate_texture_requested"));
+}
+
+void FPSParticleModuleStack::_on_level_collision_pressed() {
+	emit_signal(SNAME("level_collision_requested"));
 }
 
 void FPSParticleModuleStack::_history_changed(const StringName &p_property) {

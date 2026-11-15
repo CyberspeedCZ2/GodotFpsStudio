@@ -108,6 +108,7 @@ private:
 	void _commit_property(Object *p_object, const StringName &p_property, const Variant &p_value, bool p_merge);
 	void _history_changed(const StringName &p_property);
 	void _on_generate_texture_pressed();
+	void _on_level_collision_pressed();
 	void _on_module_menu_id(int p_id, int p_module);
 	void _apply_module_preset(int p_module, int p_preset);
 	void _copy_module(int p_module);

@@ -7,6 +7,7 @@
 
 #include "particle_presets.h"
 
+#include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
@@ -264,6 +265,14 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	add_light(p_effect, "LightFlash", Color(1.0, 0.58, 0.28), 14.0, 12.0, 0.0, 0.8, 0.25, Vector3(0, 0.6, 0));
 	add_camera_shake(p_effect, 0.85, 0.75, 6.0, 35.0, 0.0);
 	{
+		// Empty sound track: pick or drop the explosion sound in the editor.
+		AudioStreamPlayer3D *sound = memnew(AudioStreamPlayer3D);
+		sound->set_name("Sound");
+		sound->set_unit_size(12.0);
+		sound->set_max_distance(120.0);
+		sound->set_meta(ParticleEffect3D::META_PITCH_RANDOM, 0.08);
+		p_effect->add_child(sound, true);
+		sound->set_owner(p_effect);
 		RadialDamage3D *damage = memnew(RadialDamage3D);
 		damage->set_name("Damage");
 		damage->set_damage(90.0);
