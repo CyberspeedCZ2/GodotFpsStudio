@@ -165,6 +165,8 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 		state.duration = get_emitter_duration(p_node);
 		state.lifetime = MAX(0.001, double(p_node->get("lifetime")));
 		state.one_shot = bool(p_node->get("one_shot"));
+		double start, emission_end;
+		get_emitter_window(p_node, start, emission_end, state.visual_end);
 		emitters.push_back(state);
 	} else if (get_event_kind(p_node) != EVENT_NONE && is_track_enabled(p_node)) {
 		EventState event;
@@ -172,6 +174,14 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 		event.kind = get_event_kind(p_node);
 		event.delay = get_emitter_delay(p_node);
 		event.duration = get_event_duration(p_node, event.kind);
+		if (event.kind == EVENT_LIGHT) {
+			event.curve = p_node->get_meta(META_CURVE, Ref<Curve>());
+			event.flicker = CLAMP(real_t(double(p_node->get_meta(META_FLICKER, 0.0))), 0.0, 1.0);
+		} else if (event.kind == EVENT_DECAL) {
+			event.fade = CLAMP(double(p_node->get_meta(META_FADE, 0.5)), 0.01, 1.0);
+		} else if (event.kind == EVENT_SOUND) {
+			event.pitch_random = CLAMP(real_t(double(p_node->get_meta(META_PITCH_RANDOM, 0.0))), 0.0, 1.0);
+		}
 		events.push_back(event);
 		// Remember the authored values once; the effect animates them.
 		if (!event_bases.has(event.id)) {
@@ -221,6 +231,12 @@ double ParticleEffect3D::get_total_duration() const {
 	return total;
 }
 
+void ParticleEffect3D::_play_pending() {
+	if (play_pending && is_inside_tree()) {
+		play();
+	}
+}
+
 void ParticleEffect3D::play() {
 	if (!is_inside_tree()) {
 		play_pending = true;
@@ -250,6 +266,17 @@ void ParticleEffect3D::play() {
 namespace {
 constexpr int EFFECT_POOL_MAX_FREE = 64;
 HashMap<ObjectID, LocalVector<ObjectID>> effect_pools; // PackedScene -> free effects.
+
+// Drops effects freed with an earlier level, so size checks count live ones.
+void prune_pool(LocalVector<ObjectID> &r_pool) {
+	for (uint32_t i = 0; i < r_pool.size(); i++) {
+		const Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(r_pool[i]));
+		if (!effect || effect->is_queued_for_deletion()) {
+			r_pool.remove_at_unordered(i);
+			i--;
+		}
+	}
+}
 } // namespace
 
 // --- Level collision --------------------------------------------------------
@@ -497,12 +524,15 @@ struct LevelCollisionBake {
 	Vector<Face3> faces;
 	Ref<Image> image;
 	RID space;
+	ObjectID level_root;
 	AABB region;
 	ObjectID effect;
+	WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
 };
 
 struct LevelCollisionCacheEntry {
 	RID space;
+	ObjectID level_root; // The root viewport's space survives scene changes; the level does not.
 	AABB region;
 	Ref<Texture3D> texture;
 	uint64_t used = 0;
@@ -515,9 +545,9 @@ uint64_t level_collision_clock = 0;
 constexpr uint32_t LEVEL_COLLISION_CACHE_SIZE = 16;
 constexpr int LEVEL_COLLISION_SYNC_FACES = 20000;
 
-Ref<Texture3D> find_cached_level_collision(const RID &p_space, const AABB &p_region) {
+Ref<Texture3D> find_cached_level_collision(const RID &p_space, ObjectID p_level_root, const AABB &p_region) {
 	for (LevelCollisionCacheEntry &entry : level_collision_cache) {
-		if (entry.space == p_space && entry.region == p_region) {
+		if (entry.space == p_space && entry.level_root == p_level_root && entry.region == p_region) {
 			entry.used = ++level_collision_clock;
 			return entry.texture;
 		}
@@ -525,7 +555,7 @@ Ref<Texture3D> find_cached_level_collision(const RID &p_space, const AABB &p_reg
 	return Ref<Texture3D>();
 }
 
-void cache_level_collision(const RID &p_space, const AABB &p_region, const Ref<Texture3D> &p_texture) {
+void cache_level_collision(const RID &p_space, ObjectID p_level_root, const AABB &p_region, const Ref<Texture3D> &p_texture) {
 	if (level_collision_cache.size() >= LEVEL_COLLISION_CACHE_SIZE) {
 		uint32_t oldest = 0;
 		for (uint32_t i = 1; i < level_collision_cache.size(); i++) {
@@ -537,6 +567,7 @@ void cache_level_collision(const RID &p_space, const AABB &p_region, const Ref<T
 	}
 	LevelCollisionCacheEntry entry;
 	entry.space = p_space;
+	entry.level_root = p_level_root;
 	entry.region = p_region;
 	entry.texture = p_texture;
 	entry.used = ++level_collision_clock;
@@ -572,10 +603,12 @@ void level_collision_bake_task(void *p_userdata) {
 
 void ParticleEffect3D::_level_collision_bake_done(int64_t p_bake) {
 	LevelCollisionBake *bake = reinterpret_cast<LevelCollisionBake *>(p_bake);
+	// The task body has queued this call; waiting frees its pool entry.
+	WorkerThreadPool::get_singleton()->wait_for_task_completion(bake->task);
 	const Ref<Texture3D> texture = sdf_image_to_texture(bake->image);
 	memdelete(bake->baker);
 	if (texture.is_valid()) {
-		cache_level_collision(bake->space, bake->region, texture);
+		cache_level_collision(bake->space, bake->level_root, bake->region, texture);
 	}
 	if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(bake->effect))) {
 		if (effect->level_collision_pending && effect->level_collision_pending_region == bake->region) {
@@ -635,9 +668,30 @@ constexpr real_t LEVEL_TILE_CORE = 16.0;
 constexpr real_t LEVEL_TILE_OVERLAP = 2.0;
 constexpr real_t LEVEL_MAX_EXTENT = 1024.0;
 
+// Shared with the tile tasks of one bake generation; set when the bake is
+// superseded so queued tiles skip their work.
+struct LevelBakeCancel {
+	SafeFlag cancelled;
+	SafeRefCount refs;
+};
+
+LevelBakeCancel *level_bake_cancel_create() {
+	LevelBakeCancel *cancel = memnew(LevelBakeCancel);
+	cancel->refs.init();
+	return cancel;
+}
+
+void level_bake_cancel_unref(LevelBakeCancel *p_cancel) {
+	if (p_cancel && p_cancel->refs.unref()) {
+		memdelete(p_cancel);
+	}
+}
+
 struct LevelCollisionState {
 	ObjectID manager;
+	ObjectID root; // The level (edited scene / current scene) the tiles belong to.
 	RID space;
+	LevelBakeCancel *cancel = nullptr;
 	uint64_t generation = 0;
 	int pending = 0;
 	int tiles = 0;
@@ -652,23 +706,61 @@ uint64_t level_generation = 0;
 struct LevelTileBake {
 	ObjectID manager;
 	uint64_t generation = 0;
+	LevelBakeCancel *cancel = nullptr; // Referenced.
+	WorkerThreadPool::TaskID task = WorkerThreadPool::INVALID_TASK_ID;
 	Vector<Face3> faces; // Shared, world space.
 	AABB tile;
 	Ref<Image> image;
 };
 
-LevelCollisionState *find_level_state(const RID &p_space) {
+void release_level_state(LevelCollisionState &r_state) {
+	if (r_state.cancel) {
+		r_state.cancel->cancelled.set();
+		level_bake_cancel_unref(r_state.cancel);
+		r_state.cancel = nullptr;
+	}
+}
+
+void prune_level_states() {
 	for (uint32_t i = 0; i < level_states.size(); i++) {
-		if (!ObjectDB::get_instance(level_states[i].manager)) {
+		if (!ObjectDB::get_instance(level_states[i].manager) || !ObjectDB::get_instance(level_states[i].root)) {
+			release_level_state(level_states[i]);
 			level_states.remove_at_unordered(i);
 			i--;
-			continue;
 		}
-		if (level_states[i].space == p_space) {
-			return &level_states[i];
+	}
+}
+
+// Several levels can share one world (editor scene tabs), so a state belongs
+// to a space and a level root.
+LevelCollisionState *find_level_state_for_root(const RID &p_space, ObjectID p_root) {
+	prune_level_states();
+	for (LevelCollisionState &state : level_states) {
+		if (state.space == p_space && state.root == p_root) {
+			return &state;
 		}
 	}
 	return nullptr;
+}
+
+LevelCollisionState *find_level_state_for_node(const RID &p_space, const Node *p_node) {
+	prune_level_states();
+	for (LevelCollisionState &state : level_states) {
+		if (state.space != p_space) {
+			continue;
+		}
+		const Node *root = Object::cast_to<Node>(ObjectDB::get_instance(state.root));
+		if (root && (root == p_node || root->is_ancestor_of(p_node))) {
+			return &state;
+		}
+	}
+	return nullptr;
+}
+
+RID get_level_root_space(const Node *p_root) {
+	Viewport *viewport = p_root ? p_root->get_viewport() : nullptr;
+	const Ref<World3D> world = viewport ? viewport->find_world_3d() : Ref<World3D>();
+	return world.is_valid() ? world->get_space() : RID();
 }
 
 void collect_level_faces(Node *p_node, uint32_t p_mask, Vector<Face3> &r_faces) {
@@ -709,6 +801,12 @@ void collect_level_faces(Node *p_node, uint32_t p_mask, Vector<Face3> &r_faces) 
 
 void level_tile_bake_task(void *p_userdata) {
 	LevelTileBake *bake = static_cast<LevelTileBake *>(p_userdata);
+	if (bake->cancel && bake->cancel->cancelled.is_set()) {
+		// A newer bake replaced this one; its result would be discarded.
+		bake->faces = Vector<Face3>();
+		callable_mp_static(&ParticleEffect3D::_level_tile_baked).call_deferred(int64_t(p_userdata));
+		return;
+	}
 	const Vector3 center = bake->tile.get_center();
 	const Vector3 half = bake->tile.size * 0.5;
 	Vector<Face3> local;
@@ -748,8 +846,7 @@ void ParticleEffect3D::_ensure_editor_level_collision(Node *p_root, uint32_t p_m
 	Vector<Face3> faces;
 	collect_level_faces(p_root, p_mask, faces);
 	const uint32_t hash = hash_level_faces(faces);
-	Ref<World3D> world = get_world_3d();
-	const LevelCollisionState *state = world.is_valid() ? find_level_state(world->get_space()) : nullptr;
+	const LevelCollisionState *state = find_level_state_for_root(get_level_root_space(p_root), p_root->get_instance_id());
 	if (state && state->faces_hash == hash) {
 		return;
 	}
@@ -770,13 +867,12 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 	// The root may be busy adding children (an effect dropped into the level
 	// starts its preview while the editor adds it), so the world comes from
 	// the viewport and a new manager is attached deferred.
-	Viewport *viewport = p_root->get_viewport();
-	const Ref<World3D> world = viewport ? viewport->find_world_3d() : Ref<World3D>();
-	const RID space = world.is_valid() ? world->get_space() : RID();
+	const RID space = get_level_root_space(p_root);
+	const ObjectID root_id = p_root->get_instance_id();
 
-	// Replace an earlier bake of the same level.
+	// Replace an earlier bake of the same level (never another level's tiles).
 	Node3D *manager = nullptr;
-	if (const LevelCollisionState *existing = find_level_state(space)) {
+	if (const LevelCollisionState *existing = find_level_state_for_root(space, root_id)) {
 		manager = Object::cast_to<Node3D>(ObjectDB::get_instance(existing->manager));
 	}
 	for (int i = 0; !manager && i < p_root->get_child_count(true); i++) {
@@ -796,12 +892,15 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 		manager->set_as_top_level(true);
 		callable_mp_static(&ParticleEffect3D::_attach_level_manager).call_deferred(p_root->get_instance_id(), manager->get_instance_id());
 	}
-	LevelCollisionState *state = find_level_state(space);
+	LevelCollisionState *state = find_level_state_for_root(space, root_id);
 	if (!state) {
 		level_states.push_back(LevelCollisionState());
 		state = &level_states[level_states.size() - 1];
 	}
+	release_level_state(*state); // Cancels tiles of the previous generation.
+	state->cancel = level_bake_cancel_create();
 	state->manager = manager->get_instance_id();
+	state->root = root_id;
 	state->space = space;
 	state->generation = ++level_generation;
 	state->pending = 0;
@@ -817,11 +916,15 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 				LevelTileBake *bake = memnew(LevelTileBake);
 				bake->manager = state->manager;
 				bake->generation = state->generation;
+				bake->cancel = state->cancel;
+				bake->cancel->refs.ref();
 				bake->faces = faces;
 				const Vector3 core_position = bounds.position + Vector3(x, y, z) * LEVEL_TILE_CORE;
 				bake->tile = AABB(core_position - Vector3(1, 1, 1) * LEVEL_TILE_OVERLAP, Vector3(1, 1, 1) * (LEVEL_TILE_CORE + LEVEL_TILE_OVERLAP * 2.0));
 				state->pending++;
-				WorkerThreadPool::get_singleton()->add_native_task(&level_tile_bake_task, bake, false, "Particle level collision tile");
+				// The completion is deferred to this (main) thread, so the ID is
+				// stored before _level_tile_baked can read it.
+				bake->task = WorkerThreadPool::get_singleton()->add_native_task(&level_tile_bake_task, bake, false, "Particle level collision tile");
 			}
 		}
 	}
@@ -831,6 +934,10 @@ bool ParticleEffect3D::_prepare_level_collision_faces(Node *p_root, const Vector
 
 void ParticleEffect3D::_level_tile_baked(int64_t p_bake) {
 	LevelTileBake *bake = reinterpret_cast<LevelTileBake *>(p_bake);
+	// The task body has queued this call; waiting frees its pool entry.
+	WorkerThreadPool::get_singleton()->wait_for_task_completion(bake->task);
+	level_bake_cancel_unref(bake->cancel);
+	bake->cancel = nullptr;
 	Node3D *manager = Object::cast_to<Node3D>(ObjectDB::get_instance(bake->manager));
 	LevelCollisionState *state = nullptr;
 	for (LevelCollisionState &candidate : level_states) {
@@ -864,9 +971,11 @@ void ParticleEffect3D::_level_tile_baked(int64_t p_bake) {
 
 void ParticleEffect3D::clear_level_collision_cache() {
 	level_collision_cache.clear();
-	effect_pools.clear();
+	// Pools are left alone: forgetting them would leave pooled effects in the
+	// tree for good, and freed ones are pruned on the next use.
 	// Forget the shared level bakes too; the next colliding effect re-bakes.
-	for (const LevelCollisionState &state : level_states) {
+	for (LevelCollisionState &state : level_states) {
+		release_level_state(state);
 		if (Node *manager = Object::cast_to<Node>(ObjectDB::get_instance(state.manager))) {
 			manager->queue_free();
 		}
@@ -879,7 +988,7 @@ bool ParticleEffect3D::is_level_collision_ready(const Node *p_in_world) {
 	if (!node || !node->is_inside_tree() || node->get_world_3d().is_null()) {
 		return false;
 	}
-	const LevelCollisionState *state = find_level_state(node->get_world_3d()->get_space());
+	const LevelCollisionState *state = find_level_state_for_node(node->get_world_3d()->get_space(), node);
 	return state && state->ready;
 }
 
@@ -925,11 +1034,17 @@ void ParticleEffect3D::_update_level_collision() {
 
 	// Shared level bake: start it with the first colliding effect, and once
 	// it is ready no effect needs its own bake.
-	LevelCollisionState *level = find_level_state(space_rid);
-	if (!level && !Engine::get_singleton()->is_editor_hint()) {
-		Node *level_root = get_tree()->get_current_scene() ? get_tree()->get_current_scene() : get_tree()->get_root();
+	Node *level_root = get_tree()->get_current_scene() ? get_tree()->get_current_scene() : get_tree()->get_root();
+	LevelCollisionState *level = find_level_state_for_node(space_rid, this);
+	if (!level) {
+		// Effects spawned outside the level (e.g. under the root) use its tiles too.
+		level = find_level_state_for_root(space_rid, level_root->get_instance_id());
+	}
+	// Only bake the level for effects in its world (not a SubViewport with
+	// its own world, which would otherwise re-bake the level on every play).
+	if (!level && get_level_root_space(level_root) == space_rid) {
 		if (prepare_level_collision(level_root, level_collision_mask)) {
-			level = find_level_state(space_rid);
+			level = find_level_state_for_root(space_rid, level_root->get_instance_id());
 		}
 	}
 	if (level && level->ready) {
@@ -944,7 +1059,8 @@ void ParticleEffect3D::_update_level_collision() {
 	if (level_collision_pending && level_collision_pending_region == region) {
 		return;
 	}
-	const Ref<Texture3D> cached = find_cached_level_collision(space_rid, region);
+	const ObjectID level_root_id = level_root->get_instance_id();
+	const Ref<Texture3D> cached = find_cached_level_collision(space_rid, level_root_id, region);
 	if (cached.is_valid()) {
 		level_collision_pending = false;
 		_set_level_collision(region, cached);
@@ -1026,7 +1142,7 @@ void ParticleEffect3D::_update_level_collision() {
 		}
 		print_verbose(vformat("ParticleEffect3D: baked level collision for %s from %d faces in %.1f ms (%s).", get_name(), faces.size(), (OS::get_singleton()->get_ticks_usec() - bake_start) / 1000.0, region));
 		if (texture.is_valid()) {
-			cache_level_collision(space_rid, region, texture);
+			cache_level_collision(space_rid, level_root_id, region, texture);
 		}
 		level_collision_pending = false;
 		_set_level_collision(region, texture);
@@ -1040,11 +1156,13 @@ void ParticleEffect3D::_update_level_collision() {
 	configure_level_collision_baker(bake->baker, region);
 	bake->faces = faces;
 	bake->space = space_rid;
+	bake->level_root = level_root_id;
 	bake->region = region;
 	bake->effect = get_instance_id();
 	level_collision_pending = true;
 	level_collision_pending_region = region;
-	WorkerThreadPool::get_singleton()->add_native_task(&level_collision_bake_task, bake, false, "Particle level collision");
+	// High priority: this stand-in must not wait behind the whole level's tiles.
+	bake->task = WorkerThreadPool::get_singleton()->add_native_task(&level_collision_bake_task, bake, true, "Particle level collision");
 }
 
 void ParticleEffect3D::set_collide_with_level(bool p_enable) {
@@ -1149,12 +1267,10 @@ void ParticleEffect3D::_update(double p_delta) {
 			state.ended = true;
 			_set_emitter_emitting(emitter, false, false);
 		}
-		double start, emission_end, visual_end;
-		get_emitter_window(emitter, start, emission_end, visual_end);
-		if (visual_end < 0.0) {
+		if (state.visual_end < 0.0) {
 			infinite = true;
 		} else {
-			total = MAX(total, visual_end);
+			total = MAX(total, state.visual_end);
 		}
 	}
 	_update_events();
@@ -1205,7 +1321,8 @@ void ParticleEffect3D::_update_events() {
 		if (!node) {
 			continue;
 		}
-		const EventBase base = event_bases.has(event.id) ? event_bases[event.id] : EventBase();
+		const EventBase *base_ptr = event_bases.getptr(event.id);
+		const EventBase base = base_ptr ? *base_ptr : EventBase();
 		const double local = elapsed - event.delay;
 		const bool continuous = event.duration <= 0.0;
 		const bool inside = local >= 0.0 && (continuous || local <= event.duration);
@@ -1217,20 +1334,23 @@ void ParticleEffect3D::_update_events() {
 				if (inside) {
 					factor = 1.0;
 					if (!continuous) {
-						Ref<Curve> curve = node->get_meta(META_CURVE, Ref<Curve>());
-						if (curve.is_valid()) {
-							factor = curve->sample_baked(t);
+						if (event.curve.is_valid()) {
+							factor = event.curve->sample_baked(t);
 						} else {
 							// Default flash: quick attack, smooth decay.
 							factor = t < 0.1 ? real_t(t / 0.1) : real_t(Math::pow(1.0 - (t - 0.1) / 0.9, 2.0));
 						}
 					}
-					const real_t flicker = CLAMP(real_t(double(node->get_meta(META_FLICKER, 0.0))), 0.0, 1.0);
-					if (flicker > 0.0) {
-						factor *= 1.0 - flicker * event_noise(event.id, elapsed * 18.0);
+					if (event.flicker > 0.0) {
+						factor *= 1.0 - event.flicker * event_noise(event.id, elapsed * 18.0);
 					}
 				}
-				light->set_param(Light3D::PARAM_ENERGY, base.energy * MAX(real_t(0.0), factor));
+				const real_t energy = base.energy * MAX(real_t(0.0), factor);
+				if (energy != event.last_value) {
+					// Lights outside their window stay dark without touching the server each frame.
+					event.last_value = energy;
+					light->set_param(Light3D::PARAM_ENERGY, energy);
+				}
 			} break;
 			case EVENT_DECAL: {
 				Decal *decal = Object::cast_to<Decal>(node);
@@ -1238,21 +1358,25 @@ void ParticleEffect3D::_update_events() {
 				if (inside) {
 					alpha = 1.0;
 					if (!continuous) {
-						const double fade = CLAMP(double(node->get_meta(META_FADE, 0.5)), 0.01, 1.0);
+						const double fade = event.fade;
 						if (t > 1.0 - fade) {
 							alpha = real_t((1.0 - t) / fade);
 						}
 					}
 				}
-				Color modulate = decal->get_modulate();
-				modulate.a = base.alpha * alpha;
-				decal->set_modulate(modulate);
+				const real_t value = base.alpha * alpha;
+				if (value != event.last_value) {
+					event.last_value = value;
+					Color modulate = decal->get_modulate();
+					modulate.a = value;
+					decal->set_modulate(modulate);
+				}
 			} break;
 			case EVENT_SOUND: {
 				if (!event.started && local >= 0.0) {
 					event.started = true;
 					AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(node);
-					const real_t random = CLAMP(real_t(double(node->get_meta(META_PITCH_RANDOM, 0.0))), 0.0, 1.0);
+					const real_t random = event.pitch_random;
 					player->set_pitch_scale(MAX(real_t(0.01), base.pitch * (1.0 + random * real_t(Math::randf() * 2.0 - 1.0))));
 					player->play();
 				}
@@ -1335,6 +1459,9 @@ void ParticleEffect3D::_finish() {
 		editor_preview = false;
 	}
 	emit_signal(SceneStringName(finished));
+	if (playing || play_pending) {
+		return; // A finished handler replayed the effect; keep it.
+	}
 	if (auto_free && !Engine::get_singleton()->is_editor_hint() && is_inside_tree()) {
 		if (!_release_to_pool()) {
 			queue_free();
@@ -1351,7 +1478,8 @@ bool ParticleEffect3D::_release_to_pool() {
 		return false;
 	}
 	LocalVector<ObjectID> &pool = effect_pools[pool_scene_id];
-	if (int(pool.size()) >= EFFECT_POOL_MAX_FREE) {
+	prune_pool(pool);
+	if (int(pool.size()) >= EFFECT_POOL_MAX_FREE || pool.has(get_instance_id())) {
 		return false;
 	}
 	// finished connections belong to the use that just ended.
@@ -1405,6 +1533,7 @@ int ParticleEffect3D::prewarm(const Ref<PackedScene> &p_scene, Node *p_parent, i
 	ERR_FAIL_NULL_V(p_parent, 0);
 	int created = 0;
 	LocalVector<ObjectID> &pool = effect_pools[p_scene->get_instance_id()];
+	prune_pool(pool);
 	for (int i = 0; i < p_count && int(pool.size()) < EFFECT_POOL_MAX_FREE; i++) {
 		ParticleEffect3D *effect = _instantiate_pooled(p_scene, p_parent);
 		if (!effect) {
@@ -1420,7 +1549,11 @@ int ParticleEffect3D::prewarm(const Ref<PackedScene> &p_scene, Node *p_parent, i
 int ParticleEffect3D::get_pooled_count(const Ref<PackedScene> &p_scene) {
 	ERR_FAIL_COND_V(p_scene.is_null(), 0);
 	HashMap<ObjectID, LocalVector<ObjectID>>::Iterator pool = effect_pools.find(p_scene->get_instance_id());
-	return pool ? int(pool->value.size()) : 0;
+	if (!pool) {
+		return 0;
+	}
+	prune_pool(pool->value);
+	return int(pool->value.size());
 }
 
 void ParticleEffect3D::clear_pool() {
@@ -1456,6 +1589,13 @@ void ParticleEffect3D::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_CHILD_ORDER_CHANGED: {
 			update_configuration_warnings();
+		} break;
+		case NOTIFICATION_ENTER_TREE: {
+			// READY fires only once; a reused (pooled) effect that was played
+			// outside the tree starts when it enters it again.
+			if (play_pending && is_ready()) {
+				callable_mp(this, &ParticleEffect3D::_play_pending).call_deferred();
+			}
 		} break;
 		case NOTIFICATION_READY: {
 			if (play_pending || (autoplay && !Engine::get_singleton()->is_editor_hint())) {

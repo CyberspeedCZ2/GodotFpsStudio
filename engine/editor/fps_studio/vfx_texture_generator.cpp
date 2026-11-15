@@ -18,6 +18,7 @@
 #include "vfx_texture_generator.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 namespace VFXTextureGenerator {
@@ -310,6 +311,14 @@ struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
 	TypeTable() {
 		int i = 0;
+		// Adding a type without raising TYPE_COUNT must fail loudly, not
+		// write past the table.
+		auto push = [&](const TypeInfo &p_type) {
+			if (i >= TYPE_COUNT) {
+				std::abort();
+			}
+			types[i++] = p_type;
+		};
 		// Order defines the gallery order in the editor.
 		{
 			TypeInfo t = make_type(TYPE_EXPLOSION, "Explosion", "Fire & Explosions", "Volumetric fireball with billowing smoke, a white-hot core and self-shadowed soot.", 1.0f, 0.24f, 0.03f, 1.0f, 0.6f, 0.12f, "Flame color", "Hot color", true, false);
@@ -322,7 +331,7 @@ struct TypeTable {
 			add_param(t, "density", "Density", 0.2f, 4.0f, 0.01f, 1.6f, "Optical density of the medium.");
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 110.0f, "Direction of the key light that shades the smoke.");
 			add_param(t, "lifecycle", "Life cycle", 0.0f, 1.0f, 0.01f, 0.0f, "In sprite sheets: expand, cool down and turn to smoke over the animation.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_EXPLOSION_RING, "Explosion Ring", "Fire & Explosions", "Burning torus of fire and smoke, as seen from above a ground blast.", 1.0f, 0.24f, 0.03f, 1.0f, 0.6f, 0.12f, "Flame color", "Hot color", true, false);
@@ -335,7 +344,7 @@ struct TypeTable {
 			add_param(t, "density", "Density", 0.2f, 4.0f, 0.01f, 1.6f, "Optical density of the medium.");
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 110.0f, "Direction of the key light.");
 			add_param(t, "lifecycle", "Life cycle", 0.0f, 1.0f, 0.01f, 0.0f, "In sprite sheets: expand and cool down over the animation.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_FIRE, "Fire", "Fire & Explosions", "Volumetric flame with rising turbulence, soft blackbody gradient and flickering tongues.", 1.0f, 0.28f, 0.03f, 1.0f, 0.74f, 0.25f, "Flame color", "Hot color", true, false);
@@ -347,7 +356,7 @@ struct TypeTable {
 			add_param(t, "intensity", "Intensity", 0.2f, 4.0f, 0.01f, 1.4f, "Brightness of the flame.");
 			add_param(t, "core", "Core heat", 0.0f, 1.0f, 0.01f, 0.55f, "Size of the bright inner core.");
 			add_param(t, "smoke", "Smoke", 0.0f, 1.0f, 0.01f, 0.0f, "Dark soot above the flame tips.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_SMOKE, "Smoke", "Smoke & Clouds", "Lit volumetric smoke puff with soft self-shadowing.", 0.11f, 0.11f, 0.12f, 0.78f, 0.77f, 0.75f, "Shadow color", "Lit color", true, false);
@@ -360,7 +369,7 @@ struct TypeTable {
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 120.0f, "Direction of the key light.");
 			add_param(t, "shadow", "Shadow", 0.0f, 1.0f, 0.01f, 0.75f, "Self-shadowing strength.");
 			add_param(t, "ambient", "Ambient", 0.0f, 1.0f, 0.01f, 0.2f, "Ambient light filling the shadows.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_SOFT_SMOKE, "Soft Smoke (Particles)", "Smoke & Clouds", "Soft smoke puff for particles: no hard outline, alpha fades smoothly from the centre so overlapping particles merge into one cloud. Fast 2D; use a 4x4 sheet for random variants.", 0.36f, 0.36f, 0.37f, 0.8f, 0.79f, 0.77f, "Shadow color", "Lit color", false, false);
@@ -374,7 +383,7 @@ struct TypeTable {
 			add_param(t, "shading", "Shading", 0.0f, 1.0f, 0.01f, 0.5f, "Contrast of the lighting. Low values keep particles from looking like separate balls.");
 			add_param(t, "billows", "Inner billows", 0.0f, 1.0f, 0.01f, 0.55f, "Lit billowy detail inside the puff (keeps it from looking like a blur).");
 			add_param(t, "lifecycle", "Life cycle", 0.0f, 1.0f, 0.01f, 0.0f, "In sprite sheets: the puff grows, breaks into wisps and thins out over the animation (play it over the particle life).");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_CLOUD, "Cloud", "Smoke & Clouds", "Cumulus cloud with a flat base and sunlit billows.", 0.42f, 0.47f, 0.56f, 1.0f, 0.99f, 0.96f, "Shadow color", "Lit color", true, false);
@@ -386,7 +395,7 @@ struct TypeTable {
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 70.0f, "Direction of the sun.");
 			add_param(t, "shadow", "Shadow", 0.0f, 1.0f, 0.01f, 0.7f, "Self-shadowing strength.");
 			add_param(t, "ambient", "Ambient", 0.0f, 1.0f, 0.01f, 0.45f, "Sky light filling the shadows.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_PLASMA, "Plasma Sun", "Fire & Explosions", "Glowing star with granulated surface and a turbulent corona.", 1.0f, 0.3f, 0.03f, 1.0f, 0.86f, 0.5f, "Corona color", "Surface color", false, false);
@@ -396,7 +405,7 @@ struct TypeTable {
 			add_param(t, "corona", "Corona", 0.0f, 2.0f, 0.01f, 1.0f, "Brightness of the corona.");
 			add_param(t, "corona_size", "Corona size", 0.05f, 0.8f, 0.01f, 0.35f, "Reach of the corona flames.");
 			add_param(t, "intensity", "Intensity", 0.2f, 4.0f, 0.01f, 1.5f, "Overall brightness.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_SPARK, "Spark", "Energy & Light", "Hot spark streak with a glowing head and tapered tail.", 1.0f, 0.42f, 0.08f, 1.0f, 0.9f, 0.62f, "Glow color", "Core color", false, false);
@@ -406,7 +415,7 @@ struct TypeTable {
 			add_param(t, "head", "Head size", 0.0f, 2.0f, 0.01f, 1.0f, "Brightness and size of the leading head.");
 			add_param(t, "flicker", "Flicker", 0.0f, 1.0f, 0.01f, 0.35f, "Irregular brightness along the tail.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 2.0f, "Overall brightness.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_LIGHTNING, "Lightning", "Energy & Light", "Fractal lightning bolt with branches and a soft ionized glow.", 0.36f, 0.3f, 1.0f, 0.86f, 0.93f, 1.0f, "Glow color", "Core color", false, false);
@@ -416,7 +425,7 @@ struct TypeTable {
 			add_param(t, "glow", "Glow", 0.0f, 2.0f, 0.01f, 1.0f, "Size of the glow.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 2.2f, "Overall brightness.");
 			add_param(t, "flicker_rate", "Change rate", 0.0f, 30.0f, 0.5f, 12.0f, "How many times per second the bolt changes shape.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_ELECTRIC_ARC, "Electric Burst", "Energy & Light", "Radial electric discharge with crackling arcs.", 0.32f, 0.36f, 1.0f, 0.82f, 0.94f, 1.0f, "Glow color", "Core color", false, false);
@@ -427,7 +436,7 @@ struct TypeTable {
 			add_param(t, "glow", "Glow", 0.0f, 2.0f, 0.01f, 1.0f, "Size of the glow.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 2.0f, "Overall brightness.");
 			add_param(t, "flicker_rate", "Change rate", 0.0f, 30.0f, 0.5f, 14.0f, "Shape changes per second.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_FLASH, "Muzzle Flash / Flare", "Energy & Light", "Bright flash with star rays, an anamorphic streak and halo.", 1.0f, 0.55f, 0.16f, 1.0f, 0.95f, 0.82f, "Glow color", "Core color", false, false);
@@ -438,7 +447,7 @@ struct TypeTable {
 			add_param(t, "streak", "Streak", 0.0f, 2.0f, 0.01f, 0.6f, "Horizontal anamorphic streak.");
 			add_param(t, "halo", "Halo", 0.0f, 1.0f, 0.01f, 0.25f, "Brightness of the halo ring.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 2.0f, "Overall brightness.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_RING, "Energy Ring", "Energy & Light", "Glowing ring with turbulent energy.", 0.24f, 0.36f, 1.0f, 0.62f, 0.94f, 1.0f, "Glow color", "Core color", false, false);
@@ -448,7 +457,7 @@ struct TypeTable {
 			add_param(t, "noise_scale", "Noise scale", 1.0f, 12.0f, 0.1f, 5.0f, "Frequency of the turbulence.");
 			add_param(t, "glow", "Glow", 0.0f, 2.0f, 0.01f, 0.8f, "Size of the glow.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 1.6f, "Overall brightness.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_WAVE_RING, "Shockwave", "Energy & Light", "Expanding shockwave ring with a sharp front and fading wake.", 0.5f, 0.66f, 1.0f, 0.92f, 0.97f, 1.0f, "Wake color", "Front color", false, false);
@@ -458,7 +467,7 @@ struct TypeTable {
 			add_param(t, "distortion", "Distortion", 0.0f, 1.0f, 0.01f, 0.25f, "Irregularity of the front.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 1.4f, "Overall brightness.");
 			add_param(t, "animate_progress", "Animate progress", 0.0f, 1.0f, 1.0f, 1.0f, "Drive progress from the sprite sheet life cycle.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_MAGIC_CIRCLE, "Magic Circle", "Shapes", "Rotating glyph circle with rings, spokes and a polygram.", 0.3f, 0.2f, 1.0f, 0.6f, 0.95f, 1.0f, "Glow color", "Line color", false, false);
@@ -469,7 +478,7 @@ struct TypeTable {
 			add_param(t, "glow", "Glow", 0.0f, 2.0f, 0.01f, 0.7f, "Size of the glow.");
 			add_param(t, "intensity", "Intensity", 0.2f, 6.0f, 0.01f, 1.5f, "Overall brightness.");
 			add_param(t, "spin", "Spin", -2.0f, 2.0f, 0.01f, 0.25f, "Rotation speed in turns per second.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_BUBBLES, "Bokeh / Bubbles", "Shapes", "Soft out-of-focus disks with bright rims.", 0.15f, 0.5f, 1.0f, 0.75f, 0.95f, 1.0f, "Body color", "Rim color", false, false);
@@ -479,7 +488,7 @@ struct TypeTable {
 			add_param(t, "rim", "Rim", 0.0f, 1.0f, 0.01f, 0.6f, "Brightness of the rim.");
 			add_param(t, "softness", "Softness", 0.0f, 1.0f, 0.01f, 0.3f, "Edge blur.");
 			add_param(t, "intensity", "Intensity", 0.2f, 4.0f, 0.01f, 1.0f, "Overall brightness.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_CAUSTICS, "Caustics", "Noise & Patterns", "Animated water caustic network. Supports seamless tiling.", 0.05f, 0.35f, 0.55f, 0.75f, 1.0f, 0.95f, "Water color", "Light color", false, true);
@@ -489,7 +498,7 @@ struct TypeTable {
 			add_param(t, "layers", "Second layer", 0.0f, 1.0f, 0.01f, 0.5f, "Blend of a second, finer layer.");
 			add_param(t, "intensity", "Intensity", 0.2f, 4.0f, 0.01f, 1.5f, "Brightness of the light lines.");
 			add_param(t, "background", "Background", 0.0f, 1.0f, 0.01f, 0.0f, "Opacity of the water color between lines.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_NOISE, "Noise", "Noise & Patterns", "Fractal noise mask. Supports seamless tiling.", 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, "Low color", "High color", false, true);
@@ -499,7 +508,7 @@ struct TypeTable {
 			add_param(t, "mode", "Mode", 0.0f, 2.0f, 1.0f, 0.0f, "0 = smooth fBm, 1 = billow, 2 = ridged.");
 			add_param(t, "contrast", "Contrast", 0.2f, 4.0f, 0.01f, 1.0f, "Output contrast.");
 			add_param(t, "threshold", "Alpha threshold", 0.0f, 1.0f, 0.01f, 0.0f, "Values below become transparent.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_BULLET_HOLE, "Bullet Hole", "Decals", "Bullet hole decal: dark hole, chipped surface, cracks and soot. Surface: concrete, metal (bent rim) or wood (splinters).", 0.04f, 0.035f, 0.03f, 0.62f, 0.6f, 0.56f, "Hole / soot color", "Chipped surface color", false, false);
@@ -510,7 +519,7 @@ struct TypeTable {
 			add_param(t, "roughness", "Roughness", 0.0f, 1.0f, 0.01f, 0.6f, "Irregularity of the hole and the chipped edge.");
 			add_param(t, "soot", "Soot", 0.0f, 1.0f, 0.01f, 0.45f, "Dark powder burn around the hole.");
 			add_param(t, "surface", "Surface", 0.0f, 2.0f, 1.0f, 0.0f, "0 = concrete / plaster, 1 = metal (bent bright rim), 2 = wood (splinters along the grain).");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_SCORCH, "Scorch / Burn Mark", "Decals", "Explosion scorch with radial blast streaks, or a burn mark (streaks 0). Dark soot core fading to a burnt edge.", 0.03f, 0.025f, 0.02f, 0.26f, 0.16f, 0.09f, "Soot color", "Burnt edge color", false, false);
@@ -521,7 +530,7 @@ struct TypeTable {
 			add_param(t, "streak_strength", "Streak strength", 0.0f, 1.0f, 0.01f, 0.6f, "Length and opacity of the streaks.");
 			add_param(t, "char_ring", "Char ring", 0.0f, 1.0f, 0.01f, 0.35f, "Darker charred ring inside the mark.");
 			add_param(t, "detail", "Detail", 1.0f, 12.0f, 0.1f, 5.0f, "Scale of the soot noise.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_GLASS_CRACK, "Glass Crack", "Decals", "Bullet hit in glass: spider-web of radial and ring cracks around a crushed hole.", 0.92f, 0.96f, 1.0f, 0.8f, 0.86f, 0.92f, "Crack color", "Crushed glass color", false, false);
@@ -532,7 +541,7 @@ struct TypeTable {
 			add_param(t, "line_width", "Line width", 0.001f, 0.02f, 0.0005f, 0.004f, "Width of the crack lines.");
 			add_param(t, "crushed", "Crushed zone", 0.0f, 1.0f, 0.01f, 0.5f, "Frosted crushed glass around the hole.");
 			add_param(t, "jaggedness", "Jaggedness", 0.0f, 1.0f, 0.01f, 0.5f, "Wobble of the cracks.");
-			types[i++] = t;
+			push(t);
 		}
 		{
 			TypeInfo t = make_type(TYPE_SPLATTER, "Splatter", "Decals", "Blood, oil or paint splatter: a ragged blob, droplets and elongated drops thrown in one direction (+X).", 0.18f, 0.0f, 0.0f, 0.45f, 0.02f, 0.02f, "Thick color", "Thin color", false, false);
@@ -542,7 +551,10 @@ struct TypeTable {
 			add_param(t, "direction", "Direction", 0.0f, 1.0f, 0.01f, 0.45f, "Bias of the droplets and streaks towards +X (use Rotation to aim).");
 			add_param(t, "raggedness", "Raggedness", 0.0f, 1.0f, 0.01f, 0.6f, "Irregular edge of the blob.");
 			add_param(t, "variation", "Thickness variation", 0.0f, 1.0f, 0.01f, 0.5f, "Darker thick areas inside the splatter.");
-			types[i++] = t;
+			push(t);
+		}
+		if (i != TYPE_COUNT) {
+			std::abort(); // TYPE_COUNT is larger than the number of registered types.
 		}
 	}
 };
@@ -559,7 +571,7 @@ struct Segment {
 	float width; // Relative width (1 = main bolt).
 };
 
-constexpr int MAX_SEGMENTS = 2048;
+constexpr int MAX_SEGMENTS = 4096; // 16 arcs x (128 main + 32 branch) segments, with headroom.
 
 struct FrameContext {
 	const Settings *s = nullptr;
@@ -1232,7 +1244,10 @@ void render_bolts(const FrameContext &c, float x, float y, float *r_px, float wi
 			best_w = s.width;
 		}
 		const float gw = 0.035f * glow * s.width + 0.0005f;
-		glow_acc += s.width * std::exp(-d / gw) * 0.08f;
+		// exp(-14) < 1e-6: the glow of far segments is invisible, skip the exp.
+		if (d < gw * 14.0f) {
+			glow_acc += s.width * std::exp(-d / gw) * 0.08f;
+		}
 	}
 	const float w = width * best_w;
 	const float d = best;

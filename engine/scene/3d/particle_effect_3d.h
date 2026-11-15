@@ -11,6 +11,7 @@
 #include "core/templates/local_vector.h"
 #include "scene/3d/node_3d.h"
 #include "core/math/face3.h"
+#include "scene/resources/curve.h"
 #include "scene/resources/texture.h"
 
 class GPUParticles3D;
@@ -50,6 +51,7 @@ private:
 		double duration = 0.0;
 		double lifetime = 1.0;
 		bool one_shot = false;
+		double visual_end = -1.0; // Cached at play(); -1 when the emitter runs forever.
 		bool started = false;
 		bool ended = false;
 	};
@@ -60,6 +62,12 @@ private:
 		double delay = 0.0;
 		double duration = 0.0; // <= 0: continuous.
 		bool started = false;
+		// Metadata cached at play() so _update_events() does no lookups per frame.
+		Ref<Curve> curve;
+		real_t flicker = 0.0;
+		double fade = 0.5;
+		real_t pitch_random = 0.0;
+		real_t last_value = -1.0; // Last light energy / decal alpha written (skip unchanged).
 	};
 	struct EventBase {
 		real_t energy = 1.0;
@@ -97,6 +105,7 @@ private:
 	double _get_max_lifetime() const;
 	void _update(double p_delta);
 	void _finish();
+	void _play_pending();
 	void _restore_editor_preview();
 	void _ensure_editor_level_collision(Node *p_root, uint32_t p_mask);
 	static bool _prepare_level_collision_faces(Node *p_root, const Vector<Face3> &p_faces);

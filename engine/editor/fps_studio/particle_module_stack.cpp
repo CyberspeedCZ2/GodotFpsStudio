@@ -35,6 +35,10 @@
 
 static const char *MODULE_META = "_fps_particle_modules";
 
+// Copy / Paste Module clipboard, shared by all stacks.
+static Dictionary module_clipboard;
+static int module_clipboard_module = -1;
+
 String FPSParticleModuleStack::get_module_name(int p_module) {
 	switch (p_module) {
 		case MODULE_EMITTER:
@@ -376,16 +380,15 @@ void FPSParticleModuleStack::_add_row(int p_module, Target p_target, const Strin
 	rows.push_back(row);
 }
 
-void FPSParticleModuleStack::_add_meta_row(int p_module, const String &p_key, const String &p_label, Variant::Type p_type, PropertyHint p_hint, const String &p_hint_string, const Variant &p_default) {
+void FPSParticleModuleStack::_add_meta_row(int p_module, const String &p_key, const String &p_label, Variant::Type p_type, PropertyHint p_hint, const String &p_hint_string) {
 	Node *node = get_edited_emitter();
 	if (!node || !module_contents[p_module]) {
 		return;
 	}
 	// Metadata is edited through its "metadata/<key>" property path.
+	// A missing key shows its runtime default and is written only when the
+	// user edits it; building the card must not change the node.
 	const String path = "metadata/" + p_key;
-	if (!node->has_meta(p_key)) {
-		node->set_meta(p_key, p_default);
-	}
 	EditorProperty *editor = EditorInspector::instantiate_property_editor(node, p_type, path, p_hint, p_hint_string, PROPERTY_USAGE_DEFAULT);
 	if (!editor) {
 		return;
@@ -447,26 +450,19 @@ void FPSParticleModuleStack::_build_event() {
 	module_cards[MODULE_EVENT] = card;
 	module_contents[MODULE_EVENT] = content;
 
-	_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DELAY, TTR("Start Time"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s", 0.0);
+	_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DELAY, TTR("Start Time"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s");
 	switch (kind) {
 		case ParticleEffect3D::EVENT_LIGHT: {
-			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = always on)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,10,0.01,or_greater,suffix:s", 0.3);
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = always on)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,10,0.01,or_greater,suffix:s");
 			_add_row(MODULE_EVENT, TARGET_NODE, "light_color", "light_color", TTR("Color"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "light_energy", "light_energy", TTR("Peak Energy"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "omni_range", "omni_range", TTR("Range"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "spot_range", "spot_range", TTR("Range"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "spot_angle", "spot_angle", TTR("Cone Angle"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "shadow_enabled", "shadow_enabled", TTR("Shadows"));
-			Ref<Curve> curve;
-			curve.instantiate();
-			curve->add_point(Vector2(0.0, 0.0));
-			curve->add_point(Vector2(0.1, 1.0));
-			curve->add_point(Vector2(1.0, 0.0));
-			if (!node->has_meta(ParticleEffect3D::META_CURVE)) {
-				node->set_meta(ParticleEffect3D::META_CURVE, curve);
-			}
-			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_CURVE, TTR("Intensity over Time"), Variant::OBJECT, PROPERTY_HINT_RESOURCE_TYPE, "Curve", curve);
-			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FLICKER, TTR("Flicker"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01", 0.0);
+			// No curve = the built-in flash (quick attack, smooth decay).
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_CURVE, TTR("Intensity over Time"), Variant::OBJECT, PROPERTY_HINT_RESOURCE_TYPE, "Curve");
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FLICKER, TTR("Flicker"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01");
 		} break;
 		case ParticleEffect3D::EVENT_SOUND:
 			if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(get_edited_emitter())) {
@@ -481,7 +477,7 @@ void FPSParticleModuleStack::_build_event() {
 			_add_row(MODULE_EVENT, TARGET_NODE, "stream", "stream", TTR("Sound"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "volume_db", "volume_db", TTR("Volume"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "pitch_scale", "pitch_scale", TTR("Pitch"));
-			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_PITCH_RANDOM, TTR("Pitch Random"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01", 0.1);
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_PITCH_RANDOM, TTR("Pitch Random"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,1,0.01");
 			_add_row(MODULE_EVENT, TARGET_NODE, "unit_size", "unit_size", TTR("Loudness Distance"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "max_distance", "max_distance", TTR("Max Distance"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "bus", "bus", TTR("Bus"));
@@ -507,8 +503,8 @@ void FPSParticleModuleStack::_build_event() {
 			_add_row(MODULE_EVENT, TARGET_NODE, "target_group", "target_group", TTR("Only Group (optional)"));
 			break;
 		case ParticleEffect3D::EVENT_DECAL:
-			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s", 6.0);
-			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FADE, TTR("Fade Out Part"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0.01,1,0.01", 0.5);
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s");
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FADE, TTR("Fade Out Part"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0.01,1,0.01");
 			_add_row(MODULE_EVENT, TARGET_NODE, "texture_albedo", "texture_albedo", TTR("Texture"));
 			{
 				Button *generate = memnew(Button);
@@ -633,8 +629,8 @@ void FPSParticleModuleStack::_build() {
 
 	// Emitter: how many particles, how long and how they are released.
 	_add_row(MODULE_EMITTER, TARGET_NODE, "emitting", "emitting", TTR("Emitting"));
-	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DELAY, TTR("Start Delay"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s", 0.0);
-	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DURATION, TTR("Emission Length (0 = auto)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,60,0.01,or_greater,suffix:s", 0.0);
+	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DELAY, TTR("Start Delay"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s");
+	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DURATION, TTR("Emission Length (0 = auto)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,60,0.01,or_greater,suffix:s");
 	_add_row(MODULE_EMITTER, TARGET_NODE, "amount", "amount", TTR("Max Particles"));
 	_add_row(MODULE_EMITTER, TARGET_NODE, "lifetime", "lifetime", TTR("Lifetime"));
 	_add_row(MODULE_EMITTER, TARGET_PROCESS, "lifetime_randomness", "lifetime_randomness", TTR("Lifetime Random"));
@@ -808,41 +804,62 @@ void FPSParticleModuleStack::_build() {
 	_update_add_menu();
 }
 
+void FPSParticleModuleStack::_get_targets(Object *r_targets[TARGET_COUNT]) const {
+	for (int i = 0; i < TARGET_COUNT; i++) {
+		r_targets[i] = _get_target(Target(i));
+	}
+}
+
 void FPSParticleModuleStack::_update_visibility() {
 	for (int module = 0; module < MODULE_EVENT; module++) {
 		if (module_cards[module]) {
 			module_cards[module]->set_visible(_is_module_active(module));
 		}
 	}
+	Object *targets[TARGET_COUNT];
+	_get_targets(targets);
 	for (const PropertyRow &row : rows) {
 		bool visible = true;
 		if (row.condition_property != StringName()) {
-			Object *object = _get_target(row.target);
+			Object *object = targets[row.target];
 			visible = object && row.condition_values.has(int(object->get(row.condition_property)));
 		}
 		row.editor->set_visible(visible);
 	}
 }
 
+void FPSParticleModuleStack::_collect_addable_modules(Vector<int> &r_modules) const {
+	Node *emitter = get_edited_emitter();
+	if (!emitter || !ParticleEffect3D::is_emitter(emitter) || !_has_process_material()) {
+		return;
+	}
+	const bool gpu = _is_gpu();
+	for (int module = 0; module < MODULE_EVENT; module++) {
+		if (!_is_module_optional(module) || _is_module_active(module)) {
+			continue;
+		}
+		if (!gpu && is_gpu_only_module(module)) {
+			continue;
+		}
+		r_modules.push_back(module);
+	}
+}
+
 void FPSParticleModuleStack::_update_add_menu() {
+	// Only the enabled state here; the popup is filled when it opens.
+	Vector<int> modules;
+	_collect_addable_modules(modules);
+	add_module_button->set_disabled(modules.is_empty());
+}
+
+void FPSParticleModuleStack::_fill_add_menu() {
 	PopupMenu *popup = add_module_button->get_popup();
 	popup->clear();
-	Node *emitter = get_edited_emitter();
-	const bool gpu = _is_gpu();
-	int available = 0;
-	if (emitter && ParticleEffect3D::is_emitter(emitter) && _has_process_material()) {
-		for (int module = 0; module < MODULE_EVENT; module++) {
-			if (!_is_module_optional(module) || _is_module_active(module)) {
-				continue;
-			}
-			if (!gpu && is_gpu_only_module(module)) {
-				continue;
-			}
-			popup->add_item(get_module_name(module), module);
-			available++;
-		}
+	Vector<int> modules;
+	_collect_addable_modules(modules);
+	for (int module : modules) {
+		popup->add_item(get_module_name(module), module);
 	}
-	add_module_button->set_disabled(available == 0);
 }
 
 void FPSParticleModuleStack::_update_render_card() {
@@ -945,6 +962,9 @@ void FPSParticleModuleStack::_notification(int p_what) {
 	if (p_what != NOTIFICATION_PREDELETE) {
 		return;
 	}
+	// The clipboard is static; release its resources before engine shutdown.
+	module_clipboard.clear();
+	module_clipboard_module = -1;
 	// Plugin-owned module controls outlive card rebuilds. One that is not in a
 	// card right now (e.g. the emitter uses a custom particle shader, so the
 	// process modules were not built) would never be freed. Do it here: in
@@ -982,11 +1002,18 @@ void FPSParticleModuleStack::edit(Node *p_emitter) {
 void FPSParticleModuleStack::refresh_values() {
 	Node *emitter = get_edited_emitter();
 	if (!emitter) {
+		// The emitter was freed (e.g. its creation was undone): drop the
+		// editors before they touch it.
+		if (!rows.is_empty()) {
+			_build();
+		}
 		return;
 	}
 	// A different material/mesh/process resource means different rows; rebuild.
+	Object *targets[TARGET_COUNT];
+	_get_targets(targets);
 	for (const PropertyRow &row : rows) {
-		if (row.editor->get_edited_object() != _get_target(row.target)) {
+		if (row.editor->get_edited_object() != targets[row.target]) {
 			_build();
 			return;
 		}
@@ -1187,8 +1214,66 @@ Vector<ModulePreset> get_module_presets(int p_module) {
 	return presets;
 }
 
-Dictionary module_clipboard;
-int module_clipboard_module = -1;
+bool property_accepts(const PropertyInfo &p_info, const StringName &p_class) {
+	for (const String &type : p_info.hint_string.split(",")) {
+		if (ClassDB::is_parent_class(p_class, StringName(type.strip_edges()))) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// GPU emitters take curves and gradients as textures (CurveTexture,
+// GradientTexture1D), CPU emitters take the raw Curve / Gradient. Converts a
+// preset or clipboard value to what the target property accepts.
+Variant convert_for_property(Object *p_object, const StringName &p_property, const Variant &p_value) {
+	Ref<Resource> resource = p_value;
+	if (!p_object || resource.is_null()) {
+		return p_value;
+	}
+	List<PropertyInfo> properties;
+	p_object->get_property_list(&properties);
+	for (const PropertyInfo &info : properties) {
+		if (info.name != p_property) {
+			continue;
+		}
+		if (info.type != Variant::OBJECT || info.hint != PROPERTY_HINT_RESOURCE_TYPE || property_accepts(info, resource->get_class_name())) {
+			return p_value;
+		}
+		if (Ref<GradientTexture1D> texture = resource; texture.is_valid() && property_accepts(info, "Gradient")) {
+			return texture->get_gradient();
+		}
+		if (Ref<CurveTexture> texture = resource; texture.is_valid() && property_accepts(info, "Curve")) {
+			return texture->get_curve();
+		}
+		if (Ref<Gradient> gradient = resource; gradient.is_valid() && property_accepts(info, "GradientTexture1D")) {
+			Ref<GradientTexture1D> texture;
+			texture.instantiate();
+			texture->set_gradient(gradient);
+			return texture;
+		}
+		if (Ref<Curve> curve = resource; curve.is_valid() && property_accepts(info, "CurveTexture")) {
+			Ref<CurveTexture> texture;
+			texture.instantiate();
+			texture->set_curve(curve);
+			return texture;
+		}
+		return Variant(); // Incompatible; the caller skips it.
+	}
+	return p_value;
+}
+
+// Rows that Reset to Defaults leaves alone: the class default would hide the
+// emitter (no mesh) or switch the module off (collision mode disabled).
+bool is_reset_protected(int p_module, const StringName &p_property) {
+	if (p_module == FPSParticleModuleStack::MODULE_RENDER) {
+		return p_property == StringName("draw_pass_1") || p_property == StringName("mesh");
+	}
+	if (p_module == FPSParticleModuleStack::MODULE_COLLISION) {
+		return p_property == StringName("collision_mode");
+	}
+	return false;
+}
 
 } // namespace
 
@@ -1253,7 +1338,11 @@ void FPSParticleModuleStack::_apply_module_preset(int p_module, int p_preset) {
 		if (!valid) {
 			continue;
 		}
-		undo_redo->add_do_property(object, property, value.value);
+		const Variant new_value = convert_for_property(object, property, value.value);
+		if (new_value.get_type() == Variant::NIL && value.value.get_type() != Variant::NIL) {
+			continue;
+		}
+		undo_redo->add_do_property(object, property, new_value);
 		undo_redo->add_undo_property(object, property, current);
 	}
 	undo_redo->add_do_method(this, "_history_changed", StringName("preset"));
@@ -1301,6 +1390,12 @@ void FPSParticleModuleStack::_paste_module(int p_module) {
 		if (resource.is_valid() && resource->get_path().is_empty()) {
 			value = resource->duplicate(true);
 		}
+		// Copied from a GPU emitter onto a CPU one (or back).
+		const Variant converted = convert_for_property(object, row.property, value);
+		if (converted.get_type() == Variant::NIL && value.get_type() != Variant::NIL) {
+			continue;
+		}
+		value = converted;
 		undo_redo->add_do_property(object, row.property, value);
 		undo_redo->add_undo_property(object, row.property, object->get(row.property));
 	}
@@ -1314,7 +1409,7 @@ void FPSParticleModuleStack::_reset_module(int p_module) {
 	undo_redo->create_action_for_history(vformat(TTR("Reset Module: %s"), get_module_name(p_module)), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
 	undo_redo->force_fixed_history();
 	for (const PropertyRow &row : rows) {
-		if (row.module != p_module) {
+		if (row.module != p_module || is_reset_protected(p_module, row.property)) {
 			continue;
 		}
 		Object *object = row.editor->get_edited_object();
@@ -1323,7 +1418,7 @@ void FPSParticleModuleStack::_reset_module(int p_module) {
 		}
 		Variant default_value;
 		if (String(row.property).begins_with("metadata/")) {
-			default_value = 0.0;
+			default_value = Variant(); // Removes the key: the runtime default applies.
 		} else {
 			bool valid = false;
 			default_value = ClassDB::class_get_default_property_value(object->get_class_name(), row.property, &valid);
@@ -1432,6 +1527,7 @@ FPSParticleModuleStack::FPSParticleModuleStack() {
 	add_module_button->set_flat(false);
 	add_module_button->set_tooltip_text(TTR("Add an optional module (rotation, sprite sheet animation, turbulence, collision, sub emitter)."));
 	add_module_button->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSParticleModuleStack::_on_add_module_selected));
+	add_module_button->get_popup()->connect("about_to_popup", callable_mp(this, &FPSParticleModuleStack::_fill_add_menu));
 	header->add_child(add_module_button);
 	cards = memnew(VBoxContainer);
 	cards->set_h_size_flags(Control::SIZE_EXPAND_FILL);

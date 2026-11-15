@@ -31,33 +31,21 @@ struct GradientStop {
 };
 
 Ref<GradientTexture1D> make_ramp(std::initializer_list<GradientStop> p_stops) {
-	Ref<Gradient> gradient;
-	gradient.instantiate();
 	Vector<float> offsets;
 	Vector<Color> colors;
 	for (const GradientStop &stop : p_stops) {
 		offsets.push_back(stop.offset);
 		colors.push_back(stop.color);
 	}
-	gradient->set_offsets(offsets);
-	gradient->set_colors(colors);
-	Ref<GradientTexture1D> texture;
-	texture.instantiate();
-	texture->set_gradient(gradient);
-	return texture;
+	return make_color_ramp(offsets, colors);
 }
 
 Ref<CurveTexture> make_curve(std::initializer_list<Vector2> p_points, float p_max = 1.0f) {
-	Ref<Curve> curve;
-	curve.instantiate();
-	curve->set_max_value(p_max);
+	Vector<Vector2> points;
 	for (const Vector2 &point : p_points) {
-		curve->add_point(point);
+		points.push_back(point);
 	}
-	Ref<CurveTexture> texture;
-	texture.instantiate();
-	texture->set_curve(curve);
-	return texture;
+	return make_curve_texture(points, p_max);
 }
 
 enum Blend {

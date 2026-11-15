@@ -287,6 +287,13 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool preview_orbit_dragging = false;
 	bool preview_pan_dragging = false;
 	bool rebuilding_preview = false;
+	ObjectID preview_source_id; // Effect root the preview copy was made from.
+	ObjectID particle_graph_shader_id;
+	ObjectID particle_code_shader_id;
+	int64_t effect_document_serial = 0; // Bumped per document; tags undo steps.
+	bool document_refresh_queued = false;
+	bool preview_sync_queued = false;
+	bool module_stack_editing = false;
 	double preview_time = 0.0;
 	double preview_duration = 5.0;
 	double preview_time_label_update_accumulator = 0.0;
@@ -313,7 +320,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _update_document_ui();
 	void _update_document_toolbar_layout();
 	void _set_effect_document(Node *p_root, const String &p_path, bool p_dirty = false);
-	void _set_edited_emitter(Node *p_node, bool p_update_tree = true);
+	void _set_edited_emitter(Node *p_node, bool p_update_tree = true, bool p_force = false);
 	void _create_effect_document(int p_template);
 	void _add_emitter(int p_type);
 	void _remove_selected_emitter();
@@ -323,6 +330,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _clear_preview_scripts(Node *p_node);
 	void _apply_preview_defaults(Node *p_node);
 	void _sync_preview_properties();
+	void _queue_preview_sync();
+	void _flush_preview_sync();
+	void _flush_document_refresh();
+	void _update_document_header();
 	void _set_preview_playing(bool p_playing);
 	void _on_preview_gui_input(const Ref<InputEvent> &p_event);
 	void _update_preview_camera();
@@ -422,10 +433,11 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_rename_effect_confirmed();
 	void _on_effect_name_changed();
 	void _on_emitter_selected();
-	void _on_emitter_hierarchy_history_changed(Node *p_preferred_emitter);
+	void _on_emitter_hierarchy_history_changed(Node *p_preferred_emitter, int64_t p_document_serial);
 	void _on_save_scene_pressed();
 	void _save_emitter_scene(const String &p_path);
 	void _load_particle_scene(const String &p_path);
+	void _request_load_particle_scene(const String &p_path);
 	void _confirm_replace_document();
 	void _add_effect_to_level();
 	void _on_emitter_property_edited(const String &p_property);

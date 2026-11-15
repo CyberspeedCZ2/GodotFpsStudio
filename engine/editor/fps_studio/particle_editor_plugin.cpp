@@ -798,6 +798,12 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 }
 
 void FPSStudioParticleEditorPlugin::_update_document_ui() {
+	_update_document_header();
+	_update_effects_tree();
+	_update_emitter_tree();
+}
+
+void FPSStudioParticleEditorPlugin::_update_document_header() {
 	Node *root = _get_effect_root();
 	const bool has_document = root != nullptr;
 	if (document_title) {
@@ -830,8 +836,6 @@ void FPSStudioParticleEditorPlugin::_update_document_ui() {
 		open_effect_button->set_disabled(false);
 	}
 	_update_document_toolbar_layout();
-	_update_effects_tree();
-	_update_emitter_tree();
 }
 
 void FPSStudioParticleEditorPlugin::_update_document_toolbar_layout() {
@@ -939,7 +943,18 @@ void FPSStudioParticleEditorPlugin::_mark_document_dirty() {
 		return;
 	}
 	effect_dirty = true;
-	_update_document_ui();
+	// Edits arrive per slider step; refresh the header and emitter list once
+	// per frame. The Library only changes with the path or the recent list.
+	if (!document_refresh_queued) {
+		document_refresh_queued = true;
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_flush_document_refresh).call_deferred();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_flush_document_refresh() {
+	document_refresh_queued = false;
+	_update_document_header();
+	_update_emitter_tree();
 }
 
 void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const String &p_path, bool p_dirty) {
@@ -960,9 +975,9 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 		if (particle_graph_editor) {
 			particle_graph_editor->edit_shader(Ref<Shader>());
 		}
-		if (particle_code_editor) {
-			particle_code_editor->edit_shader(Ref<Shader>());
-		}
+		particle_graph_shader_id = ObjectID();
+		particle_code_shader_id = ObjectID();
+		effect_document_serial++; // Undo steps of the previous document no longer apply.
 		if (previous->is_inside_tree()) {
 			previous->queue_free();
 		} else {
@@ -991,7 +1006,7 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 	_update_document_ui();
 }
 
-void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_update_tree) {
+void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_update_tree, bool p_force) {
 	Node *effect_root = _get_effect_root();
 	if (p_node && !ParticleEffect3D::is_track(p_node)) {
 		p_node = nullptr;
@@ -999,11 +1014,10 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 	if (p_node && effect_root && p_node != effect_root && !effect_root->is_ancestor_of(p_node)) {
 		p_node = nullptr;
 	}
-	if (p_node && _get_edited_emitter() == p_node) {
+	if (!p_force && p_node && _get_edited_emitter() == p_node) {
 		return;
 	}
 	edited_emitter_id = p_node ? p_node->get_instance_id() : ObjectID();
-	_update_event_radii(); // The selected event's rings are drawn brighter.
 	if (emitter_inspector) {
 		emitter_inspector->edit(p_node);
 	}
@@ -1047,7 +1061,15 @@ void FPSStudioParticleEditorPlugin::_set_edited_emitter(Node *p_node, bool p_upd
 	if (p_update_tree) {
 		_update_emitter_tree();
 	}
-	_rebuild_preview();
+	// A plain selection change keeps the running preview (and the camera);
+	// only a different document or a forced refresh (undo/redo) rebuilds it.
+	Node *source = _get_effect_root();
+	if (p_force || !preview_effect || !source || preview_source_id != source->get_instance_id()) {
+		_rebuild_preview();
+	} else {
+		_apply_preview_solo();
+		_update_event_radii(); // The selected event's rings are drawn brighter.
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_rebuild_preview() {
@@ -1062,9 +1084,13 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	}
 	Node *source = _get_effect_root();
 	if (!source) {
+		preview_source_id = ObjectID();
 		rebuilding_preview = false;
 		return;
 	}
+	// Only a new document resets the camera framing.
+	const bool new_document = preview_source_id != source->get_instance_id();
+	preview_source_id = source->get_instance_id();
 	preview_effect = source->duplicate(Node::DUPLICATE_SCRIPTS);
 	if (!preview_effect) {
 		rebuilding_preview = false;
@@ -1120,7 +1146,9 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	_update_event_radii();
 	_restart_preview_at(0.0);
 	_set_preview_playing(preview_playing);
-	_frame_preview();
+	if (new_document) {
+		_frame_preview();
+	}
 	_update_time_label();
 	rebuilding_preview = false;
 }
@@ -1133,7 +1161,21 @@ void FPSStudioParticleEditorPlugin::_apply_preview_defaults(Node *p_node) {
 	apply_preview_defaults(p_node, preview_quad);
 }
 
+void FPSStudioParticleEditorPlugin::_queue_preview_sync() {
+	if (!preview_sync_queued) {
+		preview_sync_queued = true;
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_flush_preview_sync).call_deferred();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_flush_preview_sync() {
+	if (preview_sync_queued) {
+		_sync_preview_properties();
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
+	preview_sync_queued = false;
 	Node *source = _get_effect_root();
 	if (!source || !preview_effect) {
 		return;
@@ -2210,14 +2252,9 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 		const StringName property = normal ? StringName("texture_normal") : StringName("texture_albedo");
 		decal_undo->add_do_property(decal, property, generated_texture);
 		decal_undo->add_undo_property(decal, property, decal->get(property));
-		decal_undo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter);
-		decal_undo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter);
-		decal_undo->commit_action();
-		if (module_stack) {
-			module_stack->refresh_values();
-		}
-		_mark_document_dirty();
-		_sync_preview_properties();
+		decal_undo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+		decal_undo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+		decal_undo->commit_action(); // The history callback refreshes the UI.
 		return;
 	}
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(emitter);
@@ -2290,17 +2327,9 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 			set_prop(material, "particles_anim_loop", !lifecycle);
 		}
 	}
-	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter);
-	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter);
-	undo_redo->commit_action();
-	if (renderer_inspector) {
-		renderer_inspector->edit(FPSParticleModuleStack::get_draw_mesh(emitter).ptr());
-	}
-	if (module_stack) {
-		module_stack->refresh_values();
-	}
-	_mark_document_dirty();
-	_sync_preview_properties();
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+	undo_redo->commit_action(); // The history callback refreshes the UI.
 }
 
 Ref<Texture2D> FPSStudioParticleEditorPlugin::_bake_preset_texture(const VFXTextureGenerator::Settings &p_settings, const String &p_file_name, int p_resolution, int p_columns, double p_duration) {
@@ -2467,17 +2496,7 @@ void FPSStudioParticleEditorPlugin::_apply_emitter_timing(Object *p_emitter, dou
 	ParticleEffect3D::set_emitter_delay(emitter, p_delay);
 	ParticleEffect3D::set_emitter_duration(emitter, p_duration);
 	_mark_document_dirty();
-	// Rebuild the preview copy but keep the user's camera framing.
-	const double yaw = preview_camera_yaw;
-	const double pitch = preview_camera_pitch;
-	const double distance = preview_camera_distance;
-	const Vector3 target = preview_camera_target;
-	_rebuild_preview();
-	preview_camera_yaw = yaw;
-	preview_camera_pitch = pitch;
-	preview_camera_distance = distance;
-	preview_camera_target = target;
-	_update_preview_camera();
+	_rebuild_preview(); // Keeps the camera framing of the same document.
 }
 
 void FPSStudioParticleEditorPlugin::_on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration) {
@@ -2488,7 +2507,8 @@ void FPSStudioParticleEditorPlugin::_on_timeline_timing_committed(Object *p_emit
 	const double delay = ParticleEffect3D::get_emitter_delay(emitter);
 	const double duration = ParticleEffect3D::get_emitter_duration(emitter);
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(vformat(TTR("Change Timing of %s"), emitter->get_name()), UndoRedo::MERGE_DISABLE, emitter);
+	undo_redo->create_action_for_history(vformat(TTR("Change Timing of %s"), emitter->get_name()), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(this, "_apply_emitter_timing", emitter, delay, duration);
 	undo_redo->add_undo_method(this, "_apply_emitter_timing", emitter, p_old_delay, p_old_duration);
 	undo_redo->commit_action();
@@ -2536,7 +2556,9 @@ void FPSStudioParticleEditorPlugin::_on_properties_mode_toggled(bool p_pressed, 
 }
 
 void FPSStudioParticleEditorPlugin::_on_module_stack_property_edited(const String &p_property) {
+	module_stack_editing = true;
 	_on_emitter_property_edited(p_property);
+	module_stack_editing = false;
 }
 
 void FPSStudioParticleEditorPlugin::_on_module_stack_generate_texture() {
@@ -2621,17 +2643,16 @@ void FPSStudioParticleEditorPlugin::_add_track_node(Node3D *p_track) {
 	Node3D *emitter = p_track;
 	emitter->set_name(effect->prevalidate_child_name(emitter, emitter->get_name()));
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(vformat(TTR("Add %s to Particle Effect"), emitter->get_name()));
+	undo_redo->create_action_for_history(vformat(TTR("Add %s to Particle Effect"), emitter->get_name()), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(effect, "add_child", emitter, true);
 	undo_redo->add_do_method(emitter, "set_owner", effect);
-	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
 	undo_redo->add_do_reference(emitter);
 	undo_redo->add_undo_method(emitter, "set_owner", (Object *)nullptr);
 	undo_redo->add_undo_method(effect, "remove_child", emitter);
-	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", previous_emitter);
-	undo_redo->commit_action();
-	_set_edited_emitter(emitter);
-	_mark_document_dirty();
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", previous_emitter, effect_document_serial);
+	undo_redo->commit_action(); // The history callback selects it and refreshes the UI.
 }
 
 static Vector<String> get_dropped_audio_files(const Variant &p_data) {
@@ -2666,13 +2687,13 @@ void FPSStudioParticleEditorPlugin::_drop_on_emitter_tree(const Point2 &p_point,
 		Ref<AudioStream> stream = ResourceLoader::load(files[0]);
 		if (player && stream.is_valid()) {
 			EditorUndoRedoManager *undo_redo = get_undo_redo();
-			undo_redo->create_action(TTR("Set Sound"));
+			undo_redo->create_action_for_history(TTR("Set Sound"), EditorUndoRedoManager::GLOBAL_HISTORY);
+			undo_redo->force_fixed_history();
 			undo_redo->add_do_property(player, "stream", stream);
 			undo_redo->add_undo_property(player, "stream", player->get_stream());
-			undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", player);
-			undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", player);
+			undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", player, effect_document_serial);
+			undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", player, effect_document_serial);
 			undo_redo->commit_action();
-			_mark_document_dirty();
 			return;
 		}
 	}
@@ -2841,20 +2862,22 @@ void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
 		}
 	}
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Remove Particle Emitter"));
+	undo_redo->create_action_for_history(TTR("Remove Particle Emitter"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(emitter, "set_owner", (Object *)nullptr);
 	undo_redo->add_do_method(effect, "remove_child", emitter);
-	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", next_emitter);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", next_emitter, effect_document_serial);
 	undo_redo->add_undo_method(effect, "add_child", emitter, true);
 	undo_redo->add_undo_method(emitter, "set_owner", effect);
-	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter);
-	undo_redo->add_do_reference(emitter);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+	undo_redo->add_undo_reference(emitter);
 	undo_redo->commit_action();
-	_set_edited_emitter(next_emitter);
-	_mark_document_dirty();
 }
 
-void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *p_preferred_emitter) {
+void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *p_preferred_emitter, int64_t p_document_serial) {
+	if (p_document_serial != effect_document_serial) {
+		return; // A step recorded for an earlier document; its nodes are gone.
+	}
 	Node *effect = _get_effect_root();
 	if (!effect) {
 		_set_edited_emitter(nullptr, false);
@@ -2867,7 +2890,7 @@ void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *
 	if (!selected_emitter || (selected_emitter != effect && !effect->is_ancestor_of(selected_emitter))) {
 		selected_emitter = emitters.is_empty() ? nullptr : emitters[0];
 	}
-	_set_edited_emitter(selected_emitter, false);
+	_set_edited_emitter(selected_emitter, false, true); // Rebuilds inspectors, module stack and preview.
 	_mark_document_dirty();
 }
 
@@ -2960,16 +2983,7 @@ void FPSStudioParticleEditorPlugin::_open_library_entry(const String &p_entry) {
 		}
 		return;
 	}
-	if (!path.is_empty() && path != effect_path) {
-		if (effect_dirty) {
-			pending_load_path = path;
-			pending_new_template = -1;
-			replace_document_confirmation->set_text(TTR("The current particle effect has unsaved changes. Discard them and open the selected effect?"));
-			replace_document_confirmation->popup_centered();
-		} else {
-			_load_particle_scene(path);
-		}
-	}
+	_request_load_particle_scene(path);
 }
 
 void FPSStudioParticleEditorPlugin::_on_document_title_gui_input(const Ref<InputEvent> &p_event) {
@@ -3006,7 +3020,8 @@ void FPSStudioParticleEditorPlugin::_on_rename_effect_confirmed() {
 		return;
 	}
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Rename Particle Effect"), UndoRedo::MERGE_DISABLE, effect);
+	undo_redo->create_action_for_history(TTR("Rename Particle Effect"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(effect, "set_name", new_name);
 	undo_redo->add_undo_method(effect, "set_name", old_name);
 	undo_redo->add_do_method(this, "_on_effect_name_changed");
@@ -3054,7 +3069,8 @@ void FPSStudioParticleEditorPlugin::_on_emitter_renamed() {
 	}
 
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Rename Particle Emitter"), UndoRedo::MERGE_DISABLE, emitter);
+	undo_redo->create_action_for_history(TTR("Rename Particle Emitter"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(emitter, "set_name", new_name);
 	undo_redo->add_undo_method(emitter, "set_name", old_name);
 	undo_redo->add_do_method(this, "_on_emitter_name_changed");
@@ -3118,6 +3134,8 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	if (save_path.get_extension().to_lower() != "tscn") {
 		save_path += ".tscn";
 	}
+	// Take over the cached scene so Add to Level and loads get this version.
+	packed_scene->set_path(save_path, true);
 	const Error save_error = ResourceSaver::save(packed_scene, save_path);
 	if (save_error != OK) {
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save particle effect to %s (error %d)."), save_path, save_error));
@@ -3129,6 +3147,25 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	_remember_effect(save_path);
 	_update_document_ui();
 	EditorFileSystem::get_singleton()->scan_changes();
+	// Levels that already instance this effect pick up the new version.
+	List<String> saved_paths;
+	saved_paths.push_back(save_path);
+	EditorNode::get_singleton()->preload_reimporting_with_path_in_edited_scenes(saved_paths);
+	EditorNode::get_singleton()->reload_instances_with_path_in_edited_scenes();
+}
+
+void FPSStudioParticleEditorPlugin::_request_load_particle_scene(const String &p_path) {
+	if (p_path.is_empty() || p_path == effect_path) {
+		return;
+	}
+	if (effect_dirty) {
+		pending_load_path = p_path;
+		pending_new_template = -1;
+		replace_document_confirmation->set_text(TTR("The current particle effect has unsaved changes. Discard them and open the selected effect?"));
+		replace_document_confirmation->popup_centered();
+	} else {
+		_load_particle_scene(p_path);
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_load_particle_scene(const String &p_path) {
@@ -3161,6 +3198,10 @@ void FPSStudioParticleEditorPlugin::_add_effect_to_level() {
 		return;
 	}
 	Node *instance = nullptr;
+	if (!effect_path.is_empty() && effect_dirty) {
+		// The level instances the file, so it must contain what is on screen.
+		_save_emitter_scene(effect_path);
+	}
 	if (!effect_path.is_empty()) {
 		Ref<PackedScene> packed_scene = ResourceLoader::load(effect_path, "PackedScene");
 		if (packed_scene.is_valid()) {
@@ -3221,12 +3262,14 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 	_mark_document_dirty();
 	_refresh_curve_editors();
 	_update_particle_graph_controls();
-	_sync_preview_properties();
-	if (module_stack && module_stack->is_visible_in_tree()) {
-		module_stack->refresh_values();
-	}
 	if (p_property == "lifetime" || p_property == "one_shot") {
 		_rebuild_preview();
+	} else {
+		_queue_preview_sync();
+	}
+	// The module stack refreshes itself for its own edits.
+	if (!module_stack_editing && module_stack && module_stack->is_visible_in_tree()) {
+		module_stack->refresh_values();
 	}
 }
 
@@ -3323,11 +3366,18 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 			particle_logic_content->add_child(particle_graph_editor);
 		}
 		if (particle_graph_editor) {
-			particle_graph_editor->edit_shader(visual_shader);
+			// Re-editing the same shader resets the graph's view state.
+			if (particle_graph_shader_id != visual_shader->get_instance_id()) {
+				particle_graph_shader_id = visual_shader->get_instance_id();
+				particle_graph_editor->edit_shader(visual_shader);
+			}
 			particle_graph_editor->show();
 		}
 	} else if (particle_graph_editor) {
-		particle_graph_editor->edit_shader(Ref<Shader>());
+		if (particle_graph_shader_id.is_valid()) {
+			particle_graph_shader_id = ObjectID();
+			particle_graph_editor->edit_shader(Ref<Shader>());
+		}
 		particle_graph_editor->hide();
 	}
 	if (code_shader.is_valid()) {
@@ -3347,11 +3397,14 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 			callable_mp(this, &FPSStudioParticleEditorPlugin::_hide_code_editor_files_toggle).call_deferred();
 		}
 		if (particle_code_editor) {
-			particle_code_editor->edit_shader(code_shader);
+			if (particle_code_shader_id != code_shader->get_instance_id()) {
+				particle_code_shader_id = code_shader->get_instance_id();
+				particle_code_editor->edit_shader(code_shader);
+			}
 			particle_code_editor->show();
 		}
 	} else if (particle_code_editor) {
-		particle_code_editor->edit_shader(Ref<Shader>());
+		particle_code_shader_id = ObjectID();
 		particle_code_editor->hide();
 	}
 	if (particle_logic_hint) {
@@ -3423,7 +3476,7 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	shader_material->set_shader(visual_shader);
 	Ref<Material> previous_material = gpu->get_process_material();
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Create Particle Node Graph"), UndoRedo::MERGE_DISABLE, gpu);
+	undo_redo->create_action_for_history(TTR("Create Particle Node Graph"), EditorUndoRedoManager::GLOBAL_HISTORY);
 	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(gpu, "set_process_material", shader_material);
 	undo_redo->add_undo_method(gpu, "set_process_material", previous_material);
@@ -3431,11 +3484,10 @@ void FPSStudioParticleEditorPlugin::_create_particle_graph() {
 	if (previous_material.is_valid()) {
 		undo_redo->add_undo_reference(previous_material.ptr());
 	}
+	Node *history_emitter = _get_edited_emitter();
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
 	undo_redo->commit_action();
-	process_material_inspector->edit(shader_material.ptr());
-	_mark_document_dirty();
-	_sync_preview_properties();
-	_update_particle_graph_controls();
 	_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
 	if (particle_graph_editor) {
 		particle_graph_editor->fit_graph_to_content();
@@ -3559,19 +3611,18 @@ void FPSStudioParticleEditorPlugin::_on_add_alpha_curve_pressed() {
 	texture->set_curve(curve);
 	Ref<Texture2D> previous = material->get_alpha_curve();
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Add Alpha Over Life Curve"));
+	undo_redo->create_action_for_history(TTR("Add Alpha Over Life Curve"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(material.ptr(), "set_alpha_curve", Ref<Texture2D>(texture));
 	undo_redo->add_undo_method(material.ptr(), "set_alpha_curve", previous);
 	undo_redo->add_do_reference(texture.ptr());
 	if (previous.is_valid()) {
 		undo_redo->add_undo_reference(previous.ptr());
 	}
+	Node *history_emitter = _get_edited_emitter();
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
 	undo_redo->commit_action();
-	texture->connect(SNAME("changed"), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_curve_changed));
-	curve->connect(SNAME("changed"), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_curve_changed));
-	_refresh_curve_editors();
-	_mark_document_dirty();
-	_sync_preview_properties();
 }
 
 void FPSStudioParticleEditorPlugin::_on_add_scale_curve_pressed() {
@@ -3591,19 +3642,18 @@ void FPSStudioParticleEditorPlugin::_on_add_scale_curve_pressed() {
 	texture->set_curve(curve);
 	Ref<Texture2D> previous = material->get_param_texture(ParticleProcessMaterial::PARAM_SCALE);
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Add Scale Over Life Curve"));
+	undo_redo->create_action_for_history(TTR("Add Scale Over Life Curve"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(material.ptr(), "set_param_texture", ParticleProcessMaterial::PARAM_SCALE, Ref<Texture2D>(texture));
 	undo_redo->add_undo_method(material.ptr(), "set_param_texture", ParticleProcessMaterial::PARAM_SCALE, previous);
 	undo_redo->add_do_reference(texture.ptr());
 	if (previous.is_valid()) {
 		undo_redo->add_undo_reference(previous.ptr());
 	}
+	Node *history_emitter = _get_edited_emitter();
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
 	undo_redo->commit_action();
-	texture->connect(SNAME("changed"), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_curve_changed));
-	curve->connect(SNAME("changed"), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_curve_changed));
-	_refresh_curve_editors();
-	_mark_document_dirty();
-	_sync_preview_properties();
 }
 
 void FPSStudioParticleEditorPlugin::_on_alpha_curve_preset_selected(int p_preset_id) {
@@ -3648,7 +3698,8 @@ void FPSStudioParticleEditorPlugin::_apply_curve_preset(bool p_alpha, int p_pres
 	}
 
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(p_alpha ? TTR("Apply Alpha over Life Preset") : TTR("Apply Scale over Life Preset"));
+	undo_redo->create_action_for_history(p_alpha ? TTR("Apply Alpha over Life Preset") : TTR("Apply Scale over Life Preset"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	if (create_curve_resource) {
 		if (p_alpha) {
 			undo_redo->add_do_method(material.ptr(), "set_alpha_curve", Ref<Texture2D>(curve_texture));
@@ -3664,10 +3715,10 @@ void FPSStudioParticleEditorPlugin::_apply_curve_preset(bool p_alpha, int p_pres
 	}
 	undo_redo->add_do_method(curve.ptr(), "_set_data", preset_data);
 	undo_redo->add_undo_method(curve.ptr(), "_set_data", previous_data);
+	Node *history_emitter = _get_edited_emitter();
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", history_emitter, effect_document_serial);
 	undo_redo->commit_action();
-	_refresh_curve_editors();
-	_mark_document_dirty();
-	_sync_preview_properties();
 }
 
 void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
@@ -3733,8 +3784,9 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 }
 
 void FPSStudioParticleEditorPlugin::_on_curve_changed() {
+	// The curve and its texture both emit "changed"; shaders emit per keystroke.
 	_mark_document_dirty();
-	_sync_preview_properties();
+	_queue_preview_sync();
 }
 
 void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
@@ -4037,16 +4089,13 @@ void FPSStudioParticleEditorPlugin::_on_convert_shader_pressed() {
 		return;
 	}
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Convert Particle Modules to Shader Code"), UndoRedo::MERGE_DISABLE, gpu);
+	undo_redo->create_action_for_history(TTR("Convert Particle Modules to Shader Code"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_property(gpu, "process_material", shader_material);
 	undo_redo->add_undo_property(gpu, "process_material", process);
-	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", gpu);
-	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", gpu);
-	undo_redo->commit_action();
-	if (module_stack) {
-		module_stack->edit(gpu);
-	}
-	_update_particle_graph_controls();
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", gpu, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", gpu, effect_document_serial);
+	undo_redo->commit_action(); // The history callback rebuilds the module stack.
 	_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
 }
 
@@ -4248,15 +4297,16 @@ void FPSStudioParticleEditorPlugin::_duplicate_emitter(Node *p_emitter) {
 	}
 	copy->set_name(parent->prevalidate_child_name(copy, String(p_emitter->get_name()) + "Copy"));
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(vformat(TTR("Duplicate %s"), p_emitter->get_name()));
+	undo_redo->create_action_for_history(vformat(TTR("Duplicate %s"), p_emitter->get_name()), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(parent, "add_child", copy, true);
 	undo_redo->add_do_method(parent, "move_child", copy, p_emitter->get_index() + 1);
 	undo_redo->add_do_method(this, "_assign_level_owners", copy, effect);
 	undo_redo->add_do_method(copy, "set_owner", effect);
-	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", copy);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", copy, effect_document_serial);
 	undo_redo->add_do_reference(copy);
 	undo_redo->add_undo_method(parent, "remove_child", copy);
-	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", p_emitter);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", p_emitter, effect_document_serial);
 	undo_redo->commit_action();
 }
 
@@ -4298,7 +4348,8 @@ void FPSStudioParticleEditorPlugin::_on_timeline_track_action(Object *p_track, i
 				break;
 			}
 			EditorUndoRedoManager *undo_redo = get_undo_redo();
-			undo_redo->create_action(track_3d->is_visible() ? TTR("Mute Track") : TTR("Unmute Track"), UndoRedo::MERGE_DISABLE, track);
+			undo_redo->create_action_for_history(track_3d->is_visible() ? TTR("Mute Track") : TTR("Unmute Track"), EditorUndoRedoManager::GLOBAL_HISTORY);
+			undo_redo->force_fixed_history();
 			undo_redo->add_do_method(this, "_set_emitter_visible", track, !track_3d->is_visible());
 			undo_redo->add_undo_method(this, "_set_emitter_visible", track, track_3d->is_visible());
 			undo_redo->commit_action();
@@ -4398,7 +4449,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_emitter_name_changed"), &FPSStudioParticleEditorPlugin::_on_emitter_name_changed);
 	ClassDB::bind_method(D_METHOD("_on_effect_name_changed"), &FPSStudioParticleEditorPlugin::_on_effect_name_changed);
-	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
+	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter", "document_serial"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
 	ClassDB::bind_method(D_METHOD("_apply_emitter_timing", "emitter", "delay", "duration"), &FPSStudioParticleEditorPlugin::_apply_emitter_timing);
 	ClassDB::bind_method(D_METHOD("_assign_level_owners", "instance", "owner"), &FPSStudioParticleEditorPlugin::_assign_level_owners);
 	ClassDB::bind_method(D_METHOD("_set_emitter_visible", "emitter", "visible"), &FPSStudioParticleEditorPlugin::_set_emitter_visible);
@@ -5969,7 +6020,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	load_scene_dialog->set_title(TTR("Open Particle Effect"));
 	load_scene_dialog->add_filter("*.tscn,*.scn", TTR("Godot Scenes"));
 	add_child(load_scene_dialog);
-	load_scene_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_load_particle_scene));
+	load_scene_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_request_load_particle_scene));
 	open_effect_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_open_effect_pressed));
 
 	save_scene_dialog = memnew(EditorFileDialog);

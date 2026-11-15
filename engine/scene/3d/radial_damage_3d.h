@@ -27,12 +27,14 @@ class RadialDamage3D : public Node3D {
 	StringName damage_method = "take_damage";
 	StringName target_group;
 
+	// ObjectIDs: take_damage is game script and may free or reparent targets.
 	struct Target {
-		Node *node = nullptr; // Receives the damage (has damage_method), may be null.
-		Vector<CollisionObject3D *> bodies;
+		ObjectID node; // Receives the damage (has damage_method), may be null.
+		Vector<ObjectID> bodies;
 	};
 
-	AABB _get_target_bounds(const Target &p_target) const;
+	static Vector<CollisionObject3D *> _get_live_bodies(const Target &p_target);
+	AABB _get_target_bounds(const Vector<CollisionObject3D *> &p_bodies) const;
 
 protected:
 	static void _bind_methods();

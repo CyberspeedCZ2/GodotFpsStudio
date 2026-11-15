@@ -19,10 +19,21 @@
 
 static constexpr int MAX_SHAPE_RESULTS = 128;
 
-AABB RadialDamage3D::_get_target_bounds(const Target &p_target) const {
+Vector<CollisionObject3D *> RadialDamage3D::_get_live_bodies(const Target &p_target) {
+	Vector<CollisionObject3D *> bodies;
+	for (const ObjectID &id : p_target.bodies) {
+		CollisionObject3D *body = Object::cast_to<CollisionObject3D>(ObjectDB::get_instance(id));
+		if (body && body->is_inside_tree()) {
+			bodies.push_back(body);
+		}
+	}
+	return bodies;
+}
+
+AABB RadialDamage3D::_get_target_bounds(const Vector<CollisionObject3D *> &p_bodies) const {
 	AABB bounds;
 	bool has_bounds = false;
-	for (CollisionObject3D *body : p_target.bodies) {
+	for (CollisionObject3D *body : p_bodies) {
 		for (int i = 0; i < body->get_child_count(); i++) {
 			CollisionShape3D *shape_node = Object::cast_to<CollisionShape3D>(body->get_child(i));
 			if (!shape_node || shape_node->is_disabled() || shape_node->get_shape().is_null()) {
@@ -109,19 +120,26 @@ void RadialDamage3D::apply_damage() {
 		const ObjectID key = receiver ? receiver->get_instance_id() : body->get_instance_id();
 		if (!targets.has(key)) {
 			Target target;
-			target.node = receiver;
+			target.node = receiver ? receiver->get_instance_id() : ObjectID();
 			targets.insert(key, target);
 			order.push_back(key);
 		}
 		Target &target = targets[key];
-		if (!target.bodies.has(body)) {
-			target.bodies.push_back(body);
+		if (!target.bodies.has(body->get_instance_id())) {
+			target.bodies.push_back(body->get_instance_id());
 		}
 	}
 
+	const ObjectID self_id = get_instance_id();
 	for (const ObjectID &key : order) {
 		const Target &target = targets[key];
-		const AABB bounds = _get_target_bounds(target);
+		// An earlier take_damage may have freed this target (death, gibs).
+		Node *receiver = Object::cast_to<Node>(ObjectDB::get_instance(target.node));
+		Vector<CollisionObject3D *> bodies = _get_live_bodies(target);
+		if (bodies.is_empty() || (target.node.is_valid() && !receiver)) {
+			continue;
+		}
+		const AABB bounds = _get_target_bounds(bodies);
 		// Distance to the nearest point of the target, so large props are hit
 		// by their near side, not their center.
 		const Vector3 nearest = origin.clamp(bounds.position, bounds.position + bounds.size);
@@ -138,7 +156,7 @@ void RadialDamage3D::apply_damage() {
 			PhysicsDirectSpaceState3D::RayParameters ray;
 			ray.from = origin;
 			ray.collision_mask = obstacle_mask;
-			for (CollisionObject3D *body : target.bodies) {
+			for (CollisionObject3D *body : bodies) {
 				ray.exclude.insert(body->get_rid());
 			}
 			const Vector3 center = bounds.get_center();
@@ -165,24 +183,29 @@ void RadialDamage3D::apply_damage() {
 		Vector3 direction = hit_position - origin;
 		direction = direction.length_squared() > CMP_EPSILON ? direction.normalized() : Vector3(0, 1, 0);
 
-		if (target.node && base > 0.0) {
+		if (receiver && base > 0.0) {
 			const real_t amount = base * exposure;
 			// Call with as many arguments as the method takes:
 			// (amount), (amount, hit_position) or (amount, hit_position, hit_direction).
 			bool valid = false;
-			const int arg_count = target.node->get_method_argument_count(damage_method, &valid);
+			const int arg_count = receiver->get_method_argument_count(damage_method, &valid);
 			const int pass = valid ? CLAMP(arg_count, 1, 3) : 1;
 			if (pass == 1) {
-				target.node->call(damage_method, amount);
+				receiver->call(damage_method, amount);
 			} else if (pass == 2) {
-				target.node->call(damage_method, amount, hit_position);
+				receiver->call(damage_method, amount, hit_position);
 			} else {
-				target.node->call(damage_method, amount, hit_position, direction);
+				receiver->call(damage_method, amount, hit_position, direction);
 			}
-			emit_signal(SNAME("damaged"), target.node, amount, exposure);
+			if (!ObjectDB::get_instance(self_id)) {
+				return; // The script freed this damage node.
+			}
+			// The receiver may have freed itself; report it only while it exists.
+			emit_signal(SNAME("damaged"), ObjectDB::get_instance(target.node), amount, exposure);
+			bodies = _get_live_bodies(target);
 		}
 		if (impulse > 0.0) {
-			for (CollisionObject3D *body : target.bodies) {
+			for (CollisionObject3D *body : bodies) {
 				if (RigidBody3D *rigid = Object::cast_to<RigidBody3D>(body)) {
 					rigid->apply_impulse(direction * impulse * falloff * exposure, hit_position - rigid->get_global_position());
 				}

@@ -37,7 +37,13 @@ void ParticleEffectLevelPreviewPlugin::_update_icons() {
 
 void ParticleEffectLevelPreviewPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_ENTER_TREE) {
-		toolbar->connect(SceneStringName(theme_changed), callable_mp(this, &ParticleEffectLevelPreviewPlugin::_update_icons));
+		const Callable update_icons = callable_mp(this, &ParticleEffectLevelPreviewPlugin::_update_icons);
+		if (!toolbar->is_connected(SceneStringName(theme_changed), update_icons)) {
+			toolbar->connect(SceneStringName(theme_changed), update_icons);
+		}
+		if (toolbar->is_inside_tree()) {
+			_update_icons(); // The toolbar may already have its theme.
+		}
 	}
 }
 

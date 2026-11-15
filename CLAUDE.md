@@ -2,7 +2,7 @@
 
 Trvalá pravidla projektu jsou v [AGENTS.md](AGENTS.md) (build jen `./tools/build_macos.sh`, GUI editoru nespouštět bez žádosti, žádné ZIP archivy, zachovat UniBuilder, po kontrole diffu commit + push). Tento soubor zachycuje, kde práce skončila.
 
-Stav k 2026-11-15, větev `codex/black-default-fps-level` (vše pushnuto, poslední commit `8dd65663`). Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, CameraShake3D, RadialDamage3D).
+Stav k 2026-11-15, větev `codex/black-default-fps-level` (vše pushnuto). Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, CameraShake3D, RadialDamage3D).
 
 ## Kde jsme skončili
 Particle workspace je funkčně hotový pro FPS hru na motivy HL2. Poslední práce: kouř podle Source/UE5 (měkký flipbook, osvětlení, různé velikosti, odpor jen na začátku života). Uživatel chce kouř dál ladit sám v GUI („hodně bude záležet, jak to nastavím“), takže do kouře nesahat bez žádosti. Čeká se na další zpětnou vazbu z GUI.
@@ -32,6 +32,8 @@ Particle workspace je funkčně hotový pro FPS hru na motivy HL2. Poslední pr�
 - `CameraShake3D` 2.0 přes `Camera3D::add_shake_offset` (aditivní, neukládá se). `RadialDamage3D`: útlum, krytí 9 paprsky, `take_damage` s 1–3 argumenty, impulz RigidBody3D.
 
 ### Opravené chyby (výběr)
+- Revize 2026-11-15 (4 oblasti, opraveno): Remove Emitter měl `add_do_reference` (po undo + nové akci smazal živý emitor), akce efektu jdou do `GLOBAL_HISTORY` s `effect_document_serial` (kroky starého dokumentu se ignorují), undo vynutí obnovu UI (`_set_edited_emitter(..., p_force)`), výběr emitoru už nepřestavuje náhled ani kameru (`preview_source_id`), úpravy se slučují na 1× za snímek (`_mark_document_dirty` / `_queue_preview_sync`), Open... se ptá na neuložené změny, uložení přebírá cache (`set_path(..., true)`) a přenačte instance v levelech, Add to Level nejdřív uloží. Runtime: čekání na úlohy pečení (`wait_for_task_completion`), stavy kolize podle space + kořene (víc scén), zrušení zastaralých dlaždic, pooly čistí mrtvá ID, cache podle kořene levelu, hodnoty emitorů/událostí se čtou při `play()`. Moduly: presety Color/Size a Paste převádí textury na Gradient/Curve pro CPU, karta nezapisuje výchozí metadata, schránka se maže v PREDELETE. RadialDamage3D drží ObjectID.
+- Přidání prvního kolizního efektu do levelu: `LevelParticleCollision` se připojuje odloženě (`_attach_level_manager`), kořen bývá zaneprázdněný přidáváním efektu.
 - Pád editoru při ukončení v zásobníku modulů (dvojité uvolnění): úklid ovládacích prvků vlastněných pluginem je v `NOTIFICATION_PREDELETE` přes ObjectID, ne v destruktoru (potomci jsou v destruktoru už uvolnění).
 - Úniky při ukončení: náhledové slunce/prostředí `Node3DEditor` (ve forku vypnuté, nikdy nepřipojené) a prvky karet modulů u emitoru se shaderem.
 - Pád `_build` u emitoru se shaderem (karta Collision neexistuje).
@@ -39,7 +41,7 @@ Particle workspace je funkčně hotový pro FPS hru na motivy HL2. Poslední pr�
 
 ## Ověření a jeho hranice
 - **Headless testy spouštěj s `HOME=<scratchpad>/home` a `--language en`.** Jinak zapisují do skutečného nastavení editoru uživatele (jednou tam omylem skončila zkratka ⌥Q, ručně odstraněno).
-- Testovací projekt ve scratchpadu (`scratchpad/proj`, není v repozitáři): doplněk `addons/lt/plugin.gd` (zálohy `plugin_presets.gd.bak` = všech 17 presetů přes Library s potvrzením „Discard“, `plugin_leak.gd.bak` = úniky se shaderem), runtime skripty `col_test.gd`, `level_test.gd`, `pool_test.gd`, `sdf_probe.gd`, `damage_test.gd`, `shake_test*.gd`. Na herním levelu skripty v `scratchpad/gametest/` (spouštěné přes `-s`, herní repo se nemění). Vzhled textur: samostatný build `scratchpad/gen` (clang++ `main.cpp` + `vfx_texture_generator.cpp`, `sheet.py`), kouř `scratchpad/sim.py`. Při ztrátě scratchpadu je napiš znovu.
+- Testovací projekt ve scratchpadu (`scratchpad/proj`, není v repozitáři): doplněk `addons/lt/plugin.gd` (zálohy `plugin_presets.gd.bak` = všech 17 presetů přes Library s potvrzením „Discard“, `plugin_leak.gd.bak` = úniky se shaderem, `plugin_extra.gd.bak` = presety + Remove/undo/Duplicate + Open při neuložených změnách), runtime skripty `col_test.gd`, `level_test.gd`, `pool_test.gd`, `sdf_probe.gd`, `damage_test.gd`, `shake_test*.gd`. Na herním levelu skripty v `scratchpad/gametest/` (spouštěné přes `-s`, herní repo se nemění). Vzhled textur: samostatný build `scratchpad/gen` (clang++ `main.cpp` + `vfx_texture_generator.cpp`, `sheet.py`), kouř `scratchpad/sim.py`. Při ztrátě scratchpadu je napiš znovu.
 - Ručně v GUI zatím **neověřeno**: decaly a nový kouř ve hře, Preview Effect v Level editoru, tlačítko Fit Particle Size, přetažení zvuku na seznam emitorů, Convert to Shader Code, zkratky časové osy.
 - Herní projekt `/Users/davidsoudil/Projects/Godot/project-hl-2-inspiration` (needitovat bez žádosti): level `Levels/Test_levels/fps_level.tscn` už nemá uzel Explosion, uživatel má efekt `Scenes/Effects/Explosion_01.tscn` (smyčka zapnutá, starý kouř a stará velikost kolize; nové presety mají opravené hodnoty). Efekty vytvořené před změnami je potřeba vytvořit znovu z Library.
 
