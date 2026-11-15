@@ -11,6 +11,10 @@
 #include "core/templates/vector.h"
 #include "vfx_texture_generator.h"
 
+#include "core/object/ref_counted.h"
+
+class CurveTexture;
+class GradientTexture1D;
 class Node;
 class ParticleEffect3D;
 
@@ -45,5 +49,9 @@ String get_preset_name(int p_preset);
 String get_preset_description(int p_preset);
 // Builds the effect. Texture requests reference emitters of the new effect.
 ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures);
+
+// Resource helpers shared with module presets.
+Ref<GradientTexture1D> make_color_ramp(const Vector<float> &p_offsets, const Vector<Color> &p_colors);
+Ref<CurveTexture> make_curve_texture(const Vector<Vector2> &p_points, float p_max = 1.0f);
 
 } // namespace FPSParticlePresets

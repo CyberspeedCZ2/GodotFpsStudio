@@ -15,6 +15,10 @@
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
+#include "scene/3d/gpu_particles_collision_3d.h"
+#include "particle_presets.h"
+#include "scene/resources/curve_texture.h"
+#include "scene/resources/gradient_texture.h"
 #include "scene/3d/light_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/resources/curve.h"
@@ -54,6 +58,10 @@ String FPSParticleModuleStack::get_module_name(int p_module) {
 			return TTR("Collision");
 		case MODULE_SUB_EMITTER:
 			return TTR("Sub Emitter");
+		case MODULE_TRAILS:
+			return TTR("Trails");
+		case MODULE_ATTRACTORS:
+			return TTR("Attractors");
 		case MODULE_RENDER:
 			return TTR("Render");
 		case MODULE_EVENT:
@@ -124,7 +132,20 @@ Object *FPSParticleModuleStack::_get_target(Target p_target) const {
 }
 
 bool FPSParticleModuleStack::_is_module_optional(int p_module) const {
-	return p_module == MODULE_ROTATION || p_module == MODULE_SUB_UV || p_module == MODULE_TURBULENCE || p_module == MODULE_COLLISION || p_module == MODULE_SUB_EMITTER;
+	return p_module == MODULE_ROTATION || p_module == MODULE_SUB_UV || p_module == MODULE_TURBULENCE || p_module == MODULE_COLLISION || p_module == MODULE_SUB_EMITTER || p_module == MODULE_TRAILS || p_module == MODULE_ATTRACTORS;
+}
+
+static bool is_gpu_only_module(int p_module) {
+	return p_module == FPSParticleModuleStack::MODULE_TURBULENCE || p_module == FPSParticleModuleStack::MODULE_COLLISION || p_module == FPSParticleModuleStack::MODULE_SUB_EMITTER || p_module == FPSParticleModuleStack::MODULE_TRAILS || p_module == FPSParticleModuleStack::MODULE_ATTRACTORS;
+}
+
+static bool has_attractor_child(const Node *p_node) {
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		if (Object::cast_to<GPUParticlesAttractor3D>(p_node->get_child(i))) {
+			return true;
+		}
+	}
+	return false;
 }
 
 static bool vector2_nonzero(const Variant &p_value) {
@@ -156,6 +177,10 @@ bool FPSParticleModuleStack::_is_module_active(int p_module) const {
 			return gpu && int(process->get("collision_mode")) != 0;
 		case MODULE_SUB_EMITTER:
 			return gpu && int(process->get("sub_emitter_mode")) != 0;
+		case MODULE_TRAILS:
+			return gpu && bool(emitter->get("trail_enabled"));
+		case MODULE_ATTRACTORS:
+			return gpu && has_attractor_child(emitter);
 		case MODULE_ROTATION:
 			if (gpu) {
 				return vector2_nonzero(process->get("angle")) || vector2_nonzero(process->get("angular_velocity"));
@@ -180,7 +205,8 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 	}
 	const bool gpu = _is_gpu();
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
-	undo_redo->create_action(vformat(p_active ? TTR("Add Particle Module: %s") : TTR("Remove Particle Module: %s"), get_module_name(p_module)));
+	undo_redo->create_action_for_history(vformat(p_active ? TTR("Add Particle Module: %s") : TTR("Remove Particle Module: %s"), get_module_name(p_module)), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
 	auto set_prop = [&](Object *p_object, const StringName &p_property, const Variant &p_value) {
 		if (!p_object) {
 			return;
@@ -214,6 +240,60 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 				set_prop(process, "angular_velocity_max", 0.0);
 			}
 			break;
+		case MODULE_TRAILS: {
+			set_prop(emitter, "trail_enabled", p_active);
+			if (p_active && double(emitter->get("trail_lifetime")) <= 0.0) {
+				set_prop(emitter, "trail_lifetime", 0.3);
+			}
+			// Trails need a trail mesh and a material in trail mode.
+			Ref<Material> material = get_draw_material(emitter);
+			if (material.is_valid()) {
+				set_prop(material.ptr(), "use_particle_trails", p_active);
+			}
+			Ref<Mesh> old_mesh = get_draw_mesh(emitter);
+			Ref<PrimitiveMesh> new_mesh;
+			if (p_active) {
+				Ref<RibbonTrailMesh> ribbon;
+				ribbon.instantiate();
+				ribbon->set_size(0.15);
+				ribbon->set_sections(4);
+				new_mesh = ribbon;
+			} else {
+				Ref<QuadMesh> quad;
+				quad.instantiate();
+				quad->set_size(Vector2(0.5, 0.5));
+				new_mesh = quad;
+			}
+			if (material.is_valid()) {
+				new_mesh->set_material(material);
+			}
+			set_prop(emitter, "draw_pass_1", new_mesh);
+		} break;
+		case MODULE_ATTRACTORS:
+			if (p_active) {
+				// Adding the module creates a first attractor next to the emitter.
+				GPUParticlesAttractorSphere3D *attractor = memnew(GPUParticlesAttractorSphere3D);
+				attractor->set_name("Attractor");
+				attractor->set_radius(1.5);
+				attractor->set_strength(4.0);
+				attractor->set_position(Vector3(0, 1.5, 0));
+				undo_redo->add_do_method(emitter, "add_child", attractor, true);
+				undo_redo->add_do_method(attractor, "set_owner", emitter->get_owner() ? emitter->get_owner() : emitter);
+				undo_redo->add_do_reference(attractor);
+				undo_redo->add_undo_method(emitter, "remove_child", attractor);
+				set_prop(process, "attractor_interaction_enabled", true);
+			} else {
+				for (int i = 0; i < emitter->get_child_count(); i++) {
+					Node *child = emitter->get_child(i);
+					if (Object::cast_to<GPUParticlesAttractor3D>(child)) {
+						undo_redo->add_do_method(emitter, "remove_child", child);
+						undo_redo->add_undo_method(emitter, "add_child", child, true);
+						undo_redo->add_undo_method(child, "set_owner", child->get_owner());
+						undo_redo->add_undo_reference(child);
+					}
+				}
+			}
+			break;
 		case MODULE_SUB_UV:
 			if (p_active) {
 				new_manual.push_back(p_module);
@@ -242,7 +322,7 @@ void FPSParticleModuleStack::_add_row(int p_module, Target p_target, const Strin
 	const bool gpu = _is_gpu();
 	// The node and draw resources are shared between GPU and CPU emitters; only
 	// process properties differ in naming.
-	const StringName property = (p_target == TARGET_PROCESS && !gpu) ? p_cpu_property : p_gpu_property;
+	const StringName property = ((p_target == TARGET_PROCESS || p_target == TARGET_NODE) && !gpu && ParticleEffect3D::is_emitter(get_edited_emitter())) ? p_cpu_property : p_gpu_property;
 	if (property == StringName() || !module_contents[p_module]) {
 		return;
 	}
@@ -452,13 +532,23 @@ void FPSParticleModuleStack::_build() {
 		if (process_module && !has_process) {
 			continue;
 		}
-		if (!gpu && (module == MODULE_TURBULENCE || module == MODULE_COLLISION || module == MODULE_SUB_EMITTER)) {
+		if (!gpu && is_gpu_only_module(module)) {
 			continue;
 		}
 		FoldableContainer *card = memnew(FoldableContainer);
 		card->set_title(get_module_name(module));
 		card->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 		cards->add_child(card);
+		{
+			// Module menu: presets, copy / paste, reset.
+			MenuButton *menu = memnew(MenuButton);
+			menu->set_text(U"⋮");
+			menu->set_flat(true);
+			menu->set_tooltip_text(TTR("Module presets, copy, paste and reset."));
+			menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSParticleModuleStack::_on_module_menu_id).bind(module));
+			menu->get_popup()->connect("about_to_popup", callable_mp(this, &FPSParticleModuleStack::_on_module_menu_id).bind(-1, module));
+			card->add_title_bar_control(menu);
+		}
 		if (_is_module_optional(module)) {
 			Button *remove = memnew(Button);
 			remove->set_flat(true);
@@ -527,26 +617,40 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "flatness", "flatness", TTR("Flatness"));
 	add_range(MODULE_VELOCITY, "initial_velocity", TTR("Speed"));
 	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "inherit_velocity_ratio", StringName(), TTR("Inherit Velocity"));
+	add_range(MODULE_VELOCITY, "radial_velocity", TTR("Radial Speed"));
+	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "radial_velocity_curve", StringName(), TTR("Radial Speed over Life"));
+	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "velocity_limit_curve", StringName(), TTR("Speed Limit over Life"));
 
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "gravity", "gravity", TTR("Gravity"));
 	add_range(MODULE_FORCES, "linear_accel", TTR("Linear Accel"));
 	add_range(MODULE_FORCES, "radial_accel", TTR("Radial Accel"));
 	add_range(MODULE_FORCES, "tangential_accel", TTR("Tangential Accel"));
 	add_range(MODULE_FORCES, "damping", TTR("Drag"));
+	_add_row(MODULE_FORCES, TARGET_PROCESS, "linear_accel_curve", "linear_accel_curve", TTR("Linear Accel over Life"));
+	_add_row(MODULE_FORCES, TARGET_PROCESS, "radial_accel_curve", "radial_accel_curve", TTR("Radial Accel over Life"));
+	_add_row(MODULE_FORCES, TARGET_PROCESS, "tangential_accel_curve", "tangential_accel_curve", TTR("Tangential over Life"));
+	_add_row(MODULE_FORCES, TARGET_PROCESS, "damping_curve", "damping_curve", TTR("Drag over Life"));
 
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color", "color", TTR("Base Color"));
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color_ramp", "color_ramp", TTR("Color over Life"));
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color_initial_ramp", "color_initial_ramp", TTR("Random Color"));
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "emission_curve", StringName(), TTR("Glow over Life"));
 	add_range(MODULE_COLOR, "hue_variation", TTR("Hue Variation"));
+	_add_row(MODULE_COLOR, TARGET_PROCESS, "hue_variation_curve", "hue_variation_curve", TTR("Hue over Life"));
 
 	add_range(MODULE_SIZE, gpu ? StringName("scale") : StringName("scale_amount"), TTR("Size"));
+	_add_row(MODULE_SIZE, TARGET_PROCESS, StringName(), "scale_amount_curve", TTR("Size over Life"));
+	add_range(MODULE_SIZE, "scale_over_velocity", TTR("Size by Speed Range"));
+	_add_row(MODULE_SIZE, TARGET_PROCESS, "scale_over_velocity_curve", StringName(), TTR("Size by Speed"));
 
 	add_range(MODULE_ROTATION, "angle", TTR("Start Angle"));
 	add_range(MODULE_ROTATION, "angular_velocity", TTR("Spin Speed"));
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "angle_curve", "angle_curve", TTR("Angle over Life"));
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "angular_velocity_curve", "angular_velocity_curve", TTR("Spin over Life"));
 
 	add_range(MODULE_SUB_UV, "anim_speed", TTR("Frames per Life"));
 	add_range(MODULE_SUB_UV, "anim_offset", TTR("Start Frame"));
+	_add_row(MODULE_SUB_UV, TARGET_PROCESS, "anim_speed_curve", "anim_speed_curve", TTR("Speed over Life"));
 	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_h_frames", "particles_anim_h_frames", TTR("Columns"));
 	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_v_frames", "particles_anim_v_frames", TTR("Rows"));
 	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_loop", "particles_anim_loop", TTR("Loop"));
@@ -571,6 +675,24 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_collision", StringName(), TTR("Amount at Hit"));
 	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_amount_at_start", StringName(), TTR("Amount at Start"));
 	_add_row(MODULE_SUB_EMITTER, TARGET_PROCESS, "sub_emitter_keep_velocity", StringName(), TTR("Keep Velocity"));
+
+	_add_row(MODULE_TRAILS, TARGET_NODE, "trail_lifetime", StringName(), TTR("Trail Length"));
+	_add_row(MODULE_TRAILS, TARGET_MESH, "size", StringName(), TTR("Trail Width"));
+	_add_row(MODULE_TRAILS, TARGET_MESH, "sections", StringName(), TTR("Segments"));
+	_add_row(MODULE_TRAILS, TARGET_MESH, "curve", StringName(), TTR("Width over Trail"));
+
+	if (module_contents[MODULE_ATTRACTORS]) {
+		Label *info = memnew(Label);
+		info->set_text(TTR("Attractors pull or push particles. Move them in the Level or preview hierarchy; each one is a GPUParticlesAttractor node."));
+		info->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		info->set_modulate(Color(1, 1, 1, 0.7));
+		module_contents[MODULE_ATTRACTORS]->add_child(info);
+		Button *add_attractor = memnew(Button);
+		add_attractor->set_text(TTR("Add Attractor"));
+		add_attractor->connect(SceneStringName(pressed), callable_mp(this, &FPSParticleModuleStack::_on_add_attractor_pressed));
+		module_contents[MODULE_ATTRACTORS]->add_child(add_attractor);
+	}
+	_add_row(MODULE_ATTRACTORS, TARGET_PROCESS, "attractor_interaction_enabled", StringName(), TTR("React to Attractors"));
 
 	// Render: texture first, then how it is blended and oriented.
 	{
@@ -608,6 +730,7 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_RENDER, TARGET_MATERIAL, "vertex_color_use_as_albedo", "vertex_color_use_as_albedo", TTR("Use Particle Color"));
 	_add_row(MODULE_RENDER, TARGET_MATERIAL, "proximity_fade_enabled", "proximity_fade_enabled", TTR("Soft Particles"));
 	_add_row(MODULE_RENDER, TARGET_MATERIAL, "proximity_fade_distance", "proximity_fade_distance", TTR("Soft Distance"), "proximity_fade_enabled", enabled);
+	_add_row(MODULE_RENDER, TARGET_NODE, "draw_pass_1", "mesh", TTR("Mesh"));
 	_add_row(MODULE_RENDER, TARGET_MESH, "size", "size", TTR("Quad Size"));
 	_add_row(MODULE_RENDER, TARGET_NODE, "draw_order", "draw_order", TTR("Sorting"));
 	_add_row(MODULE_RENDER, TARGET_NODE, "transform_align", StringName(), TTR("Align"));
@@ -644,7 +767,7 @@ void FPSParticleModuleStack::_update_add_menu() {
 			if (!_is_module_optional(module) || _is_module_active(module)) {
 				continue;
 			}
-			if (!gpu && (module == MODULE_TURBULENCE || module == MODULE_COLLISION || module == MODULE_SUB_EMITTER)) {
+			if (!gpu && is_gpu_only_module(module)) {
 				continue;
 			}
 			popup->add_item(get_module_name(module), module);
@@ -675,7 +798,8 @@ void FPSParticleModuleStack::_update_render_card() {
 
 void FPSParticleModuleStack::_commit_property(Object *p_object, const StringName &p_property, const Variant &p_value, bool p_merge) {
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
-	undo_redo->create_action(vformat(TTR("Set Particle %s"), p_property), p_merge ? UndoRedo::MERGE_ENDS : UndoRedo::MERGE_DISABLE);
+	undo_redo->create_action_for_history(vformat(TTR("Set Particle %s"), p_property), EditorUndoRedoManager::GLOBAL_HISTORY, p_merge ? UndoRedo::MERGE_ENDS : UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_property(p_object, p_property, p_value);
 	undo_redo->add_undo_property(p_object, p_property, p_object->get(p_property));
 	undo_redo->add_do_method(this, "_history_changed", p_property);
@@ -740,7 +864,8 @@ void FPSParticleModuleStack::_on_create_material_pressed() {
 	}
 	const StringName mesh_property = _is_gpu() ? StringName("draw_pass_1") : StringName("mesh");
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
-	undo_redo->create_action(TTR("Create Particle Material"));
+	undo_redo->create_action_for_history(TTR("Create Particle Material"), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_property(emitter, mesh_property, new_mesh);
 	undo_redo->add_undo_property(emitter, mesh_property, emitter->get(mesh_property));
 	undo_redo->add_do_method(this, "_history_changed", StringName("material"));
@@ -787,6 +912,359 @@ void FPSParticleModuleStack::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_history_changed", "property"), &FPSParticleModuleStack::_history_changed);
 	ADD_SIGNAL(MethodInfo("property_edited", PropertyInfo(Variant::STRING, "property")));
 	ADD_SIGNAL(MethodInfo("generate_texture_requested"));
+}
+
+/* Module presets ---------------------------------------------------------- */
+
+namespace {
+
+struct PresetValue {
+	FPSParticleModuleStack::Target target;
+	StringName gpu;
+	StringName cpu;
+	Variant value;
+};
+
+struct ModulePreset {
+	String name;
+	Vector<PresetValue> values;
+};
+
+PresetValue pv(FPSParticleModuleStack::Target p_target, const StringName &p_gpu, const StringName &p_cpu, const Variant &p_value) {
+	return { p_target, p_gpu, p_cpu, p_value };
+}
+
+// A min/max range: GPU uses the Vector2 range property, CPU the _min/_max pair.
+void add_range_values(Vector<PresetValue> &r_values, const String &p_gpu_base, const String &p_cpu_base, float p_min, float p_max) {
+	r_values.push_back(pv(FPSParticleModuleStack::TARGET_PROCESS, p_gpu_base, StringName(), Vector2(p_min, p_max)));
+	r_values.push_back(pv(FPSParticleModuleStack::TARGET_PROCESS, StringName(), p_cpu_base + "_min", p_min));
+	r_values.push_back(pv(FPSParticleModuleStack::TARGET_PROCESS, StringName(), p_cpu_base + "_max", p_max));
+}
+
+Vector<ModulePreset> get_module_presets(int p_module) {
+	using T = FPSParticleModuleStack::Target;
+	Vector<ModulePreset> presets;
+	auto add = [&](const String &p_name) -> ModulePreset & {
+		presets.push_back(ModulePreset{ p_name, Vector<PresetValue>() });
+		return presets.write[presets.size() - 1];
+	};
+	auto ramp = [](std::initializer_list<float> p_offsets, std::initializer_list<Color> p_colors) {
+		Vector<float> offsets;
+		Vector<Color> colors;
+		for (float o : p_offsets) {
+			offsets.push_back(o);
+		}
+		for (const Color &c : p_colors) {
+			colors.push_back(c);
+		}
+		return Variant(FPSParticlePresets::make_color_ramp(offsets, colors));
+	};
+	auto curve = [](std::initializer_list<Vector2> p_points) {
+		Vector<Vector2> points;
+		for (const Vector2 &p : p_points) {
+			points.push_back(p);
+		}
+		return Variant(FPSParticlePresets::make_curve_texture(points));
+	};
+	switch (p_module) {
+		case FPSParticleModuleStack::MODULE_EMITTER: {
+			ModulePreset &continuous = add(TTR("Continuous Stream"));
+			continuous.values.push_back(pv(T::TARGET_NODE, "one_shot", "one_shot", false));
+			continuous.values.push_back(pv(T::TARGET_NODE, "explosiveness", "explosiveness", 0.0));
+			ModulePreset &burst = add(TTR("Single Burst"));
+			burst.values.push_back(pv(T::TARGET_NODE, "one_shot", "one_shot", true));
+			burst.values.push_back(pv(T::TARGET_NODE, "explosiveness", "explosiveness", 1.0));
+			ModulePreset &pulses = add(TTR("Repeating Pulses"));
+			pulses.values.push_back(pv(T::TARGET_NODE, "one_shot", "one_shot", false));
+			pulses.values.push_back(pv(T::TARGET_NODE, "explosiveness", "explosiveness", 0.85));
+		} break;
+		case FPSParticleModuleStack::MODULE_SHAPE: {
+			add(TTR("Point")).values.push_back(pv(T::TARGET_PROCESS, "emission_shape", "emission_shape", 0));
+			ModulePreset &small = add(TTR("Small Sphere"));
+			small.values.push_back(pv(T::TARGET_PROCESS, "emission_shape", "emission_shape", 1));
+			small.values.push_back(pv(T::TARGET_PROCESS, "emission_sphere_radius", "emission_sphere_radius", 0.2));
+			ModulePreset &large = add(TTR("Large Sphere"));
+			large.values.push_back(pv(T::TARGET_PROCESS, "emission_shape", "emission_shape", 1));
+			large.values.push_back(pv(T::TARGET_PROCESS, "emission_sphere_radius", "emission_sphere_radius", 1.0));
+			ModulePreset &shell = add(TTR("Sphere Shell"));
+			shell.values.push_back(pv(T::TARGET_PROCESS, "emission_shape", "emission_shape", 2));
+			shell.values.push_back(pv(T::TARGET_PROCESS, "emission_sphere_radius", "emission_sphere_radius", 0.5));
+			ModulePreset &ground = add(TTR("Ground Area"));
+			ground.values.push_back(pv(T::TARGET_PROCESS, "emission_shape", "emission_shape", 3));
+			ground.values.push_back(pv(T::TARGET_PROCESS, "emission_box_extents", "emission_box_extents", Vector3(1.5, 0.05, 1.5)));
+			ModulePreset &ring = add(TTR("Ring"));
+			ring.values.push_back(pv(T::TARGET_PROCESS, "emission_shape", "emission_shape", 6));
+			ring.values.push_back(pv(T::TARGET_PROCESS, "emission_ring_radius", "emission_ring_radius", 1.0));
+			ring.values.push_back(pv(T::TARGET_PROCESS, "emission_ring_inner_radius", "emission_ring_inner_radius", 0.85));
+			ring.values.push_back(pv(T::TARGET_PROCESS, "emission_ring_height", "emission_ring_height", 0.05));
+			ring.values.push_back(pv(T::TARGET_PROCESS, "emission_ring_axis", "emission_ring_axis", Vector3(0, 1, 0)));
+		} break;
+		case FPSParticleModuleStack::MODULE_VELOCITY: {
+			ModulePreset &fountain = add(TTR("Fountain"));
+			fountain.values.push_back(pv(T::TARGET_PROCESS, "direction", "direction", Vector3(0, 1, 0)));
+			fountain.values.push_back(pv(T::TARGET_PROCESS, "spread", "spread", 15.0));
+			add_range_values(fountain.values, "initial_velocity", "initial_velocity", 4.0, 6.0);
+			ModulePreset &radial = add(TTR("Explosion (Radial)"));
+			radial.values.push_back(pv(T::TARGET_PROCESS, "spread", "spread", 180.0));
+			add_range_values(radial.values, "initial_velocity", "initial_velocity", 4.0, 10.0);
+			ModulePreset &rise = add(TTR("Gentle Rise"));
+			rise.values.push_back(pv(T::TARGET_PROCESS, "direction", "direction", Vector3(0, 1, 0)));
+			rise.values.push_back(pv(T::TARGET_PROCESS, "spread", "spread", 10.0));
+			add_range_values(rise.values, "initial_velocity", "initial_velocity", 0.3, 0.8);
+			ModulePreset &cone = add(TTR("Forward Cone (-Z)"));
+			cone.values.push_back(pv(T::TARGET_PROCESS, "direction", "direction", Vector3(0, 0, -1)));
+			cone.values.push_back(pv(T::TARGET_PROCESS, "spread", "spread", 20.0));
+			add_range_values(cone.values, "initial_velocity", "initial_velocity", 5.0, 8.0);
+		} break;
+		case FPSParticleModuleStack::MODULE_FORCES: {
+			ModulePreset &earth = add(TTR("Earth Gravity"));
+			earth.values.push_back(pv(T::TARGET_PROCESS, "gravity", "gravity", Vector3(0, -9.8, 0)));
+			add_range_values(earth.values, "damping", "damping", 0.0, 0.0);
+			ModulePreset &light = add(TTR("Light Gravity"));
+			light.values.push_back(pv(T::TARGET_PROCESS, "gravity", "gravity", Vector3(0, -2.0, 0)));
+			ModulePreset &buoyant = add(TTR("Buoyant Smoke"));
+			buoyant.values.push_back(pv(T::TARGET_PROCESS, "gravity", "gravity", Vector3(0, 0.4, 0)));
+			add_range_values(buoyant.values, "damping", "damping", 0.4, 0.8);
+			ModulePreset &zero = add(TTR("Zero Gravity"));
+			zero.values.push_back(pv(T::TARGET_PROCESS, "gravity", "gravity", Vector3()));
+			add_range_values(zero.values, "damping", "damping", 0.0, 0.0);
+			ModulePreset &drag = add(TTR("Heavy Drag"));
+			add_range_values(drag.values, "damping", "damping", 2.5, 3.5);
+		} break;
+		case FPSParticleModuleStack::MODULE_COLOR: {
+			ModulePreset &fire = add(TTR("Fire"));
+			fire.values.push_back(pv(T::TARGET_PROCESS, "color", "color", Color(1, 1, 1, 1)));
+			fire.values.push_back(pv(T::TARGET_PROCESS, "color_ramp", "color_ramp", ramp({ 0.0f, 0.25f, 0.7f, 1.0f }, { Color(1.0, 0.95, 0.7, 1.0), Color(1.0, 0.6, 0.15, 1.0), Color(0.7, 0.15, 0.03, 0.7), Color(0.2, 0.05, 0.02, 0.0) })));
+			ModulePreset &smoke = add(TTR("Smoke"));
+			smoke.values.push_back(pv(T::TARGET_PROCESS, "color", "color", Color(1, 1, 1, 1)));
+			smoke.values.push_back(pv(T::TARGET_PROCESS, "color_ramp", "color_ramp", ramp({ 0.0f, 0.15f, 1.0f }, { Color(0.35, 0.33, 0.32, 0.0), Color(0.4, 0.38, 0.36, 0.75), Color(0.6, 0.6, 0.62, 0.0) })));
+			ModulePreset &sparks = add(TTR("Sparks"));
+			sparks.values.push_back(pv(T::TARGET_PROCESS, "color", "color", Color(1, 1, 1, 1)));
+			sparks.values.push_back(pv(T::TARGET_PROCESS, "color_ramp", "color_ramp", ramp({ 0.0f, 0.5f, 1.0f }, { Color(1.0, 0.97, 0.8, 1.0), Color(1.0, 0.6, 0.15, 1.0), Color(0.8, 0.2, 0.05, 0.0) })));
+			ModulePreset &magic = add(TTR("Magic"));
+			magic.values.push_back(pv(T::TARGET_PROCESS, "color", "color", Color(1, 1, 1, 1)));
+			magic.values.push_back(pv(T::TARGET_PROCESS, "color_ramp", "color_ramp", ramp({ 0.0f, 0.5f, 1.0f }, { Color(0.6, 0.95, 1.0, 1.0), Color(0.45, 0.35, 1.0, 0.9), Color(0.6, 0.1, 0.8, 0.0) })));
+			ModulePreset &fade = add(TTR("White Fade Out"));
+			fade.values.push_back(pv(T::TARGET_PROCESS, "color", "color", Color(1, 1, 1, 1)));
+			fade.values.push_back(pv(T::TARGET_PROCESS, "color_ramp", "color_ramp", ramp({ 0.0f, 1.0f }, { Color(1, 1, 1, 1), Color(1, 1, 1, 0) })));
+		} break;
+		case FPSParticleModuleStack::MODULE_SIZE: {
+			add(TTR("Grow")).values.push_back(pv(T::TARGET_PROCESS, "scale_curve", "scale_amount_curve", curve({ Vector2(0, 0.3), Vector2(1, 1) })));
+			add(TTR("Shrink")).values.push_back(pv(T::TARGET_PROCESS, "scale_curve", "scale_amount_curve", curve({ Vector2(0, 1), Vector2(1, 0) })));
+			add(TTR("Pop In and Out")).values.push_back(pv(T::TARGET_PROCESS, "scale_curve", "scale_amount_curve", curve({ Vector2(0, 0), Vector2(0.2, 1), Vector2(1, 0) })));
+			add(TTR("Constant")).values.push_back(pv(T::TARGET_PROCESS, "scale_curve", "scale_amount_curve", Variant()));
+		} break;
+		case FPSParticleModuleStack::MODULE_ROTATION: {
+			ModulePreset &random = add(TTR("Random Static"));
+			add_range_values(random.values, "angle", "angle", 0.0, 360.0);
+			add_range_values(random.values, "angular_velocity", "angular_velocity", 0.0, 0.0);
+			ModulePreset &slow = add(TTR("Slow Spin"));
+			add_range_values(slow.values, "angle", "angle", 0.0, 360.0);
+			add_range_values(slow.values, "angular_velocity", "angular_velocity", -30.0, 30.0);
+			ModulePreset &fast = add(TTR("Fast Spin"));
+			add_range_values(fast.values, "angle", "angle", 0.0, 360.0);
+			add_range_values(fast.values, "angular_velocity", "angular_velocity", -360.0, 360.0);
+		} break;
+		case FPSParticleModuleStack::MODULE_TURBULENCE: {
+			ModulePreset &gentle = add(TTR("Gentle Drift"));
+			gentle.values.push_back(pv(T::TARGET_PROCESS, "turbulence_noise_strength", StringName(), 0.5));
+			gentle.values.push_back(pv(T::TARGET_PROCESS, "turbulence_noise_scale", StringName(), 3.0));
+			ModulePreset &chaos = add(TTR("Chaotic"));
+			chaos.values.push_back(pv(T::TARGET_PROCESS, "turbulence_noise_strength", StringName(), 2.0));
+			chaos.values.push_back(pv(T::TARGET_PROCESS, "turbulence_noise_scale", StringName(), 1.5));
+			chaos.values.push_back(pv(T::TARGET_PROCESS, "turbulence_noise_speed", StringName(), Vector3(0.5, 0.5, 0.5)));
+		} break;
+		case FPSParticleModuleStack::MODULE_RENDER: {
+			ModulePreset &glow = add(TTR("Additive Glow"));
+			glow.values.push_back(pv(T::TARGET_MATERIAL, "blend_mode", "blend_mode", int(BaseMaterial3D::BLEND_MODE_ADD)));
+			glow.values.push_back(pv(T::TARGET_MATERIAL, "shading_mode", "shading_mode", int(BaseMaterial3D::SHADING_MODE_UNSHADED)));
+			glow.values.push_back(pv(T::TARGET_MATERIAL, "proximity_fade_enabled", "proximity_fade_enabled", false));
+			ModulePreset &smoke = add(TTR("Soft Alpha (Smoke)"));
+			smoke.values.push_back(pv(T::TARGET_MATERIAL, "blend_mode", "blend_mode", int(BaseMaterial3D::BLEND_MODE_MIX)));
+			smoke.values.push_back(pv(T::TARGET_MATERIAL, "proximity_fade_enabled", "proximity_fade_enabled", true));
+			smoke.values.push_back(pv(T::TARGET_MATERIAL, "proximity_fade_distance", "proximity_fade_distance", 0.35));
+			ModulePreset &lit = add(TTR("Lit by Scene"));
+			lit.values.push_back(pv(T::TARGET_MATERIAL, "blend_mode", "blend_mode", int(BaseMaterial3D::BLEND_MODE_MIX)));
+			lit.values.push_back(pv(T::TARGET_MATERIAL, "shading_mode", "shading_mode", int(BaseMaterial3D::SHADING_MODE_PER_PIXEL)));
+		} break;
+		default:
+			break;
+	}
+	return presets;
+}
+
+Dictionary module_clipboard;
+int module_clipboard_module = -1;
+
+} // namespace
+
+void FPSParticleModuleStack::_on_module_menu_id(int p_id, int p_module) {
+	if (p_module < 0 || p_module >= MODULE_MAX || !module_cards[p_module]) {
+		return;
+	}
+	if (p_id == -1) {
+		// about_to_popup: rebuild the menu for this module.
+		MenuButton *menu = nullptr;
+		for (int i = 0; i < module_cards[p_module]->get_child_count(true); i++) {
+			menu = Object::cast_to<MenuButton>(module_cards[p_module]->get_child(i, true));
+			if (menu) {
+				break;
+			}
+		}
+		if (!menu) {
+			return;
+		}
+		PopupMenu *popup = menu->get_popup();
+		popup->clear();
+		const Vector<ModulePreset> presets = get_module_presets(p_module);
+		if (!presets.is_empty()) {
+			popup->add_separator(TTR("Presets"));
+			for (int i = 0; i < presets.size(); i++) {
+				popup->add_item(presets[i].name, i);
+			}
+			popup->add_separator();
+		}
+		popup->add_item(TTR("Copy Module"), 1000);
+		popup->add_item(TTR("Paste Module"), 1001);
+		popup->set_item_disabled(-1, module_clipboard_module != p_module);
+		popup->add_item(TTR("Reset to Defaults"), 1002);
+		return;
+	}
+	if (p_id == 1000) {
+		_copy_module(p_module);
+	} else if (p_id == 1001) {
+		_paste_module(p_module);
+	} else if (p_id == 1002) {
+		_reset_module(p_module);
+	} else {
+		_apply_module_preset(p_module, p_id);
+	}
+}
+
+void FPSParticleModuleStack::_apply_module_preset(int p_module, int p_preset) {
+	const Vector<ModulePreset> presets = get_module_presets(p_module);
+	ERR_FAIL_INDEX(p_preset, presets.size());
+	const bool gpu = _is_gpu();
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(vformat(TTR("Apply %s Preset: %s"), get_module_name(p_module), presets[p_preset].name), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
+	for (const PresetValue &value : presets[p_preset].values) {
+		const StringName property = ((value.target == TARGET_PROCESS || value.target == TARGET_NODE) && !gpu) ? value.cpu : value.gpu;
+		Object *object = _get_target(value.target);
+		if (property == StringName() || !object) {
+			continue;
+		}
+		bool valid = false;
+		const Variant current = object->get(property, &valid);
+		if (!valid) {
+			continue;
+		}
+		undo_redo->add_do_property(object, property, value.value);
+		undo_redo->add_undo_property(object, property, current);
+	}
+	undo_redo->add_do_method(this, "_history_changed", StringName("preset"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("preset"));
+	undo_redo->commit_action();
+}
+
+void FPSParticleModuleStack::_copy_module(int p_module) {
+	module_clipboard.clear();
+	for (const PropertyRow &row : rows) {
+		if (row.module != p_module) {
+			continue;
+		}
+		Object *object = row.editor->get_edited_object();
+		if (object) {
+			Variant value = object->get(row.property);
+			// Copy resources so pasting doesn't link two emitters together.
+			Ref<Resource> resource = value;
+			if (resource.is_valid() && resource->get_path().is_empty()) {
+				value = resource->duplicate(true);
+			}
+			module_clipboard[String(row.property)] = value;
+		}
+	}
+	module_clipboard_module = p_module;
+}
+
+void FPSParticleModuleStack::_paste_module(int p_module) {
+	if (module_clipboard_module != p_module || module_clipboard.is_empty()) {
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(vformat(TTR("Paste Module: %s"), get_module_name(p_module)), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
+	for (const PropertyRow &row : rows) {
+		if (row.module != p_module || !module_clipboard.has(String(row.property))) {
+			continue;
+		}
+		Object *object = row.editor->get_edited_object();
+		if (!object) {
+			continue;
+		}
+		Variant value = module_clipboard[String(row.property)];
+		Ref<Resource> resource = value;
+		if (resource.is_valid() && resource->get_path().is_empty()) {
+			value = resource->duplicate(true);
+		}
+		undo_redo->add_do_property(object, row.property, value);
+		undo_redo->add_undo_property(object, row.property, object->get(row.property));
+	}
+	undo_redo->add_do_method(this, "_history_changed", StringName("paste"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("paste"));
+	undo_redo->commit_action();
+}
+
+void FPSParticleModuleStack::_reset_module(int p_module) {
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(vformat(TTR("Reset Module: %s"), get_module_name(p_module)), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
+	for (const PropertyRow &row : rows) {
+		if (row.module != p_module) {
+			continue;
+		}
+		Object *object = row.editor->get_edited_object();
+		if (!object) {
+			continue;
+		}
+		Variant default_value;
+		if (String(row.property).begins_with("metadata/")) {
+			default_value = 0.0;
+		} else {
+			bool valid = false;
+			default_value = ClassDB::class_get_default_property_value(object->get_class_name(), row.property, &valid);
+			if (!valid) {
+				continue;
+			}
+		}
+		undo_redo->add_do_property(object, row.property, default_value);
+		undo_redo->add_undo_property(object, row.property, object->get(row.property));
+	}
+	undo_redo->add_do_method(this, "_history_changed", StringName("reset"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("reset"));
+	undo_redo->commit_action();
+}
+
+void FPSParticleModuleStack::_on_add_attractor_pressed() {
+	Node *emitter = get_edited_emitter();
+	if (!emitter) {
+		return;
+	}
+	GPUParticlesAttractorSphere3D *attractor = memnew(GPUParticlesAttractorSphere3D);
+	attractor->set_name("Attractor");
+	attractor->set_radius(1.5);
+	attractor->set_strength(4.0);
+	attractor->set_position(Vector3(0, 1.5, 0));
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(TTR("Add Particle Attractor"), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_method(emitter, "add_child", attractor, true);
+	undo_redo->add_do_method(attractor, "set_owner", emitter->get_owner() ? emitter->get_owner() : emitter);
+	undo_redo->add_do_reference(attractor);
+	undo_redo->add_undo_method(emitter, "remove_child", attractor);
+	undo_redo->add_do_method(this, "_history_changed", StringName("attractor"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("attractor"));
+	undo_redo->commit_action();
 }
 
 void FPSParticleModuleStack::_on_generate_texture_pressed() {

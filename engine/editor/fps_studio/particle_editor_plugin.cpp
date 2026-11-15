@@ -1954,7 +1954,9 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 	CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(emitter);
 	const int frames = generated_texture_frame_columns;
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Apply Generated Texture"));
+	// Particle documents are not scenes: keep node and resource edits in one (global) history.
+	undo_redo->create_action_for_history(TTR("Apply Generated Texture"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
 	auto set_prop = [&](Object *p_object, const StringName &p_property, const Variant &p_value) {
 		undo_redo->add_do_property(p_object, p_property, p_value);
 		undo_redo->add_undo_property(p_object, p_property, p_object->get(p_property));

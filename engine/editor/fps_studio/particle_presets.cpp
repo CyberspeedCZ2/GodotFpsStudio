@@ -405,6 +405,30 @@ String get_preset_description(int p_preset) {
 	return String();
 }
 
+Ref<GradientTexture1D> make_color_ramp(const Vector<float> &p_offsets, const Vector<Color> &p_colors) {
+	Ref<Gradient> gradient;
+	gradient.instantiate();
+	gradient->set_offsets(p_offsets);
+	gradient->set_colors(p_colors);
+	Ref<GradientTexture1D> texture;
+	texture.instantiate();
+	texture->set_gradient(gradient);
+	return texture;
+}
+
+Ref<CurveTexture> make_curve_texture(const Vector<Vector2> &p_points, float p_max) {
+	Ref<Curve> curve;
+	curve.instantiate();
+	curve->set_max_value(p_max);
+	for (const Vector2 &point : p_points) {
+		curve->add_point(point);
+	}
+	Ref<CurveTexture> texture;
+	texture.instantiate();
+	texture->set_curve(curve);
+	return texture;
+}
+
 ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures) {
 	ERR_FAIL_INDEX_V(p_preset, PRESET_MAX, nullptr);
 	ParticleEffect3D *effect = memnew(ParticleEffect3D);

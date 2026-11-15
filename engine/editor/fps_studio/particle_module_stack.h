@@ -42,6 +42,8 @@ public:
 		MODULE_TURBULENCE,
 		MODULE_COLLISION,
 		MODULE_SUB_EMITTER,
+		MODULE_TRAILS,
+		MODULE_ATTRACTORS,
 		MODULE_RENDER,
 		MODULE_EVENT, // Timed event nodes (light, sound, camera shake, decal).
 		MODULE_MAX,
@@ -106,6 +108,12 @@ private:
 	void _commit_property(Object *p_object, const StringName &p_property, const Variant &p_value, bool p_merge);
 	void _history_changed(const StringName &p_property);
 	void _on_generate_texture_pressed();
+	void _on_module_menu_id(int p_id, int p_module);
+	void _apply_module_preset(int p_module, int p_preset);
+	void _copy_module(int p_module);
+	void _paste_module(int p_module);
+	void _reset_module(int p_module);
+	void _on_add_attractor_pressed();
 
 protected:
 	static void _bind_methods();
