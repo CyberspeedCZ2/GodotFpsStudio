@@ -3389,6 +3389,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	texture_generator_preview = memnew(TextureRect);
 	texture_generator_preview->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
 	texture_generator_preview->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
+	// The preview is usually smaller than the stage; filter it smoothly.
+	texture_generator_preview->set_texture_filter(CanvasItem::TEXTURE_FILTER_LINEAR);
 	texture_generator_stage->add_child(texture_generator_preview);
 	HBoxContainer *texture_preview_transport = memnew(HBoxContainer);
 	texture_preview_column->add_child(texture_preview_transport);

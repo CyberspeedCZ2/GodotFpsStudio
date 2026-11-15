@@ -985,7 +985,7 @@ MediumSample sample_smoke(const SmokeShape &sm, const V3 &p, bool p_cheap) {
 
 // Ray marches a medium through the pixel (orthographic, viewer at +Z).
 template <typename SampleFunc>
-void march_medium(float *r_px, float x, float y, float bound, int steps, const FrameContext &c, uint32_t pixel_hash, SampleFunc sample, bool emissive, float shadow_strength, float ambient, float sigma_scale, const V3 &shadow_color, const V3 &lit_color) {
+void march_medium(float *r_px, float x, float y, float bound, int steps, const FrameContext &c, SampleFunc sample, bool emissive, float shadow_strength, float ambient, float sigma_scale, const V3 &shadow_color, const V3 &lit_color) {
 	const float r2 = x * x + y * y;
 	if (r2 >= bound * bound) {
 		r_px[0] = r_px[1] = r_px[2] = r_px[3] = 0.0f;
@@ -993,55 +993,84 @@ void march_medium(float *r_px, float x, float y, float bound, int steps, const F
 	}
 	const float half = std::sqrt(bound * bound - r2);
 	const float dt = 2.0f * bound / float(steps);
-	float z = half - dt * hash01(pixel_hash); // Jitter hides step banding.
+	// Sample on depth slices shared by every pixel (no per-pixel jitter). Random
+	// jitter hides banding but shows up as flickering grain in the preview.
+	float z = bound - dt * (std::floor((bound - half) / dt) + 0.5f);
 	float transmittance = 1.0f;
 	V3 radiance;
 	const float shadow_step = 0.06f;
 	const int shadow_steps = c.s->quality > 0 ? 5 : 3;
 	const V3 &L = c.light_dir;
-	while (z > -half) {
+	// Accumulates one sample covering p_len along the ray. Returns true once opaque.
+	auto integrate = [&](const V3 &p, const MediumSample &m, float p_len) -> bool {
+		const float sigma = m.density * sigma_scale;
+		const float step_t = std::exp(-sigma * p_len);
+		// Light reaching this point from the key light.
+		float light = 1.0f;
+		if (shadow_strength > 0.0f) {
+			float od = 0.0f;
+			for (int i = 1; i <= shadow_steps; i++) {
+				const MediumSample sm = sample(p + L * (shadow_step * float(i)), true);
+				od += sm.density;
+			}
+			light = std::exp(-od * sigma_scale * shadow_step * shadow_strength);
+		}
+		const float scatter_light = ambient + (1.0f - ambient) * light;
+		V3 albedo = mix3(shadow_color, lit_color, scatter_light);
+		if (emissive) {
+			albedo = albedo * (1.0f - m.soot * 0.85f);
+		}
+		V3 contribution = albedo * (1.0f - step_t);
+		if (emissive && m.heat > 0.0f) {
+			// Emission rises steeply with temperature for a punchy blackbody falloff.
+			const float h = m.heat;
+			const float h2 = h * h;
+			const V3 e = heat_ramp(h, c.color_a, c.color_b) * (h * 1.2f + h2 * h2 * 4.0f);
+			contribution += e * (1.0f - step_t) * (1.0f - m.soot * 0.7f);
+		}
+		radiance += contribution * transmittance;
+		transmittance *= step_t;
+		if (transmittance < 0.004f) {
+			transmittance = 0.0f;
+			return true;
+		}
+		return false;
+	};
+	float previous_density = 0.0f;
+	bool opaque = false;
+	while (z > -half && !opaque) {
 		const V3 p(x, y, z);
 		const MediumSample m = sample(p, false);
+		// Where the density changes sharply (entering a billow surface) the
+		// shared depth slices would show as contour bands. Refine that interval
+		// with four sub-steps instead.
+		// In dense media keep each sub-step's optical depth small, otherwise the
+		// nearest slice dominates and its cut through the field reads as rings.
+		int substeps = std::fabs(m.density - previous_density) > 0.2f ? 4 : 1;
 		if (m.density > 0.001f) {
-			const float sigma = m.density * sigma_scale;
-			const float step_t = std::exp(-sigma * dt);
-			// Light reaching this point from the key light.
-			float light = 1.0f;
-			if (shadow_strength > 0.0f) {
-				float od = 0.0f;
-				for (int i = 1; i <= shadow_steps; i++) {
-					const MediumSample sm = sample(p + L * (shadow_step * float(i)), true);
-					od += sm.density;
-				}
-				light = std::exp(-od * sigma_scale * shadow_step * shadow_strength);
-			}
-			// Single scattering with a forward-ish rim boost near the edges.
-			const float scatter_light = ambient + (1.0f - ambient) * light;
-			V3 albedo = mix3(shadow_color, lit_color, scatter_light);
-			if (emissive) {
-				albedo = albedo * (1.0f - m.soot * 0.85f);
-			}
-			V3 contribution = albedo * (1.0f - step_t);
-			if (emissive && m.heat > 0.0f) {
-				// Emission scales with temperature^3 for a punchy blackbody falloff.
-				const float h = m.heat;
-				const float h2 = h * h;
-				const V3 e = heat_ramp(h, c.color_a, c.color_b) * (h * 1.2f + h2 * h2 * 4.0f);
-				contribution += e * (1.0f - step_t) * (1.0f - m.soot * 0.7f);
-			}
-			radiance += contribution * transmittance;
-			transmittance *= step_t;
-			if (transmittance < 0.004f) {
-				transmittance = 0.0f;
-				break;
-			}
+			const int optical = int(std::ceil(m.density * sigma_scale * dt / 0.25f));
+			substeps = optical > substeps ? optical : substeps;
 		}
+		substeps = substeps > 8 ? 8 : substeps;
+		if (substeps > 1) {
+			const float sub = dt / float(substeps);
+			for (int k = 0; k < substeps && !opaque; k++) {
+				const V3 pk(x, y, z + dt * 0.5f - sub * (float(k) + 0.5f));
+				const MediumSample mk = sample(pk, false);
+				if (mk.density > 0.001f) {
+					opaque = integrate(pk, mk, sub);
+				}
+			}
+		} else if (m.density > 0.001f) {
+			opaque = integrate(p, m, dt);
+		}
+		previous_density = m.density;
 		z -= dt;
 	}
 	write_pixel(r_px, radiance, 1.0f - transmittance, *c.s);
 }
 
-void render_explosion(const FrameContext &c, float x, float y, uint32_t ph, float *r_px, bool p_ring) {
+void render_explosion(const FrameContext &c, float x, float y, float *r_px, bool p_ring) {
 	const ExplosionShape e = make_explosion_shape(c, p_ring);
 	const int steps = c.s->quality > 0 ? 96 : 48;
 	// Smoke is lit by the key light and by the fire inside it.
@@ -1049,10 +1078,10 @@ void render_explosion(const FrameContext &c, float x, float y, uint32_t ph, floa
 	const V3 smoke_dark(0.015f, 0.012f, 0.011f);
 	// Once the fire cools down the smoke is lit by the neutral key light instead.
 	const V3 smoke_lit = mix3(V3(0.32f, 0.31f, 0.3f), c.color_a * 0.22f + V3(0.03f, 0.03f, 0.03f), saturate(e.fire));
-	march_medium(r_px, x, y, explosion_bound(e) + e.rise, steps, c, ph, [&](const V3 &p, bool cheap) { return sample_explosion(e, p, cheap); }, true, 1.0f, 0.3f, 22.0f, smoke_dark, smoke_lit);
+	march_medium(r_px, x, y, explosion_bound(e) + e.rise, steps, c, [&](const V3 &p, bool cheap) { return sample_explosion(e, p, cheap); }, true, 1.0f, 0.3f, 22.0f, smoke_dark, smoke_lit);
 }
 
-void render_fire(const FrameContext &c, float x, float y, uint32_t ph, float *r_px) {
+void render_fire(const FrameContext &c, float x, float y, float *r_px) {
 	const FireShape f = make_fire_shape(c);
 	const float half_w = f.width * 1.6f + 0.1f;
 	if (std::fabs(x) > half_w + 0.3f) {
@@ -1061,7 +1090,7 @@ void render_fire(const FrameContext &c, float x, float y, uint32_t ph, float *r_
 	}
 	const int steps = c.s->quality > 0 ? 64 : 32;
 	const float dt = 2.0f * half_w / float(steps);
-	float z = half_w - dt * hash01(ph);
+	float z = half_w - dt * 0.5f;
 	float transmittance = 1.0f;
 	V3 radiance;
 	const V3 soot_color(0.03f, 0.028f, 0.026f);
@@ -1081,12 +1110,12 @@ void render_fire(const FrameContext &c, float x, float y, uint32_t ph, float *r_
 	write_pixel(r_px, radiance, 1.0f - transmittance, *c.s);
 }
 
-void render_smoke(const FrameContext &c, float x, float y, uint32_t ph, float *r_px, bool p_cloud) {
+void render_smoke(const FrameContext &c, float x, float y, float *r_px, bool p_cloud) {
 	const SmokeShape sm = make_smoke_shape(c, p_cloud);
 	const int steps = c.s->quality > 0 ? 80 : 40;
 	const float shadow = p_cloud ? param(c, 6) : param(c, 7);
 	const float ambient = p_cloud ? param(c, 7) : param(c, 8);
-	march_medium(r_px, x, y, smoke_bound(sm) + (p_cloud ? 0.25f : 0.0f), steps, c, ph, [&](const V3 &p, bool cheap) { return sample_smoke(sm, p, cheap); }, false, shadow * (p_cloud ? 0.55f : 0.9f), ambient, 28.0f, c.color_a, c.color_b);
+	march_medium(r_px, x, y, smoke_bound(sm) + (p_cloud ? 0.25f : 0.0f), steps, c, [&](const V3 &p, bool cheap) { return sample_smoke(sm, p, cheap); }, false, shadow * (p_cloud ? 0.55f : 0.9f), ambient, 28.0f, c.color_a, c.color_b);
 }
 
 /* 2D emissive types ------------------------------------------------------ */
@@ -1474,22 +1503,21 @@ void render_pixel(const FrameContext &c, int px, int py, int size, float *r_out)
 		x = (a / TAU + 0.5f) * 2.0f - 1.0f;
 		y = 1.0f - saturate(r) * 2.0f;
 	}
-	const uint32_t ph = hash3i(px, py, 0, s.seed ^ 0x5bd1e995u);
 	switch (s.type) {
 		case TYPE_EXPLOSION:
-			render_explosion(c, x, y, ph, r_out, false);
+			render_explosion(c, x, y, r_out, false);
 			break;
 		case TYPE_EXPLOSION_RING:
-			render_explosion(c, x, y, ph, r_out, true);
+			render_explosion(c, x, y, r_out, true);
 			break;
 		case TYPE_FIRE:
-			render_fire(c, x, y, ph, r_out);
+			render_fire(c, x, y, r_out);
 			break;
 		case TYPE_SMOKE:
-			render_smoke(c, x, y, ph, r_out, false);
+			render_smoke(c, x, y, r_out, false);
 			break;
 		case TYPE_CLOUD:
-			render_smoke(c, x, y, ph, r_out, true);
+			render_smoke(c, x, y, r_out, true);
 			break;
 		default:
 			render_2d(c, x, y, r_out);
