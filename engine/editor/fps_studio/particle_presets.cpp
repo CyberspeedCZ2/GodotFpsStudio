@@ -350,10 +350,12 @@ void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	chips.set("direction", Vector3(0, 1, 0)).set("spread", 45.0).set("initial_velocity", Vector2(2.5, 5.0)).set("gravity", Vector3(0, -9.8, 0)).set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-400, 400)).set("scale", Vector2(0.5, 1.4));
 	chips.set("color", Color(0.25, 0.22, 0.19, 1.0));
 	chips.material->set_proximity_fade_enabled(false);
+	enable_collision(chips, 0.3, 0.6);
 
 	EmitterBuilder sparks = add_emitter(p_effect, "Sparks", 4, 0.2, true, 1.0, 0.08, BLEND_ADD, true);
 	sparks.set("direction", Vector3(0, 1, 0)).set("spread", 50.0).set("initial_velocity", Vector2(3.0, 7.0)).set("gravity", Vector3(0, -9.8, 0));
 	sparks.process->set_color_ramp(make_ramp({ { 0.0f, Color(1.0, 0.9, 0.6, 1.0) }, { 1.0f, Color(1.0, 0.4, 0.1, 0.0) } }));
+	enable_collision(sparks, 0.35, 0.3);
 	r_textures.push_back(make_texture(sparks.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
 
 	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.22, 0.3, 0.22), 12.0, 0.2);
@@ -365,6 +367,7 @@ void build_impact_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	sparks.set("direction", Vector3(0, 1, 0)).set("spread", 55.0).set("initial_velocity", Vector2(4.0, 10.0)).set("gravity", Vector3(0, -9.8, 0)).set("damping", Vector2(0.5, 1.0)).set("scale", Vector2(0.4, 1.0));
 	sparks.process->set_color_ramp(make_ramp({ { 0.0f, Color(1.0, 0.97, 0.8, 1.0) }, { 0.4f, Color(1.0, 0.7, 0.25, 1.0) }, { 1.0f, Color(0.9, 0.25, 0.05, 0.0) } }));
 	sparks.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 1), Vector2(1, 0.4) }));
+	enable_collision(sparks, 0.4, 0.2);
 	r_textures.push_back(make_texture(sparks.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
 
 	EmitterBuilder glow = add_emitter(p_effect, "Glow", 1, 0.12, true, 1.0, 0.8, BLEND_ADD);
@@ -464,6 +467,7 @@ void build_wood_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	splinters.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(2.5, 6.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.5, 1.3));
 	splinters.set("color", Color(0.62, 0.45, 0.26, 1.0));
 	splinters.material->set_proximity_fade_enabled(false);
+	enable_collision(splinters, 0.25, 0.7);
 	TextureRequest splinter_texture = make_texture(splinters.node, VFXTextureGenerator::TYPE_SPARK, "wood_splinter", 128);
 	set_colors(splinter_texture, WHITE_TINT_A, WHITE_TINT_B);
 	set_param(splinter_texture, "glow", 0.1f);
@@ -788,9 +792,9 @@ String get_preset_description(int p_preset) {
 		case PRESET_EXPLOSION:
 			return "Flash, volumetric fireball sprite sheet, colliding sparks, shockwave, smoke, scorch decal, light, shake, sound and damage.";
 		case PRESET_BULLET_IMPACT:
-			return "Dust puff, debris chips, a few sparks and a concrete bullet hole decal along +Y (surface normal).";
+			return "Dust puff, debris chips and sparks that bounce off the level, and a concrete bullet hole decal along +Y (surface normal).";
 		case PRESET_IMPACT_SPARKS:
-			return "Bright metal sparks, a short glow and a metal bullet hole decal along +Y.";
+			return "Bright metal sparks that bounce off the level, a short glow and a metal bullet hole decal along +Y.";
 		case PRESET_BLOOD_HIT:
 			return "Blood mist and droplets along +Z, with a splatter decal on the wall behind.";
 		case PRESET_SMOKE_PLUME:
@@ -798,7 +802,7 @@ String get_preset_description(int p_preset) {
 		case PRESET_FIRE:
 			return "Continuous animated flames, embers and smoke.";
 		case PRESET_WOOD_IMPACT:
-			return "Wood dust, splinters and a wood bullet hole decal along +Y (surface normal).";
+			return "Wood dust, splinters that bounce off the level and a wood bullet hole decal along +Y (surface normal).";
 		case PRESET_WATER_SPLASH:
 			return "Droplet column, mist and a flat ripple on the water (+Y), with a sound slot.";
 		case PRESET_GLASS_SHATTER:

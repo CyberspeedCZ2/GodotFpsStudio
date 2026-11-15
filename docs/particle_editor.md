@@ -126,9 +126,9 @@ Presety jsou v menu **Library**, v panelu knihovny a v **New → FPS Presets**, 
 | --- | --- | --- |
 | Weapons | Muzzle Flash | záblesk, plamenné jazyky, jiskry a kouř (směr −Z) |
 | Weapons | Bullet Tracer | jeden rychlý zářící pruh podél −Z (spawn u ústí hlavně) |
-| Impacts | Bullet Impact (Dust) | prachový obláček, úlomky, několik jisker a decal díry v betonu (normála +Y) |
-| Impacts | Bullet Impact (Wood) | hnědý prach, třísky a decal díry ve dřevě (normála +Y) |
-| Impacts | Impact Sparks (Metal) | jiskry s krátkou září a decal díry v kovu (normála +Y) |
+| Impacts | Bullet Impact (Dust) | prachový obláček, úlomky a jiskry s kolizí, decal díry v betonu (normála +Y) |
+| Impacts | Bullet Impact (Wood) | hnědý prach, třísky s kolizí a decal díry ve dřevě (normála +Y) |
+| Impacts | Impact Sparks (Metal) | jiskry s kolizí, krátká záře a decal díry v kovu (normála +Y) |
 | Impacts | Blood Hit | krvavá mlha, kapky (směr +Z) a krvavý decal na zdi za zásahem (do 2 m) |
 | Impacts | Glass Shatter | střepy, které se točí a odrážejí od podlahy (kolize), záblesky, zvuk; tabule čelem k +Z |
 | Impacts | Water Splash | sloupec kapek, mlha a plochý kruh na hladině (+Y), zvuk |
