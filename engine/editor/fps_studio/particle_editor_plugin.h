@@ -44,6 +44,8 @@ class HBoxContainer;
 class InputEvent;
 class InputEventKey;
 class Label;
+class EditorFileSystemDirectory;
+class EditorResourceTooltipPlugin;
 class PopupPanel;
 class LineEdit;
 class MenuButton;
@@ -433,6 +435,14 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Ref<Texture2D> _get_preset_thumbnail(int p_preset);
 	Node *_instantiate_library_effect(const String &p_key);
 
+	// Content Browser thumbnails and tooltip for particle effect scenes.
+	Ref<EditorResourceTooltipPlugin> effect_tooltip_plugin;
+	HashMap<String, uint64_t> effect_scene_scan_mtimes;
+	bool effect_thumbnail_scan_queued = false;
+	void _scan_effect_thumbnails_dir(EditorFileSystemDirectory *p_dir);
+	void _scan_effect_thumbnails();
+	void _queue_effect_thumbnail_scan();
+
 	// Hover preview of a Library item (menu or panel).
 	static constexpr int HOVER_PREVIEW_SIZE = 280;
 	PopupPanel *hover_preview_popup = nullptr;
@@ -571,6 +581,9 @@ public:
 	void get_window_layout(Ref<ConfigFile> p_layout) override;
 	String get_plugin_name() const override { return TTRC("Particle"); }
 	const Ref<Texture2D> get_plugin_icon() const override;
+
+	// A Library entry or effect path ready to preview (Content Browser tooltip).
+	Node *instantiate_library_effect(const String &p_key) { return _instantiate_library_effect(p_key); }
 
 	FPSStudioParticleEditorPlugin();
 };

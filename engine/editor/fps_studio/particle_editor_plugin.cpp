@@ -91,6 +91,8 @@
 #include "scene/gui/spin_box.h"
 #include "scene/gui/split_container.h"
 #include "scene/gui/popup.h"
+#include "editor/docks/filesystem_dock.h"
+#include "editor/inspector/editor_resource_tooltip_plugins.h"
 #include "scene/gui/subviewport_container.h"
 #include "scene/gui/tab_container.h"
 #include "scene/gui/texture_rect.h"
@@ -3044,6 +3046,144 @@ void FPSStudioParticleEditorPlugin::_hide_hover_preview() {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Content Browser (FileSystem dock): thumbnails and an animated tooltip for
+// particle effect scenes.
+
+// True for a text scene whose root node is a ParticleEffect3D. Reads only the
+// file text, so the whole project can be checked without loading scenes.
+static bool is_particle_effect_scene_file(const String &p_path) {
+	if (p_path.get_extension().to_lower() != "tscn") {
+		return false;
+	}
+	const String text = FileAccess::get_file_as_string(p_path);
+	const int node = text.find("\n[node ");
+	if (node < 0) {
+		return false;
+	}
+	const int end = text.find("]", node);
+	return end > node && text.substr(node, end - node).contains("type=\"ParticleEffect3D\"");
+}
+
+// Tooltip body: plays the effect in a loop while the tooltip is open.
+class FPSParticleEffectTooltipPreview : public SubViewportContainer {
+	GDCLASS(FPSParticleEffectTooltipPreview, SubViewportContainer);
+
+	ObjectID plugin_id;
+	String path;
+	SubViewport *viewport = nullptr;
+	Camera3D *camera = nullptr;
+	ObjectID effect_id;
+	double play_time = 0.0;
+	double play_length = 1.0;
+
+protected:
+	void _notification(int p_what) {
+		if (p_what == NOTIFICATION_READY) {
+			FPSStudioParticleEditorPlugin *plugin = Object::cast_to<FPSStudioParticleEditorPlugin>(ObjectDB::get_instance(plugin_id));
+			Node *effect = plugin ? plugin->instantiate_library_effect(path) : nullptr;
+			if (!effect) {
+				return;
+			}
+			viewport->get_child(0)->add_child(effect);
+			effect_id = effect->get_instance_id();
+			double shot_time = 0.0;
+			frame_library_effect(effect, camera, shot_time, play_length);
+			if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(effect)) {
+				particle_effect->seek(0.0);
+			}
+			set_process(true);
+		} else if (p_what == NOTIFICATION_PROCESS) {
+			play_time += get_process_delta_time();
+			if (play_time >= play_length) {
+				play_time = 0.0;
+				if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(effect_id))) {
+					particle_effect->seek(0.0);
+				}
+			}
+		}
+	}
+
+public:
+	FPSParticleEffectTooltipPreview(ObjectID p_plugin, const String &p_path) {
+		plugin_id = p_plugin;
+		path = p_path;
+		set_stretch(true);
+		const int size = int(EditorResourcePreview::TOOLTIP_PREVIEW_SIZE * EDSCALE);
+		set_custom_minimum_size(Size2(size, size * 5 / 6));
+		viewport = memnew(SubViewport);
+		viewport->set_use_own_world_3d(true);
+		viewport->set_msaa_3d(Viewport::MSAA_4X);
+		add_child(viewport);
+		Node3D *root = memnew(Node3D);
+		viewport->add_child(root);
+		camera = create_library_preview_world(root);
+	}
+};
+
+class FPSParticleEffectTooltipPlugin : public EditorResourceTooltipPlugin {
+	GDCLASS(FPSParticleEffectTooltipPlugin, EditorResourceTooltipPlugin);
+
+public:
+	ObjectID plugin_id;
+
+	bool handles(const String &p_resource_type) const override {
+		return p_resource_type == "PackedScene";
+	}
+
+	Control *make_tooltip_for_path(const String &p_resource_path, const Dictionary &p_metadata, Control *p_base) const override {
+		VBoxContainer *vb = Object::cast_to<VBoxContainer>(p_base);
+		if (!vb || !is_particle_effect_scene_file(p_resource_path)) {
+			return p_base;
+		}
+		// Like the texture tooltip: a big preview above the file name.
+		vb->add_theme_constant_override("separation", 4 * EDSCALE);
+		FPSParticleEffectTooltipPreview *preview = memnew(FPSParticleEffectTooltipPreview(plugin_id, p_resource_path));
+		vb->add_child(preview);
+		vb->move_child(preview, 0);
+		return vb;
+	}
+};
+
+void FPSStudioParticleEditorPlugin::_scan_effect_thumbnails_dir(EditorFileSystemDirectory *p_dir) {
+	for (int i = 0; i < p_dir->get_file_count(); i++) {
+		if (p_dir->get_file_type(i) != "PackedScene") {
+			continue;
+		}
+		const String path = p_dir->get_file_path(i);
+		const uint64_t modified = FileAccess::get_modified_time(path);
+		if (effect_scene_scan_mtimes.has(path) && effect_scene_scan_mtimes[path] == modified) {
+			continue; // Unchanged since the last check.
+		}
+		effect_scene_scan_mtimes[path] = modified;
+		if (!is_particle_effect_scene_file(path)) {
+			continue;
+		}
+		const String cache_path = get_effect_thumbnail_cache_path(path);
+		if (!FileAccess::exists(cache_path) || FileAccess::get_modified_time(cache_path) < modified) {
+			_queue_thumbnail(path, path, -1, true);
+		}
+	}
+	for (int i = 0; i < p_dir->get_subdir_count(); i++) {
+		_scan_effect_thumbnails_dir(p_dir->get_subdir(i));
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_scan_effect_thumbnails() {
+	effect_thumbnail_scan_queued = false;
+	EditorFileSystem *file_system = EditorFileSystem::get_singleton();
+	if (file_system && file_system->get_filesystem() && !file_system->is_scanning()) {
+		_scan_effect_thumbnails_dir(file_system->get_filesystem());
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan() {
+	if (!effect_thumbnail_scan_queued) {
+		effect_thumbnail_scan_queued = true;
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_scan_effect_thumbnails).call_deferred();
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_finish_thumbnail_job() {
 	Ref<Image> image;
 	if (thumbnail_viewport && thumbnail_viewport->get_texture().is_valid()) {
@@ -5520,6 +5660,28 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		if (preview_time_label_update_accumulator >= 0.1 || !preview_playing) {
 			preview_time_label_update_accumulator = Math::fmod(preview_time_label_update_accumulator, 0.1);
 			_update_time_label();
+		}
+	}
+	if (p_what == NOTIFICATION_ENTER_TREE) {
+		if (FileSystemDock::get_singleton() && effect_tooltip_plugin.is_null()) {
+			Ref<FPSParticleEffectTooltipPlugin> tooltip_plugin;
+			tooltip_plugin.instantiate();
+			tooltip_plugin->plugin_id = get_instance_id();
+			effect_tooltip_plugin = tooltip_plugin;
+			FileSystemDock::get_singleton()->add_resource_tooltip_plugin(effect_tooltip_plugin);
+		}
+		if (EditorFileSystem::get_singleton()) {
+			EditorFileSystem::get_singleton()->connect("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan), CONNECT_REFERENCE_COUNTED);
+		}
+		_queue_effect_thumbnail_scan();
+	}
+	if (p_what == NOTIFICATION_EXIT_TREE) {
+		if (effect_tooltip_plugin.is_valid() && FileSystemDock::get_singleton()) {
+			FileSystemDock::get_singleton()->remove_resource_tooltip_plugin(effect_tooltip_plugin);
+		}
+		effect_tooltip_plugin.unref();
+		if (EditorFileSystem::get_singleton() && EditorFileSystem::get_singleton()->is_connected("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan))) {
+			EditorFileSystem::get_singleton()->disconnect("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan));
 		}
 	}
 	if (p_what == NOTIFICATION_PREDELETE && texture_preview_task >= 0) {
