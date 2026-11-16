@@ -35,6 +35,7 @@
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
 #include "editor/debugger/editor_debugger_node.h"
+#include "editor/debugger/script_editor_debugger.h"
 #include "editor/docks/editor_dock.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/editor_node.h"
@@ -317,6 +318,13 @@ void EditorBottomPanel::_update_performance_stats() {
 			previous_3d_frame_count = 0;
 			previous_stats_update_msec = now_msec;
 		}
+		// While the game runs, show its FPS (reported through the debugger).
+		EditorDebuggerNode *debugger_node = EditorDebuggerNode::get_singleton();
+		ScriptEditorDebugger *game_debugger = debugger_node ? debugger_node->get_default_debugger() : nullptr;
+		const double game_fps = game_debugger ? game_debugger->get_game_fps() : -1.0;
+		if (game_fps > 0.0) {
+			fps_text = vformat(TTR("Game FPS %d (%.1f ms)"), int(Math::round(game_fps)), 1000.0 / game_fps);
+		}
 		if (editor_fps_label->get_text() != fps_text) {
 			editor_fps_label->set_text(fps_text);
 		}
@@ -358,7 +366,7 @@ EditorBottomPanel::EditorBottomPanel() :
 	editor_fps_label = memnew(Label);
 	editor_fps_label->set_v_size_flags(Control::SIZE_SHRINK_CENTER);
 	editor_fps_label->set_mouse_filter(MOUSE_FILTER_IGNORE);
-	editor_fps_label->set_tooltip_text(TTRC("Rendered frame rate of the active 3D editor viewport. Shows a dash while the viewport is idle."));
+	editor_fps_label->set_tooltip_text(TTRC("Rendered frame rate of the active 3D editor viewport (a dash while it is idle). While the game runs, the game's frame rate and frame time, reported once a second."));
 	editor_fps_label->set_self_modulate(Color(1, 1, 1, 0.7));
 	bottom_hbox->add_child(editor_fps_label);
 

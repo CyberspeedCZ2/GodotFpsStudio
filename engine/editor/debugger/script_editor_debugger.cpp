@@ -599,6 +599,18 @@ void ScriptEditorDebugger::_msg_performance_profile_frame(uint64_t p_thread_id, 
 		frame_data.write[i] = p_data[i];
 	}
 	performance_profiler->add_profile_frame(frame_data);
+	if (p_data.size() > Performance::TIME_FPS) {
+		game_fps = p_data[Performance::TIME_FPS];
+		game_fps_msec = OS::get_singleton()->get_ticks_msec();
+	}
+}
+
+double ScriptEditorDebugger::get_game_fps() const {
+	if (game_fps < 0.0 || !const_cast<ScriptEditorDebugger *>(this)->is_session_active()) {
+		return -1.0;
+	}
+	// Sent once a second: a value older than a few seconds is stale (paused or stuck).
+	return OS::get_singleton()->get_ticks_msec() - game_fps_msec < 3000 ? game_fps : -1.0;
 }
 
 void ScriptEditorDebugger::_msg_visual_hardware_info(uint64_t p_thread_id, const Array &p_data) {
@@ -1261,6 +1273,7 @@ String ScriptEditorDebugger::_format_frame_text(const ScriptLanguage::StackInfo 
 }
 
 void ScriptEditorDebugger::start(Ref<RemoteDebuggerPeer> p_peer) {
+	game_fps = -1.0;
 	_clear_errors_list();
 	stop();
 

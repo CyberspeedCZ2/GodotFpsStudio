@@ -162,6 +162,9 @@ private:
 	EditorProfiler *profiler = nullptr;
 	EditorVisualProfiler *visual_profiler = nullptr;
 	EditorPerformanceProfiler *performance_profiler = nullptr;
+	// Latest FPS reported by the running game (performance monitors, once a second).
+	double game_fps = -1.0;
+	uint64_t game_fps_msec = 0;
 	EditorExpressionEvaluator *expression_evaluator = nullptr;
 
 	ProcessID remote_pid = 0;
@@ -340,6 +343,8 @@ public:
 	bool is_breaked() const { return threads_debugged.size() > 0; }
 	bool is_debuggable() const { return threads_debugged.size() > 0 && threads_debugged[debugging_thread_id].can_debug; }
 	bool is_session_active() { return peer.is_valid() && peer->is_peer_connected(); }
+	// FPS of the running game, or -1 when no fresh value arrived (no session).
+	double get_game_fps() const;
 	int get_remote_pid() const { return remote_pid; }
 
 	bool is_move_to_foreground() const;
