@@ -44,6 +44,7 @@ class HBoxContainer;
 class InputEvent;
 class InputEventKey;
 class Label;
+class PopupPanel;
 class LineEdit;
 class MenuButton;
 class MeshInstance3D;
@@ -430,6 +431,27 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	HashSet<String> thumbnail_queued;
 	HashMap<String, Ref<Texture2D>> thumbnails;
 	Ref<Texture2D> _get_preset_thumbnail(int p_preset);
+	Node *_instantiate_library_effect(const String &p_key);
+
+	// Hover preview of a Library item (menu or panel).
+	static constexpr int HOVER_PREVIEW_SIZE = 280;
+	PopupPanel *hover_preview_popup = nullptr;
+	SubViewport *hover_preview_viewport = nullptr;
+	Node3D *hover_preview_root = nullptr;
+	Camera3D *hover_preview_camera = nullptr;
+	Label *hover_preview_label = nullptr;
+	ObjectID hover_preview_effect_id;
+	String hover_key; // Library item under the mouse.
+	String hover_shown_key; // Item the preview shows.
+	Rect2 hover_anchor;
+	double hover_elapsed = 0.0;
+	double hover_play_time = 0.0;
+	double hover_play_length = 1.0;
+	void _ensure_hover_preview();
+	String _get_library_hover(Rect2 &r_anchor) const;
+	void _process_library_hover(double p_delta);
+	void _show_hover_preview();
+	void _hide_hover_preview();
 	HashMap<String, uint64_t> thumbnail_mtimes;
 	ThumbnailJob thumbnail_current;
 	int thumbnail_frames = -1; // -1 = idle.

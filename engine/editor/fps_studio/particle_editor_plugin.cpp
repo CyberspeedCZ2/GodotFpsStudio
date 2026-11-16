@@ -90,6 +90,7 @@
 #include "scene/gui/slider.h"
 #include "scene/gui/spin_box.h"
 #include "scene/gui/split_container.h"
+#include "scene/gui/popup.h"
 #include "scene/gui/subviewport_container.h"
 #include "scene/gui/tab_container.h"
 #include "scene/gui/texture_rect.h"
@@ -2639,6 +2640,91 @@ static void strip_thumbnail_nodes(Node *p_node) {
 	}
 }
 
+// Dark backdrop, ambient and key light shared by the Library thumbnails and
+// the hover preview. Returns the camera.
+static Camera3D *create_library_preview_world(Node3D *p_root) {
+	Ref<Environment> environment;
+	environment.instantiate();
+	environment->set_background(Environment::BG_COLOR);
+	environment->set_bg_color(Color(0.035, 0.046, 0.065));
+	environment->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
+	environment->set_ambient_light_color(Color(0.48, 0.53, 0.64));
+	environment->set_ambient_light_energy(0.72);
+	environment->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
+	environment->set_glow_enabled(true);
+	WorldEnvironment *world_environment = memnew(WorldEnvironment);
+	world_environment->set_environment(environment);
+	p_root->add_child(world_environment);
+	DirectionalLight3D *key_light = memnew(DirectionalLight3D);
+	key_light->set_rotation(Vector3(Math::deg_to_rad(-38.0), Math::deg_to_rad(-26.0), 0.0));
+	key_light->set_param(Light3D::PARAM_ENERGY, 1.45);
+	p_root->add_child(key_light);
+	Camera3D *camera = memnew(Camera3D);
+	camera->set_fov(50.0);
+	p_root->add_child(camera);
+	camera->set_current(true);
+	return camera;
+}
+
+// Frames a Library effect (already in the tree): the camera looks at where
+// its particles are; r_shot_time is a moment with most of it on screen and
+// r_play_length how long a looping hover preview plays before restarting.
+static void frame_library_effect(Node *p_effect, Camera3D *p_camera, double &r_shot_time, double &r_play_length) {
+	Vector<Node *> tracks;
+	collect_tracks(p_effect, tracks);
+	double duration = 0.1;
+	double max_start = 0.0;
+	double max_lifetime = 0.1;
+	double particle_start = 1e20;
+	double particle_end = 0.0;
+	bool infinite = false;
+	AABB bounds;
+	bool has_bounds = false;
+	for (Node *track : tracks) {
+		Node3D *track_3d = Object::cast_to<Node3D>(track);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
+		double start, active_end, visual_end;
+		ParticleEffect3D::get_track_window(track, start, active_end, visual_end);
+		max_start = MAX(max_start, start);
+		if (visual_end < 0.0) {
+			infinite = true;
+		} else {
+			duration = MAX(duration, visual_end);
+		}
+		if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(track)) {
+			max_lifetime = MAX(max_lifetime, gpu->get_lifetime());
+			particle_start = MIN(particle_start, start);
+			particle_end = MAX(particle_end, visual_end);
+			// Where the particles are, not the generous visibility box.
+			const AABB box = gpu->get_global_transform().xform(get_emitter_framing_bounds(gpu, gpu->get_visibility_aabb()));
+			bounds = has_bounds ? bounds.merge(box) : box;
+			has_bounds = true;
+		} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(track)) {
+			max_lifetime = MAX(max_lifetime, cpu->get_lifetime());
+			particle_start = MIN(particle_start, start);
+			particle_end = MAX(particle_end, visual_end);
+		}
+	}
+	// Long events (a 12 s bullet hole decal) must not push the shot past the
+	// particles: take it early in the particles' life.
+	r_shot_time = infinite ? max_start + max_lifetime * 0.9 : duration * 0.33;
+	if (!infinite && particle_start < duration) {
+		r_shot_time = MIN(r_shot_time, particle_start + max_lifetime * 0.3);
+	}
+	// Replay once the particles are gone (decals and lights may last longer).
+	r_play_length = infinite ? 6.0 : CLAMP((particle_end > 0.0 ? particle_end : duration) + 0.4, 0.8, 8.0);
+	if (!has_bounds) {
+		bounds = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
+	}
+	const real_t radius = MAX(real_t(0.25), bounds.size.length() * 0.5);
+	const real_t distance = radius / Math::tan(Math::deg_to_rad(real_t(p_camera->get_fov()) * 0.5));
+	const Vector3 direction = Vector3(0.0, 0.3, 1.0).normalized();
+	p_camera->look_at_from_position(bounds.get_center() + direction * distance, bounds.get_center(), Vector3(0, 1, 0));
+	p_camera->set_far(MAX(real_t(100.0), distance * 4.0));
+}
+
 void FPSStudioParticleEditorPlugin::_ensure_thumbnail_viewport() {
 	if (thumbnail_viewport) {
 		return;
@@ -2653,26 +2739,7 @@ void FPSStudioParticleEditorPlugin::_ensure_thumbnail_viewport() {
 	add_child(thumbnail_viewport);
 	thumbnail_root = memnew(Node3D);
 	thumbnail_viewport->add_child(thumbnail_root);
-	Ref<Environment> environment;
-	environment.instantiate();
-	environment->set_background(Environment::BG_COLOR);
-	environment->set_bg_color(Color(0.035, 0.046, 0.065));
-	environment->set_ambient_source(Environment::AMBIENT_SOURCE_COLOR);
-	environment->set_ambient_light_color(Color(0.48, 0.53, 0.64));
-	environment->set_ambient_light_energy(0.72);
-	environment->set_tonemapper(Environment::TONE_MAPPER_FILMIC);
-	environment->set_glow_enabled(true);
-	WorldEnvironment *world_environment = memnew(WorldEnvironment);
-	world_environment->set_environment(environment);
-	thumbnail_root->add_child(world_environment);
-	DirectionalLight3D *key_light = memnew(DirectionalLight3D);
-	key_light->set_rotation(Vector3(Math::deg_to_rad(-38.0), Math::deg_to_rad(-26.0), 0.0));
-	key_light->set_param(Light3D::PARAM_ENERGY, 1.45);
-	thumbnail_root->add_child(key_light);
-	thumbnail_camera = memnew(Camera3D);
-	thumbnail_camera->set_fov(50.0);
-	thumbnail_root->add_child(thumbnail_camera);
-	thumbnail_camera->set_current(true);
+	thumbnail_camera = create_library_preview_world(thumbnail_root);
 }
 
 void FPSStudioParticleEditorPlugin::_queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache) {
@@ -2751,90 +2818,215 @@ void FPSStudioParticleEditorPlugin::_set_library_icon(const String &p_key, const
 	}
 }
 
-bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_job) {
+// A Library entry ("preset:<id>" or an effect path) instanced for a
+// thumbnail or the hover preview: no scripts, sound, shake or damage.
+Node *FPSStudioParticleEditorPlugin::_instantiate_library_effect(const String &p_key) {
 	Node *effect = nullptr;
-	if (p_job.preset >= 0) {
+	if (p_key.begins_with("preset:")) {
 		Vector<FPSParticlePresets::TextureRequest> textures;
-		effect = FPSParticlePresets::create_preset(p_job.preset, textures);
+		effect = FPSParticlePresets::create_preset(p_key.get_slicec(':', 1).to_int(), textures);
 		if (effect) {
 			_apply_preset_textures(textures, false);
 			_apply_preset_sounds(effect, false);
 		}
-	} else if (!p_job.path.is_empty() && ResourceLoader::exists(p_job.path, "PackedScene")) {
-		Ref<PackedScene> packed_scene = ResourceLoader::load(p_job.path, "PackedScene");
+	} else if (!p_key.is_empty() && ResourceLoader::exists(p_key, "PackedScene")) {
+		Ref<PackedScene> packed_scene = ResourceLoader::load(p_key, "PackedScene");
 		if (packed_scene.is_valid() && packed_scene->can_instantiate()) {
 			effect = packed_scene->instantiate();
 			if (effect && !Object::cast_to<ParticleEffect3D>(effect)) {
-				memdelete(effect); // Only particle effects get a particle thumbnail.
+				memdelete(effect); // Only particle effects get a particle preview.
 				effect = nullptr;
 			}
 		}
 	}
 	if (!effect) {
-		return false;
+		return nullptr;
 	}
-	_ensure_thumbnail_viewport();
 	clear_preview_scripts(effect);
 	strip_thumbnail_nodes(effect);
 	apply_preview_defaults(effect, preview_quad);
 	clear_preview_transform_origin(effect);
+	return effect;
+}
+
+bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_job) {
+	Node *effect = _instantiate_library_effect(p_job.preset >= 0 ? vformat("preset:%d", p_job.preset) : p_job.path);
+	if (!effect) {
+		return false;
+	}
+	_ensure_thumbnail_viewport();
 	thumbnail_root->add_child(effect);
 	thumbnail_effect_id = effect->get_instance_id();
-
-	// Show the effect at about a third of its run, when most of it is on screen.
-	Vector<Node *> tracks;
-	collect_tracks(effect, tracks);
-	double duration = 0.1;
-	double max_start = 0.0;
-	double max_lifetime = 0.1;
-	double particle_start = 1e20;
-	bool infinite = false;
-	AABB bounds;
-	bool has_bounds = false;
-	for (Node *track : tracks) {
-		Node3D *track_3d = Object::cast_to<Node3D>(track);
-		if (track_3d && !track_3d->is_visible()) {
-			continue;
-		}
-		double start, active_end, visual_end;
-		ParticleEffect3D::get_track_window(track, start, active_end, visual_end);
-		max_start = MAX(max_start, start);
-		if (visual_end < 0.0) {
-			infinite = true;
-		} else {
-			duration = MAX(duration, visual_end);
-		}
-		if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(track)) {
-			max_lifetime = MAX(max_lifetime, gpu->get_lifetime());
-			particle_start = MIN(particle_start, start);
-			// Where the particles are, not the generous visibility box.
-			const AABB box = gpu->get_global_transform().xform(get_emitter_framing_bounds(gpu, gpu->get_visibility_aabb()));
-			bounds = has_bounds ? bounds.merge(box) : box;
-			has_bounds = true;
-		} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(track)) {
-			max_lifetime = MAX(max_lifetime, cpu->get_lifetime());
-			particle_start = MIN(particle_start, start);
-		}
-	}
-	// Long events (a 12 s bullet hole decal) must not push the shot past the
-	// particles: take it early in the particles' life.
-	double time = infinite ? max_start + max_lifetime * 0.9 : duration * 0.33;
-	if (!infinite && particle_start < duration) {
-		time = MIN(time, particle_start + max_lifetime * 0.3);
-	}
+	double time = 0.0;
+	double play_length = 0.0;
+	frame_library_effect(effect, thumbnail_camera, time, play_length);
 	if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(effect)) {
 		particle_effect->seek(time);
 	}
-	if (!has_bounds) {
-		bounds = AABB(Vector3(-1, -1, -1), Vector3(2, 2, 2));
-	}
-	const real_t radius = MAX(real_t(0.25), bounds.size.length() * 0.5);
-	const real_t distance = radius / Math::tan(Math::deg_to_rad(real_t(thumbnail_camera->get_fov()) * 0.5));
-	const Vector3 direction = Vector3(0.0, 0.3, 1.0).normalized();
-	thumbnail_camera->look_at_from_position(bounds.get_center() + direction * distance, bounds.get_center(), Vector3(0, 1, 0));
-	thumbnail_camera->set_far(MAX(real_t(100.0), distance * 4.0));
 	thumbnail_viewport->set_update_mode(SubViewport::UPDATE_ALWAYS);
 	return true;
+}
+
+// ---------------------------------------------------------------------------
+// Hover preview: resting the mouse on a Library item shows a bigger preview
+// beside it that plays the effect in a loop.
+
+void FPSStudioParticleEditorPlugin::_ensure_hover_preview() {
+	if (hover_preview_popup) {
+		return;
+	}
+	// Like a tooltip: never takes focus, so the Library menu stays open.
+	hover_preview_popup = memnew(PopupPanel);
+	hover_preview_popup->set_name("ParticleLibraryHoverPreview");
+	hover_preview_popup->set_flag(Window::FLAG_NO_FOCUS, true);
+	hover_preview_popup->set_flag(Window::FLAG_POPUP, false);
+	hover_preview_popup->set_flag(Window::FLAG_MOUSE_PASSTHROUGH, true);
+	hover_preview_popup->set_transient(true);
+	add_child(hover_preview_popup);
+	VBoxContainer *box = memnew(VBoxContainer);
+	hover_preview_popup->add_child(box);
+	SubViewportContainer *container = memnew(SubViewportContainer);
+	container->set_stretch(true);
+	const int size = int(HOVER_PREVIEW_SIZE * EDSCALE);
+	container->set_custom_minimum_size(Size2(size, size));
+	box->add_child(container);
+	hover_preview_viewport = memnew(SubViewport);
+	hover_preview_viewport->set_use_own_world_3d(true);
+	hover_preview_viewport->set_msaa_3d(Viewport::MSAA_4X);
+	hover_preview_viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+	container->add_child(hover_preview_viewport);
+	hover_preview_root = memnew(Node3D);
+	hover_preview_viewport->add_child(hover_preview_root);
+	hover_preview_camera = create_library_preview_world(hover_preview_root);
+	hover_preview_label = memnew(Label);
+	hover_preview_label->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	hover_preview_label->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+	hover_preview_label->set_custom_minimum_size(Size2(size, 0));
+	box->add_child(hover_preview_label);
+}
+
+String FPSStudioParticleEditorPlugin::_get_library_hover(Rect2 &r_anchor) const {
+	// Library menu: the highlighted item, anchored to the menu's left edge.
+	if (library_menu && library_menu->get_popup()->is_visible()) {
+		PopupMenu *popup = library_menu->get_popup();
+		const int index = popup->get_focused_item();
+		const Rect2 popup_rect(popup->get_position(), popup->get_size());
+		if (index < 0 || !popup_rect.has_point(Point2(popup->get_position()) + popup->get_mouse_position())) {
+			return String();
+		}
+		const int id = popup->get_item_id(index);
+		String key;
+		if (id >= PARTICLE_LIBRARY_RECENT_BASE && id - PARTICLE_LIBRARY_RECENT_BASE < recent_effect_paths.size()) {
+			key = recent_effect_paths[id - PARTICLE_LIBRARY_RECENT_BASE];
+		} else if (id >= PARTICLE_LIBRARY_PRESET_BASE && id - PARTICLE_LIBRARY_PRESET_BASE < FPSParticlePresets::PRESET_MAX) {
+			key = vformat("preset:%d", id - PARTICLE_LIBRARY_PRESET_BASE);
+		}
+		const real_t mouse_y = popup->get_position().y + popup->get_mouse_position().y;
+		r_anchor = Rect2(popup_rect.position.x, mouse_y, popup_rect.size.x, 1.0);
+		return key;
+	}
+	// Effect Library panel: the item under the mouse, anchored to the panel.
+	if (effects_tree && effects_tree->is_visible_in_tree()) {
+		const Point2 local = effects_tree->get_local_mouse_position();
+		if (!Rect2(Point2(), effects_tree->get_size()).has_point(local)) {
+			return String();
+		}
+		TreeItem *item = effects_tree->get_item_at_position(local);
+		if (!item || item->get_metadata(0).get_type() != Variant::STRING) {
+			return String();
+		}
+		const Rect2 tree_rect = (hover_preview_popup && hover_preview_popup->is_embedded()) ? effects_tree->get_global_rect() : effects_tree->get_screen_rect();
+		r_anchor = Rect2(tree_rect.position.x, tree_rect.position.y + local.y, tree_rect.size.x, 1.0);
+		return String(item->get_metadata(0));
+	}
+	return String();
+}
+
+void FPSStudioParticleEditorPlugin::_process_library_hover(double p_delta) {
+	const double delay = double(EDITOR_GET("fps_studio/particles/library_hover_preview_delay"));
+	Rect2 anchor;
+	const String key = delay > 0.0 ? _get_library_hover(anchor) : String();
+	if (key != hover_key) {
+		hover_key = key;
+		hover_elapsed = 0.0;
+		if (hover_shown_key != key) {
+			_hide_hover_preview();
+		}
+	}
+	if (key.is_empty()) {
+		return;
+	}
+	hover_anchor = anchor;
+	hover_elapsed += p_delta;
+	if (hover_shown_key.is_empty() && hover_elapsed >= delay) {
+		_show_hover_preview();
+	}
+	if (hover_shown_key.is_empty()) {
+		return;
+	}
+	ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(hover_preview_effect_id));
+	hover_play_time += p_delta;
+	if (effect && hover_play_time >= hover_play_length) {
+		hover_play_time = 0.0;
+		effect->seek(0.0);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_show_hover_preview() {
+	_ensure_hover_preview();
+	_hide_hover_preview();
+	Node *effect = _instantiate_library_effect(hover_key);
+	if (!effect) {
+		hover_shown_key = hover_key; // Nothing to preview; do not retry every frame.
+		return;
+	}
+	hover_preview_root->add_child(effect);
+	hover_preview_effect_id = effect->get_instance_id();
+	double shot_time = 0.0;
+	frame_library_effect(effect, hover_preview_camera, shot_time, hover_play_length);
+	hover_play_time = 0.0;
+	if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(effect)) {
+		particle_effect->seek(0.0);
+	}
+	hover_preview_viewport->set_update_mode(SubViewport::UPDATE_ALWAYS);
+	hover_preview_label->set_text(hover_key.begins_with("preset:") ? FPSParticlePresets::get_preset_name(hover_key.get_slicec(':', 1).to_int()) : hover_key.get_file().get_basename());
+	hover_shown_key = hover_key;
+
+	// Beside the item: left of the Library menu (it opens at the right edge),
+	// right of the Library panel; flipped if it would leave the window.
+	const Size2 size = hover_preview_popup->get_contents_minimum_size();
+	const real_t gap = 6 * EDSCALE;
+	const bool from_menu = library_menu && library_menu->get_popup()->is_visible();
+	Point2 position(from_menu ? hover_anchor.position.x - size.x - gap : hover_anchor.get_end().x + gap, hover_anchor.position.y - size.y * 0.5);
+	Rect2 bounds;
+	if (hover_preview_popup->is_embedded()) {
+		bounds = hover_preview_popup->get_embedder()->get_visible_rect();
+	} else {
+		bounds = Rect2(get_window()->get_position(), get_window()->get_size());
+	}
+	if (position.x < bounds.position.x || position.x + size.x > bounds.get_end().x) {
+		position.x = from_menu ? hover_anchor.get_end().x + gap : hover_anchor.position.x - size.x - gap;
+	}
+	position.x = CLAMP(position.x, bounds.position.x, MAX(bounds.position.x, bounds.get_end().x - size.x));
+	position.y = CLAMP(position.y, bounds.position.y, MAX(bounds.position.y, bounds.get_end().y - size.y));
+	hover_preview_popup->set_position(position.round());
+	hover_preview_popup->set_size(size.ceil());
+	hover_preview_popup->show();
+}
+
+void FPSStudioParticleEditorPlugin::_hide_hover_preview() {
+	hover_shown_key = String();
+	if (Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(hover_preview_effect_id))) {
+		effect->get_parent()->remove_child(effect);
+		effect->queue_free();
+	}
+	hover_preview_effect_id = ObjectID();
+	if (hover_preview_viewport) {
+		hover_preview_viewport->set_update_mode(SubViewport::UPDATE_DISABLED);
+	}
+	if (hover_preview_popup && hover_preview_popup->is_visible()) {
+		hover_preview_popup->hide();
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_finish_thumbnail_job() {
@@ -5276,6 +5468,9 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_PROCESS && (thumbnail_frames >= 0 || !thumbnail_queue.is_empty() || (screen && screen->is_visible_in_tree()))) {
 		_process_thumbnails();
 	}
+	if (p_what == NOTIFICATION_PROCESS && (!hover_key.is_empty() || (screen && screen->is_visible_in_tree()))) {
+		_process_library_hover(get_process_delta_time());
+	}
 	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree() && preview_playing && preview_effect) {
 		const double delta = get_process_delta_time();
 		preview_time += delta * preview_speed;
@@ -5781,6 +5976,10 @@ const Ref<Texture2D> FPSStudioParticleEditorPlugin::get_plugin_icon() const {
 
 FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	set_process(true);
+	// Seconds the mouse rests on a Library item before its bigger, playing
+	// preview opens (0 turns it off).
+	EDITOR_DEF("fps_studio/particles/library_hover_preview_delay", 1.0);
+	EditorSettings::get_singleton()->add_property_hint(PropertyInfo(Variant::FLOAT, "fps_studio/particles/library_hover_preview_delay", PROPERTY_HINT_RANGE, "0,5,0.1,suffix:s"));
 	preview_quad = create_particle_quad();
 	_load_recent_effects();
 
