@@ -145,6 +145,10 @@ enum ParticleLayoutMenu {
 
 static const int PARTICLE_LIBRARY_PRESET_BASE = 1000;
 static const int PARTICLE_LIBRARY_RECENT_BASE = 2000;
+
+static bool library_hover_preview_enabled() {
+	return double(EDITOR_GET("fps_studio/particles/library_hover_preview_delay")) > 0.0;
+}
 static const int PARTICLE_LIBRARY_TOGGLE_PANEL = 3000;
 static const int PARTICLE_BOTTOM_TAB_TIMELINE = 0;
 static const int PARTICLE_BOTTOM_TAB_LOGIC = 1;
@@ -716,7 +720,8 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 			item->set_icon(0, thumbnail);
 			item->set_icon_max_width(0, int(40 * EDSCALE));
 		}
-		item->set_tooltip_text(0, FPSParticlePresets::get_preset_description(preset) + "\n" + TTR("Double-click to create a new effect from this preset."));
+		// With the hover preview the description is shown there instead.
+		item->set_tooltip_text(0, library_hover_preview_enabled() ? String() : FPSParticlePresets::get_preset_description(preset) + "\n" + TTR("Double-click to create a new effect from this preset."));
 		item->set_metadata(0, vformat("preset:%d", preset));
 	}
 
@@ -732,7 +737,7 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 		}
 		TreeItem *item = effects_tree->create_item(recent);
 		item->set_text(0, name);
-		item->set_tooltip_text(0, path);
+		item->set_tooltip_text(0, library_hover_preview_enabled() ? String() : path);
 		item->set_metadata(0, path);
 		const Ref<Texture2D> thumbnail = _get_cached_effect_thumbnail(path);
 		if (thumbnail.is_valid()) {
@@ -2903,6 +2908,13 @@ void FPSStudioParticleEditorPlugin::_ensure_hover_preview() {
 	hover_preview_label->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
 	hover_preview_label->set_custom_minimum_size(Size2(size, 0));
 	box->add_child(hover_preview_label);
+	hover_preview_description = memnew(Label);
+	hover_preview_description->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	hover_preview_description->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+	hover_preview_description->set_custom_minimum_size(Size2(size, 0));
+	hover_preview_description->add_theme_color_override(SceneStringName(font_color), EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
+	hover_preview_description->add_theme_font_size_override(SceneStringName(font_size), int(EditorNode::get_singleton()->get_gui_base()->get_theme_font_size(SceneStringName(font_size), SNAME("Label")) * 0.9));
+	box->add_child(hover_preview_description);
 }
 
 String FPSStudioParticleEditorPlugin::_get_library_hover(Rect2 &r_anchor) const {
@@ -2989,7 +3001,10 @@ void FPSStudioParticleEditorPlugin::_show_hover_preview() {
 		particle_effect->seek(0.0);
 	}
 	hover_preview_viewport->set_update_mode(SubViewport::UPDATE_ALWAYS);
-	hover_preview_label->set_text(hover_key.begins_with("preset:") ? FPSParticlePresets::get_preset_name(hover_key.get_slicec(':', 1).to_int()) : hover_key.get_file().get_basename());
+	const bool preset = hover_key.begins_with("preset:");
+	hover_preview_label->set_text(preset ? FPSParticlePresets::get_preset_name(hover_key.get_slicec(':', 1).to_int()) : hover_key.get_file().get_basename());
+	hover_preview_description->set_text(preset ? FPSParticlePresets::get_preset_description(hover_key.get_slicec(':', 1).to_int()) : hover_key);
+	hover_preview_popup->reset_size(); // Fit the description's height.
 	hover_shown_key = hover_key;
 
 	// Beside the item: left of the Library menu (it opens at the right edge),
@@ -3627,7 +3642,9 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 			popup->add_separator(TTRGET(category));
 		}
 		popup->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_LIBRARY_PRESET_BASE + preset);
-		popup->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+		if (!library_hover_preview_enabled()) { // The hover preview shows the description.
+			popup->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
+		}
 		const Ref<Texture2D> thumbnail = _get_preset_thumbnail(preset);
 		if (thumbnail.is_valid()) {
 			popup->set_item_icon(-1, thumbnail);
@@ -3642,7 +3659,9 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 	for (int i = 0; i < recent_effect_paths.size(); i++) {
 		const String &path = recent_effect_paths[i];
 		popup->add_item(path.get_file().get_basename(), PARTICLE_LIBRARY_RECENT_BASE + i);
-		popup->set_item_tooltip(-1, path);
+		if (!library_hover_preview_enabled()) {
+			popup->set_item_tooltip(-1, path);
+		}
 		const Ref<Texture2D> thumbnail = _get_cached_effect_thumbnail(path);
 		if (thumbnail.is_valid()) {
 			popup->set_item_icon(-1, thumbnail);

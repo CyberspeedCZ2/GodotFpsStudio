@@ -440,6 +440,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Node3D *hover_preview_root = nullptr;
 	Camera3D *hover_preview_camera = nullptr;
 	Label *hover_preview_label = nullptr;
+	Label *hover_preview_description = nullptr;
 	ObjectID hover_preview_effect_id;
 	String hover_key; // Library item under the mouse.
 	String hover_shown_key; // Item the preview shows.
