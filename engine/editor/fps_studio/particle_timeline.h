@@ -31,6 +31,9 @@ public:
 		ACTION_DELETE,
 		ACTION_SOLO,
 		ACTION_TOGGLE_VISIBLE,
+		ACTION_COPY,
+		ACTION_CUT,
+		ACTION_PASTE, // Track may be null (paste into the effect).
 	};
 
 private:
@@ -69,6 +72,7 @@ private:
 	int hover_row = -1;
 	PopupMenu *context_menu = nullptr;
 	ObjectID context_track;
+	bool can_paste = false; // The editor has tracks on its clipboard.
 	// Preview loop region (editor only, not saved in the effect); end < 0 = none.
 	double loop_start = 0.0;
 	double loop_end = -1.0;
@@ -106,6 +110,7 @@ public:
 	void set_effect(Node *p_effect);
 	void set_selected_track(Node *p_node);
 	void set_solo_track(Node *p_node);
+	void set_can_paste(bool p_can_paste) { can_paste = p_can_paste; }
 	void set_current_time(double p_time);
 	void set_snap_enabled(bool p_enabled);
 	bool is_snap_enabled() const { return snap_enabled; }

@@ -7,6 +7,8 @@
 
 #include "particle_presets.h"
 
+#include "vfx_sound_generator.h"
+
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/decal.h"
@@ -197,6 +199,18 @@ AudioStreamPlayer3D *add_sound_slot(ParticleEffect3D *p_effect, real_t p_unit_si
 	return sound;
 }
 
+// The editor generates (or reuses res://vfx_sounds/<file>.wav) the procedural
+// sound described here and assigns it when the preset is created.
+AudioStreamPlayer3D *set_sound_recipe(AudioStreamPlayer3D *p_player, int p_sound, const String &p_file, real_t p_volume_db = 0.0, uint32_t p_seed = 1) {
+	Dictionary recipe;
+	recipe["sound"] = p_sound;
+	recipe["seed"] = int64_t(p_seed);
+	recipe["file"] = p_file;
+	p_player->set_meta(SOUND_RECIPE_META, recipe);
+	p_player->set_volume_db(p_volume_db);
+	return p_player;
+}
+
 // Decal event projecting along its local -Y (surface normal of impact presets
 // is +Y). The texture comes from the generator's Decals category.
 Decal *add_decal(ParticleEffect3D *p_effect, const String &p_name, const Vector3 &p_size, double p_duration, double p_fade, const Transform3D &p_transform = Transform3D()) {
@@ -345,7 +359,7 @@ void build_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 		r_textures.push_back(make_texture(scorch, VFXTextureGenerator::TYPE_SCORCH, "decal_scorch", 512));
 	}
 	{
-		add_sound_slot(p_effect, 12.0, 120.0);
+		set_sound_recipe(add_sound_slot(p_effect, 12.0, 120.0), VFXSoundGenerator::SOUND_EXPLOSION, "explosion", 3.0);
 		RadialDamage3D *damage = memnew(RadialDamage3D);
 		damage->set_name("Damage");
 		damage->set_damage(90.0);
@@ -380,6 +394,7 @@ void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 
 	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.22, 0.3, 0.22), 12.0, 0.2);
 	r_textures.push_back(make_bullet_hole_texture(hole, "decal_bullet_hole_concrete", 0, Color(0.62, 0.6, 0.56)));
+	set_sound_recipe(add_sound_slot(p_effect, 2.0, 25.0), VFXSoundGenerator::SOUND_BULLET_IMPACT_CONCRETE, "impact_concrete", -3.0, 1);
 }
 
 void build_impact_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -401,6 +416,7 @@ void build_impact_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 
 	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.16, 0.3, 0.16), 12.0, 0.2);
 	r_textures.push_back(make_bullet_hole_texture(hole, "decal_bullet_hole_metal", 1, Color(0.7, 0.72, 0.75)));
+	set_sound_recipe(add_sound_slot(p_effect, 2.0, 30.0), VFXSoundGenerator::SOUND_BULLET_IMPACT_METAL, "impact_metal", -3.0, 1);
 }
 
 void build_blood_hit(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -425,6 +441,7 @@ void build_blood_hit(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textu
 	Decal *splatter = add_decal(p_effect, "Splatter", Vector3(0.9, 2.0, 0.9), 15.0, 0.25, Transform3D(Basis::from_euler(Vector3(-Math::PI * 0.5, 0, 0)), Vector3(0, 0, 1.0)));
 	ParticleEffect3D::set_emitter_delay(splatter, 0.05);
 	r_textures.push_back(make_texture(splatter, VFXTextureGenerator::TYPE_SPLATTER, "decal_blood_splatter", 256));
+	set_sound_recipe(add_sound_slot(p_effect, 2.0, 20.0), VFXSoundGenerator::SOUND_FLESH_IMPACT, "flesh_impact", -3.0, 1);
 }
 
 void build_smoke_plume(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -467,6 +484,7 @@ void build_fire(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	r_textures.push_back(make_soft_smoke(smoke));
 
 	add_light(p_effect, "FireLight", Color(1.0, 0.55, 0.22), 2.5, 6.0, 0.0, 0.0, 0.45, Vector3(0, 0.45, 0));
+	set_sound_recipe(add_sound_slot(p_effect, 3.0, 30.0), VFXSoundGenerator::SOUND_FIRE_LOOP, "fire_loop", -6.0, 1);
 }
 
 
@@ -494,6 +512,7 @@ void build_wood_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 
 	Decal *hole = add_decal(p_effect, "BulletHole", Vector3(0.24, 0.3, 0.24), 12.0, 0.2);
 	r_textures.push_back(make_bullet_hole_texture(hole, "decal_bullet_hole_wood", 2, Color(0.72, 0.55, 0.34)));
+	set_sound_recipe(add_sound_slot(p_effect, 2.0, 25.0), VFXSoundGenerator::SOUND_BULLET_IMPACT_WOOD, "impact_wood", -3.0, 1);
 }
 
 void build_water_splash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -532,7 +551,7 @@ void build_water_splash(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	set_colors(ripple_texture, WHITE_TINT_A, WHITE_TINT_B);
 	r_textures.push_back(ripple_texture);
 
-	add_sound_slot(p_effect, 4.0, 40.0);
+	set_sound_recipe(add_sound_slot(p_effect, 4.0, 40.0), VFXSoundGenerator::SOUND_WATER_SPLASH, "water_splash", -2.0);
 }
 
 void build_glass_shatter(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -560,7 +579,7 @@ void build_glass_shatter(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	set_param(glint_texture, "streak", 0.0f);
 	r_textures.push_back(glint_texture);
 
-	add_sound_slot(p_effect, 5.0, 50.0);
+	set_sound_recipe(add_sound_slot(p_effect, 5.0, 50.0), VFXSoundGenerator::SOUND_GLASS_SHATTER, "glass_shatter", 0.0);
 }
 
 void build_electric_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -580,7 +599,7 @@ void build_electric_sparks(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 	r_textures.push_back(arc_texture);
 
 	add_light(p_effect, "ArcLight", Color(0.55, 0.75, 1.0), 2.0, 4.0, 0.0, 0.0, 0.9, Vector3(0, 0.05, 0));
-	add_sound_slot(p_effect, 3.0, 25.0);
+	set_sound_recipe(add_sound_slot(p_effect, 3.0, 25.0), VFXSoundGenerator::SOUND_ELECTRIC_ZAP, "electric_zap", -2.0);
 }
 
 void build_steam_leak(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -593,7 +612,7 @@ void build_steam_leak(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_text
 	steam.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
 	steam.node->set("preprocess", 2.0);
 	r_textures.push_back(make_soft_smoke(steam));
-	add_sound_slot(p_effect, 3.0, 25.0);
+	set_sound_recipe(add_sound_slot(p_effect, 3.0, 25.0), VFXSoundGenerator::SOUND_STEAM_HISS, "steam_hiss", -6.0);
 }
 
 void build_smoke_grenade(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -607,7 +626,7 @@ void build_smoke_grenade(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	smoke.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(0.75, 0.9), Vector2(1, 0) }));
 	enable_collision(smoke, 0.0, 1.0);
 	r_textures.push_back(make_soft_smoke(smoke));
-	add_sound_slot(p_effect, 3.0, 30.0);
+	set_sound_recipe(add_sound_slot(p_effect, 3.0, 30.0), VFXSoundGenerator::SOUND_SMOKE_GRENADE_HISS, "smoke_grenade_hiss", -6.0);
 }
 
 void build_signal_flare(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -635,7 +654,7 @@ void build_signal_flare(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	r_textures.push_back(make_soft_smoke(smoke));
 
 	add_light(p_effect, "FlareLight", Color(1.0, 0.2, 0.12), 3.0, 9.0, 0.0, 0.0, 0.35, Vector3(0, 0.1, 0));
-	add_sound_slot(p_effect, 2.0, 20.0);
+	set_sound_recipe(add_sound_slot(p_effect, 2.0, 20.0), VFXSoundGenerator::SOUND_FLARE_BURN, "flare_burn", -6.0);
 }
 
 void build_dust_landing(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -714,6 +733,7 @@ void build_shell_eject(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	enable_collision(casing, 0.45, 0.35);
 	// Clink when it lands; drop a casing sound on the Sound track.
 	AudioStreamPlayer3D *clink = add_sound_slot(p_effect, 1.0, 12.0, 0.35);
+	set_sound_recipe(clink, VFXSoundGenerator::SOUND_SHELL_CLINK, "shell_clink", -6.0);
 	clink->set_meta(ParticleEffect3D::META_PITCH_RANDOM, 0.15);
 }
 
@@ -743,7 +763,7 @@ void build_rocket_trail(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	r_textures.push_back(make_texture(sparks.node, VFXTextureGenerator::TYPE_SPARK, "spark_streak", 128));
 
 	add_light(p_effect, "ExhaustLight", Color(1.0, 0.65, 0.3), 3.0, 5.0, 0.0, 0.0, 0.3, Vector3(0, 0, 0.2));
-	add_sound_slot(p_effect, 6.0, 60.0);
+	set_sound_recipe(add_sound_slot(p_effect, 6.0, 60.0), VFXSoundGenerator::SOUND_ROCKET_LOOP, "rocket_loop", -3.0);
 }
 
 void build_gibs(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -797,7 +817,7 @@ void build_gibs(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	Decal *pool = add_decal(p_effect, "Splatter", Vector3(2.2, 2.0, 2.2), 20.0, 0.3);
 	ParticleEffect3D::set_emitter_delay(pool, 0.1);
 	r_textures.push_back(make_texture(pool, VFXTextureGenerator::TYPE_SPLATTER, "decal_blood_splatter", 256));
-	add_sound_slot(p_effect, 4.0, 35.0);
+	set_sound_recipe(add_sound_slot(p_effect, 4.0, 35.0), VFXSoundGenerator::SOUND_GIBS, "gibs", 0.0);
 }
 
 void build_energy_ball(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -828,7 +848,7 @@ void build_energy_ball(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	r_textures.push_back(make_texture(wisps.node, VFXTextureGenerator::TYPE_ELECTRIC_ARC, "electric_arc", 256));
 
 	add_light(p_effect, "OrbLight", Color(0.55, 0.72, 1.0), 3.0, 6.0, 0.0, 0.0, 0.35, Vector3());
-	add_sound_slot(p_effect, 3.0, 30.0);
+	set_sound_recipe(add_sound_slot(p_effect, 3.0, 30.0), VFXSoundGenerator::SOUND_ENERGY_HUM, "energy_hum", -6.0);
 }
 
 void build_antlion_blood(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -855,6 +875,7 @@ void build_antlion_blood(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	TextureRequest splatter_texture = make_texture(splatter, VFXTextureGenerator::TYPE_SPLATTER, "decal_antlion_splatter", 256);
 	set_colors(splatter_texture, Color(0.55, 0.52, 0.02), Color(0.75, 0.72, 0.12));
 	r_textures.push_back(splatter_texture);
+	set_sound_recipe(add_sound_slot(p_effect, 2.0, 20.0), VFXSoundGenerator::SOUND_FLESH_IMPACT, "insect_flesh_impact", -3.0, 2);
 }
 
 void build_spark_shower(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
@@ -876,7 +897,7 @@ void build_spark_shower(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 	r_textures.push_back(pop_texture);
 
 	add_light(p_effect, "FixtureLight", Color(1.0, 0.9, 0.7), 2.5, 6.0, 0.0, 0.0, 0.95, Vector3(0, -0.1, 0));
-	add_sound_slot(p_effect, 3.0, 25.0);
+	set_sound_recipe(add_sound_slot(p_effect, 3.0, 25.0), VFXSoundGenerator::SOUND_SPARKS, "spark_shower", -3.0);
 }
 
 // Visibility bounds from the motion instead of a fixed 16 m cube: tighter

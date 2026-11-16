@@ -172,8 +172,10 @@
 			<param index="0" name="scene" type="PackedScene" />
 			<param index="1" name="parent" type="Node" />
 			<param index="2" name="transform" type="Transform3D" />
+			<param index="3" name="tint" type="Color" default="Color(1, 1, 1, 1)" />
+			<param index="4" name="scale" type="float" default="1.0" />
 			<description>
-				Plays [param scene] (whose root must be a [ParticleEffect3D]) under [param parent] at the global [param transform] with [member auto_free] enabled. A finished instance of the same scene waiting in the pool is reused (and moved to [param parent] if needed); otherwise the scene is instantiated. When the effect finishes it returns to the pool instead of being freed, and connections to [signal finished] made for this use are removed. See [method prewarm].
+				Plays [param scene] (whose root must be a [ParticleEffect3D]) under [param parent] at the global [param transform] with [member auto_free] enabled. [param tint] and [param scale] multiply the effect's [member tint] and [member effect_scale] for this play only, so one blood effect can serve red and yellow blood and one explosion small and big blasts; a pooled instance played later without them looks as authored. A finished instance of the same scene waiting in the pool is reused (and moved to [param parent] if needed); otherwise the scene is instantiated. When the effect finishes it returns to the pool instead of being freed, and connections to [signal finished] made for this use are removed. See [method prewarm].
 			</description>
 		</method>
 		<method name="spawn_attached" qualifiers="static">
@@ -181,8 +183,10 @@
 			<param index="0" name="scene" type="PackedScene" />
 			<param index="1" name="parent" type="Node3D" />
 			<param index="2" name="local_transform" type="Transform3D" default="Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0)" />
+			<param index="3" name="tint" type="Color" default="Color(1, 1, 1, 1)" />
+			<param index="4" name="scale" type="float" default="1.0" />
 			<description>
-				Like [method spawn], but [param local_transform] is relative to [param parent] (for example a muzzle [Marker3D] on a weapon) and [member local_space] is enabled, so the effect and its particles follow the parent while it plays.
+				Like [method spawn] (including [param tint] and [param scale]), but [param local_transform] is relative to [param parent] (for example a muzzle [Marker3D] on a weapon) and [member local_space] is enabled, so the effect and its particles follow the parent while it plays.
 			</description>
 		</method>
 		<method name="update_level_collision">
@@ -211,6 +215,9 @@
 		<member name="cull_distance" type="float" setter="set_cull_distance" getter="get_cull_distance" default="0.0">
 			If greater than [code]0[/code], [method play] skips the effect when the current [Camera3D] is farther away: it emits [signal finished] on the next frame (and returns to its pool). A looping effect keeps checking every 0.5 seconds and starts once the camera comes closer. Effects with a [RadialDamage3D] event always play.
 		</member>
+		<member name="effect_scale" type="float" setter="set_effect_scale" getter="get_effect_scale" default="1.0">
+			Multiplies the size of the effect when it plays in a running game: particle scale, initial velocity, gravity and accelerations, emission shape extents, [member GPUParticles3D.visibility_aabb] and collision size, light range, decal size and the radii of [CameraShake3D] and [RadialDamage3D] events. Lifetimes and timing stay unchanged. See [member tint].
+		</member>
 		<member name="level_collision_mask" type="int" setter="set_level_collision_mask" getter="get_level_collision_mask" default="1">
 			The physics layers baked for [member collide_with_level].
 		</member>
@@ -222,6 +229,9 @@
 		</member>
 		<member name="priority" type="int" setter="set_priority" getter="get_priority" default="0">
 			When [member ProjectSettings.rendering/particle_effects/max_active_effects] effects are already playing, [method play] cuts off the oldest playing effect with the lowest priority not above this one. If every playing effect has a higher priority, this effect is skipped like with [member cull_distance]. Effects with a pending [RadialDamage3D] event are never cut off or skipped.
+		</member>
+		<member name="tint" type="Color" setter="set_tint" getter="get_tint" default="Color(1, 1, 1, 1)">
+			Multiplies the color of the emitters (the process material or CPU [code]color[/code], which also tints color ramps), the [code]light_color[/code] of lights and the color of decals when the effect plays in a running game. The values are applied in [method play] on local copies of the process materials, so shared resources are not changed; the authored values are remembered on the nodes, and a play with white tint and [member effect_scale] [code]1.0[/code] restores them. The editor always shows the authored effect.
 		</member>
 		<member name="speed_scale" type="float" setter="set_speed_scale" getter="get_speed_scale" default="1.0">
 			Scales the effect timeline (delays and durations). It does not change the emitters' own simulation speed.

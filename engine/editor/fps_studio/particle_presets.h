@@ -52,6 +52,12 @@ enum Preset {
 	PRESET_MAX,
 };
 
+// Meta on a preset's AudioStreamPlayer3D: Dictionary { "sound": int
+// (VFXSoundGenerator::Sound), "seed": int, "file": String }. The editor
+// generates the sound (or loads res://vfx_sounds/<file>.wav), assigns it as
+// the stream and removes the meta.
+inline constexpr const char *SOUND_RECIPE_META = "_fps_sound_recipe";
+
 struct TextureRequest {
 	Node *emitter = nullptr;
 	VFXTextureGenerator::Settings settings;

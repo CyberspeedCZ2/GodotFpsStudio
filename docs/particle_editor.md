@@ -204,6 +204,21 @@ Uzel, který se vloží do levelu. Při startu hry (ne v editoru) napeče kolizi
 
 `ParticleEffect3D.spawn_attached(MUZZLE, $Muzzle, Transform3D())` přehraje efekt jako potomka uzlu (např. `Marker3D` na hlavni) s lokální transformací a zapne `local_space`, takže emitory simulují v prostoru efektu (`local_coords`) a záblesk i jiskry se při otáčení kamery neopožďují. `local_space` jde zapnout i ručně na kořeni efektu.
 
+### Barva a velikost při spuštění
+
+Jeden efekt může posloužit pro víc situací: `ParticleEffect3D.spawn(scene, parent, transform, tint, scale)` (a stejně `spawn_attached`) přehraje efekt s barvou a velikostí jen pro toto přehrání.
+
+```gdscript
+ParticleEffect3D.spawn(BLOOD, level, xform, Color(0.9, 0.85, 0.2))   # žlutá krev
+ParticleEffect3D.spawn(EXPLOSION, level, xform, Color.WHITE, 2.0)     # velký výbuch (barel)
+```
+
+- **`tint`** násobí barvu emitorů (`color` procesního materiálu nebo CPU emitoru, tedy i barevné přechody), `light_color` světel a barvu decalů. Průhlednost animují události, ta se nemění.
+- **`effect_scale`** násobí velikost částic, počáteční rychlost, gravitaci a zrychlení, rozměry tvaru vypouštění, `visibility_aabb` a velikost kolize, dosah světel, velikost decalů a poloměry `CameraShake3D` a `RadialDamage3D`. Životnost a časování zůstávají.
+- Stejné vlastnosti `tint` a `effect_scale` má i kořen efektu; argumenty `spawn()` je pro dané přehrání násobí.
+- Hodnoty se nastaví v `play()` jen ve spuštěné hře, a to na lokálních kopiích procesních materiálů, takže sdílené materiály ani ostatní instance se nezmění. Původní hodnoty si uzly pamatují a efekt z poolu přehraný znovu bez argumentů vypadá jako autorský. Editor ukazuje vždy autorský vzhled.
+- `ParticleImpactTable` má volitelné slovníky `tints` a `scales` (povrch → barva / násobek), např. jeden efekt krve se žlutou barvou pro povrch `insect`; `spawn()` a `spawn_from_hit()` berou navíc vlastní `tint` a `scale`.
+
 ## Particle Logic
 
 **Convert to Shader Code** převede moduly vybraného GPU emitoru na ekvivalentní particle shader (`ShaderMaterial`, vzhled zůstane stejný) a otevře jeho kód přímo v záložce **Particle Logic** (stejný editor kódu jako Godotův Shader Editor, se zvýrazněním a kontrolou chyb). Změny kódu se projeví v náhledu hned. Převod jde vrátit přes Undo; pokud renderer kód neposkytne, emitor zůstane beze změny.

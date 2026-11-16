@@ -42,6 +42,7 @@ class GridContainer;
 class HSlider;
 class HBoxContainer;
 class InputEvent;
+class InputEventKey;
 class Label;
 class LineEdit;
 class MenuButton;
@@ -237,6 +238,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	MenuButton *preview_view_menu = nullptr;
 	Label *preview_stats_label = nullptr;
 	Button *convert_shader_button = nullptr;
+	Button *convert_graph_button = nullptr;
+	Node *track_clipboard = nullptr; // Copied/cut track subtree, owned here.
 	double preview_stats_accumulator = 0.0;
 	int preview_environment_preset = 0;
 	bool preview_show_bounds = false;
@@ -395,8 +398,14 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _update_preview_bounds();
 	void _update_preview_stats();
 	void _on_convert_shader_pressed();
+	void _on_convert_graph_pressed();
 	void _duplicate_emitter(Node *p_emitter);
 	void _on_duplicate_emitter_pressed();
+	void _copy_track(Node *p_track);
+	void _cut_track(Node *p_track);
+	void _paste_tracks(Node *p_after);
+	bool _handle_track_clipboard_key(const Ref<InputEventKey> &p_key);
+	void _on_emitter_tree_gui_input(const Ref<InputEvent> &p_event);
 	void _set_emitter_visible(Object *p_emitter, bool p_visible);
 	void _on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration);
 	void _apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration);
@@ -404,6 +413,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _assign_level_owners(Node *p_instance, Node *p_owner);
 	void _create_preset_document(int p_preset);
 	void _apply_preset_textures(const Vector<FPSParticlePresets::TextureRequest> &p_textures, bool p_bake);
+	void _apply_preset_sounds(Node *p_node, bool p_bake);
 
 	// Library / Content Browser thumbnails, rendered one at a time offscreen.
 	struct ThumbnailJob {

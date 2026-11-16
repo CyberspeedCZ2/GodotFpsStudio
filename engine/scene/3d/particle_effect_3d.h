@@ -93,6 +93,10 @@ private:
 	real_t cull_distance = 0.0;
 	bool local_space = false;
 	bool local_space_from_attach = false;
+	Color tint = Color(1, 1, 1, 1);
+	real_t effect_scale = 1.0;
+	Color spawn_tint = Color(1, 1, 1, 1); // Set by spawn() for this play only.
+	real_t spawn_scale = 1.0;
 	bool budget_active = false; // In the list of effects counted by the budget.
 	bool culled = false; // Skipped by distance or budget; finishes next frame.
 	uint64_t play_serial = 0; // Play order, oldest effects are recycled first.
@@ -114,12 +118,14 @@ private:
 	void _update(double p_delta);
 	void _finish();
 	void _silence();
+	void _stop_looping_sounds();
 	void _skip_play();
 	bool _should_skip_play();
 	void _budget_remove();
 	void _force_finish();
 	static bool _has_pending_damage(const LocalVector<EventState> &p_events);
 	void _play_pending();
+	void _apply_overrides();
 	void _restore_editor_preview();
 	void _ensure_editor_level_collision(Node *p_root, uint32_t p_mask);
 	static bool _prepare_level_collision_faces(Node *p_root, const Vector<Face3> &p_faces);
@@ -159,6 +165,14 @@ public:
 	void set_local_space(bool p_enable);
 	bool is_local_space() const;
 	static int get_active_effect_count();
+	// Per-play look: tint multiplies emitter, light and decal colors, scale
+	// multiplies sizes, speeds, emission shapes and event radii. Applied at
+	// play() in a running game on local copies of the materials, so shared
+	// resources are untouched and white / 1.0 restores the authored effect.
+	void set_tint(const Color &p_tint);
+	Color get_tint() const;
+	void set_effect_scale(real_t p_scale);
+	real_t get_effect_scale() const;
 	// Bakes the static physics shapes around the effect into a transient
 	// GPUParticlesCollisionSDF3D, so emitters with collision bounce off walls
 	// without hand-placed particle colliders. Called by play() at runtime.
@@ -220,11 +234,13 @@ public:
 	// Finished spawned effects are hidden and reused by later spawn() calls of
 	// the same scene (up to 64 waiting per scene), so rapid fire does not
 	// instantiate a scene per shot.
-	static ParticleEffect3D *spawn(const Ref<PackedScene> &p_scene, Node *p_parent, const Transform3D &p_transform);
+	// p_tint and p_scale multiply the effect's own tint / effect_scale for
+	// this play (a pooled instance played again without them looks authored).
+	static ParticleEffect3D *spawn(const Ref<PackedScene> &p_scene, Node *p_parent, const Transform3D &p_transform, const Color &p_tint = Color(1, 1, 1, 1), real_t p_scale = 1.0);
 	// Like spawn(), but p_transform is local to p_parent (e.g. a muzzle
 	// Marker3D) and the emitters simulate in local space, so the effect follows
 	// the parent while it plays.
-	static ParticleEffect3D *spawn_attached(const Ref<PackedScene> &p_scene, Node3D *p_parent, const Transform3D &p_local_transform = Transform3D());
+	static ParticleEffect3D *spawn_attached(const Ref<PackedScene> &p_scene, Node3D *p_parent, const Transform3D &p_local_transform = Transform3D(), const Color &p_tint = Color(1, 1, 1, 1), real_t p_scale = 1.0);
 	// Creates p_count hidden instances in advance (e.g. at level load).
 	static int prewarm(const Ref<PackedScene> &p_scene, Node *p_parent, int p_count);
 	static int get_pooled_count(const Ref<PackedScene> &p_scene);

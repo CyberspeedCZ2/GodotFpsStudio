@@ -11,6 +11,8 @@
 #include "particle_module_stack.h"
 #include "particle_presets.h"
 #include "particle_timeline.h"
+#include "particle_visual_shader_converter.h"
+#include "vfx_sound_generator.h"
 #include "vfx_texture_generator.h"
 
 #include "core/input/input_event.h"
@@ -63,6 +65,7 @@
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/audio_stream_player_3d.h"
+#include "scene/resources/audio_stream_wav.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/3d/world_environment.h"
@@ -2466,7 +2469,51 @@ void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 		return;
 	}
 	_apply_preset_textures(textures, true);
+	_apply_preset_sounds(effect, true);
 	_set_effect_document(effect, String(), true);
+}
+
+void FPSStudioParticleEditorPlugin::_apply_preset_sounds(Node *p_node, bool p_bake) {
+	// Presets describe their sounds as generator recipes; bake them into
+	// res://vfx_sounds once (a user-edited file of the same name is reused).
+	if (!p_node) {
+		return;
+	}
+	if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(p_node)) {
+		if (player->has_meta(FPSParticlePresets::SOUND_RECIPE_META)) {
+			const Dictionary recipe = player->get_meta(FPSParticlePresets::SOUND_RECIPE_META);
+			player->remove_meta(FPSParticlePresets::SOUND_RECIPE_META);
+			if (p_bake) { // Thumbnails strip sounds; nothing to do there.
+				const int sound = recipe.get("sound", 0);
+				const uint32_t seed = uint32_t(int64_t(recipe.get("seed", 0)));
+				const String directory = "res://vfx_sounds";
+				const String path = directory.path_join(String(recipe.get("file", "sound")) + ".wav");
+				if (!FileAccess::exists(path)) {
+					if (!DirAccess::exists(directory)) {
+						EditorFileSystem::get_singleton()->make_dir_recursive(directory);
+					}
+					const Ref<AudioStreamWAV> generated = VFXSoundGenerator::generate(sound, seed);
+					if (generated.is_valid() && VFXSoundGenerator::save_wav(generated, path) == OK) {
+						EditorFileSystem::get_singleton()->update_file(path);
+						Vector<String> files;
+						files.push_back(path);
+						EditorFileSystem::get_singleton()->reimport_files(files);
+					}
+				}
+				Ref<AudioStream> stream;
+				if (ResourceLoader::exists(path, "AudioStream")) {
+					stream = ResourceLoader::load(path, "AudioStream");
+				}
+				if (stream.is_null()) {
+					stream = VFXSoundGenerator::generate(sound, seed); // Import not ready: keep it in memory.
+				}
+				player->set_stream(stream);
+			}
+		}
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_apply_preset_sounds(p_node->get_child(i), p_bake);
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_apply_preset_textures(const Vector<FPSParticlePresets::TextureRequest> &p_textures, bool p_bake) {
@@ -2681,6 +2728,7 @@ bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_j
 		effect = FPSParticlePresets::create_preset(p_job.preset, textures);
 		if (effect) {
 			_apply_preset_textures(textures, false);
+			_apply_preset_sounds(effect, false);
 		}
 	} else if (!p_job.path.is_empty() && ResourceLoader::exists(p_job.path, "PackedScene")) {
 		Ref<PackedScene> packed_scene = ResourceLoader::load(p_job.path, "PackedScene");
@@ -3759,6 +3807,9 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	if (convert_shader_button) {
 		convert_shader_button->set_disabled(!gpu || !Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
 	}
+	if (convert_graph_button) {
+		convert_graph_button->set_disabled(!gpu || !Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()));
+	}
 	Ref<Shader> code_shader = _get_particle_code_shader(emitter);
 	particle_graph_button->set_text(TTR("Create Node Graph"));
 	particle_graph_button->set_visible(!visual_shader.is_valid() && code_shader.is_null());
@@ -4216,9 +4267,9 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 			_on_timeline_play_toggle();
 		} else if (key->get_keycode() == Key::HOME) {
 			_on_restart_pressed();
-		} else if (key->get_keycode() == Key::F) {
+		} else if (key->get_keycode() == Key::F && !key->is_command_or_control_pressed()) {
 			_frame_preview();
-		} else {
+		} else if (!_handle_track_clipboard_key(key)) {
 			return;
 		}
 		preview_container->accept_event();
@@ -4631,6 +4682,43 @@ void FPSStudioParticleEditorPlugin::_on_convert_shader_pressed() {
 	_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
 }
 
+void FPSStudioParticleEditorPlugin::_on_convert_graph_pressed() {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
+	if (!gpu) {
+		return;
+	}
+	Ref<ParticleProcessMaterial> process = gpu->get_process_material();
+	if (process.is_null()) {
+		return;
+	}
+	String warnings;
+	Ref<VisualShader> visual_shader = FPSParticleVisualShaderConverter::convert(process, warnings);
+	if (visual_shader.is_null()) {
+		EditorNode::get_singleton()->show_warning(warnings.is_empty() ? TTR("Could not convert the modules to a node graph. The emitter was left unchanged.") : warnings);
+		return;
+	}
+	Ref<ShaderMaterial> shader_material;
+	shader_material.instantiate();
+	shader_material->set_shader(visual_shader);
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action_for_history(TTR("Convert Particle Modules to Node Graph"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_property(gpu, "process_material", shader_material);
+	undo_redo->add_undo_property(gpu, "process_material", process);
+	undo_redo->add_do_reference(shader_material.ptr());
+	undo_redo->add_undo_reference(process.ptr());
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", gpu, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", gpu, effect_document_serial);
+	undo_redo->commit_action(); // The history callback shows the graph editor.
+	_show_bottom_tab(PARTICLE_BOTTOM_TAB_LOGIC);
+	if (particle_graph_editor) {
+		particle_graph_editor->fit_graph_to_content();
+	}
+	if (!warnings.is_empty()) {
+		EditorToaster::get_singleton()->popup_str(warnings, EditorToaster::SEVERITY_WARNING);
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_update_toolbar_icons() {
 	if (!timeline_play_button || !timeline_play_button->is_inside_tree()) {
 		return;
@@ -4796,18 +4884,11 @@ void FPSStudioParticleEditorPlugin::_set_emitter_visible(Object *p_emitter, bool
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_duplicate_emitter(Node *p_emitter) {
-	Node *effect = _get_effect_root();
-	if (!effect || !p_emitter || p_emitter == effect) {
-		return;
-	}
-	Node *parent = p_emitter->get_parent();
-	Node *copy = p_emitter->duplicate(Node::DUPLICATE_SIGNALS | Node::DUPLICATE_SCRIPTS);
-	if (!copy) {
-		return;
-	}
-	// Give the copy its own process material, mesh and draw material so editing
-	// it does not change the original. External textures stay shared.
+// Gives a copied track (and its child tracks) its own process material,
+// meshes and draw material so editing it does not change the original.
+// External textures stay shared.
+static void duplicate_track_resources(Node *p_copy) {
+	Node *copy = p_copy;
 	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(copy)) {
 		if (gpu->get_process_material().is_valid()) {
 			gpu->set_process_material(gpu->get_process_material()->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
@@ -4826,6 +4907,29 @@ void FPSStudioParticleEditorPlugin::_duplicate_emitter(Node *p_emitter) {
 		if (geometry->get_material_override().is_valid()) {
 			geometry->set_material_override(geometry->get_material_override()->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
 		}
+	}
+	for (int i = 0; i < copy->get_child_count(); i++) {
+		duplicate_track_resources(copy->get_child(i));
+	}
+}
+
+static Node *make_track_copy(Node *p_source) {
+	Node *copy = p_source ? p_source->duplicate(Node::DUPLICATE_SIGNALS | Node::DUPLICATE_SCRIPTS) : nullptr;
+	if (copy) {
+		duplicate_track_resources(copy);
+	}
+	return copy;
+}
+
+void FPSStudioParticleEditorPlugin::_duplicate_emitter(Node *p_emitter) {
+	Node *effect = _get_effect_root();
+	if (!effect || !p_emitter || p_emitter == effect) {
+		return;
+	}
+	Node *parent = p_emitter->get_parent();
+	Node *copy = make_track_copy(p_emitter);
+	if (!copy) {
+		return;
 	}
 	copy->set_name(parent->prevalidate_child_name(copy, String(p_emitter->get_name()) + "Copy"));
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
@@ -4846,14 +4950,130 @@ void FPSStudioParticleEditorPlugin::_on_duplicate_emitter_pressed() {
 	_duplicate_emitter(_get_edited_emitter());
 }
 
+void FPSStudioParticleEditorPlugin::_copy_track(Node *p_track) {
+	Node *effect = _get_effect_root();
+	if (!effect || !p_track || p_track == effect || !effect->is_ancestor_of(p_track)) {
+		return;
+	}
+	// The clipboard holds its own copy, so it survives editing, closing or
+	// switching the effect and pastes into any effect.
+	Node *copy = make_track_copy(p_track);
+	if (!copy) {
+		return;
+	}
+	if (track_clipboard) {
+		memdelete(track_clipboard);
+	}
+	track_clipboard = copy;
+	if (timeline_view) {
+		timeline_view->set_can_paste(true);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_cut_track(Node *p_track) {
+	Node *effect = _get_effect_root();
+	if (!effect || !p_track || p_track == effect) {
+		return;
+	}
+	_copy_track(p_track);
+	_set_edited_emitter(p_track);
+	_remove_selected_emitter();
+}
+
+void FPSStudioParticleEditorPlugin::_paste_tracks(Node *p_after) {
+	Node *effect = _get_effect_root();
+	if (!effect || !track_clipboard) {
+		return;
+	}
+	Node *copy = make_track_copy(track_clipboard);
+	if (!copy) {
+		return;
+	}
+	copy->set_name(effect->prevalidate_child_name(copy, track_clipboard->get_name()));
+	// Keep sub-emitter links that still resolve (inside the pasted subtree, or
+	// a same-named sibling in this effect); clear the rest.
+	Vector<Node *> stack;
+	stack.push_back(copy);
+	while (!stack.is_empty()) {
+		Node *node = stack[stack.size() - 1];
+		stack.resize(stack.size() - 1);
+		for (int i = 0; i < node->get_child_count(); i++) {
+			stack.push_back(node->get_child(i));
+		}
+		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(node);
+		if (!gpu || gpu->get_sub_emitter().is_empty()) {
+			continue;
+		}
+		const NodePath path = gpu->get_sub_emitter();
+		Node *target = gpu->get_node_or_null(path);
+		if (!target && gpu == copy && String(path).begins_with("../")) {
+			target = effect->get_node_or_null(NodePath(String(path).substr(3)));
+		}
+		if (!Object::cast_to<GPUParticles3D>(target) || target == gpu) {
+			gpu->set_sub_emitter(NodePath());
+		}
+	}
+	const int index = (p_after && p_after->get_parent() == effect) ? p_after->get_index() + 1 : effect->get_child_count();
+	Node *previous_emitter = _get_edited_emitter();
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action_for_history(vformat(TTR("Paste %s"), copy->get_name()), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_method(effect, "add_child", copy, true);
+	undo_redo->add_do_method(effect, "move_child", copy, index);
+	undo_redo->add_do_method(this, "_assign_level_owners", copy, effect);
+	undo_redo->add_do_method(copy, "set_owner", effect);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", copy, effect_document_serial);
+	undo_redo->add_do_reference(copy);
+	undo_redo->add_undo_method(effect, "remove_child", copy);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", previous_emitter, effect_document_serial);
+	undo_redo->commit_action();
+}
+
+bool FPSStudioParticleEditorPlugin::_handle_track_clipboard_key(const Ref<InputEventKey> &p_key) {
+	if (p_key.is_null() || !p_key->is_pressed() || p_key->is_echo() || !p_key->is_command_or_control_pressed() || p_key->is_alt_pressed()) {
+		return false;
+	}
+	Node *track = _get_edited_emitter();
+	switch (p_key->get_keycode()) {
+		case Key::C:
+			_copy_track(track);
+			return track != nullptr;
+		case Key::X:
+			_cut_track(track);
+			return track != nullptr;
+		case Key::V:
+			_paste_tracks(track);
+			return track_clipboard != nullptr;
+		default:
+			return false;
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_emitter_tree_gui_input(const Ref<InputEvent> &p_event) {
+	// Only while the list itself has focus (renaming uses its own line edit).
+	if (_handle_track_clipboard_key(p_event)) {
+		emitter_tree->accept_event();
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_on_timeline_track_action(Object *p_track, int p_action) {
 	Node *track = Object::cast_to<Node>(p_track);
+	if (p_action == FPSParticleTimeline::ACTION_PASTE) {
+		_paste_tracks(track); // Pasted after the clicked track, or at the end.
+		return;
+	}
 	if (!track) {
 		return;
 	}
 	switch (p_action) {
 		case FPSParticleTimeline::ACTION_DUPLICATE:
 			_duplicate_emitter(track);
+			break;
+		case FPSParticleTimeline::ACTION_COPY:
+			_copy_track(track);
+			break;
+		case FPSParticleTimeline::ACTION_CUT:
+			_cut_track(track);
 			break;
 		case FPSParticleTimeline::ACTION_RENAME: {
 			_set_edited_emitter(track);
@@ -4984,6 +5204,10 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_PREDELETE && preview_effect) {
 		preview_effect->queue_free();
 		preview_effect = nullptr;
+	}
+	if (p_what == NOTIFICATION_PREDELETE && track_clipboard) {
+		memdelete(track_clipboard); // Never in the tree; would leak on exit.
+		track_clipboard = nullptr;
 	}
 }
 
@@ -5642,6 +5866,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitter_tree->set_stretch_ratio(1.4);
 	emitter_tree->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_selected));
 	emitter_tree->connect("item_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_renamed));
+	emitter_tree->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_tree_gui_input));
 	emitter_tree->set_drag_forwarding(Callable(), callable_mp(this, &FPSStudioParticleEditorPlugin::_can_drop_on_emitter_tree), callable_mp(this, &FPSStudioParticleEditorPlugin::_drop_on_emitter_tree));
 	emitter_tree->set_tooltip_text(TTR("Drop audio files here to add Sound events (or onto a Sound track to replace its sound)."));
 	left_panel->add_child(emitter_tree);
@@ -6094,6 +6319,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	convert_shader_button->set_tooltip_text(TTR("Replace the module settings with the equivalent particle shader code (same look), for custom behavior written in code. Undoable."));
 	convert_shader_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_convert_shader_pressed));
 	logic_header->add_child(convert_shader_button);
+	convert_graph_button = memnew(Button);
+	convert_graph_button->set_text(TTR("Convert to Node Graph"));
+	convert_graph_button->set_tooltip_text(TTR("Replace the module settings with an equivalent particle VisualShader graph, to extend the behavior with nodes. Undoable."));
+	convert_graph_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_convert_graph_pressed));
+	logic_header->add_child(convert_graph_button);
 	particle_graph_button = memnew(Button);
 	particle_graph_button->set_text(TTR("Create Node Graph"));
 	particle_graph_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_graph_button_pressed));

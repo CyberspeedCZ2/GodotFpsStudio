@@ -17,6 +17,7 @@
 
 #include "vfx_texture_generator.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -305,7 +306,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 21;
+constexpr int TYPE_COUNT = 23;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -551,6 +552,27 @@ struct TypeTable {
 			add_param(t, "direction", "Direction", 0.0f, 1.0f, 0.01f, 0.45f, "Bias of the droplets and streaks towards +X (use Rotation to aim).");
 			add_param(t, "raggedness", "Raggedness", 0.0f, 1.0f, 0.01f, 0.6f, "Irregular edge of the blob.");
 			add_param(t, "variation", "Thickness variation", 0.0f, 1.0f, 0.01f, 0.5f, "Darker thick areas inside the splatter.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_CELL_NOISE, "Cell Noise", "Noise & Patterns", "Worley (Voronoi) cell noise: distance to the nearest cell, glowing cell edges or flat colored cells. For cracked ground, scales, energy grids and tiles. Supports seamless tiling.", 0.02f, 0.03f, 0.05f, 0.35f, 0.8f, 1.0f, "Low color", "High color", false, true);
+			add_param(t, "scale", "Scale", 1.0f, 32.0f, 1.0f, 6.0f, "Number of cells across the texture.");
+			add_param(t, "mode", "Mode", 0.0f, 2.0f, 1.0f, 1.0f, "0 = distance to the cell center (F1), 1 = cell edges (F2 - F1), 2 = flat cells.");
+			add_param(t, "jitter", "Jitter", 0.0f, 1.0f, 0.01f, 0.9f, "Randomness of the cell centers (0 = square grid).");
+			add_param(t, "edge_width", "Edge width", 0.01f, 0.5f, 0.01f, 0.08f, "Width of the cell edges (Edges mode).");
+			add_param(t, "octaves", "Octaves", 1.0f, 4.0f, 1.0f, 1.0f, "Finer cell layers added on top.");
+			add_param(t, "contrast", "Contrast", 0.2f, 4.0f, 0.01f, 1.0f, "Output contrast.");
+			add_param(t, "threshold", "Alpha threshold", 0.0f, 1.0f, 0.01f, 0.0f, "Values below become transparent.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_MARBLE_NOISE, "Marble Noise", "Noise & Patterns", "Marble veins: a sine pattern bent by turbulent fractal noise. For stone, polished floors and flowing energy. Supports seamless tiling.", 0.85f, 0.84f, 0.82f, 0.25f, 0.24f, 0.26f, "Base color", "Vein color", false, true);
+			add_param(t, "frequency", "Vein frequency", 1.0f, 16.0f, 1.0f, 4.0f, "Number of veins across the texture.");
+			add_param(t, "turbulence", "Turbulence", 0.0f, 8.0f, 0.01f, 3.0f, "How strongly noise bends the veins.");
+			add_param(t, "sharpness", "Sharpness", 0.2f, 8.0f, 0.01f, 2.0f, "Thinness of the veins.");
+			add_param(t, "angle", "Direction", 0.0f, 180.0f, 1.0f, 30.0f, "Direction of the veins in degrees (snapped to a repeating direction when tiling).");
+			add_param(t, "octaves", "Octaves", 1.0f, 8.0f, 1.0f, 5.0f, "Detail of the turbulence.");
+			add_param(t, "contrast", "Contrast", 0.2f, 4.0f, 0.01f, 1.0f, "Output contrast.");
 			push(t);
 		}
 		if (i != TYPE_COUNT) {
@@ -1896,6 +1918,69 @@ void render_pattern(const FrameContext &c, float u, float v, float *r_px) {
 		r_px[1] = px[1];
 		r_px[2] = px[2];
 		r_px[3] = px[3];
+		return;
+	}
+	if (s.type == TYPE_CELL_NOISE) {
+		const int scale = std::max(1, int(param(c, 0) + 0.5f));
+		const int mode = int(param(c, 1) + 0.5f);
+		const float jitter = param(c, 2);
+		const float edge_width = maxf(param(c, 3), 1e-3f);
+		const int octaves = std::max(1, int(param(c, 4) + 0.5f));
+		const float contrast = param(c, 5);
+		const float threshold = param(c, 6);
+		float value = 0.0f;
+		float amp = 1.0f;
+		float norm = 0.0f;
+		int cells = scale;
+		for (int i = 0; i < octaves; i++) {
+			// Animation drifts each layer on a small circle; a uniform shift
+			// keeps the pattern periodic.
+			const float drift = c.t * (0.6f + 0.25f * float(i));
+			const float px = u * float(cells) + std::sin(drift) * 0.25f;
+			const float py = v * float(cells) + std::cos(drift * 0.9f) * 0.25f;
+			float f1, f2, cell;
+			voronoi2(px, py, s.seed + uint32_t(i) * 131u, jitter, tile ? cells : 0, f1, f2, cell);
+			float layer;
+			if (mode == 0) {
+				layer = saturate(f1 / 0.75f);
+			} else if (mode == 1) {
+				layer = 1.0f - smoothstepf(0.0f, edge_width * 2.0f, f2 - f1);
+			} else {
+				layer = cell;
+			}
+			value += layer * amp;
+			norm += amp;
+			amp *= 0.5f;
+			cells *= 2;
+		}
+		value = saturate((value / norm - 0.5f) * contrast + 0.5f);
+		const float alpha = threshold > 0.0f ? smoothstepf(threshold, minf(threshold + 0.1f, 1.0f), value) : 1.0f;
+		write_flat(r_px, mix3(c.color_a, c.color_b, value), alpha, s);
+		return;
+	}
+	if (s.type == TYPE_MARBLE_NOISE) {
+		const float frequency = param(c, 0);
+		const float turbulence = param(c, 1);
+		const float sharpness = maxf(param(c, 2), 0.05f);
+		const float angle = param(c, 3) * PI / 180.0f;
+		const int octaves = std::max(1, int(param(c, 4) + 0.5f));
+		const float contrast = param(c, 5);
+		float kx = std::cos(angle) * frequency;
+		float ky = std::sin(angle) * frequency;
+		if (tile) {
+			// A seamless sine needs a whole number of cycles along U and V.
+			kx = std::round(kx);
+			ky = std::round(ky);
+			if (kx == 0.0f && ky == 0.0f) {
+				kx = 1.0f;
+			}
+		}
+		const float base = 4.0f;
+		const float n = fbm_periodic(u * base, v * base, c.t * 0.25f, octaves, 0.5f, tile ? int(base) : 0, s.seed + 11u);
+		const float phase = TAU * (kx * u + ky * v) + turbulence * n * PI;
+		float value = std::pow(saturate(1.0f - std::fabs(std::sin(phase * 0.5f))), sharpness);
+		value = saturate((value - 0.5f) * contrast + 0.5f);
+		write_flat(r_px, mix3(c.color_a, c.color_b, value), 1.0f, s);
 		return;
 	}
 	// TYPE_NOISE

@@ -289,6 +289,10 @@ void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 		}
 	}
 	Node *track = Object::cast_to<Node>(ObjectDB::get_instance(context_track));
+	if (p_id == ACTION_PASTE) {
+		emit_signal(SNAME("track_action"), track, p_id); // Track may be null.
+		return;
+	}
 	if (!track) {
 		return;
 	}
@@ -320,6 +324,12 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			emit_signal(SNAME("track_action"), selected, ACTION_DELETE);
 		} else if (code == Key::D && command && selected) {
 			emit_signal(SNAME("track_action"), selected, ACTION_DUPLICATE);
+		} else if (code == Key::C && command && selected) {
+			emit_signal(SNAME("track_action"), selected, ACTION_COPY);
+		} else if (code == Key::X && command && selected) {
+			emit_signal(SNAME("track_action"), selected, ACTION_CUT);
+		} else if (code == Key::V && command) {
+			emit_signal(SNAME("track_action"), selected, ACTION_PASTE);
 		} else if (code == Key::H && selected) {
 			emit_signal(SNAME("track_action"), selected, ACTION_TOGGLE_VISIBLE);
 		} else if (code == Key::S && !command && selected) {
@@ -405,6 +415,10 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 				context_track = track->get_instance_id();
 				context_menu->clear();
 				context_menu->add_item(TTR("Duplicate"), ACTION_DUPLICATE, KeyModifierMask::CMD_OR_CTRL | Key::D);
+				context_menu->add_item(TTR("Copy"), ACTION_COPY, KeyModifierMask::CMD_OR_CTRL | Key::C);
+				context_menu->add_item(TTR("Cut"), ACTION_CUT, KeyModifierMask::CMD_OR_CTRL | Key::X);
+				context_menu->add_item(TTR("Paste"), ACTION_PASTE, KeyModifierMask::CMD_OR_CTRL | Key::V);
+				context_menu->set_item_disabled(-1, !can_paste);
 				context_menu->add_item(TTR("Rename"), ACTION_RENAME);
 				context_menu->add_separator();
 				context_menu->add_check_item(TTR("Visible"), ACTION_TOGGLE_VISIBLE, Key::H);
@@ -414,6 +428,14 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 				context_menu->add_item(TTR("Reset Timing"), ACTION_RESET_TIMING);
 				context_menu->add_separator();
 				context_menu->add_item(TTR("Delete"), ACTION_DELETE, Key::KEY_DELETE);
+				context_menu->set_position(get_screen_position() + pos);
+				context_menu->reset_size();
+				context_menu->popup();
+			} else if (can_paste && pos.x < get_size().x && !_in_ruler(pos.y)) {
+				// Empty area: paste the copied tracks into the effect.
+				context_track = ObjectID();
+				context_menu->clear();
+				context_menu->add_item(TTR("Paste"), ACTION_PASTE, KeyModifierMask::CMD_OR_CTRL | Key::V);
 				context_menu->set_position(get_screen_position() + pos);
 				context_menu->reset_size();
 				context_menu->popup();

@@ -44,6 +44,9 @@ enum TypeID {
 	// Soft particle smoke: analytic 2D, alpha fades smoothly from the centre
 	// so overlapping particles merge into one volume.
 	TYPE_SOFT_SMOKE = 20,
+	// Tileable patterns (Noise & Patterns).
+	TYPE_CELL_NOISE = 21, // Worley / Voronoi cells, edges or flat cells.
+	TYPE_MARBLE_NOISE = 22, // Turbulent sine veins.
 };
 
 static constexpr int MAX_PARAMS = 10;

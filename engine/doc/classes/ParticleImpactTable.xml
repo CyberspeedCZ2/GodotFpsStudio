@@ -36,6 +36,20 @@
 				Returns the surface name of [param collider], or an empty [StringName] when nothing matches.
 			</description>
 		</method>
+		<method name="get_surface_scale" qualifiers="const">
+			<return type="float" />
+			<param index="0" name="surface" type="StringName" />
+			<description>
+				Returns the scale [param surface]'s effect is played with: its entry in [member scales], or [code]1.0[/code].
+			</description>
+		</method>
+		<method name="get_surface_tint" qualifiers="const">
+			<return type="Color" />
+			<param index="0" name="surface" type="StringName" />
+			<description>
+				Returns the tint [param surface]'s effect is played with: its entry in [member tints], or white.
+			</description>
+		</method>
 		<method name="set_effect">
 			<return type="void" />
 			<param index="0" name="surface" type="StringName" />
@@ -50,14 +64,18 @@
 			<param index="1" name="position" type="Vector3" />
 			<param index="2" name="normal" type="Vector3" />
 			<param index="3" name="collider" type="Object" default="null" />
+			<param index="4" name="tint" type="Color" default="Color(1, 1, 1, 1)" />
+			<param index="5" name="scale" type="float" default="1.0" />
 			<description>
-				Plays the effect for the surface of [param collider] under [param parent] at [param position], with +Y along [param normal] and moved [member surface_offset] off the surface. Returns the effect, or [code]null[/code] if the table has no effect for it.
+				Plays the effect for the surface of [param collider] under [param parent] at [param position], with +Y along [param normal] and moved [member surface_offset] off the surface. The effect is played with the surface's entry in [member tints] and [member scales] multiplied by [param tint] and [param scale] (see [method ParticleEffect3D.spawn]). Returns the effect, or [code]null[/code] if the table has no effect for it.
 			</description>
 		</method>
 		<method name="spawn_from_hit" qualifiers="const">
 			<return type="ParticleEffect3D" />
 			<param index="0" name="parent" type="Node" />
 			<param index="1" name="hit" type="Dictionary" />
+			<param index="2" name="tint" type="Color" default="Color(1, 1, 1, 1)" />
+			<param index="3" name="scale" type="float" default="1.0" />
 			<description>
 				Like [method spawn], using the [code]position[/code], [code]normal[/code] and [code]collider[/code] of a [method PhysicsDirectSpaceState3D.intersect_ray] result.
 			</description>
@@ -73,8 +91,14 @@
 		<member name="random_roll" type="bool" setter="set_random_roll" getter="is_random_roll" default="true">
 			If [code]true[/code], every impact is rotated randomly around the normal, so repeated bullet holes and debris do not look identical.
 		</member>
+		<member name="scales" type="Dictionary" setter="set_scales" getter="get_scales" default="{}">
+			Optional surface name to [float]: the [member ParticleEffect3D.effect_scale] multiplier used for that surface's effect.
+		</member>
 		<member name="surface_offset" type="float" setter="set_surface_offset" getter="get_surface_offset" default="0.01">
 			Distance the effect is moved off the surface along the normal.
+		</member>
+		<member name="tints" type="Dictionary" setter="set_tints" getter="get_tints" default="{}">
+			Optional surface name to [Color]: the [member ParticleEffect3D.tint] multiplier used for that surface's effect, for example one blood effect tinted yellow for an [code]"insect"[/code] surface.
 		</member>
 	</members>
 </class>
