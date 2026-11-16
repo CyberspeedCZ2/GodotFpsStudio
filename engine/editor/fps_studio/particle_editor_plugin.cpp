@@ -18,6 +18,7 @@
 #include "core/input/input_event.h"
 #include "core/io/config_file.h"
 #include "core/io/dir_access.h"
+#include "core/version.h"
 #include "core/io/file_access.h"
 #include "core/io/image.h"
 #include "core/io/resource_loader.h"
@@ -709,9 +710,9 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 		}
 		TreeItem *item = effects_tree->create_item(category_item);
 		item->set_text(0, name);
-		const String thumbnail_key = vformat("preset:%d", preset);
-		if (thumbnails.has(thumbnail_key)) {
-			item->set_icon(0, thumbnails[thumbnail_key]);
+		const Ref<Texture2D> thumbnail = _get_preset_thumbnail(preset);
+		if (thumbnail.is_valid()) {
+			item->set_icon(0, thumbnail);
 			item->set_icon_max_width(0, int(40 * EDSCALE));
 		}
 		item->set_tooltip_text(0, FPSParticlePresets::get_preset_description(preset) + "\n" + TTR("Double-click to create a new effect from this preset."));
@@ -2592,6 +2593,36 @@ static String get_effect_thumbnail_cache_path(const String &p_path) {
 	return EditorPaths::get_singleton()->get_cache_dir().path_join("resthumb-" + cache_base + ".png");
 }
 
+// Preset thumbnails are cached on disk per project (presets reuse the
+// project's baked textures), keyed by the editor build so a new build with
+// changed presets renders them again once, in the background.
+static constexpr int PRESET_THUMBNAIL_VERSION = 2;
+
+static String get_preset_thumbnail_cache_path(int p_preset) {
+	const String build = String(GODOT_VERSION_HASH).left(12) + "_" + itos(PRESET_THUMBNAIL_VERSION);
+	return EditorPaths::get_singleton()->get_project_data_dir().path_join("fps_particle_thumbnails").path_join(vformat("preset_%d_%s.png", p_preset, build));
+}
+
+static AABB get_emitter_framing_bounds(Node *p_emitter, const AABB &p_visibility);
+
+Ref<Texture2D> FPSStudioParticleEditorPlugin::_get_preset_thumbnail(int p_preset) {
+	const String key = vformat("preset:%d", p_preset);
+	if (thumbnails.has(key)) {
+		return thumbnails[key];
+	}
+	const String cache_path = get_preset_thumbnail_cache_path(p_preset);
+	if (!FileAccess::exists(cache_path)) {
+		return Ref<Texture2D>();
+	}
+	Ref<Image> image = Image::load_from_file(cache_path);
+	if (image.is_null() || image->is_empty()) {
+		return Ref<Texture2D>();
+	}
+	const Ref<Texture2D> texture = ImageTexture::create_from_image(image);
+	thumbnails[key] = texture;
+	return texture;
+}
+
 static void strip_thumbnail_nodes(Node *p_node) {
 	for (int i = p_node->get_child_count() - 1; i >= 0; i--) {
 		Node *child = p_node->get_child(i);
@@ -2682,9 +2713,8 @@ Ref<Texture2D> FPSStudioParticleEditorPlugin::_get_cached_effect_thumbnail(const
 
 void FPSStudioParticleEditorPlugin::_queue_library_thumbnails() {
 	for (int preset : FPSParticlePresets::get_presets_in_display_order()) {
-		const String key = vformat("preset:%d", preset);
-		if (!thumbnails.has(key)) {
-			_queue_thumbnail(key, String(), preset, false);
+		if (_get_preset_thumbnail(preset).is_null()) {
+			_queue_thumbnail(vformat("preset:%d", preset), String(), preset, false);
 		}
 	}
 	for (const String &path : recent_effect_paths) {
@@ -2757,6 +2787,7 @@ bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_j
 	double duration = 0.1;
 	double max_start = 0.0;
 	double max_lifetime = 0.1;
+	double particle_start = 1e20;
 	bool infinite = false;
 	AABB bounds;
 	bool has_bounds = false;
@@ -2775,17 +2806,22 @@ bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_j
 		}
 		if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(track)) {
 			max_lifetime = MAX(max_lifetime, gpu->get_lifetime());
-			// Visibility boxes are generous; the inner part frames better.
-			AABB box = gpu->get_visibility_aabb();
-			box = AABB(box.get_center() - box.size * 0.3, box.size * 0.6);
-			box = gpu->get_global_transform().xform(box);
+			particle_start = MIN(particle_start, start);
+			// Where the particles are, not the generous visibility box.
+			const AABB box = gpu->get_global_transform().xform(get_emitter_framing_bounds(gpu, gpu->get_visibility_aabb()));
 			bounds = has_bounds ? bounds.merge(box) : box;
 			has_bounds = true;
 		} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(track)) {
 			max_lifetime = MAX(max_lifetime, cpu->get_lifetime());
+			particle_start = MIN(particle_start, start);
 		}
 	}
-	const double time = infinite ? max_start + max_lifetime * 0.9 : duration * 0.33;
+	// Long events (a 12 s bullet hole decal) must not push the shot past the
+	// particles: take it early in the particles' life.
+	double time = infinite ? max_start + max_lifetime * 0.9 : duration * 0.33;
+	if (!infinite && particle_start < duration) {
+		time = MIN(time, particle_start + max_lifetime * 0.3);
+	}
 	if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(effect)) {
 		particle_effect->seek(time);
 	}
@@ -2815,6 +2851,11 @@ void FPSStudioParticleEditorPlugin::_finish_thumbnail_job() {
 			thumbnail_mtimes[thumbnail_current.key] = FileAccess::get_modified_time(thumbnail_current.path);
 		}
 		_set_library_icon(thumbnail_current.key, texture);
+		if (thumbnail_current.preset >= 0) {
+			const String cache_path = get_preset_thumbnail_cache_path(thumbnail_current.preset);
+			DirAccess::make_dir_recursive_absolute(cache_path.get_base_dir());
+			image->save_png(cache_path);
+		}
 		if (thumbnail_current.write_cache && !thumbnail_current.path.is_empty()) {
 			// FileSystem dock / Content Browser thumbnail, like the editor writes
 			// for a scene saved from the 3D view.
@@ -2842,6 +2883,12 @@ void FPSStudioParticleEditorPlugin::_process_thumbnails() {
 	// The Library asks for its thumbnails once it is actually on screen.
 	const bool library_visible = effects_tree && effects_tree->is_visible_in_tree();
 	if (library_visible && !library_thumbnails_visible) {
+		_queue_library_thumbnails();
+	}
+	// Missing thumbnails render in the background as soon as the workspace is
+	// open, so the Library menu has them before it is first opened.
+	if (!library_thumbnails_prepared && screen && screen->is_visible_in_tree()) {
+		library_thumbnails_prepared = true;
 		_queue_library_thumbnails();
 	}
 	library_thumbnails_visible = library_visible;
@@ -3389,9 +3436,9 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 		}
 		popup->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_LIBRARY_PRESET_BASE + preset);
 		popup->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));
-		const String thumbnail_key = vformat("preset:%d", preset);
-		if (thumbnails.has(thumbnail_key)) {
-			popup->set_item_icon(-1, thumbnails[thumbnail_key]);
+		const Ref<Texture2D> thumbnail = _get_preset_thumbnail(preset);
+		if (thumbnail.is_valid()) {
+			popup->set_item_icon(-1, thumbnail);
 			popup->set_item_icon_max_width(-1, int(32 * EDSCALE));
 		}
 	}

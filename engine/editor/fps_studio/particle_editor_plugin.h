@@ -429,10 +429,12 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Vector<ThumbnailJob> thumbnail_queue;
 	HashSet<String> thumbnail_queued;
 	HashMap<String, Ref<Texture2D>> thumbnails;
+	Ref<Texture2D> _get_preset_thumbnail(int p_preset);
 	HashMap<String, uint64_t> thumbnail_mtimes;
 	ThumbnailJob thumbnail_current;
 	int thumbnail_frames = -1; // -1 = idle.
 	bool library_thumbnails_visible = false;
+	bool library_thumbnails_prepared = false;
 	void _ensure_thumbnail_viewport();
 	void _queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache);
 	void _queue_library_thumbnails();

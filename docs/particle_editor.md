@@ -16,7 +16,7 @@ Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 
 - **Horní lišta dokumentu:** název efektu (dvojklik přejmenuje), stav uložení, **New**, **Open...**, **Save** a **Add to Level**.
 - **Vlevo:** seznam stop (emitory i události) s tlačítky **Add**, **Duplicate** a **Remove**. Každá stopa má barevný proužek ve stejné barvě jako v časové ose a vpravo typ s ikonou (např. `GPU · 14` = GPU emitor se 14 částicemi, `Light`, `Shake`, `Sound`, `Decal`).
-- **Menu Library** v horní liště vytvoří efekt z **FPS presetu** nebo znovu otevře nedávný efekt. Vyhledávací panel **Effect Library** pod seznamem stop je ve výchozím stavu skrytý, aby zbylo místo; zapne se v Library → Show Library Panel nebo v Layout.
+- **Menu Library** v horní liště vytvoří efekt z **FPS presetu** nebo znovu otevře nedávný efekt. Vyhledávací panel **Effect Library** pod seznamem stop je ve výchozím stavu skrytý, aby zbylo místo; zapne se v Library → Show Library Panel nebo v Layout. Náhledové obrázky presetů se vykreslí na pozadí hned po otevření pracovní obrazovky Particle a uloží se do `.godot/editor/fps_particle_thumbnails/` (podle buildu editoru), takže při dalším spuštění jsou v menu hned. Snímek se fotí na začátku života částic, ne podle dlouhých událostí jako 12s decal.
 - **Uprostřed:** 3D náhled s menu **View** a transportem (Play/Pause, Restart, čas, statistiky, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
 - **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
 
