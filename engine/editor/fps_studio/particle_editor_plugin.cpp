@@ -17,6 +17,8 @@
 
 #include "core/input/input_event.h"
 #include "core/io/config_file.h"
+#include "scene/audio/audio_stream_player.h"
+#include "scene/main/canvas_layer.h"
 #include "core/io/dir_access.h"
 #include "core/version.h"
 #include "core/io/file_access.h"
@@ -93,6 +95,10 @@
 #include "scene/gui/popup.h"
 #include "editor/docks/filesystem_dock.h"
 #include "editor/inspector/editor_resource_tooltip_plugins.h"
+#include "core/io/config_file.h"
+#include "scene/audio/audio_stream_player.h"
+#include "scene/main/canvas_layer.h"
+#include "scene/resources/3d/primitive_meshes.h"
 #include "scene/gui/subviewport_container.h"
 #include "scene/gui/tab_container.h"
 #include "scene/gui/texture_rect.h"
@@ -2749,7 +2755,71 @@ void FPSStudioParticleEditorPlugin::_ensure_thumbnail_viewport() {
 	thumbnail_camera = create_library_preview_world(thumbnail_root);
 }
 
-void FPSStudioParticleEditorPlugin::_queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache) {
+// What the Content Browser can preview, and how.
+enum AssetPreviewKind {
+	ASSET_PREVIEW_NONE,
+	ASSET_PREVIEW_EFFECT, // ParticleEffect3D scene: plays in a loop.
+	ASSET_PREVIEW_SCENE, // 3D scene or imported model: turntable (old particle effects loop instead).
+	ASSET_PREVIEW_LEVEL, // Level: static view of the whole level.
+	ASSET_PREVIEW_MATERIAL, // 3D material on a turning sphere.
+	ASSET_PREVIEW_SHADER, // Spatial shader on a turning sphere.
+};
+
+// Bump to render every Content Browser thumbnail again.
+static constexpr int ASSET_THUMBNAIL_VERSION = 1;
+
+static bool is_level_scene_path(const String &p_path) {
+	const String lower = p_path.to_lower();
+	return lower.contains("/levels/") || lower.get_file().contains("level");
+}
+
+// Reads only file text, so the whole project can be classified without
+// loading scenes.
+static int get_asset_preview_kind(const String &p_path, const String &p_type) {
+	const String ext = p_path.get_extension().to_lower();
+	if (p_type == "PackedScene") {
+		if (ext == "tscn") {
+			const String text = FileAccess::get_file_as_string(p_path);
+			const int node = text.find("\n[node ");
+			if (node < 0) {
+				return ASSET_PREVIEW_NONE;
+			}
+			const int end = text.find("]", node);
+			const String header = end > node ? text.substr(node, end - node) : String();
+			String root_type;
+			const int type_at = header.find("type=\"");
+			if (type_at >= 0) {
+				root_type = header.substr(type_at + 6, header.find("\"", type_at + 6) - type_at - 6);
+			}
+			if (root_type == "ParticleEffect3D") {
+				return ASSET_PREVIEW_EFFECT;
+			}
+			// An inherited / instanced root has no type: guess from its nodes.
+			const bool is_3d = root_type.is_empty() ? text.contains("3D\"") : ClassDB::is_parent_class(root_type, "Node3D");
+			if (!is_3d) {
+				return ASSET_PREVIEW_NONE;
+			}
+			return is_level_scene_path(p_path) ? ASSET_PREVIEW_LEVEL : ASSET_PREVIEW_SCENE;
+		}
+		if (ext == "glb" || ext == "gltf" || ext == "fbx" || ext == "blend" || ext == "dae" || ext == "obj") {
+			return ASSET_PREVIEW_SCENE; // Imported 3D model.
+		}
+		return ASSET_PREVIEW_NONE;
+	}
+	if (ClassDB::is_parent_class(p_type, "BaseMaterial3D") || p_type == "ShaderMaterial") {
+		return ASSET_PREVIEW_MATERIAL;
+	}
+	if (p_type == "Shader" && ext == "gdshader") {
+		const String text = FileAccess::get_file_as_string(p_path);
+		const int at = text.find("shader_type");
+		if (at >= 0 && text.substr(at, 40).replace(" ", "").replace("\t", "").begins_with("shader_typespatial")) {
+			return ASSET_PREVIEW_SHADER;
+		}
+	}
+	return ASSET_PREVIEW_NONE;
+}
+
+void FPSStudioParticleEditorPlugin::_queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache, int p_kind) {
 	if (thumbnail_queued.has(p_key) || (thumbnail_frames >= 0 && thumbnail_current.key == p_key)) {
 		return;
 	}
@@ -2761,6 +2831,7 @@ void FPSStudioParticleEditorPlugin::_queue_thumbnail(const String &p_key, const 
 	job.path = p_path;
 	job.preset = p_preset;
 	job.write_cache = p_write_cache;
+	job.kind = p_kind;
 	thumbnail_queue.push_back(job);
 	thumbnail_queued.insert(p_key);
 }
@@ -2856,7 +2927,27 @@ Node *FPSStudioParticleEditorPlugin::_instantiate_library_effect(const String &p
 	return effect;
 }
 
+static void set_preview_particles_preprocess(Node *p_node, double p_ratio);
+static void frame_preview_subject(Node *p_subject, Camera3D *p_camera, int p_kind, AABB &r_bounds, double &r_play_length, bool &r_has_particles);
+
 bool FPSStudioParticleEditorPlugin::_start_thumbnail_job(const ThumbnailJob &p_job) {
+	if (p_job.preset < 0 && p_job.kind != ASSET_PREVIEW_NONE && p_job.kind != ASSET_PREVIEW_EFFECT) {
+		Node *subject = _instantiate_preview_subject(p_job.path, p_job.kind);
+		if (!subject) {
+			return false;
+		}
+		// Particles of old effects: show them mid-way through their life.
+		set_preview_particles_preprocess(subject, 0.35);
+		_ensure_thumbnail_viewport();
+		thumbnail_root->add_child(subject);
+		thumbnail_effect_id = subject->get_instance_id();
+		AABB bounds;
+		double play_length = 0.0;
+		bool has_particles = false;
+		frame_preview_subject(subject, thumbnail_camera, p_job.kind, bounds, play_length, has_particles);
+		thumbnail_viewport->set_update_mode(SubViewport::UPDATE_ALWAYS);
+		return true;
+	}
 	Node *effect = _instantiate_library_effect(p_job.preset >= 0 ? vformat("preset:%d", p_job.preset) : p_job.path);
 	if (!effect) {
 		return false;
@@ -3047,67 +3138,300 @@ void FPSStudioParticleEditorPlugin::_hide_hover_preview() {
 }
 
 // ---------------------------------------------------------------------------
-// Content Browser (FileSystem dock): thumbnails and an animated tooltip for
-// particle effect scenes.
+// Content Browser (FileSystem dock): thumbnails and animated tooltips for 3D
+// scenes, imported models, particle effects (new and old), levels, materials
+// and spatial shaders.
 
-// True for a text scene whose root node is a ParticleEffect3D. Reads only the
-// file text, so the whole project can be checked without loading scenes.
-static bool is_particle_effect_scene_file(const String &p_path) {
-	if (p_path.get_extension().to_lower() != "tscn") {
-		return false;
+// Removes what must not run or show in a preview: cameras (they would take
+// over the preview camera), the scene's own environment, sound, UI, shake and
+// damage. Scripts are cleared separately.
+static void prepare_scene_for_preview(Node *p_node) {
+	for (int i = p_node->get_child_count() - 1; i >= 0; i--) {
+		Node *child = p_node->get_child(i);
+		if (Object::cast_to<Camera3D>(child) || Object::cast_to<WorldEnvironment>(child) || Object::cast_to<CanvasItem>(child) || Object::cast_to<CanvasLayer>(child) ||
+				Object::cast_to<Viewport>(child) || Object::cast_to<AudioStreamPlayer>(child) || Object::cast_to<AudioStreamPlayer3D>(child) ||
+				child->is_class("CameraShake3D") || child->is_class("RadialDamage3D")) {
+			p_node->remove_child(child);
+			memdelete(child);
+			continue;
+		}
+		prepare_scene_for_preview(child);
 	}
-	const String text = FileAccess::get_file_as_string(p_path);
-	const int node = text.find("\n[node ");
-	if (node < 0) {
-		return false;
-	}
-	const int end = text.find("]", node);
-	return end > node && text.substr(node, end - node).contains("type=\"ParticleEffect3D\"");
 }
 
-// Tooltip body: plays the effect in a loop while the tooltip is open.
-class FPSParticleEffectTooltipPreview : public SubViewportContainer {
-	GDCLASS(FPSParticleEffectTooltipPreview, SubViewportContainer);
+// Old particle effects start their emitters from scripts; a preview starts
+// them itself.
+static void start_preview_particles(Node *p_node) {
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node)) {
+		gpu->set_emitting(true);
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
+		cpu->set_emitting(true);
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		start_preview_particles(p_node->get_child(i));
+	}
+}
+
+static void restart_preview_particles(Node *p_node) {
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node)) {
+		gpu->restart();
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
+		cpu->restart();
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		restart_preview_particles(p_node->get_child(i));
+	}
+}
+
+static void set_preview_particles_preprocess(Node *p_node, double p_ratio) {
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node)) {
+		gpu->set_pre_process_time(gpu->get_lifetime() * p_ratio);
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
+		cpu->set_pre_process_time(cpu->get_lifetime() * p_ratio);
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		set_preview_particles_preprocess(p_node->get_child(i), p_ratio);
+	}
+}
+
+static int count_preview_geometry(Node *p_node) {
+	int count = (Object::cast_to<GeometryInstance3D>(p_node) && !Object::cast_to<GPUParticles3D>(p_node) && !Object::cast_to<CPUParticles3D>(p_node)) ? 1 : 0;
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		count += count_preview_geometry(p_node->get_child(i));
+	}
+	return count;
+}
+
+// First Decal below p_node and its transform relative to p_node.
+static Decal *find_preview_decal(Node *p_node, Transform3D &r_transform, const Transform3D &p_parent = Transform3D()) {
+	Transform3D transform = p_parent;
+	if (Node3D *node_3d = Object::cast_to<Node3D>(p_node)) {
+		transform = p_parent * node_3d->get_transform();
+	}
+	if (Decal *decal = Object::cast_to<Decal>(p_node)) {
+		r_transform = transform;
+		return decal;
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		if (Decal *decal = find_preview_decal(p_node->get_child(i), r_transform, transform)) {
+			return decal;
+		}
+	}
+	return nullptr;
+}
+
+// Bounds of what is visible (meshes, particles where they fly, decals) and
+// the longest particle lifetime.
+static void collect_preview_bounds(Node *p_node, AABB &r_bounds, bool &r_has_bounds, double &r_longest_particles) {
+	AABB box;
+	bool has_box = false;
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_node)) {
+		r_longest_particles = MAX(r_longest_particles, gpu->get_lifetime());
+		if (gpu->is_visible_in_tree()) {
+			box = gpu->get_global_transform().xform(get_emitter_framing_bounds(gpu, gpu->get_visibility_aabb()));
+			has_box = true;
+		}
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
+		r_longest_particles = MAX(r_longest_particles, cpu->get_lifetime());
+		if (cpu->is_visible_in_tree()) {
+			box = cpu->get_global_transform().xform(AABB(Vector3(-0.5, -0.5, -0.5), Vector3(1, 1, 1)));
+			has_box = true;
+		}
+	} else if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(p_node)) {
+		const AABB local = geometry->get_aabb();
+		if (geometry->is_visible_in_tree() && local.size.length_squared() > 1e-8) {
+			box = geometry->get_global_transform().xform(local);
+			has_box = true;
+		}
+	} else if (Decal *decal = Object::cast_to<Decal>(p_node)) {
+		box = decal->get_global_transform().xform(AABB(-decal->get_size() * 0.5, decal->get_size()));
+		has_box = true;
+	}
+	if (has_box) {
+		r_bounds = r_has_bounds ? r_bounds.merge(box) : box;
+		r_has_bounds = true;
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		collect_preview_bounds(p_node->get_child(i), r_bounds, r_has_bounds, r_longest_particles);
+	}
+}
+
+// Frames a Content Browser subject (in the tree). r_play_length > 0 when it
+// has particles to replay.
+static void frame_preview_subject(Node *p_subject, Camera3D *p_camera, int p_kind, AABB &r_bounds, double &r_play_length, bool &r_has_particles) {
+	bool has_bounds = false;
+	double longest = 0.0;
+	collect_preview_bounds(p_subject, r_bounds, has_bounds, longest);
+	if (!has_bounds) {
+		r_bounds = AABB(Vector3(-0.5, -0.5, -0.5), Vector3(1, 1, 1));
+	}
+	r_has_particles = longest > 0.0;
+	r_play_length = r_has_particles ? CLAMP(longest + 0.4, 0.8, 5.0) : 0.0;
+	// Levels from higher up, objects from a three-quarter view.
+	const Vector3 direction = (p_kind == ASSET_PREVIEW_LEVEL ? Vector3(0.7, 1.0, 1.0) : Vector3(0.75, 0.45, 1.0)).normalized();
+	const real_t radius = MAX(real_t(0.01), r_bounds.size.length() * 0.5);
+	const real_t distance = radius / Math::sin(Math::deg_to_rad(real_t(p_camera->get_fov()) * 0.5)) * 0.95;
+	const Vector3 center = r_bounds.get_center();
+	p_camera->look_at_from_position(center + direction * distance, center, Vector3(0, 1, 0));
+	p_camera->set_near(MAX(real_t(0.002), (distance - radius) * 0.5));
+	p_camera->set_far(distance + radius * 4.0 + 10.0);
+}
+
+Node *FPSStudioParticleEditorPlugin::_instantiate_preview_subject(const String &p_path, int p_kind) {
+	if (p_kind == ASSET_PREVIEW_EFFECT) {
+		return _instantiate_library_effect(p_path);
+	}
+	if (p_kind == ASSET_PREVIEW_SCENE || p_kind == ASSET_PREVIEW_LEVEL) {
+		Ref<PackedScene> packed_scene = ResourceLoader::load(p_path, "PackedScene");
+		if (packed_scene.is_null() || !packed_scene->can_instantiate()) {
+			return nullptr;
+		}
+		Node *scene = packed_scene->instantiate();
+		if (!scene) {
+			return nullptr;
+		}
+		if (!Object::cast_to<Node3D>(scene)) {
+			memdelete(scene);
+			return nullptr;
+		}
+		clear_preview_scripts(scene);
+		prepare_scene_for_preview(scene);
+		start_preview_particles(scene);
+		Node3D *wrapper = memnew(Node3D);
+		wrapper->add_child(scene);
+		// A decal needs a surface to project onto.
+		Transform3D decal_transform;
+		Decal *decal = count_preview_geometry(scene) == 0 ? find_preview_decal(scene, decal_transform) : nullptr;
+		if (decal) {
+			Ref<PlaneMesh> plane;
+			plane.instantiate();
+			const real_t extent = MAX(decal->get_size().x, decal->get_size().z) * 2.5;
+			plane->set_size(Vector2(extent, extent));
+			Ref<StandardMaterial3D> ground;
+			ground.instantiate();
+			ground->set_albedo(Color(0.42, 0.42, 0.42));
+			plane->set_material(ground);
+			MeshInstance3D *surface = memnew(MeshInstance3D);
+			surface->set_mesh(plane);
+			// The decal projects along its -Y onto the plane through its centre.
+			surface->set_transform(Transform3D(decal_transform.basis.orthonormalized(), decal_transform.origin));
+			wrapper->add_child(surface);
+		}
+		return wrapper;
+	}
+	if (p_kind == ASSET_PREVIEW_MATERIAL || p_kind == ASSET_PREVIEW_SHADER) {
+		Ref<Material> material;
+		if (p_kind == ASSET_PREVIEW_SHADER) {
+			Ref<Shader> shader = ResourceLoader::load(p_path, "Shader");
+			if (shader.is_null() || shader->get_mode() != Shader::MODE_SPATIAL) {
+				return nullptr;
+			}
+			Ref<ShaderMaterial> shader_material;
+			shader_material.instantiate();
+			shader_material->set_shader(shader);
+			material = shader_material;
+		} else {
+			material = ResourceLoader::load(p_path, "Material");
+			const ShaderMaterial *shader_material = Object::cast_to<ShaderMaterial>(material.ptr());
+			if (material.is_null() || (shader_material && (shader_material->get_shader().is_null() || shader_material->get_shader()->get_mode() != Shader::MODE_SPATIAL))) {
+				return nullptr;
+			}
+		}
+		Ref<SphereMesh> sphere;
+		sphere.instantiate();
+		sphere->set_radius(0.5);
+		sphere->set_height(1.0);
+		sphere->set_radial_segments(48);
+		sphere->set_rings(24);
+		MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+		mesh_instance->set_mesh(sphere);
+		mesh_instance->set_material_override(material);
+		Node3D *wrapper = memnew(Node3D);
+		wrapper->add_child(mesh_instance);
+		return wrapper;
+	}
+	return nullptr;
+}
+
+// Tooltip body: the asset live in its own little world. Models and materials
+// turn slowly, effects replay, levels stand still.
+class FPSAssetTooltipPreview : public SubViewportContainer {
+	GDCLASS(FPSAssetTooltipPreview, SubViewportContainer);
 
 	ObjectID plugin_id;
 	String path;
+	int kind = ASSET_PREVIEW_NONE;
 	SubViewport *viewport = nullptr;
+	Node3D *world_root = nullptr;
 	Camera3D *camera = nullptr;
-	ObjectID effect_id;
+	ObjectID subject_id;
+	bool turn = false;
 	double play_time = 0.0;
-	double play_length = 1.0;
+	double play_length = 0.0;
 
 protected:
 	void _notification(int p_what) {
 		if (p_what == NOTIFICATION_READY) {
 			FPSStudioParticleEditorPlugin *plugin = Object::cast_to<FPSStudioParticleEditorPlugin>(ObjectDB::get_instance(plugin_id));
-			Node *effect = plugin ? plugin->instantiate_library_effect(path) : nullptr;
-			if (!effect) {
+			Node *subject = plugin ? plugin->instantiate_preview_subject(path, kind) : nullptr;
+			if (!subject) {
 				return;
 			}
-			viewport->get_child(0)->add_child(effect);
-			effect_id = effect->get_instance_id();
-			double shot_time = 0.0;
-			frame_library_effect(effect, camera, shot_time, play_length);
-			if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(effect)) {
-				particle_effect->seek(0.0);
+			world_root->add_child(subject);
+			subject_id = subject->get_instance_id();
+			if (kind == ASSET_PREVIEW_EFFECT) {
+				double shot_time = 0.0;
+				frame_library_effect(subject, camera, shot_time, play_length);
+				if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(subject)) {
+					effect->seek(0.0);
+				}
+			} else {
+				AABB bounds;
+				bool has_particles = false;
+				frame_preview_subject(subject, camera, kind, bounds, play_length, has_particles);
+				// Turn around the centre of the bounds (the wrapper is the pivot).
+				turn = kind != ASSET_PREVIEW_LEVEL && !has_particles;
+				if (Node3D *wrapper = Object::cast_to<Node3D>(subject)) {
+					const Vector3 center = bounds.get_center();
+					for (int i = 0; i < wrapper->get_child_count(); i++) {
+						if (Node3D *child = Object::cast_to<Node3D>(wrapper->get_child(i))) {
+							child->set_position(child->get_position() - center);
+						}
+					}
+					wrapper->set_position(center);
+				}
 			}
-			set_process(true);
+			set_process(turn || play_length > 0.0);
 		} else if (p_what == NOTIFICATION_PROCESS) {
-			play_time += get_process_delta_time();
-			if (play_time >= play_length) {
-				play_time = 0.0;
-				if (ParticleEffect3D *particle_effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(effect_id))) {
-					particle_effect->seek(0.0);
+			const double delta = get_process_delta_time();
+			Node *subject = Object::cast_to<Node>(ObjectDB::get_instance(subject_id));
+			if (!subject) {
+				return;
+			}
+			if (turn) {
+				if (Node3D *wrapper = Object::cast_to<Node3D>(subject)) {
+					wrapper->rotate_y(delta * 0.6);
+				}
+			}
+			if (play_length > 0.0) {
+				play_time += delta;
+				if (play_time >= play_length) {
+					play_time = 0.0;
+					if (ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(subject)) {
+						effect->seek(0.0);
+					} else {
+						restart_preview_particles(subject);
+					}
 				}
 			}
 		}
 	}
 
 public:
-	FPSParticleEffectTooltipPreview(ObjectID p_plugin, const String &p_path) {
+	FPSAssetTooltipPreview(ObjectID p_plugin, const String &p_path, int p_kind) {
 		plugin_id = p_plugin;
 		path = p_path;
+		kind = p_kind;
 		set_stretch(true);
 		const int size = int(EditorResourcePreview::TOOLTIP_PREVIEW_SIZE * EDSCALE);
 		set_custom_minimum_size(Size2(size, size * 5 / 6));
@@ -3115,72 +3439,129 @@ public:
 		viewport->set_use_own_world_3d(true);
 		viewport->set_msaa_3d(Viewport::MSAA_4X);
 		add_child(viewport);
-		Node3D *root = memnew(Node3D);
-		viewport->add_child(root);
-		camera = create_library_preview_world(root);
+		world_root = memnew(Node3D);
+		viewport->add_child(world_root);
+		camera = create_library_preview_world(world_root);
 	}
 };
 
-class FPSParticleEffectTooltipPlugin : public EditorResourceTooltipPlugin {
-	GDCLASS(FPSParticleEffectTooltipPlugin, EditorResourceTooltipPlugin);
+class FPSAssetTooltipPlugin : public EditorResourceTooltipPlugin {
+	GDCLASS(FPSAssetTooltipPlugin, EditorResourceTooltipPlugin);
 
 public:
 	ObjectID plugin_id;
 
 	bool handles(const String &p_resource_type) const override {
-		return p_resource_type == "PackedScene";
+		return p_resource_type == "PackedScene" || p_resource_type == "Shader" || p_resource_type == "ShaderMaterial" || ClassDB::is_parent_class(p_resource_type, "BaseMaterial3D");
 	}
 
 	Control *make_tooltip_for_path(const String &p_resource_path, const Dictionary &p_metadata, Control *p_base) const override {
 		VBoxContainer *vb = Object::cast_to<VBoxContainer>(p_base);
-		if (!vb || !is_particle_effect_scene_file(p_resource_path)) {
+		const int kind = vb ? get_asset_preview_kind(p_resource_path, ResourceLoader::get_resource_type(p_resource_path)) : int(ASSET_PREVIEW_NONE);
+		if (kind == ASSET_PREVIEW_NONE) {
 			return p_base;
 		}
-		// Like the texture tooltip: a big preview above the file name.
+		// Like the texture tooltip: a big live preview above the file info.
 		vb->add_theme_constant_override("separation", 4 * EDSCALE);
-		FPSParticleEffectTooltipPreview *preview = memnew(FPSParticleEffectTooltipPreview(plugin_id, p_resource_path));
+		FPSAssetTooltipPreview *preview = memnew(FPSAssetTooltipPreview(plugin_id, p_resource_path, kind));
 		vb->add_child(preview);
 		vb->move_child(preview, 0);
 		return vb;
 	}
 };
 
-void FPSStudioParticleEditorPlugin::_scan_effect_thumbnails_dir(EditorFileSystemDirectory *p_dir) {
+// Godot has no shader thumbnails: show the one rendered by the scan.
+class FPSCachedShaderPreviewGenerator : public EditorResourcePreviewGenerator {
+	GDCLASS(FPSCachedShaderPreviewGenerator, EditorResourcePreviewGenerator);
+
+public:
+	bool handles(const String &p_type) const override {
+		return p_type == "Shader";
+	}
+	Ref<Texture2D> generate(const Ref<Resource> &p_from, const Size2 &p_size, Dictionary &p_metadata) const override {
+		return Ref<Texture2D>();
+	}
+	Ref<Texture2D> generate_from_path(const String &p_path, const Size2 &p_size, Dictionary &p_metadata) const override {
+		const String cache_path = get_effect_thumbnail_cache_path(p_path);
+		if (!FileAccess::exists(cache_path)) {
+			return Ref<Texture2D>();
+		}
+		Ref<Image> image = Image::load_from_file(cache_path);
+		if (image.is_null() || image->is_empty()) {
+			return Ref<Texture2D>();
+		}
+		if (image->get_width() != int(p_size.x)) {
+			image->resize(int(p_size.x), int(p_size.y), Image::INTERPOLATE_LANCZOS);
+		}
+		return ImageTexture::create_from_image(image);
+	}
+};
+
+// A thumbnail is current while the file (and its import settings) are
+// unchanged since it was rendered. Godot overwrites a scene's thumbnail with a
+// viewport snapshot when the scene is saved, so this is tracked separately.
+String FPSStudioParticleEditorPlugin::_get_asset_thumbnail_stamp(const String &p_path) const {
+	uint64_t stamp = FileAccess::get_modified_time(p_path);
+	if (FileAccess::exists(p_path + ".import")) {
+		stamp = MAX(stamp, FileAccess::get_modified_time(p_path + ".import"));
+	}
+	return vformat("%d:%d", int64_t(stamp), ASSET_THUMBNAIL_VERSION);
+}
+
+Ref<ConfigFile> FPSStudioParticleEditorPlugin::_get_asset_thumbnail_manifest() {
+	if (asset_thumbnail_manifest.is_null()) {
+		asset_thumbnail_manifest.instantiate();
+		asset_thumbnail_manifest->load(EditorPaths::get_singleton()->get_project_data_dir().path_join("fps_asset_thumbnails.cfg"));
+	}
+	return asset_thumbnail_manifest;
+}
+
+void FPSStudioParticleEditorPlugin::_record_asset_thumbnail(const String &p_path) {
+	Ref<ConfigFile> manifest = _get_asset_thumbnail_manifest();
+	manifest->set_value("thumbnails", p_path, _get_asset_thumbnail_stamp(p_path));
+	manifest->save(EditorPaths::get_singleton()->get_project_data_dir().path_join("fps_asset_thumbnails.cfg"));
+}
+
+void FPSStudioParticleEditorPlugin::_scan_asset_thumbnails_dir(EditorFileSystemDirectory *p_dir) {
+	Ref<ConfigFile> manifest = _get_asset_thumbnail_manifest();
 	for (int i = 0; i < p_dir->get_file_count(); i++) {
-		if (p_dir->get_file_type(i) != "PackedScene") {
-			continue;
+		const String type = p_dir->get_file_type(i);
+		if (type != "PackedScene" && type != "Shader") {
+			continue; // Materials already get Godot's sphere thumbnails.
 		}
 		const String path = p_dir->get_file_path(i);
-		const uint64_t modified = FileAccess::get_modified_time(path);
-		if (effect_scene_scan_mtimes.has(path) && effect_scene_scan_mtimes[path] == modified) {
-			continue; // Unchanged since the last check.
-		}
-		effect_scene_scan_mtimes[path] = modified;
-		if (!is_particle_effect_scene_file(path)) {
+		const String stamp = _get_asset_thumbnail_stamp(path);
+		if (String(manifest->get_value("thumbnails", path, String())) == stamp) {
 			continue;
 		}
-		const String cache_path = get_effect_thumbnail_cache_path(path);
-		if (!FileAccess::exists(cache_path) || FileAccess::get_modified_time(cache_path) < modified) {
-			_queue_thumbnail(path, path, -1, true);
+		const uint64_t modified = FileAccess::get_modified_time(path);
+		if (asset_scan_mtimes.has(path) && asset_scan_mtimes[path] == modified) {
+			continue; // Already classified as nothing to preview.
 		}
+		const int kind = get_asset_preview_kind(path, type);
+		if (kind == ASSET_PREVIEW_NONE) {
+			asset_scan_mtimes[path] = modified;
+			continue;
+		}
+		_queue_thumbnail(path, path, -1, true, kind);
 	}
 	for (int i = 0; i < p_dir->get_subdir_count(); i++) {
-		_scan_effect_thumbnails_dir(p_dir->get_subdir(i));
+		_scan_asset_thumbnails_dir(p_dir->get_subdir(i));
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_scan_effect_thumbnails() {
-	effect_thumbnail_scan_queued = false;
+void FPSStudioParticleEditorPlugin::_scan_asset_thumbnails() {
+	asset_thumbnail_scan_queued = false;
 	EditorFileSystem *file_system = EditorFileSystem::get_singleton();
 	if (file_system && file_system->get_filesystem() && !file_system->is_scanning()) {
-		_scan_effect_thumbnails_dir(file_system->get_filesystem());
+		_scan_asset_thumbnails_dir(file_system->get_filesystem());
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan() {
-	if (!effect_thumbnail_scan_queued) {
-		effect_thumbnail_scan_queued = true;
-		callable_mp(this, &FPSStudioParticleEditorPlugin::_scan_effect_thumbnails).call_deferred();
+void FPSStudioParticleEditorPlugin::_queue_asset_thumbnail_scan() {
+	if (!asset_thumbnail_scan_queued) {
+		asset_thumbnail_scan_queued = true;
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_scan_asset_thumbnails).call_deferred();
 	}
 }
 
@@ -3213,6 +3594,7 @@ void FPSStudioParticleEditorPlugin::_finish_thumbnail_job() {
 			if (cache_image->save_png(get_effect_thumbnail_cache_path(thumbnail_current.path)) == OK && EditorResourcePreview::get_singleton()) {
 				EditorResourcePreview::get_singleton()->check_for_invalidation(thumbnail_current.path);
 			}
+			_record_asset_thumbnail(thumbnail_current.path);
 		}
 	}
 	if (Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(thumbnail_effect_id))) {
@@ -5663,25 +6045,33 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		}
 	}
 	if (p_what == NOTIFICATION_ENTER_TREE) {
-		if (FileSystemDock::get_singleton() && effect_tooltip_plugin.is_null()) {
-			Ref<FPSParticleEffectTooltipPlugin> tooltip_plugin;
+		if (FileSystemDock::get_singleton() && asset_tooltip_plugin.is_null()) {
+			Ref<FPSAssetTooltipPlugin> tooltip_plugin;
 			tooltip_plugin.instantiate();
 			tooltip_plugin->plugin_id = get_instance_id();
-			effect_tooltip_plugin = tooltip_plugin;
-			FileSystemDock::get_singleton()->add_resource_tooltip_plugin(effect_tooltip_plugin);
+			asset_tooltip_plugin = tooltip_plugin;
+			FileSystemDock::get_singleton()->add_resource_tooltip_plugin(asset_tooltip_plugin);
+		}
+		if (EditorResourcePreview::get_singleton() && shader_preview_generator.is_null()) {
+			shader_preview_generator.instantiate();
+			EditorResourcePreview::get_singleton()->add_preview_generator(shader_preview_generator);
 		}
 		if (EditorFileSystem::get_singleton()) {
-			EditorFileSystem::get_singleton()->connect("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan), CONNECT_REFERENCE_COUNTED);
+			EditorFileSystem::get_singleton()->connect("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_asset_thumbnail_scan), CONNECT_REFERENCE_COUNTED);
 		}
-		_queue_effect_thumbnail_scan();
+		_queue_asset_thumbnail_scan();
 	}
 	if (p_what == NOTIFICATION_EXIT_TREE) {
-		if (effect_tooltip_plugin.is_valid() && FileSystemDock::get_singleton()) {
-			FileSystemDock::get_singleton()->remove_resource_tooltip_plugin(effect_tooltip_plugin);
+		if (asset_tooltip_plugin.is_valid() && FileSystemDock::get_singleton()) {
+			FileSystemDock::get_singleton()->remove_resource_tooltip_plugin(asset_tooltip_plugin);
 		}
-		effect_tooltip_plugin.unref();
-		if (EditorFileSystem::get_singleton() && EditorFileSystem::get_singleton()->is_connected("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan))) {
-			EditorFileSystem::get_singleton()->disconnect("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_effect_thumbnail_scan));
+		asset_tooltip_plugin.unref();
+		if (shader_preview_generator.is_valid() && EditorResourcePreview::get_singleton()) {
+			EditorResourcePreview::get_singleton()->remove_preview_generator(shader_preview_generator);
+		}
+		shader_preview_generator.unref();
+		if (EditorFileSystem::get_singleton() && EditorFileSystem::get_singleton()->is_connected("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_asset_thumbnail_scan))) {
+			EditorFileSystem::get_singleton()->disconnect("filesystem_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_queue_asset_thumbnail_scan));
 		}
 	}
 	if (p_what == NOTIFICATION_PREDELETE && texture_preview_task >= 0) {

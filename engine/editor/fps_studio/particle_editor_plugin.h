@@ -46,6 +46,8 @@ class InputEventKey;
 class Label;
 class EditorFileSystemDirectory;
 class EditorResourceTooltipPlugin;
+class EditorResourcePreviewGenerator;
+class ConfigFile;
 class PopupPanel;
 class LineEdit;
 class MenuButton;
@@ -424,6 +426,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 		String path;
 		int preset = -1;
 		bool write_cache = false; // Also write the editor's scene thumbnail (resthumb).
+		int kind = 0; // AssetPreviewKind of a Content Browser file.
 	};
 	SubViewport *thumbnail_viewport = nullptr;
 	Node3D *thumbnail_root = nullptr;
@@ -436,12 +439,18 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Node *_instantiate_library_effect(const String &p_key);
 
 	// Content Browser thumbnails and tooltip for particle effect scenes.
-	Ref<EditorResourceTooltipPlugin> effect_tooltip_plugin;
-	HashMap<String, uint64_t> effect_scene_scan_mtimes;
-	bool effect_thumbnail_scan_queued = false;
-	void _scan_effect_thumbnails_dir(EditorFileSystemDirectory *p_dir);
-	void _scan_effect_thumbnails();
-	void _queue_effect_thumbnail_scan();
+	Ref<EditorResourceTooltipPlugin> asset_tooltip_plugin;
+	Ref<EditorResourcePreviewGenerator> shader_preview_generator;
+	Ref<ConfigFile> asset_thumbnail_manifest; // Path -> file stamp of the rendered thumbnail.
+	HashMap<String, uint64_t> asset_scan_mtimes;
+	bool asset_thumbnail_scan_queued = false;
+	Node *_instantiate_preview_subject(const String &p_path, int p_kind);
+	String _get_asset_thumbnail_stamp(const String &p_path) const;
+	Ref<ConfigFile> _get_asset_thumbnail_manifest();
+	void _record_asset_thumbnail(const String &p_path);
+	void _scan_asset_thumbnails_dir(EditorFileSystemDirectory *p_dir);
+	void _scan_asset_thumbnails();
+	void _queue_asset_thumbnail_scan();
 
 	// Hover preview of a Library item (menu or panel).
 	static constexpr int HOVER_PREVIEW_SIZE = 280;
@@ -469,7 +478,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool library_thumbnails_visible = false;
 	bool library_thumbnails_prepared = false;
 	void _ensure_thumbnail_viewport();
-	void _queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache);
+	void _queue_thumbnail(const String &p_key, const String &p_path, int p_preset, bool p_write_cache, int p_kind = 0);
 	void _queue_library_thumbnails();
 	void _process_thumbnails();
 	bool _start_thumbnail_job(const ThumbnailJob &p_job);
@@ -583,7 +592,7 @@ public:
 	const Ref<Texture2D> get_plugin_icon() const override;
 
 	// A Library entry or effect path ready to preview (Content Browser tooltip).
-	Node *instantiate_library_effect(const String &p_key) { return _instantiate_library_effect(p_key); }
+	Node *instantiate_preview_subject(const String &p_path, int p_kind) { return _instantiate_preview_subject(p_path, p_kind); }
 
 	FPSStudioParticleEditorPlugin();
 };

@@ -18,7 +18,19 @@ Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 - **Vlevo:** seznam stop (emitory i události) s tlačítky **Add**, **Duplicate** a **Remove**. Každá stopa má barevný proužek ve stejné barvě jako v časové ose a vpravo typ s ikonou (např. `GPU · 14` = GPU emitor se 14 částicemi, `Light`, `Shake`, `Sound`, `Decal`).
 - **Menu Library** v horní liště vytvoří efekt z **FPS presetu** nebo znovu otevře nedávný efekt. Vyhledávací panel **Effect Library** pod seznamem stop je ve výchozím stavu skrytý, aby zbylo místo; zapne se v Library → Show Library Panel nebo v Layout. Náhledové obrázky presetů se vykreslí na pozadí hned po otevření pracovní obrazovky Particle a uloží se do `.godot/editor/fps_particle_thumbnails/` (podle buildu editoru), takže při dalším spuštění jsou v menu hned. Snímek se fotí na začátku života částic, ne podle dlouhých událostí jako 12s decal. Když myš chvíli (výchozí 1 s) zůstane na položce v menu Library nebo v panelu Effect Library, vedle ní se otevře větší náhled (280 px) s názvem a popisem, který efekt přehrává dokola (tooltip s popisem se pak nezobrazuje); zavře se, jakmile myš položku opustí. Zpoždění se mění v Editor Settings → FPS Studio → Particles → Library Hover Preview Delay (0 = vypnuto).
 
-**Content Browser:** scény s kořenem ParticleEffect3D dostanou náhled automaticky. Plugin po startu editoru a po každé změně souborů najde efekty, kterým náhled chybí nebo je starší než soubor, a na pozadí je vyfotí (stejně jako náhledy v Library). Po najetí myší na efekt ukáže tooltip místo statického obrázku přehrávající se efekt ve smyčce, jako je zvětšený náhled u obrázků. Starší efekty, které nejsou ParticleEffect3D (např. Node3D se skriptem), se nezahrnují.
+**Content Browser:** náhledy a živé tooltipy pro všechno, co jde ukázat ve 3D:
+
+| Soubor | Náhled | Tooltip (najetí myší) |
+|---|---|---|
+| Scéna s kořenem ParticleEffect3D | snímek v první třetině života částic | efekt hraje ve smyčce |
+| 3D scéna (rekvizity, postavy, prostředí) a importovaný model (`.glb`, `.gltf`, `.fbx`, `.blend`, `.dae`) | pohled 3/4 zarámovaný podle meshů | model se pomalu otáčí |
+| Starý efekt (3D scéna s GPU/CPUParticles a skriptem) | částice v polovině života | emitory se spustí a přehrávají ve smyčce (bez skriptu, takže co efekt skládá skriptem, chybí) |
+| Scéna s Decal bez meshů | decal na šedé ploše | stejně, otáčí se |
+| Level (cesta obsahuje `/levels/` nebo název `level`) | šikmý pohled shora na celý level | stejný pohled, bez pohybu |
+| Materiál 3D (Standard/ORM/ShaderMaterial se spatial shaderem) | koule od Godotu | koule s materiálem se otáčí |
+| Shader `shader_type spatial` | koule se shaderem | koule se otáčí |
+
+Náhled se vytvoří na pozadí po startu editoru a po každé změně souboru (nebo jeho `.import`). Evidence je v `.godot/editor/fps_asset_thumbnails.cfg`, takže snímek, který Godot uloží při uložení scény z 3D pohledu, se hned nahradí zarámovaným náhledem. Scény se pro náhled načtou bez skriptů, kamer, vlastního prostředí, zvuků a UI. 2D scény, skripty, data a nastavení náhled nedostávají.
 - **Uprostřed:** 3D náhled s menu **View** a transportem (Play/Pause, Restart, čas, statistiky, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
 - **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
 
