@@ -306,7 +306,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 23;
+constexpr int TYPE_COUNT = 24;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -573,6 +573,18 @@ struct TypeTable {
 			add_param(t, "angle", "Direction", 0.0f, 180.0f, 1.0f, 30.0f, "Direction of the veins in degrees (snapped to a repeating direction when tiling).");
 			add_param(t, "octaves", "Octaves", 1.0f, 8.0f, 1.0f, 5.0f, "Detail of the turbulence.");
 			add_param(t, "contrast", "Contrast", 0.2f, 4.0f, 0.01f, 1.0f, "Output contrast.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_DEBRIS, "Debris Chunk", "Shapes", "Rock, concrete or brick chip for impact debris: an irregular faceted chunk with bevelled, lit edges and grainy surface. In a sheet every frame is a different chip (use a 4x4 sheet with a random frame per particle).", 0.2f, 0.19f, 0.18f, 0.74f, 0.72f, 0.68f, "Shadow color", "Lit color", false, false);
+			add_param(t, "size", "Size", 0.3f, 0.95f, 0.01f, 0.82f, "Size of the chip. Stays inside the frame.");
+			add_param(t, "corners", "Corners", 4.0f, 9.0f, 1.0f, 6.0f, "Average number of corners of the outline.");
+			add_param(t, "irregularity", "Irregularity", 0.0f, 1.0f, 0.01f, 0.75f, "How uneven the corners and the outline are.");
+			add_param(t, "elongation", "Elongation", 0.0f, 1.0f, 0.01f, 0.45f, "How long and thin the chips can be.");
+			add_param(t, "bevel", "Bevel", 0.0f, 1.0f, 0.01f, 0.5f, "Width of the lit and shadowed edge facets.");
+			add_param(t, "grain", "Grain", 0.0f, 1.0f, 0.01f, 0.5f, "Grainy, pitted surface detail.");
+			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 120.0f, "Direction of the key light.");
+			add_param(t, "shading", "Shading", 0.0f, 1.0f, 0.01f, 0.75f, "Contrast between lit and shadowed facets.");
 			push(t);
 		}
 		if (i != TYPE_COUNT) {
@@ -1589,6 +1601,120 @@ void render_soft_smoke(const FrameContext &c, float x, float y, float *r_px) {
 	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(lit)), alpha, s);
 }
 
+/* Debris ----------------------------------------------------------------- */
+
+void render_debris(const FrameContext &c, float x, float y, float *r_px) {
+	const Settings &s = *c.s;
+	const float size = param(c, 0);
+	const float corners = param(c, 1);
+	const float irregularity = param(c, 2);
+	const float elongation = param(c, 3);
+	const float bevel = param(c, 4);
+	const float grain = param(c, 5);
+	const float light_angle = param(c, 6) * PI / 180.0f;
+	const float shading = param(c, 7);
+	// Every sheet frame (life 0..1 over 16 frames) is its own chip.
+	const int variant = int(std::floor(saturate(s.life) * 15.0f + 0.5f));
+	const uint32_t seed = s.seed * 7919u + uint32_t(variant) * 104729u;
+	auto rnd = [&](int p_index) -> float {
+		return hash01(hash3i(p_index, variant, 91, seed));
+	};
+
+	// Chip frame: random rotation and elongation, scaled to stay in the frame.
+	const float rot = rnd(0) * TAU;
+	const float stretch = 1.0f - elongation * 0.55f * rnd(1);
+	const float cr = std::cos(rot);
+	const float sr = std::sin(rot);
+	const float px = (x * cr + y * sr);
+	const float py = (-x * sr + y * cr) / stretch;
+
+	// Star-shaped outline with jittered corners.
+	constexpr int MAX_CORNERS = 12;
+	const int n = int(clampf(float(int(corners + 0.5f) + int(rnd(2) * 3.0f) - 1), 3.0f, float(MAX_CORNERS)));
+	float vx[MAX_CORNERS];
+	float vy[MAX_CORNERS];
+	for (int i = 0; i < n; i++) {
+		const float a = (float(i) + (rnd(10 + i) - 0.5f) * 0.7f * irregularity) / float(n) * TAU;
+		const float r = size * mixf(1.0f, 0.55f + 0.45f * rnd(30 + i), irregularity);
+		vx[i] = std::cos(a) * r;
+		vy[i] = std::sin(a) * r;
+	}
+	// Rough outline: noise pushes the edge in and out a little.
+	const V3 offset = seed_offset(seed);
+	const float rough = gnoise3(px * 7.0f + offset.x, py * 7.0f + offset.y, 0.0f, seed + 5u) * 0.035f * irregularity;
+
+	// Signed distance to the polygon (https://iquilezles.org/articles/distfunctions2d/)
+	// and the nearest edge, whose outward normal tilts the bevel facet.
+	float d2 = (px - vx[0]) * (px - vx[0]) + (py - vy[0]) * (py - vy[0]);
+	float sign = 1.0f;
+	int nearest = 0;
+	for (int i = 0, j = n - 1; i < n; j = i, i++) {
+		const float ex = vx[j] - vx[i];
+		const float ey = vy[j] - vy[i];
+		const float wx = px - vx[i];
+		const float wy = py - vy[i];
+		const float t = clampf((wx * ex + wy * ey) / (ex * ex + ey * ey), 0.0f, 1.0f);
+		const float bx = wx - ex * t;
+		const float by = wy - ey * t;
+		const float bd = bx * bx + by * by;
+		if (bd < d2) {
+			d2 = bd;
+			nearest = i;
+		}
+		const bool c1 = py >= vy[i];
+		const bool c2 = py < vy[j];
+		const bool c3 = ex * wy > ey * wx;
+		if ((c1 && c2 && c3) || (!c1 && !c2 && !c3)) {
+			sign = -sign;
+		}
+	}
+	const float dist = sign * std::sqrt(d2) + rough; // < 0 inside.
+	const float aa = 0.012f;
+	const float alpha = smoothstepf(aa, -aa, dist);
+	if (alpha <= 0.0f) {
+		write_flat(r_px, c.color_b, 0.0f, s);
+		return;
+	}
+
+	// Facets: a slightly tilted top face, and bevels sloping down to the edge.
+	const int prev = (nearest + n - 1) % n;
+	float ox = vy[prev] - vy[nearest];
+	float oy = vx[nearest] - vx[prev];
+	const float ol = maxf(len2(ox, oy), 1e-5f);
+	ox /= ol;
+	oy /= ol;
+	if (ox * (vx[nearest] + vx[prev]) + oy * (vy[nearest] + vy[prev]) < 0.0f) {
+		ox = -ox; // Keep the edge normal pointing out of the chip.
+		oy = -oy;
+	}
+	const float bevel_width = maxf(bevel * 0.3f * size, 1e-4f);
+	const float edge = smoothstepf(bevel_width, 0.0f, -dist); // 1 at the outline.
+	// A ridge splits the top into two facets, so the chip reads as a chunk.
+	const float ridge_angle = rnd(6) * TAU;
+	const float rdx = std::cos(ridge_angle);
+	const float rdy = std::sin(ridge_angle);
+	const float ridge_side = smoothstepf(-0.02f, 0.02f, px * rdx + py * rdy + (rnd(7) - 0.5f) * size * 0.6f) * 2.0f - 1.0f;
+	const float tilt_x = (rnd(3) - 0.5f) * 0.6f + rdx * ridge_side * 0.45f;
+	const float tilt_y = (rnd(4) - 0.5f) * 0.6f + rdy * ridge_side * 0.45f;
+	const float gx = gnoise3(px * 18.0f + offset.y, py * 18.0f + offset.z, 1.0f, seed + 9u);
+	const float gy = gnoise3(px * 18.0f + offset.z, py * 18.0f + offset.x, 2.0f, seed + 10u);
+	V3 normal = normalize3(V3(tilt_x + ox * edge * 1.6f + gx * grain * 0.35f, tilt_y + oy * edge * 1.6f + gy * grain * 0.35f, 1.0f));
+	// The normal lives in the chip frame; rotate it back to the image.
+	normal = V3(normal.x * cr - normal.y * sr, normal.x * sr + normal.y * cr, normal.z);
+	const V3 light = normalize3(V3(std::cos(light_angle), std::sin(light_angle), 0.9f));
+	const float lambert = saturate(dot3(normal, light));
+	float lit = mixf(0.62f, lambert, shading);
+	// Grain: speckles and small dark pits.
+	const float speck = fbm(V3(px * 22.0f, py * 22.0f, 0.5f) + offset, 3, 0.5f, seed + 13u);
+	float f1, f2, cell;
+	voronoi2(px * 9.0f + offset.x, py * 9.0f + offset.y, seed + 17u, 0.9f, 0, f1, f2, cell);
+	const float pit = smoothstepf(0.12f, 0.0f, f1) * (cell > 0.6f ? 1.0f : 0.0f);
+	lit += speck * 0.35f * grain - pit * 0.35f * grain;
+	// Each chip a little lighter or darker than the others.
+	lit *= mixf(0.85f, 1.1f, rnd(5));
+	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(lit)), alpha, s);
+}
+
 /* Decals ----------------------------------------------------------------- */
 // Non-emissive albedo + alpha for Decal nodes. Outside the mark alpha is 0.
 
@@ -2062,6 +2188,9 @@ void render_uv(const FrameContext &c, float u, float v, float *r_out) {
 			break;
 		case TYPE_SOFT_SMOKE:
 			render_soft_smoke(c, x, y, r_out);
+			break;
+		case TYPE_DEBRIS:
+			render_debris(c, x, y, r_out);
 			break;
 		case TYPE_BULLET_HOLE:
 		case TYPE_SCORCH:

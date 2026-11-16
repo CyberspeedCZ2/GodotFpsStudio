@@ -1103,10 +1103,15 @@ void ParticleProcessMaterial::_update_shader() {
 	code += "	}\n\n";
 
 	if (collision_mode == COLLISION_RIGID) {
+		// FPS Studio: only particles moving into the surface lose speed. Upstream
+		// also stopped particles moving away from it, so debris spawned on a wall
+		// (touching it) lost its outward speed and slid down it like paper.
 		code += "	if (COLLIDED) {\n";
+		code += "		TRANSFORM[3].xyz += COLLISION_NORMAL * COLLISION_DEPTH;\n";
+		code += "	}\n";
+		code += "	if (COLLIDED && dot(COLLISION_NORMAL, USERDATA1.xyz) < 0.0) {\n";
 		code += "		float collision_response = dot(COLLISION_NORMAL, USERDATA1.xyz);\n";
 		code += "		float slide_to_bounce_trigger = step(2.0 / clamp(collision_bounce + 1.0, 1.0, 2.0), abs(collision_response));\n";
-		code += "		TRANSFORM[3].xyz += COLLISION_NORMAL * COLLISION_DEPTH;\n";
 		code += "		// Remove all components that are not tangential to COLLISION_NORMAL.\n";
 		code += "		USERDATA1.xyz -= COLLISION_NORMAL * collision_response;\n";
 		code += "		// Apply friction only across the surface (effectively decouples friction and bounce behavior).\n";

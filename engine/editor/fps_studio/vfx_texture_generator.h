@@ -47,6 +47,9 @@ enum TypeID {
 	// Tileable patterns (Noise & Patterns).
 	TYPE_CELL_NOISE = 21, // Worley / Voronoi cells, edges or flat cells.
 	TYPE_MARBLE_NOISE = 22, // Turbulent sine veins.
+	// Particle debris: a lit rock / concrete chip. In a sheet every frame is a
+	// different chip, so particles can pick a random variant.
+	TYPE_DEBRIS = 23,
 };
 
 static constexpr int MAX_PARAMS = 10;
