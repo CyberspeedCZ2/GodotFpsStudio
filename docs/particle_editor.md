@@ -29,8 +29,9 @@ Rozložení vychází z UE5 Niagara a z particle editoru Source enginu (HL2):
 | Level (cesta obsahuje `/levels/` nebo název `level`) | šikmý pohled shora na celý level | stejný pohled, bez pohybu |
 | Materiál 3D (Standard/ORM/ShaderMaterial se spatial shaderem) | koule od Godotu | koule s materiálem se otáčí |
 | Shader `shader_type spatial` | koule se shaderem | koule se otáčí |
+| Mesh (`.obj`, uložený `.tres`/`.res` mesh) | náhled od Godotu | mesh se otáčí |
 
-Náhled se vytvoří na pozadí po startu editoru a po každé změně souboru (nebo jeho `.import`). Evidence je v `.godot/editor/fps_asset_thumbnails.cfg`, takže snímek, který Godot uloží při uložení scény z 3D pohledu, se hned nahradí zarámovaným náhledem. Scény se pro náhled načtou bez skriptů, kamer, vlastního prostředí, zvuků a UI. 2D scény, skripty, data a nastavení náhled nedostávají.
+Náhled se vytvoří na pozadí po startu editoru a po každé změně souboru, jeho `.import` nebo čehokoli, co ukazuje (textury, materiály, meshe, vnořené scény a shadery do hloubky 3 úrovní; skripty ne). Přemalovaná textura tak obnoví náhled všech modelů a scén, které ji používají. Evidence je v `.godot/editor/fps_asset_thumbnails.cfg`, takže snímek, který Godot uloží při uložení scény z 3D pohledu, se hned nahradí zarámovaným náhledem. Scény se pro náhled načtou bez skriptů, kamer, vlastního prostředí, zvuků a UI. 2D scény, skripty, data a nastavení náhled nedostávají.
 - **Uprostřed:** 3D náhled s menu **View** a transportem (Play/Pause, Restart, čas, statistiky, Speed, Loop). Pod ním jsou záložky **Timeline** a **Particle Logic**.
 - **Vpravo:** vybraný emitor jako **zásobník modulů**. Přepínač **All Properties** zobrazí kompletní nativní inspektory (Emitter, Process, Renderer).
 

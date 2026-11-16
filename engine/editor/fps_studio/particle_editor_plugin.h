@@ -443,6 +443,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Ref<EditorResourcePreviewGenerator> shader_preview_generator;
 	Ref<ConfigFile> asset_thumbnail_manifest; // Path -> file stamp of the rendered thumbnail.
 	HashMap<String, uint64_t> asset_scan_mtimes;
+	HashMap<String, int> asset_scan_kinds;
 	bool asset_thumbnail_scan_queued = false;
 	Node *_instantiate_preview_subject(const String &p_path, int p_kind);
 	String _get_asset_thumbnail_stamp(const String &p_path) const;

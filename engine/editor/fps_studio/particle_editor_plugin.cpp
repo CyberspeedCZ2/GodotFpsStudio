@@ -17,6 +17,7 @@
 
 #include "core/input/input_event.h"
 #include "core/io/config_file.h"
+#include "core/io/resource_uid.h"
 #include "scene/audio/audio_stream_player.h"
 #include "scene/main/canvas_layer.h"
 #include "core/io/dir_access.h"
@@ -96,6 +97,7 @@
 #include "editor/docks/filesystem_dock.h"
 #include "editor/inspector/editor_resource_tooltip_plugins.h"
 #include "core/io/config_file.h"
+#include "core/io/resource_uid.h"
 #include "scene/audio/audio_stream_player.h"
 #include "scene/main/canvas_layer.h"
 #include "scene/resources/3d/primitive_meshes.h"
@@ -2763,10 +2765,11 @@ enum AssetPreviewKind {
 	ASSET_PREVIEW_LEVEL, // Level: static view of the whole level.
 	ASSET_PREVIEW_MATERIAL, // 3D material on a turning sphere.
 	ASSET_PREVIEW_SHADER, // Spatial shader on a turning sphere.
+	ASSET_PREVIEW_MESH, // Mesh resource (.obj, saved meshes): turntable tooltip, Godot's thumbnail.
 };
 
 // Bump to render every Content Browser thumbnail again.
-static constexpr int ASSET_THUMBNAIL_VERSION = 1;
+static constexpr int ASSET_THUMBNAIL_VERSION = 2;
 
 static bool is_level_scene_path(const String &p_path) {
 	const String lower = p_path.to_lower();
@@ -2808,6 +2811,9 @@ static int get_asset_preview_kind(const String &p_path, const String &p_type) {
 	}
 	if (ClassDB::is_parent_class(p_type, "BaseMaterial3D") || p_type == "ShaderMaterial") {
 		return ASSET_PREVIEW_MATERIAL;
+	}
+	if (ClassDB::is_parent_class(p_type, "Mesh")) {
+		return ASSET_PREVIEW_MESH;
 	}
 	if (p_type == "Shader" && ext == "gdshader") {
 		const String text = FileAccess::get_file_as_string(p_path);
@@ -3319,6 +3325,17 @@ Node *FPSStudioParticleEditorPlugin::_instantiate_preview_subject(const String &
 		}
 		return wrapper;
 	}
+	if (p_kind == ASSET_PREVIEW_MESH) {
+		Ref<Mesh> mesh = ResourceLoader::load(p_path, "Mesh");
+		if (mesh.is_null()) {
+			return nullptr;
+		}
+		MeshInstance3D *mesh_instance = memnew(MeshInstance3D);
+		mesh_instance->set_mesh(mesh);
+		Node3D *wrapper = memnew(Node3D);
+		wrapper->add_child(mesh_instance);
+		return wrapper;
+	}
 	if (p_kind == ASSET_PREVIEW_MATERIAL || p_kind == ASSET_PREVIEW_SHADER) {
 		Ref<Material> material;
 		if (p_kind == ASSET_PREVIEW_SHADER) {
@@ -3452,7 +3469,7 @@ public:
 	ObjectID plugin_id;
 
 	bool handles(const String &p_resource_type) const override {
-		return p_resource_type == "PackedScene" || p_resource_type == "Shader" || p_resource_type == "ShaderMaterial" || ClassDB::is_parent_class(p_resource_type, "BaseMaterial3D");
+		return p_resource_type == "PackedScene" || p_resource_type == "Shader" || p_resource_type == "ShaderMaterial" || ClassDB::is_parent_class(p_resource_type, "BaseMaterial3D") || ClassDB::is_parent_class(p_resource_type, "Mesh");
 	}
 
 	Control *make_tooltip_for_path(const String &p_resource_path, const Dictionary &p_metadata, Control *p_base) const override {
@@ -3500,11 +3517,44 @@ public:
 // A thumbnail is current while the file (and its import settings) are
 // unchanged since it was rendered. Godot overwrites a scene's thumbnail with a
 // viewport snapshot when the scene is saved, so this is tracked separately.
-String FPSStudioParticleEditorPlugin::_get_asset_thumbnail_stamp(const String &p_path) const {
+// Newest change of a file, its import settings and what it shows: textures,
+// materials, meshes, sub-scenes and shaders, a few levels deep (scripts do not
+// change how it looks in a preview).
+static uint64_t get_asset_visual_mtime(const String &p_path, int p_depth, HashSet<String> &r_visited) {
+	if (r_visited.has(p_path)) {
+		return 0;
+	}
+	r_visited.insert(p_path);
 	uint64_t stamp = FileAccess::get_modified_time(p_path);
 	if (FileAccess::exists(p_path + ".import")) {
 		stamp = MAX(stamp, FileAccess::get_modified_time(p_path + ".import"));
 	}
+	if (p_depth <= 0) {
+		return stamp;
+	}
+	List<String> dependencies;
+	ResourceLoader::get_dependencies(p_path, &dependencies);
+	for (const String &dependency : dependencies) {
+		// "res://path", or "uid://...::::res://fallback_path".
+		String path = dependency.get_slice("::", 0);
+		if (path.begins_with("uid://")) {
+			path = ResourceUID::ensure_path(path);
+			if (path.is_empty() || path.begins_with("uid://")) {
+				path = dependency.get_slice("::", dependency.get_slice_count("::") - 1);
+			}
+		}
+		const String ext = path.get_extension().to_lower();
+		if (path.is_empty() || !path.begins_with("res://") || ext == "gd" || ext == "cs" || !FileAccess::exists(path)) {
+			continue;
+		}
+		stamp = MAX(stamp, get_asset_visual_mtime(path, p_depth - 1, r_visited));
+	}
+	return stamp;
+}
+
+String FPSStudioParticleEditorPlugin::_get_asset_thumbnail_stamp(const String &p_path) const {
+	HashSet<String> visited;
+	const uint64_t stamp = get_asset_visual_mtime(p_path, 3, visited);
 	return vformat("%d:%d", int64_t(stamp), ASSET_THUMBNAIL_VERSION);
 }
 
@@ -3530,18 +3580,21 @@ void FPSStudioParticleEditorPlugin::_scan_asset_thumbnails_dir(EditorFileSystemD
 			continue; // Materials already get Godot's sphere thumbnails.
 		}
 		const String path = p_dir->get_file_path(i);
-		const String stamp = _get_asset_thumbnail_stamp(path);
-		if (String(manifest->get_value("thumbnails", path, String())) == stamp) {
-			continue;
-		}
+		// The kind only changes with the file itself: classify once per change.
 		const uint64_t modified = FileAccess::get_modified_time(path);
+		int kind = ASSET_PREVIEW_NONE;
 		if (asset_scan_mtimes.has(path) && asset_scan_mtimes[path] == modified) {
-			continue; // Already classified as nothing to preview.
-		}
-		const int kind = get_asset_preview_kind(path, type);
-		if (kind == ASSET_PREVIEW_NONE) {
+			kind = asset_scan_kinds[path];
+		} else {
+			kind = get_asset_preview_kind(path, type);
 			asset_scan_mtimes[path] = modified;
+			asset_scan_kinds[path] = kind;
+		}
+		if (kind == ASSET_PREVIEW_NONE || kind == ASSET_PREVIEW_MESH) {
 			continue;
+		}
+		if (String(manifest->get_value("thumbnails", path, String())) == _get_asset_thumbnail_stamp(path)) {
+			continue; // Neither the file nor anything it shows changed.
 		}
 		_queue_thumbnail(path, path, -1, true, kind);
 	}
