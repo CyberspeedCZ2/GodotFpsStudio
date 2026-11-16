@@ -4345,6 +4345,70 @@ void FPSStudioParticleEditorPlugin::_update_preview_camera() {
 	preview_camera->look_at_from_position(camera_position, preview_camera_target, Vector3(0.0, 1.0, 0.0));
 }
 
+// Where an emitter's particles mostly are: the emission shape, the cone they
+// fly out in during their first ~0.3 s at their average speed (direction,
+// spread, damping, gravity)
+// and their size. The visibility AABB is a conservative culling box (e.g.
+// debris falling 10 m with no floor) and would put the camera far away from
+// small effects such as bullet impacts.
+static AABB get_emitter_framing_bounds(Node *p_emitter, const AABB &p_visibility) {
+	const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_emitter);
+	const Ref<ParticleProcessMaterial> process = gpu ? Ref<ParticleProcessMaterial>(gpu->get_process_material()) : Ref<ParticleProcessMaterial>();
+	if (process.is_null()) {
+		return p_visibility;
+	}
+	Vector3 extents;
+	switch (process->get_emission_shape()) {
+		case ParticleProcessMaterial::EMISSION_SHAPE_SPHERE:
+		case ParticleProcessMaterial::EMISSION_SHAPE_SPHERE_SURFACE:
+			extents = Vector3(1, 1, 1) * process->get_emission_sphere_radius();
+			break;
+		case ParticleProcessMaterial::EMISSION_SHAPE_BOX:
+			extents = process->get_emission_box_extents();
+			break;
+		case ParticleProcessMaterial::EMISSION_SHAPE_RING:
+			extents = Vector3(1, 1, 1) * MAX(process->get_emission_ring_radius(), process->get_emission_ring_height() * 0.5f);
+			break;
+		default:
+			break;
+	}
+	const real_t t = MIN(real_t(gpu->get_lifetime()), real_t(0.3));
+	const real_t speed = 0.5 * (process->get_param_min(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY) + process->get_param_max(ParticleProcessMaterial::PARAM_INITIAL_LINEAR_VELOCITY));
+	const real_t damping = process->get_param_max(ParticleProcessMaterial::PARAM_DAMPING);
+	real_t reach = speed * t - 0.5 * damping * t * t;
+	if (damping > 0.0) {
+		reach = MIN(reach, speed * speed / (2.0 * damping)); // Stopped by damping.
+	}
+	reach = MAX(reach, real_t(0.0));
+	const Vector3 fall = process->get_gravity() * (0.5 * t * t);
+
+	// Cone of directions: its axis and a ring at the spread angle.
+	Vector3 axis = process->get_direction();
+	axis = axis.length_squared() > 0.0001 ? axis.normalized() : Vector3(1, 0, 0);
+	const real_t spread = Math::deg_to_rad(CLAMP(real_t(process->get_spread()), real_t(0.0), real_t(180.0)));
+	const Vector3 side = (Math::abs(axis.y) < 0.99 ? axis.cross(Vector3(0, 1, 0)) : axis.cross(Vector3(1, 0, 0))).normalized();
+	const Vector3 up = axis.cross(side);
+	AABB framing = AABB(Vector3(), Vector3());
+	framing.expand_to(fall);
+	for (int i = 0; i <= 8; i++) {
+		Vector3 dir = axis;
+		if (i < 8) {
+			const real_t around = Math::TAU * i / 8.0;
+			dir = axis * Math::cos(spread) + (side * Math::cos(around) + up * Math::sin(around)) * Math::sin(spread);
+		}
+		framing.expand_to(dir * reach + fall);
+	}
+	real_t particle_size = 0.2;
+	if (const QuadMesh *quad = Object::cast_to<QuadMesh>(gpu->get_draw_pass_mesh(0).ptr())) {
+		particle_size = quad->get_size().length() * 0.5 * process->get_param_max(ParticleProcessMaterial::PARAM_SCALE);
+	}
+	framing = framing.grow(particle_size);
+	framing.position += process->get_emission_shape_offset() - extents;
+	framing.size += extents * 2.0;
+	const AABB clipped = framing.intersection(p_visibility);
+	return clipped.has_volume() ? clipped : framing;
+}
+
 void FPSStudioParticleEditorPlugin::_frame_preview() {
 	preview_camera_target = Vector3(0.0, 1.0, 0.0);
 	preview_camera_distance = 5.5;
@@ -4368,7 +4432,7 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 			if (emitter_bounds.size.length_squared() < 0.0001) {
 				emitter_bounds = AABB(Vector3(-1.5, -0.2, -1.5), Vector3(3.0, 4.0, 3.0));
 			}
-			emitter_bounds = node_3d->get_global_transform().xform(emitter_bounds);
+			emitter_bounds = node_3d->get_global_transform().xform(get_emitter_framing_bounds(emitter, emitter_bounds));
 			if (!bounds_valid) {
 				bounds = emitter_bounds;
 				bounds_valid = true;
@@ -4378,8 +4442,8 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 		}
 		if (bounds_valid) {
 			preview_camera_target = bounds.get_center();
-			const real_t radius = MAX(real_t(0.5), bounds.size.length() * 0.5);
-			preview_camera_distance = CLAMP(radius / Math::tan(Math::deg_to_rad(preview_camera->get_fov()) * 0.5) * 1.2, 1.2, 48.0);
+			const real_t radius = MAX(real_t(0.3), bounds.size.length() * 0.5);
+			preview_camera_distance = CLAMP(radius / Math::tan(Math::deg_to_rad(preview_camera->get_fov()) * 0.5) * 1.1, 0.8, 48.0);
 		}
 	}
 	_update_preview_camera();

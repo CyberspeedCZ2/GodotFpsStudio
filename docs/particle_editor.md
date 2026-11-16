@@ -254,7 +254,7 @@ Volitelně: tlačítko **Add Collision to Level** v kartě Collision přidá do 
 
 Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport` s vlastním prostředím, světly, kamerou a mřížkou. Chybějící draw mesh nebo process material doplní pouze náhledová kopie.
 
-- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** efekt znovu orámuje.
+- Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** (nebo klávesa F) efekt znovu orámuje. Rámuje se podle toho, kde částice opravdu jsou (oblast emise, kužel Direction/Spread, dolet průměrnou rychlostí za ~0,3 s, gravitace a velikost částice), ne podle Visibility AABB, který je kvůli ořezávání mnohem větší. Zásah kulky je tak ~2 m od kamery místo ~13 m.
 - Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru), **Floor** (viditelná podlaha, výchozí vypnuto), **Damage & Shake Radius** (kruhy dosahu, výchozí zapnuto), **Sound** a **Camera Shake** (přehrávání zvuku a otřes kamery v náhledu, výchozí zapnuto; vypnutí platí jen pro náhled, efekt se nemění) a **Collision Test Walls** (kolizní podlaha a tři průhledné stěny pro ladění modulu Collision).
 - Statistiky v transportu: viditelné stopy, maximum částic, draw cally a trojúhelníky náhledu.
 - **Play/Pause**, **Restart**, časový posuvník, **Speed** a **Loop** ovládají simulaci. Posun na jiný čas restartuje efekt a přehraje ho dopředu (`ParticleEffect3D.seek`); jde o přiblížení, ne přesnou rekonstrukci stavu.
