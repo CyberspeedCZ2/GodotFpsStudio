@@ -594,6 +594,7 @@ public:
 
 	// A Library entry or effect path ready to preview (Content Browser tooltip).
 	Node *instantiate_preview_subject(const String &p_path, int p_kind) { return _instantiate_preview_subject(p_path, p_kind); }
+	Error bake_preset_scene(int p_preset, const String &p_path);
 
 	FPSStudioParticleEditorPlugin();
 };

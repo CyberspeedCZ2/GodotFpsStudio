@@ -2479,6 +2479,26 @@ Ref<Texture2D> FPSStudioParticleEditorPlugin::_bake_preset_texture(const VFXText
 	return ResourceLoader::load(path, "Texture2D", ResourceFormatLoader::CACHE_MODE_REPLACE);
 }
 
+// Script / tool API: writes a preset as an effect scene, with its textures and
+// sounds baked into the project like the Library does.
+Error FPSStudioParticleEditorPlugin::bake_preset_scene(int p_preset, const String &p_path) {
+	ERR_FAIL_INDEX_V(p_preset, FPSParticlePresets::PRESET_MAX, ERR_INVALID_PARAMETER);
+	Vector<FPSParticlePresets::TextureRequest> textures;
+	ParticleEffect3D *effect = FPSParticlePresets::create_preset(p_preset, textures);
+	ERR_FAIL_NULL_V(effect, FAILED);
+	_apply_preset_textures(textures, true);
+	_apply_preset_sounds(effect, true);
+	set_scene_subtree_owners(effect, effect);
+	Ref<PackedScene> packed_scene;
+	packed_scene.instantiate();
+	Error error = packed_scene->pack(effect);
+	memdelete(effect);
+	if (error == OK) {
+		error = ResourceSaver::save(packed_scene, p_path);
+	}
+	return error;
+}
+
 void FPSStudioParticleEditorPlugin::_create_preset_document(int p_preset) {
 	Vector<FPSParticlePresets::TextureRequest> textures;
 	ParticleEffect3D *effect = FPSParticlePresets::create_preset(p_preset, textures);
@@ -6150,6 +6170,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 
 void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_emitter_name_changed"), &FPSStudioParticleEditorPlugin::_on_emitter_name_changed);
+	ClassDB::bind_method(D_METHOD("bake_preset_scene", "preset", "path"), &FPSStudioParticleEditorPlugin::bake_preset_scene);
 	ClassDB::bind_method(D_METHOD("_on_effect_name_changed"), &FPSStudioParticleEditorPlugin::_on_effect_name_changed);
 	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter", "document_serial"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
 	ClassDB::bind_method(D_METHOD("_apply_emitter_timing", "emitter", "delay", "duration"), &FPSStudioParticleEditorPlugin::_apply_emitter_timing);
