@@ -1041,13 +1041,16 @@ void ParticleEffect3D::_set_level_collision(const AABB &p_region, const Ref<Text
 
 // --- Shared level collision -------------------------------------------------
 // The whole level is baked once into overlapping SDF tiles (16 m cores with
-// 2 m overlap, 64 cells = ~0.31 m) on worker threads. The tiles are collision
+// 2 m overlap, 128 cells = ~0.16 m, so a cell centre always lands inside a
+// 0.2 m floor or wall and particles neither float above it nor fall through)
+// on worker threads. The tiles are collision
 // nodes in the level itself, so every effect (impacts, spawned effects, the
 // Level editor viewport) collides without a per-effect bake.
 
 namespace {
 constexpr real_t LEVEL_TILE_CORE = 16.0;
 constexpr real_t LEVEL_TILE_OVERLAP = 2.0;
+constexpr GPUParticlesCollisionSDF3D::Resolution LEVEL_TILE_RESOLUTION = GPUParticlesCollisionSDF3D::RESOLUTION_128;
 constexpr real_t LEVEL_MAX_EXTENT = 1024.0;
 
 // Shared with the tile tasks of one bake generation; set when the bake is
@@ -1201,7 +1204,7 @@ void level_tile_bake_task(void *p_userdata) {
 	bake->faces = Vector<Face3>(); // Release the shared copy early.
 	if (local.size() >= 2) {
 		GPUParticlesCollisionSDF3D *baker = memnew(GPUParticlesCollisionSDF3D);
-		baker->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+		baker->set_resolution(LEVEL_TILE_RESOLUTION);
 		baker->set_size(bake->tile.size);
 		baker->set_thickness(LEVEL_COLLISION_THICKNESS);
 		bake->image = baker->bake_faces(local, LEVEL_COLLISION_BAND, false);
@@ -1364,7 +1367,7 @@ void ParticleEffect3D::_level_tile_baked(int64_t p_bake) {
 			GPUParticlesCollisionSDF3D *tile = memnew(GPUParticlesCollisionSDF3D);
 			tile->set_name("Tile");
 			tile->set_size(bake->tile.size);
-			tile->set_resolution(GPUParticlesCollisionSDF3D::RESOLUTION_64);
+			tile->set_resolution(LEVEL_TILE_RESOLUTION);
 			tile->set_texture(texture);
 			tile->set_position(bake->tile.get_center());
 			manager->add_child(tile, true);

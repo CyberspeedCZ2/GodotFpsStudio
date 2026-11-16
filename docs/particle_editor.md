@@ -234,11 +234,13 @@ GPU částice samy o sobě nenarážejí na fyzikální tělesa, jen na kolizní
 3. Ve hře to funguje samo. Kořen efektu má skupinu **Level Collision**: `collide_with_level` (výchozí zapnuto) a `level_collision_mask` (fyzikální vrstvy stěn, výchozí 1).
 
 Jak to funguje:
-- **Sdílená kolize celého levelu.** První efekt s kolizí ve hře spustí na pozadí pečení celého levelu (všechna StaticBody3D a CSG s kolizí ve vrstvách `level_collision_mask`) do dlaždic 20 m (jádro 16 m + 2 m překryv, buňka ~0,31 m). Dlaždice jsou uzly `LevelParticleCollision/Tile` pod scénou levelu a platí pro všechny efekty najednou. Jakmile jsou hotové (testovací level ~30 ms, level 60 × 40 m ~100 ms), další efekty, včetně zásahů kulek, žádnou vlastní kolizi nepočítají (~0,03 ms na efekt). Aby byla hotová už před první střelbou, zavolej při načtení levelu `ParticleEffect3D.prepare_level_collision(level_root)`.
+- **Sdílená kolize celého levelu.** První efekt s kolizí ve hře spustí na pozadí pečení celého levelu (všechna StaticBody3D a CSG s kolizí ve vrstvách `level_collision_mask`) do dlaždic 20 m (jádro 16 m + 2 m překryv, 128³, buňka ~0,16 m, takže i podlaha nebo stěna silná 0,2 m má uvnitř aspoň jednu buňku). Dlaždice jsou uzly `LevelParticleCollision/Tile` pod scénou levelu a platí pro všechny efekty najednou. Jakmile jsou hotové (testovací level ~230 ms na pozadí), další efekty, včetně zásahů kulek, žádnou vlastní kolizi nepočítají (~0,03 ms na efekt). Aby byla hotová už před první střelbou, zavolej při načtení levelu `ParticleEffect3D.prepare_level_collision(level_root)`.
 - **Dokud se level peče**, efekt si spočítá vlastní kolizi jen pro svou oblast (nejvýš 20 m kolem efektu, rozlišení podle velikosti, ~10–20 ms), takže platí i pro úplně první výbuch. Efekt přehraný znovu na stejném místě ji vezme z cache.
 - Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()` (další efekt level napeče znovu).
 
 Kolize platí pro každý GPU emitor, který ji používá: modul Collision (`ParticleProcessMaterial.collision_mode`) i vlastní shader nebo Visual Shader, který čte `COLLIDED` (např. po Convert to Shader Code). CPUParticles3D kolize v Godotu neumí.
+
+Pevná slupka za plochou se počítá jen od plochy nejbližší dané buňce SDF. Dřív měla slupku každá plocha zvlášť a slupka spodní strany tenké podlahy (nebo vnější strany tenké stěny) prorazila do místnosti, takže úlomky zůstávaly viset ve vzduchu nad podlahou a před stěnami. Geometrie tenčí než jedna buňka (u dlaždic levelu ~0,16 m) nemá uvnitř žádnou buňku a částice jí mohou projít.
 
 Rychlé částice (jiskry) by mezi dvěma kroky simulace přeskočily tenkou stěnu. Efekt proto emitorům s kolizí zvýší `fixed_fps` tak, aby se částice za krok posunula méně než o tloušťku kolize plus svou velikost (nejvýš 240 kroků za sekundu); totéž dělá náhled. Rychlost se odhaduje z Initial Velocity, gravitace a zrychlení.
 

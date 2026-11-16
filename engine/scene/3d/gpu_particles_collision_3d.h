@@ -165,7 +165,14 @@ private:
 	};
 	Ref<Image> _bake_sdf(LocalVector<Face3> &r_faces, const AABB &p_aabb, float p_cell_size, const Vector3i &p_sdf_size, bool p_report_progress, float p_max_distance = 1e20, bool p_threaded = true);
 
-	void _find_closest_distance(const Vector3 &p_pos, const BVH *p_bvh, uint32_t p_bvh_cell, const Face3 *p_triangles, float p_thickness, float &r_closest_distance);
+	// Closest face found so far for one SDF cell: unsigned distance to the
+	// triangle and the signed distance to its plane (negative = behind it).
+	struct ClosestFace {
+		float distance = 1e20;
+		float plane_distance = 0.0;
+	};
+
+	void _find_closest_distance(const Vector3 &p_pos, const BVH *p_bvh, uint32_t p_bvh_cell, const Face3 *p_triangles, ClosestFace &r_closest);
 	void _compute_sdf_z(uint32_t p_z, ComputeSDFParams *params);
 	void _compute_sdf(ComputeSDFParams *params);
 

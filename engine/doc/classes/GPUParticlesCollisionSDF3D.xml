@@ -45,6 +45,7 @@
 		</member>
 		<member name="thickness" type="float" setter="set_thickness" getter="get_thickness" default="1.0">
 			The collision shape's thickness. Unlike other particle colliders, [GPUParticlesCollisionSDF3D] is actually hollow on the inside. [member thickness] can be increased to prevent particles from tunneling through the collision shape at high speeds, or when the [GPUParticlesCollisionSDF3D] is moved.
+			The solid shell is only added behind the face closest to each SDF cell, so the shell behind the underside of a thin floor (or the outside of a thin wall) does not reach through to the other side and make particles stop in mid-air. Geometry thinner than one SDF cell has no cell inside it and particles can pass through it; use a higher [member resolution] or a smaller [member size] for such geometry.
 		</member>
 	</members>
 	<constants>
