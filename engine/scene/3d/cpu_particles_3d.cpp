@@ -67,7 +67,9 @@ void CPUParticles3D::_set_emitting() {
 	active = true;
 	set_process_internal(true);
 	// first update before rendering to avoid one frame delay after emitting starts
-	if (time == 0) {
+	// FPS Studio: only inside the tree (the update reads the global transform);
+	// outside it, internal processing starts the particles on entering the tree.
+	if (time == 0 && is_inside_tree()) {
 		_update_internal();
 	}
 }

@@ -3781,6 +3781,12 @@ Node *FPSStudioParticleEditorPlugin::_convert_to_effect_root(Node *p_root) {
 	if (!p_root || p_root->get_class_name() != Node3D::get_class_static()) {
 		return p_root;
 	}
+	// A scripted root (old effects started by game code, e.g. init_splash())
+	// stays as it is: replacing it would drop the script and break the game.
+	if (!Ref<Script>(p_root->get_script()).is_null()) {
+		EditorToaster::get_singleton()->popup_str(vformat(TTR("%s keeps its Node3D root and script (game code drives it). Timeline events need a ParticleEffect3D root."), p_root->get_name()), EditorToaster::SEVERITY_INFO);
+		return p_root;
+	}
 	Node3D *old_root = Object::cast_to<Node3D>(p_root);
 	ParticleEffect3D *effect = memnew(ParticleEffect3D);
 	effect->set_name(old_root->get_name());
@@ -3793,6 +3799,7 @@ Node *FPSStudioParticleEditorPlugin::_convert_to_effect_root(Node *p_root) {
 	while (old_root->get_child_count() > 0) {
 		Node *child = old_root->get_child(0);
 		old_root->remove_child(child);
+		child->set_owner(nullptr); // Re-owned below; avoids "owner inconsistent" warnings.
 		effect->add_child(child);
 	}
 	set_scene_subtree_owners(effect, effect);
