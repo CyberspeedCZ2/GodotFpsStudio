@@ -90,6 +90,7 @@ private:
 	HashMap<ObjectID, int> editor_saved_fps;
 	ObjectID pool_scene_id; // Set by spawn(): finished instances return to this scene's pool.
 	int priority = 0;
+	int max_instances = 0; // Playing copies of the same scene at once; 0 = no limit.
 	real_t cull_distance = 0.0;
 	bool local_space = false;
 	bool local_space_from_attach = false;
@@ -122,6 +123,7 @@ private:
 	void _skip_play();
 	bool _should_skip_play();
 	void _budget_remove();
+	void _enforce_max_instances();
 	void _force_finish();
 	static bool _has_pending_damage(const LocalVector<EventState> &p_events);
 	void _play_pending();
@@ -157,6 +159,10 @@ public:
 	// setting rendering/particle_effects/max_active_effects is reached.
 	void set_priority(int p_priority);
 	int get_priority() const;
+	// At most this many copies of the same effect scene play at once (bullet
+	// holes, casings' impacts...); a new one ends the oldest. 0 = no limit.
+	void set_max_instances(int p_max);
+	int get_max_instances() const;
 	// Not played (finishes at once) when the camera is farther away; 0 = always.
 	void set_cull_distance(real_t p_distance);
 	real_t get_cull_distance() const;

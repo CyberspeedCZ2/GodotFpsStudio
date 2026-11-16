@@ -227,6 +227,9 @@
 		<member name="looping" type="bool" setter="set_looping" getter="is_looping" default="false">
 			If [code]true[/code], a finite effect starts again when it finishes.
 		</member>
+		<member name="max_instances" type="int" setter="set_max_instances" getter="get_max_instances" default="0">
+			At most this many copies of the same effect scene play at once: when another copy starts, the oldest playing one ends at once (its particles, lights and decals go away) and returns to the pool. Use it for effects that come fast and stay long, like bullet impacts with a decal, to keep their count and cost bounded. [code]0[/code] means no limit.
+		</member>
 		<member name="priority" type="int" setter="set_priority" getter="get_priority" default="0">
 			When [member ProjectSettings.rendering/particle_effects/max_active_effects] effects are already playing, [method play] cuts off the oldest playing effect with the lowest priority not above this one. If every playing effect has a higher priority, this effect is skipped like with [member cull_distance]. Effects with a pending [RadialDamage3D] event are never cut off or skipped.
 		</member>

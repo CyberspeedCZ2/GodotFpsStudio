@@ -342,6 +342,7 @@ void ParticleEffect3D::play() {
 			budget_effects.push_back(get_instance_id());
 			budget_active = true;
 		}
+		_enforce_max_instances();
 	}
 	elapsed = 0.0;
 	stop_time = 0.0;
@@ -610,6 +611,35 @@ void ParticleEffect3D::_skip_play() {
 	stopping = false;
 	elapsed = 0.0;
 	set_process_internal(true);
+}
+
+void ParticleEffect3D::_enforce_max_instances() {
+	if (max_instances <= 0) {
+		return;
+	}
+	const String path = get_scene_file_path();
+	if (path.is_empty()) {
+		return;
+	}
+	// Every playing effect is in budget_effects (also with no global budget).
+	while (true) {
+		ParticleEffect3D *oldest = nullptr;
+		int count = 0;
+		for (const ObjectID &id : budget_effects) {
+			ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(id));
+			if (!effect || effect == this || !effect->playing || effect->get_scene_file_path() != path) {
+				continue;
+			}
+			count++;
+			if (!oldest || effect->play_serial < oldest->play_serial) {
+				oldest = effect;
+			}
+		}
+		if (count < max_instances || !oldest) {
+			return;
+		}
+		oldest->_force_finish();
+	}
 }
 
 void ParticleEffect3D::_force_finish() {
@@ -2110,6 +2140,14 @@ int ParticleEffect3D::get_priority() const {
 	return priority;
 }
 
+void ParticleEffect3D::set_max_instances(int p_max) {
+	max_instances = MAX(0, p_max);
+}
+
+int ParticleEffect3D::get_max_instances() const {
+	return max_instances;
+}
+
 void ParticleEffect3D::set_cull_distance(real_t p_distance) {
 	cull_distance = MAX(real_t(0.0), p_distance);
 }
@@ -2233,6 +2271,8 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_active_effect_count"), &ParticleEffect3D::get_active_effect_count);
 	ClassDB::bind_method(D_METHOD("set_priority", "priority"), &ParticleEffect3D::set_priority);
 	ClassDB::bind_method(D_METHOD("get_priority"), &ParticleEffect3D::get_priority);
+	ClassDB::bind_method(D_METHOD("set_max_instances", "max"), &ParticleEffect3D::set_max_instances);
+	ClassDB::bind_method(D_METHOD("get_max_instances"), &ParticleEffect3D::get_max_instances);
 	ClassDB::bind_method(D_METHOD("set_cull_distance", "distance"), &ParticleEffect3D::set_cull_distance);
 	ClassDB::bind_method(D_METHOD("get_cull_distance"), &ParticleEffect3D::get_cull_distance);
 	ClassDB::bind_method(D_METHOD("set_local_space", "enable"), &ParticleEffect3D::set_local_space);
@@ -2247,6 +2287,7 @@ void ParticleEffect3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "effect_scale", PROPERTY_HINT_RANGE, "0.05,10,0.01,or_greater"), "set_effect_scale", "get_effect_scale");
 	ADD_GROUP("Budget", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "priority", PROPERTY_HINT_RANGE, "-10,10,1,or_less,or_greater"), "set_priority", "get_priority");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_instances", PROPERTY_HINT_RANGE, "0,256,1,or_greater"), "set_max_instances", "get_max_instances");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull_distance", PROPERTY_HINT_RANGE, "0,500,0.1,or_greater,suffix:m"), "set_cull_distance", "get_cull_distance");
 	ADD_GROUP("Level Collision", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "collide_with_level"), "set_collide_with_level", "is_colliding_with_level");
