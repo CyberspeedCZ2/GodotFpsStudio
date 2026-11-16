@@ -380,11 +380,16 @@ void build_bullet_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_t
 	dust.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
 	r_textures.push_back(make_soft_smoke(dust));
 
-	EmitterBuilder chips = add_emitter(p_effect, "Debris", 10, 0.8, true, 1.0, 0.035, BLEND_ALPHA);
-	chips.set("direction", Vector3(0, 1, 0)).set("spread", 45.0).set("initial_velocity", Vector2(2.5, 5.0)).set("gravity", Vector3(0, -9.8, 0)).set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-400, 400)).set("scale", Vector2(0.5, 1.4));
-	chips.set("color", Color(0.25, 0.22, 0.19, 1.0));
+	// Chips big and light enough to read from across a room, lit by the level,
+	// landing near the wall and lying on the floor before they fade.
+	EmitterBuilder chips = add_emitter(p_effect, "Debris", 14, 2.5, true, 1.0, 0.06, BLEND_ALPHA);
+	chips.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(1.5, 3.5)).set("gravity", Vector3(0, -9.8, 0)).set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-250, 250)).set("scale", Vector2(0.6, 1.5));
+	chips.set("color", Color(0.55, 0.52, 0.48, 1.0));
+	chips.process->set_lifetime_randomness(0.3);
+	chips.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.75, 1), Vector2(1, 0) }));
+	chips.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
 	chips.material->set_proximity_fade_enabled(false);
-	enable_collision(chips, 0.3, 0.6);
+	enable_collision(chips, 0.3, 0.8);
 
 	EmitterBuilder sparks = add_emitter(p_effect, "Sparks", 4, 0.2, true, 1.0, 0.08, BLEND_ADD, true);
 	sparks.set("direction", Vector3(0, 1, 0)).set("spread", 50.0).set("initial_velocity", Vector2(3.0, 7.0)).set("gravity", Vector3(0, -9.8, 0));
@@ -499,11 +504,14 @@ void build_wood_impact(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	dust.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
 	r_textures.push_back(make_soft_smoke(dust));
 
-	EmitterBuilder splinters = add_emitter(p_effect, "Splinters", 12, 0.9, true, 1.0, 0.07, BLEND_ALPHA, true);
-	splinters.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(2.5, 6.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.5, 1.3));
-	splinters.set("color", Color(0.62, 0.45, 0.26, 1.0));
+	EmitterBuilder splinters = add_emitter(p_effect, "Splinters", 12, 2.0, true, 1.0, 0.1, BLEND_ALPHA, true);
+	splinters.set("direction", Vector3(0, 1, 0)).set("spread", 40.0).set("initial_velocity", Vector2(1.5, 4.0)).set("gravity", Vector3(0, -9.8, 0)).set("scale", Vector2(0.6, 1.4));
+	splinters.set("color", Color(0.72, 0.55, 0.34, 1.0));
+	splinters.process->set_lifetime_randomness(0.3);
+	splinters.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.75, 1), Vector2(1, 0) }));
+	splinters.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
 	splinters.material->set_proximity_fade_enabled(false);
-	enable_collision(splinters, 0.25, 0.7);
+	enable_collision(splinters, 0.25, 0.85);
 	TextureRequest splinter_texture = make_texture(splinters.node, VFXTextureGenerator::TYPE_SPARK, "wood_splinter", 128);
 	set_colors(splinter_texture, WHITE_TINT_A, WHITE_TINT_B);
 	set_param(splinter_texture, "glow", 0.1f);
