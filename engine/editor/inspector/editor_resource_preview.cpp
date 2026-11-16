@@ -31,6 +31,7 @@
 #include "editor_resource_preview.h"
 
 #include "core/config/project_settings.h"
+#include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
@@ -614,6 +615,21 @@ void EditorResourcePreview::check_for_invalidation(const String &p_path) {
 	if (call_invalidated) { //do outside mutex
 		call_deferred(SNAME("emit_signal"), "preview_invalidated", p_path);
 	}
+}
+
+// FPS Studio: a preview whose source (e.g. a scene thumbnail written by a
+// tool) changed while the file itself did not. check_for_invalidation() only
+// reacts to a newer file, so a "no preview" result would stay until restart.
+void EditorResourcePreview::invalidate(const String &p_path) {
+	{
+		MutexLock lock(preview_mutex);
+		cache.erase(p_path);
+	}
+	const String cache_base = EditorPaths::get_singleton()->get_cache_dir().path_join("resthumb-" + ProjectSettings::get_singleton()->globalize_path(p_path).md5_text());
+	if (FileAccess::exists(cache_base + ".txt")) {
+		DirAccess::remove_absolute(cache_base + ".txt"); // Regenerate instead of the stale disk cache.
+	}
+	call_deferred(SNAME("emit_signal"), "preview_invalidated", p_path);
 }
 
 void EditorResourcePreview::start() {

@@ -3665,7 +3665,8 @@ void FPSStudioParticleEditorPlugin::_finish_thumbnail_job() {
 			cache_image->resize(preview_size, preview_size, Image::INTERPOLATE_LANCZOS);
 			post_process_preview(cache_image);
 			if (cache_image->save_png(get_effect_thumbnail_cache_path(thumbnail_current.path)) == OK && EditorResourcePreview::get_singleton()) {
-				EditorResourcePreview::get_singleton()->check_for_invalidation(thumbnail_current.path);
+				// The file did not change, only its thumbnail: force the refresh.
+				EditorResourcePreview::get_singleton()->invalidate(thumbnail_current.path);
 			}
 			_record_asset_thumbnail(thumbnail_current.path);
 		}
@@ -6133,7 +6134,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			FileSystemDock::get_singleton()->add_resource_tooltip_plugin(asset_tooltip_plugin);
 		}
 		if (EditorResourcePreview::get_singleton() && shader_preview_generator.is_null()) {
-			shader_preview_generator.instantiate();
+			shader_preview_generator = Ref<FPSCachedShaderPreviewGenerator>(memnew(FPSCachedShaderPreviewGenerator)); // Not instantiate(): that makes the base class.
 			EditorResourcePreview::get_singleton()->add_preview_generator(shader_preview_generator);
 		}
 		if (EditorFileSystem::get_singleton()) {
