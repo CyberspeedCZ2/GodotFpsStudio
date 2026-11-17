@@ -3031,6 +3031,9 @@ Node *ResourceImporterScene::_generate_meshes(Node *p_node, const Dictionary &p_
 					mesh_node->set_surface_override_material(i, src_mesh_node->get_surface_material(i));
 				}
 				mesh->merge_meta_from(*importer_mesh);
+				// Editor-only data from ImporterMesh::generate_lods (the Model View
+				// LOD panel reads it from the ImporterMesh); not for the asset.
+				mesh->remove_meta(SNAME("_lod_unbiased_distances"));
 			}
 		}
 

@@ -113,18 +113,18 @@ void SceneImportSettingsScreen::_update_preview_lod_threshold() {
 	const real_t project_threshold = GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels");
 	const Size2 size = base_viewport->get_size();
 	if (size.x <= 0 || size.y <= 0 || !camera->is_inside_tree()) {
-		base_viewport->set_mesh_lod_threshold(project_threshold * lod_bias);
+		base_viewport->set_mesh_lod_threshold(project_threshold);
 		return;
 	}
 	const Projection reference = Projection::create_perspective(PREVIEW_FOV_DEGREES, REFERENCE_ASPECT, 0.05, 10000.0);
 	const real_t actual_multiplier = camera->get_camera_projection().get_lod_multiplier();
 	if (!Math::is_finite(actual_multiplier) || actual_multiplier <= 0.0) {
-		base_viewport->set_mesh_lod_threshold(project_threshold * lod_bias);
+		base_viewport->set_mesh_lod_threshold(project_threshold);
 		return;
 	}
 	// Match the reference camera even if this editor panel has a different
 	// resolution or aspect ratio; this modifies only the preview viewport.
-	const real_t threshold = project_threshold * lod_bias * size.x * reference.get_lod_multiplier() / (REFERENCE_VIEWPORT_WIDTH * actual_multiplier);
+	const real_t threshold = project_threshold * size.x * reference.get_lod_multiplier() / (REFERENCE_VIEWPORT_WIDTH * actual_multiplier);
 	base_viewport->set_mesh_lod_threshold(threshold);
 }
 
@@ -619,13 +619,6 @@ void SceneImportSettingsScreen::_update_mesh_stats() {
 	mesh_stats_panel->show();
 }
 
-void SceneImportSettingsScreen::_lod_bias_changed(double p_value) {
-	lod_bias = CLAMP((float)p_value, 0.25f, 4.0f);
-	// Coarser levels switch in sooner as the screen-space threshold grows.
-	_update_preview_lod_threshold();
-	_update_mesh_stats();
-}
-
 // Builds (and caches) a preview mesh holding the actual decimated geometry
 // of a single LOD level, so manual inspection can zoom into any level.
 Ref<Mesh> SceneImportSettingsScreen::_get_lod_preview_mesh(const Ref<Mesh> &p_mesh, int p_level) {
@@ -776,9 +769,6 @@ void SceneImportSettingsScreen::_on_lod_level_selected(int p_level) {
 	if (lod_auto_toggle != nullptr) {
 		lod_auto_toggle->set_pressed_no_signal(false);
 	}
-	if (lod_bias_slider != nullptr) {
-		lod_bias_slider->hide();
-	}
 	_update_lod_button_states();
 	_apply_lod_preview();
 	_update_mesh_stats();
@@ -791,16 +781,10 @@ void SceneImportSettingsScreen::_on_lod_auto_toggled(bool p_enabled) {
 	if (p_enabled) {
 		lod_mode = LOD_MODE_AUTO;
 		lod_manual_level = 0;
-		if (lod_bias_slider != nullptr) {
-			lod_bias_slider->show();
-		}
 	} else {
 		// Turning Auto off pins the current level (LOD 0 by default) so a
 		// single level can be inspected with the LOD buttons.
 		lod_mode = LOD_MODE_MANUAL;
-		if (lod_bias_slider != nullptr) {
-			lod_bias_slider->hide();
-		}
 	}
 	_update_lod_button_states();
 	_apply_lod_preview();
@@ -940,6 +924,7 @@ void SceneImportSettingsScreen::_regenerate_lod_preview(MeshData &md) {
 		const Array levels = custom_levels ? Array(md.settings["lods/levels"]) : Array();
 		preview_source->generate_lods(merge_angle, md.lod_skin_pose_transforms, lod_count, reduction, custom_levels, levels);
 	}
+	md.lod_unbiased_distances = preview_source->get_meta(SNAME("_lod_unbiased_distances"), Array());
 
 	md.live_preview_mesh = preview_source->get_mesh();
 	md.lod_preview_dirty = false;
@@ -1353,8 +1338,24 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 		content->add_child(lod_transition_estimate);
 		if (reference_distance > 0.0 && md.has_import_id) {
 			// For meshes with multiple surfaces, the target controls the
-			// earliest transition across surfaces.
-			lod_target_anchor = reference_distance * (double)level.get("transition_bias", 1.0);
+			// earliest transition across surfaces. The anchor (distance at bias
+			// 1) comes from the distances before the engine pushed a level past
+			// the previous one: derived from the stored, pushed distance it was
+			// wrong and a typed target did not land where it was typed.
+			const double level_bias = (double)level.get("transition_bias", 1.0);
+			const double anchor_divisor = pixel_threshold * Projection::create_perspective(75.0, 16.0 / 9.0, 0.05, 10000.0).get_lod_multiplier();
+			double unbiased_anchor = 0.0;
+			for (const Variant &surface_value : md.lod_unbiased_distances) {
+				const PackedFloat32Array surface_distances = surface_value;
+				if (i < surface_distances.size() && anchor_divisor > 0.0) {
+					const double distance = surface_distances[i] * 1920.0 / anchor_divisor;
+					unbiased_anchor = unbiased_anchor <= 0.0 ? distance : MIN(unbiased_anchor, distance);
+				}
+			}
+			lod_target_anchor = unbiased_anchor > 0.0 ? unbiased_anchor : reference_distance * level_bias;
+			if (unbiased_anchor > 0.0 && reference_distance > unbiased_anchor / level_bias * 1.01) {
+				lod_transition_estimate->set_text(estimate + "\n" + vformat(TTR("Pushed past LOD %d: a level cannot switch nearer than the previous one, so the target %s m is not reachable."), i, String::num(unbiased_anchor / level_bias, 1)));
+			}
 			HBoxContainer *target_row = memnew(HBoxContainer);
 			content->add_child(target_row);
 			Label *target_label = memnew(Label);

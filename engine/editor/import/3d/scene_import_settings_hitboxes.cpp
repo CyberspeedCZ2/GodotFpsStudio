@@ -140,6 +140,14 @@ static void transform_hitbox_bounds(const Vector3 &p_minimum, const Vector3 &p_m
 	}
 }
 
+// The model's bounds in the model root's own space, where Model Root hitbox
+// corners live. contents_aabb (camera framing) includes the root node's own
+// transform; with a rotated or scaled root, boxes built from it sat off.
+static AABB get_root_local_bounds(Node *p_scene, const AABB &p_contents_aabb) {
+	const Node3D *scene_root = Object::cast_to<Node3D>(p_scene);
+	return scene_root ? scene_root->get_transform().affine_inverse().xform(p_contents_aabb) : p_contents_aabb;
+}
+
 static String normalize_hitbox_bone_name(const String &p_name) {
 	String normalized = p_name.to_lower();
 	normalized = normalized.replace("_", "").replace("-", "").replace(".", "").replace(":", "").replace(" ", "");
@@ -569,9 +577,10 @@ void SceneImportSettingsScreen::_add_hitbox() {
 	ModelHitbox hitbox;
 	hitbox.name = vformat(TTR("Hitbox %d"), model_hitboxes.size() + 1);
 	if (scene) {
-		const Vector3 half_size = Vector3(MAX(contents_aabb.size.x * 0.4, 0.05), MAX(contents_aabb.size.y * 0.4, 0.05), MAX(contents_aabb.size.z * 0.4, 0.05));
-		hitbox.minimum = contents_aabb.get_center() - half_size;
-		hitbox.maximum = contents_aabb.get_center() + half_size;
+		const AABB model_aabb = get_root_local_bounds(scene, contents_aabb);
+		const Vector3 half_size = Vector3(MAX(model_aabb.size.x * 0.4, 0.05), MAX(model_aabb.size.y * 0.4, 0.05), MAX(model_aabb.size.z * 0.4, 0.05));
+		hitbox.minimum = model_aabb.get_center() - half_size;
+		hitbox.maximum = model_aabb.get_center() + half_size;
 	}
 	model_hitboxes.push_back(hitbox);
 	selected_hitbox = model_hitboxes.size() - 1;
@@ -617,6 +626,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 	if (p_preset < HITBOX_PRESET_HUMANOID_SET || p_preset > HITBOX_PRESET_RIGHT_LEG) {
 		return;
 	}
+	const AABB model_aabb = get_root_local_bounds(scene, contents_aabb);
 	_push_hitbox_undo();
 
 	static const char *preset_names[] = { "Head", "Chest", "Stomach", "Left Arm", "Right Arm", "Left Leg", "Right Leg" };
@@ -804,11 +814,11 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		Vector3 maximum_fraction = preset_maximum_fractions[part];
 		const bool is_left_side = part == 3 || part == 5;
 		const bool is_right_side = part == 4 || part == 6;
-		if ((is_left_side || is_right_side) && matched_skeleton && matched_bone >= 0 && contents_aabb.size.x > 0.0) {
+		if ((is_left_side || is_right_side) && matched_skeleton && matched_bone >= 0 && model_aabb.size.x > 0.0) {
 			const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
 			const Vector3 bone_position = skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin);
-			const real_t side_offset = bone_position.x - contents_aabb.get_center().x;
-			if (Math::abs(side_offset) > contents_aabb.size.x * 0.025) {
+			const real_t side_offset = bone_position.x - model_aabb.get_center().x;
+			if (Math::abs(side_offset) > model_aabb.size.x * 0.025) {
 				const int detected_side = side_offset < 0.0 ? -1 : 1;
 				const int preset_side = is_left_side ? -1 : 1;
 				if (detected_side != preset_side) {
@@ -819,8 +829,8 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 			}
 		}
 
-		Vector3 fallback_minimum = contents_aabb.position + contents_aabb.size * minimum_fraction;
-		Vector3 fallback_maximum = contents_aabb.position + contents_aabb.size * maximum_fraction;
+		Vector3 fallback_minimum = model_aabb.position + model_aabb.size * minimum_fraction;
+		Vector3 fallback_maximum = model_aabb.position + model_aabb.size * maximum_fraction;
 		const Vector3 fallback_center = (fallback_minimum + fallback_maximum) * 0.5;
 		for (int axis = 0; axis < 3; axis++) {
 			if (fallback_maximum[axis] - fallback_minimum[axis] < 0.02) {
@@ -887,7 +897,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 		}
 		Vector3 segment_minimum[2] = { split_minimum, split_minimum };
 		Vector3 segment_maximum[2] = { split_maximum, split_maximum };
-		const real_t overlap = MAX(contents_aabb.size.y * 0.0125, 0.01);
+		const real_t overlap = MAX(model_aabb.size.y * 0.0125, 0.01);
 		if (split_direction >= 0.0) {
 			segment_maximum[0][split_axis] = MIN(split_maximum[split_axis], split_value + overlap);
 			segment_minimum[1][split_axis] = MAX(split_minimum[split_axis], split_value - overlap);
@@ -935,7 +945,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 					}
 				}
 				if (!first_point) {
-					const real_t padding = MAX(contents_aabb.size.y * 0.025, 0.025);
+					const real_t padding = MAX(model_aabb.size.y * 0.025, 0.025);
 					for (int axis = 0; axis < 3; axis++) {
 						root_minimum[axis] = points_minimum[axis] - padding;
 						root_maximum[axis] = points_maximum[axis] + padding;
@@ -958,7 +968,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 				for (const Vector3 &point : joint_points) {
 					include_point(root_to_bone.xform(point), points_minimum, points_maximum, first_point);
 				}
-				const real_t padding = MAX(contents_aabb.size.y * 0.025, 0.025);
+				const real_t padding = MAX(model_aabb.size.y * 0.025, 0.025);
 				hitbox.minimum = points_minimum - Vector3(padding, padding, padding);
 				hitbox.maximum = points_maximum + Vector3(padding, padding, padding);
 				hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));

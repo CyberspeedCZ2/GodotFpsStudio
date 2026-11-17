@@ -193,7 +193,6 @@ class SceneImportSettingsScreen : public Control {
 	
 	int lod_mode = LOD_MODE_AUTO;
 	int lod_manual_level = 0;
-	float lod_bias = 1.0;
 	// Highest LOD level currently offered by the level picker (-1 = needs a
 	// rebuild); guards against repopulating the list on every camera move.
 	int lod_picker_levels = -1;
@@ -203,7 +202,6 @@ class SceneImportSettingsScreen : public Control {
 	Button *lod_auto_toggle = nullptr;
 	HBoxContainer *lod_buttons_container = nullptr;
 	Vector<Button *> lod_level_buttons;
-	HSlider *lod_bias_slider = nullptr;
 	HSlider *lod_preview_slider = nullptr;
 	Label *lod_preview_label = nullptr;
 	TabContainer *settings_tabs = nullptr;
@@ -407,6 +405,9 @@ class SceneImportSettingsScreen : public Control {
 		bool lod_preview_dirty = false;
 		// Big model: its preview LODs are generated when it is first selected.
 		bool lod_preview_deferred = false;
+		// Per surface, each level's switch distance before the engine pushed it
+		// past the previous level and without its bias (ImporterMesh meta).
+		Array lod_unbiased_distances;
 		Ref<ImporterMesh> lod_source_mesh;
 		Array lod_skin_pose_transforms;
 		Ref<Mesh> live_preview_mesh;
@@ -455,7 +456,6 @@ class SceneImportSettingsScreen : public Control {
 	void _update_mesh_stats();
 	void _apply_lod_preview();
 	Ref<Mesh> _get_lod_preview_mesh(const Ref<Mesh> &p_mesh, int p_level);
-	void _lod_bias_changed(double p_value);
 	void _wireframe_toggled(bool p_enabled);
 	void _helper_visibility_toggled(bool p_enabled);
 	void _generate_preview_lods(Node *p_node);

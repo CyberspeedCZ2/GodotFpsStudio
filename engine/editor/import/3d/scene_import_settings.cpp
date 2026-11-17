@@ -532,6 +532,9 @@ void SceneImportSettingsScreen::_fill_mesh(Tree *p_tree, const Ref<Mesh> &p_mesh
 			md.lod_skin_pose_transforms = lod_source_skin_pose_transforms[import_id];
 		}
 		md.lod_preview_deferred = lod_deferred_meshes.has(import_id);
+		if (md.lod_source_mesh.is_valid()) {
+			md.lod_unbiased_distances = md.lod_source_mesh->get_meta(SNAME("_lod_unbiased_distances"), Array());
+		}
 		md.lod_pending = lod_config_pending_meshes.has(import_id);
 		lod_settings_pending = lod_settings_pending || md.lod_pending;
 
@@ -1300,7 +1303,6 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	// bias); manual swaps and the preview mesh cache never survive a load.
 	lod_mode = LOD_MODE_AUTO;
 	lod_manual_level = 0;
-	lod_bias = 1.0;
 	lod_swapped_meshes.clear();
 	lod_preview_mesh_cache.clear();
 	lod_picker_levels = -1;
@@ -1313,10 +1315,6 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	base_viewport->set_mesh_lod_threshold((float)GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels"));
 	if (lod_auto_toggle != nullptr) {
 		lod_auto_toggle->set_pressed_no_signal(true);
-	}
-	if (lod_bias_slider != nullptr) {
-		lod_bias_slider->set_value_no_signal(1.0);
-		lod_bias_slider->show();
 	}
 	_update_lod_button_states();
 
@@ -2325,7 +2323,6 @@ void SceneImportSettingsScreen::_close_screen() {
 	// swaps and the preview mesh cache never survive a close.
 	lod_mode = LOD_MODE_AUTO;
 	lod_manual_level = 0;
-	lod_bias = 1.0;
 	lod_swapped_meshes.clear();
 	lod_preview_mesh_cache.clear();
 	lod_picker_levels = -1;
@@ -2334,10 +2331,6 @@ void SceneImportSettingsScreen::_close_screen() {
 	base_viewport->set_mesh_lod_threshold((float)GLOBAL_GET("rendering/mesh_lod/lod_change/threshold_pixels"));
 	if (lod_auto_toggle != nullptr) {
 		lod_auto_toggle->set_pressed_no_signal(true);
-	}
-	if (lod_bias_slider != nullptr) {
-		lod_bias_slider->set_value_no_signal(1.0);
-		lod_bias_slider->show();
 	}
 	_update_lod_button_states();
 	mesh_stats_panel->hide();

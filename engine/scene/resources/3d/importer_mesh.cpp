@@ -581,6 +581,15 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 		bone_transform_vector.push_back(p_bone_transform_array[i]);
 	}
 
+	// Per surface, each level's switch distance before it is pushed past the
+	// previous level (the clamp below) and without the per-level bias: the
+	// editor's LOD panel turns a target distance into a bias from these.
+	Array unbiased_distances;
+	unbiased_distances.resize(surfaces.size());
+	for (int i = 0; i < surfaces.size(); i++) {
+		unbiased_distances[i] = PackedFloat32Array();
+	}
+
 	for (int i = 0; i < surfaces.size(); i++) {
 		if (surfaces[i].primitive != Mesh::PRIMITIVE_TRIANGLES) {
 			continue;
@@ -869,6 +878,9 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 			// Smaller error keys switch earlier. Keep keys strictly increasing so
 			// each generated level stays reachable in the renderer's sorted chain.
 			lod.distance = MAX(MAX(current_error * scale / transition_bias, CMP_EPSILON2), last_lod_error * 1.001f + CMP_EPSILON2);
+			PackedFloat32Array surface_unbiased = unbiased_distances[i];
+			surface_unbiased.push_back(MAX(current_error * scale, CMP_EPSILON2));
+			unbiased_distances[i] = surface_unbiased;
 			last_lod_error = lod.distance;
 			lod.indices = new_indices;
 			surfaces.write[i].lods.push_back(lod);
@@ -879,6 +891,7 @@ void ImporterMesh::generate_lods(float p_normal_merge_angle, Array p_bone_transf
 
 		surfaces.write[i].lods.sort_custom<Surface::LODComparator>();
 	}
+	set_meta(SNAME("_lod_unbiased_distances"), unbiased_distances);
 }
 
 void ImporterMesh::_generate_lods_bind(float p_normal_merge_angle, float p_normal_split_angle, Array p_skin_pose_transform_array, int p_lod_count, float p_lod_reduction) {
