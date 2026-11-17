@@ -1139,12 +1139,12 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	r_textures.push_back(cloud_texture);
 
 	// Single bubbles: many, larger, rising fast and wobbling up.
-	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 200, 4.0, true, 0.85, 0.5, BLEND_ALPHA);
+	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 240, 4.0, true, 0.85, 0.16, BLEND_ALPHA);
 	bubbles.material->set_proximity_fade_enabled(false);
 	bubbles.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.6);
-	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 7.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 5.0, 0)).set("scale", Vector2(0.25, 1.3));
+	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 7.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 5.0, 0)).set("scale", Vector2(0.35, 1.2));
 	bubbles.set("turbulence_enabled", true).set("turbulence_noise_strength", 0.6).set("turbulence_noise_scale", 2.0);
-	bubbles.set("color", Color(1.0, 1.0, 1.0, 1.0));
+	bubbles.set("color", Color(1.0, 1.0, 1.0, 0.6));
 	bubbles.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.85, 0.9), Vector2(1, 0) }));
 	clip_at_water_surface(bubbles);
 	// Real bubbles (sphere, rim, highlight): 4x4 sheet of differently squashed
