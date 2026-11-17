@@ -20,7 +20,7 @@ Content Browser vychází z vestavěného filesystem panelu. UniBuilder je souč
 
 - **Level:** úpravy scény a viewportu, vytváření FPS uzlů, NPC tras a waypoint akcí, práce s NavigationRegion3D, NavigationObstacle3D a NavigationLink3D.
 - **Play:** spuštění hry v Level viewportu nebo v samostatném okně.
-- **Model:** náhled importovaných modelů, LOD nastavení a jejich průběžné ukládání do souboru `.lodcfg`. Podrobnosti jsou v [Model Editor: LOD a náhled modelu](model_editor_lod.md).
+- **Model:** náhled importovaných modelů, LOD nastavení (`.lodcfg`), hitboxy pro FPS zbraně (`.hitboxcfg`, při importu boxové `Area3D` na kostech), materiály a vlastní prostředí náhledu. Kód je v `engine/editor/import/3d/scene_import_settings*.cpp`. Podrobnosti jsou v [Model Editor: LOD a náhled modelu](model_editor_lod.md).
 - **Particle:** samostatná pracovní obrazovka bezprostředně za Model pro sestavení efektů z `GPUParticles3D` a `CPUParticles3D`: zásobník modulů, časová osa emitorů, FPS presety, generátor VFX textur a runtime kořen `ParticleEffect3D`. Aktuální rozsah popisuje [Particle workspace](particle_editor.md).
 - **UniBuilder:** vestavěné nástroje pro tvorbu a úpravu brush/CSG geometrie.
 

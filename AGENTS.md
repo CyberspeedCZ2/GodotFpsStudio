@@ -28,7 +28,7 @@
 ## Známá omezení a otevřené zprávy
 
 - Generování vrcholů NavigationObstacle3D z modelu zatím není implementováno. Bake používá konvexní obrys překážky; jeden obrys nedokáže popsat otvor nebo vnitřní dvůr.
-- Uživatel dříve nahlásil možné problémy s materiály `.tres` při náhledu/vložení modelu, obnovováním Content Browseru po uložení modelu a UniBuilder exportem GLB s prázdným bufferem. Oprava těchto hlášení není v tomto repozitáři potvrzena; před změnou je reprodukuj v příslušném herním projektu.
+- Hlášení o UniBuilder exportu GLB s prázdným bufferem nikdo nereprodukoval; před změnou ho reprodukuj v herním projektu. (Problémy s materiály `.tres` v Model View a obnovou Content Browseru po reimportu byly 2026-11-17 opraveny: `CACHE_MODE_REUSE`, uložení do souboru, ze kterého se materiál načetl, `filesystem_changed` po reimportu.)
 - Vizuální chování editoru považuj za ověřené až po potvrzení uživatelem; editor neotevírej bez výslovné žádosti.
 
 ## Důležitá místa
@@ -37,4 +37,4 @@
 - `engine/editor/import/3d/scene_import_settings.cpp` — Model View (náhled a nastavení importu modelů); jeho části FPS Studia jsou v `scene_import_settings_hitboxes.cpp`, `_lod.cpp` (LOD a statistiky), `_environment.cpp` (obloha a slunce náhledu) a `_materials.cpp`, sdílené konstanty v `scene_import_settings_internal.h`. Nové funkce Model View patří do těchto souborů, ne do hlavního.
 - `engine/modules/navigation_3d/` a `engine/scene/3d/navigation/` — NavigationMesh a NavigationObstacle3D.
 - `tools/build_macos.sh` — build, balení aplikace a podpis.
-- Aktuální dokumentace: `README.md`, `docs/architecture.md` a `docs/model_editor_lod.md`.
+- Aktuální dokumentace: `README.md`, `docs/architecture.md`, `docs/model_editor_lod.md`, `docs/particle_editor.md` a `docs/post_process_volume_3d.md`.
