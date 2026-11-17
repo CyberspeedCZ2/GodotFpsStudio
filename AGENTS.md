@@ -34,7 +34,7 @@
 ## Důležitá místa
 
 - `engine/editor/fps_studio/` — pracovní prostředí a vestavěný UniBuilder.
-- `engine/editor/import/3d/scene_import_settings.cpp` — náhled a nastavení importu modelů včetně LOD.
+- `engine/editor/import/3d/scene_import_settings.cpp` — Model View (náhled a nastavení importu modelů); jeho části FPS Studia jsou v `scene_import_settings_hitboxes.cpp`, `_lod.cpp` (LOD a statistiky), `_environment.cpp` (obloha a slunce náhledu) a `_materials.cpp`, sdílené konstanty v `scene_import_settings_internal.h`. Nové funkce Model View patří do těchto souborů, ne do hlavního.
 - `engine/modules/navigation_3d/` a `engine/scene/3d/navigation/` — NavigationMesh a NavigationObstacle3D.
 - `tools/build_macos.sh` — build, balení aplikace a podpis.
 - Aktuální dokumentace: `README.md`, `docs/architecture.md` a `docs/model_editor_lod.md`.
