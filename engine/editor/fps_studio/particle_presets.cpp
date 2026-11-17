@@ -1135,19 +1135,6 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	TextureRequest bubble_texture = make_texture(shock.node, VFXTextureGenerator::TYPE_UNDERWATER_BUBBLE, "underwater_bubble_sphere", 256);
 	r_textures.push_back(bubble_texture);
 
-	// Bubble cloud: a dense white mass of tiny bubbles billowing out and
-	// rising to the surface, the main thing seen under water.
-	EmitterBuilder cloud = add_emitter(p_effect, "BubbleCloud", 14, 3.2, true, 0.9, 2.2, BLEND_ALPHA);
-	cloud.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.5);
-	cloud.set("spread", 180.0).set("initial_velocity", Vector2(1.5, 4.0)).set("damping", Vector2(2.5, 3.5)).set("gravity", Vector3(0, 2.2, 0));
-	cloud.process->set_param_texture(ParticleProcessMaterial::PARAM_DAMPING, make_curve({ Vector2(0, 1), Vector2(0.35, 0.3), Vector2(1, 0.3) }));
-	cloud.set("color", Color(0.95, 0.98, 1.0, 0.75));
-	cloud.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.35), Vector2(0.3, 1.0), Vector2(1, 1.5) }, 1.5f));
-	cloud.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.06, 1), Vector2(0.6, 0.7), Vector2(1, 0) }));
-	TextureRequest cloud_texture = make_soft_smoke(cloud);
-	clip_at_water_surface(cloud);
-	r_textures.push_back(cloud_texture);
-
 	// Single bubbles: many, larger, rising fast and wobbling up.
 	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 240, 4.0, true, 0.85, 0.08, BLEND_ALPHA);
 	bubbles.material->set_proximity_fade_enabled(false);

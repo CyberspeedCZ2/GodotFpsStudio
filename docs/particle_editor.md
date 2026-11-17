@@ -152,7 +152,7 @@ Presety jsou v menu **Library**, v panelu knihovny a v **New → FPS Presets**, 
 | Explosions & Fire | Smoke Grenade | hustá kouřová clona na 8 s, která vyplní místnost a drží se od stěn (kolize), zvuk |
 | Explosions & Fire | Signal Flare | červené jádro, jiskry s kolizí, červený kouř, mihotavé světlo, zvuk |
 | Explosions & Fire | Water Explosion | výbuch prorážející hladinu (+Y, počátek na hladině): sloup bílé vody (svislé billboardy, které rostou odspodu a padají zpět), sprška kapek, mlha, pěna na hladině, vlna, otřes, slot na zvuk |
-| Explosions & Fire | Underwater Explosion | výbuch pod vodou: záblesk a světlo, plynová bublina, která se rozepne a splaskne, oblak stoupajících bublin, zakalení, otřes |
+| Explosions & Fire | Underwater Explosion | výbuch pod vodou: záblesk a světlo, plynová bublina, která se rozepne a splaskne, stoupající bubliny, otřes |
 | Environment | Smoke Plume | nepřetržitý stoupající sloup kouře s turbulencí |
 | Environment | Steam Leak | proud páry podél +Z s turbulencí, zvuk |
 | Environment | Electric Sparks | opakované modré jiskry s kolizí, elektrický oblouk, blikající světlo, zvuk |
