@@ -105,7 +105,10 @@ static void _generate_fps_studio_hitboxes(Node *p_scene, const Array &p_hitboxes
 				attachment->set_owner(p_scene);
 				parent = attachment;
 			} else {
-				WARN_PRINT(vformat("FPS Studio hitbox '%s' refers to a skeleton or bone that is not present in the imported scene.", hitbox_name));
+				// Its corners are in that bone's frame: placed at the root they
+				// would land somewhere else entirely (a head box at the feet).
+				ERR_PRINT(vformat("FPS Studio hitbox '%s' was skipped: its skeleton '%s' or bone '%s' is not in the imported scene (renamed by a bone map?). Re-attach it in Model View.", hitbox_name, skeleton_path, bone_name));
+				continue;
 			}
 		}
 

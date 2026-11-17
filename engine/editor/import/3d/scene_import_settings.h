@@ -444,6 +444,7 @@ class SceneImportSettingsScreen : public Control {
 	Ref<ImporterMesh> _duplicate_importer_mesh(const Ref<ImporterMesh> &p_source) const;
 	void _schedule_lod_edit_update();
 	void _finish_lod_edit_update();
+	void _lod_edit_timer_timeout();
 	void _save_lod_config();
 
 	// LOD picker (viewport toolbar) methods.
@@ -481,6 +482,7 @@ class SceneImportSettingsScreen : public Control {
 	void _remove_hitbox();
 	void _hitbox_tree_selected();
 	void _hitbox_name_changed(const String &p_name);
+	void _hitbox_name_committed();
 	void _hitbox_group_changed(int p_group);
 	void _hitbox_damage_changed(double p_value);
 	void _hitbox_attachment_changed(int p_attachment);

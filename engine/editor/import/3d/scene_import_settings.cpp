@@ -31,6 +31,8 @@
 #include "scene_import_settings.h"
 
 #include "core/config/project_settings.h"
+#include "core/input/input.h"
+#include "core/io/file_access.h"
 #include "core/io/config_file.h"
 #include "core/io/resource_importer.h"
 #include "core/io/resource_saver.h"
@@ -114,6 +116,36 @@ static real_t get_default_hitbox_damage(int p_hitgroup) {
 			return 30.0;
 		default: // Generic and limbs.
 			return 15.0;
+	}
+}
+
+// Frame a hitbox's corners are stored in, as a transform into the model
+// root: the bone's rest frame, or the root itself (Model Root / no bone).
+static Transform3D get_hitbox_frame_to_root(Node *p_scene, const String &p_skeleton_path, const String &p_bone_name) {
+	Node3D *scene_root = Object::cast_to<Node3D>(p_scene);
+	if (!scene_root || p_skeleton_path.is_empty() || p_bone_name.is_empty()) {
+		return Transform3D();
+	}
+	Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(p_scene->get_node_or_null(NodePath(p_skeleton_path)));
+	const int bone = skeleton ? skeleton->find_bone(p_bone_name) : -1;
+	if (bone < 0) {
+		return Transform3D();
+	}
+	return scene_root->get_global_transform().affine_inverse() * skeleton->get_global_transform() * skeleton->get_bone_global_rest(bone);
+}
+
+// Axis-aligned bounds of a box after a transform (all 8 corners).
+static void transform_hitbox_bounds(const Vector3 &p_minimum, const Vector3 &p_maximum, const Transform3D &p_transform, Vector3 &r_minimum, Vector3 &r_maximum) {
+	for (int i = 0; i < 8; i++) {
+		const Vector3 corner((i & 1) ? p_maximum.x : p_minimum.x, (i & 2) ? p_maximum.y : p_minimum.y, (i & 4) ? p_maximum.z : p_minimum.z);
+		const Vector3 point = p_transform.xform(corner);
+		if (i == 0) {
+			r_minimum = point;
+			r_maximum = point;
+		} else {
+			r_minimum = r_minimum.min(point);
+			r_maximum = r_maximum.max(point);
+		}
 	}
 }
 
@@ -563,15 +595,18 @@ static Ref<Material> load_external_material_for_preview(const HashMap<StringName
 		return Ref<Material>();
 	}
 
+	// Reuse the cached instance: it is the one the open level and the
+	// Inspector edit, and replacing it reloaded it from disk, throwing away
+	// their unsaved changes.
 	Ref<Material> external_material;
 	if (p_settings.has("use_external/path")) {
 		const String path = p_settings["use_external/path"];
-		external_material = ResourceLoader::load(path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+		external_material = ResourceLoader::load(path, "", ResourceFormatLoader::CACHE_MODE_REUSE);
 	}
 	if (external_material.is_null() && p_settings.has("use_external/fallback_path")) {
 		const String fallback_path = p_settings["use_external/fallback_path"];
 		if (!fallback_path.is_empty()) {
-			external_material = ResourceLoader::load(fallback_path, "", ResourceFormatLoader::CACHE_MODE_REPLACE);
+			external_material = ResourceLoader::load(fallback_path, "", ResourceFormatLoader::CACHE_MODE_REUSE);
 		}
 	}
 	return external_material;
@@ -995,7 +1030,10 @@ void SceneImportSettingsScreen::_update_view_gizmos() {
 		if (_re_import() != OK) {
 			return;
 		}
-		open_settings(base_path);
+		// Keep the import type: the default would turn an AnimationLibrary
+		// into a PackedScene import on the next Reimport.
+		const String import_type = current_import_type;
+		open_settings(base_path, import_type);
 		return;
 	}
 	for (const KeyValue<String, NodeData> &e : node_map) {
@@ -1420,9 +1458,11 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 				}
 			}
 
-			if (generate_lods && !importer_mesh->has_mesh()) {
+			if (!importer_mesh->has_mesh()) {
 				// Bone pose transforms are needed for correct LOD
 				// simplification of skinned meshes, same as on reimport.
+				// Kept even when LODs are off now: turning them on later in
+				// the panel simplifies with these.
 				Array skin_pose_transform_array;
 				const Ref<Skin> skin = src_mesh_node->get_skin();
 				if (skin.is_valid()) {
@@ -1451,7 +1491,9 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 				if (!mesh_id.is_empty()) {
 					lod_source_skin_pose_transforms[mesh_id] = skin_pose_transform_array;
 				}
-				importer_mesh->generate_lods(merge_angle, skin_pose_transform_array, lod_count, lod_reduction, custom_lod_levels, lod_levels);
+				if (generate_lods) {
+					importer_mesh->generate_lods(merge_angle, skin_pose_transform_array, lod_count, lod_reduction, custom_lod_levels, lod_levels);
+				}
 			}
 		}
 	}
@@ -1847,15 +1889,13 @@ Ref<Mesh> SceneImportSettingsScreen::_get_lod_preview_mesh(const Ref<Mesh> &p_me
 	if (p_mesh.is_null() || p_level <= 0) {
 		return p_mesh;
 	}
+	// One build per mesh, for the level last pinned: every mesh of the scene
+	// keeps its own entry (clearing on a miss rebuilt all of them each time).
 	if (lod_preview_mesh_cache.has(p_mesh)) {
 		const Ref<Mesh> &cached = lod_preview_mesh_cache[p_mesh];
-		// The cache only ever holds builds for one pinned level.
 		if (cached.is_valid() && cached->has_meta("lod_preview_level") && (int)cached->get_meta("lod_preview_level") == p_level) {
 			return cached;
 		}
-	} else {
-		// Drop stale builds whenever the pinned level changes.
-		lod_preview_mesh_cache.clear();
 	}
 
 	Ref<ArrayMesh> preview;
@@ -2019,6 +2059,8 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	if (preview_floor != nullptr) {
 		preview_floor->hide();
 	}
+	// The bones overlay of the previous model must not show over this one.
+	bones_mesh_preview->set_mesh(Ref<Mesh>());
 
 	selected_id = "";
 	selected_type = "";
@@ -2115,7 +2157,12 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	scene = _resource_importer_scene->pre_import(p_path, defaults);
 	_resource_importer_scene->set_scene_import_type(p_scene_import_type);
 	if (scene == nullptr) {
+		// Nothing of the previous model may stay clickable: its maps are gone.
 		mesh_stats_panel->hide();
+		scene_tree->clear();
+		mesh_tree->clear();
+		material_tree->clear();
+		_update_empty_state();
 		EditorNode::get_singleton()->show_warning(TTR("Error opening scene"));
 		return;
 	}
@@ -2190,6 +2237,12 @@ Node *SceneImportSettingsScreen::get_selected_node() {
 }
 
 void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, const String &p_id) {
+	// A LOD edit waiting for its timer belongs to the mesh selected now:
+	// finish it before the selection moves, or it is never regenerated.
+	if (lod_edit_timer && !lod_edit_timer->is_stopped()) {
+		lod_edit_timer->stop();
+		_finish_lod_edit_update();
+	}
 	// Restore the previous pinned preview before the selection changes its mesh.
 	for (const KeyValue<MeshInstance3D *, Ref<Mesh>> &entry : lod_swapped_meshes) {
 		if (entry.key && entry.value.is_valid()) {
@@ -2204,7 +2257,13 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	// Only actual scenes can make use of the node generation options such as generating physics colliders on meshes or setting a script.
 	const bool hide_node_gen_options = _resource_importer_scene->get_scene_import_type() != "PackedScene";
 
-	bones_mesh_preview->hide();
+	// Bones follow the Skeleton toggle; only the isolated Mesh and Material
+	// previews hide them.
+	if (p_type == "Mesh" || p_type == "Material") {
+		bones_mesh_preview->hide();
+	} else {
+		_update_skeleton_preview_visibility();
+	}
 	if (p_type == "Node") {
 		node_selected->hide(); // Always hide just in case.
 		mesh_preview->hide();
@@ -2389,9 +2448,23 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	}
 	_update_lod_settings_panel();
 	if (settings_tabs) {
-		const int tab = p_type == "Mesh" ? 1 : (p_type == "Material" ? 6 : 5);
-		settings_tabs->set_current_tab(tab);
-		_settings_tab_changed(tab);
+		// Keep the open tab when it still applies (Hitboxes, Lighting,
+		// Environment, Details work for any selection); switch only from a
+		// tab made for another kind of item. Tabs: 0 LOD, 1 Mesh, 2 Physics,
+		// 3 Hitboxes, 4 Lighting, 5 Details, 6 Material, 7 Environment.
+		const int current = settings_tabs->get_current_tab();
+		int tab = current;
+		if (p_type == "Material") {
+			tab = 6;
+		} else if (p_type == "Mesh") {
+			tab = current == 6 ? 1 : current;
+		} else if (current <= 2 || current == 6) {
+			tab = 5;
+		}
+		if (tab != current) {
+			settings_tabs->set_current_tab(tab);
+			_settings_tab_changed(tab);
+		}
 	}
 }
 
@@ -2459,7 +2532,9 @@ void SceneImportSettingsScreen::_play_animation() {
 
 void SceneImportSettingsScreen::_stop_current_animation() {
 	animation_pingpong = false;
-	animation_player->stop();
+	if (animation_player) {
+		animation_player->stop();
+	}
 	animation_play_button->set_button_icon(get_editor_theme_icon(SNAME("MainPlay")));
 	animation_slider->set_value_no_signal(0.0);
 	set_process(false);
@@ -2721,12 +2796,18 @@ Error SceneImportSettingsScreen::_save_modified_external_materials() {
 			return ERR_INVALID_PARAMETER;
 		}
 
-		String path;
-		if (md.settings.has("use_external/fallback_path")) {
-			path = md.settings["use_external/fallback_path"];
-		}
-		if (path.is_empty() && md.settings.has("use_external/path")) {
+		// Save to the file the material was loaded from: the material's own
+		// path, else the uid (follows a moved file), the fallback path last
+		// (it still names the old place after a move).
+		String path = md.material->get_path();
+		if (!path.is_resource_file() && md.settings.has("use_external/path")) {
 			path = md.settings["use_external/path"];
+			if (path.begins_with("uid://")) {
+				path = ResourceUID::uid_to_path(path);
+			}
+		}
+		if (!path.is_resource_file() && md.settings.has("use_external/fallback_path")) {
+			path = md.settings["use_external/fallback_path"];
 		}
 		if (path.begins_with("uid://")) {
 			path = ResourceUID::uid_to_path(path);
@@ -2843,6 +2924,9 @@ Error SceneImportSettingsScreen::_re_import() {
 
 	_cleanup(); // Prevent skeletons and other pointers from pointing to dangling references.
 	EditorFileSystem::get_singleton()->reimport_file_with_custom_parameters(base_path, _resource_importer_scene->get_importer_name(), main_settings);
+	// Unlike a normal reimport this path does not notify the docks: refresh
+	// the Content Browser/FileSystem so the model's entry and thumbnail update.
+	EditorFileSystem::get_singleton()->emit_signal(SNAME("filesystem_changed"));
 	return OK;
 }
 
@@ -3049,7 +3133,8 @@ void SceneImportSettingsScreen::_notification(int p_what) {
 
 		case NOTIFICATION_PROCESS: {
 			if (animation_player != nullptr && is_visible_in_tree()) {
-				animation_slider->set_value_no_signal(animation_player->get_current_animation_position() / animation_player->get_current_animation_length());
+				const double length = animation_player->get_current_animation_length();
+				animation_slider->set_value_no_signal(length > 0.0 ? animation_player->get_current_animation_position() / length : 0.0);
 			}
 		} break;
 
@@ -3347,7 +3432,8 @@ void SceneImportSettingsScreen::_save_dir_confirm() {
 		if (_re_import() != OK) {
 			return;
 		}
-		open_settings(base_path);
+		const String import_type = current_import_type;
+		open_settings(base_path, import_type);
 		if (!selected_material_id.is_empty() && material_map.has(selected_material_id)) {
 			_select(material_tree, "Material", selected_material_id);
 			data_mode->set_current_tab(2);
@@ -4091,7 +4177,7 @@ void fragment() {
 	lod_edit_timer = memnew(Timer);
 	lod_edit_timer->set_wait_time(0.35);
 	lod_edit_timer->set_one_shot(true);
-	lod_edit_timer->connect("timeout", callable_mp(this, &SceneImportSettingsScreen::_finish_lod_edit_update));
+	lod_edit_timer->connect("timeout", callable_mp(this, &SceneImportSettingsScreen::_lod_edit_timer_timeout));
 	add_child(lod_edit_timer);
 
 	// Restore the user's panel width, or use a 400 px default while enforcing
@@ -4242,8 +4328,23 @@ void SceneImportSettingsScreen::_schedule_lod_edit_update() {
 	}
 }
 
+// While a slider is still held, wait: finishing rebuilds the settings panel,
+// which would free the slider under the mouse and end the drag.
+void SceneImportSettingsScreen::_lod_edit_timer_timeout() {
+	if (Input::get_singleton()->is_mouse_button_pressed(MouseButton::LEFT)) {
+		lod_edit_timer->start();
+		return;
+	}
+	_finish_lod_edit_update();
+}
+
 void SceneImportSettingsScreen::_save_lod_config() {
 	if (base_path.is_empty() || mesh_map.is_empty()) {
+		return;
+	}
+	// Only models whose LODs were edited get a sidecar; opening a model must
+	// not create one (it would then override later Import dock changes).
+	if (!lod_settings_pending && !FileAccess::exists(base_path + ".lodcfg")) {
 		return;
 	}
 	for (const KeyValue<String, MeshData> &entry : mesh_map) {
@@ -4591,6 +4692,8 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hitbox_name_input = memnew(LineEdit);
 	hitbox_name_input->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	hitbox_name_input->connect(SceneStringName(text_changed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_name_changed));
+	hitbox_name_input->connect(SceneStringName(text_submitted), callable_mp(this, &SceneImportSettingsScreen::_hitbox_name_committed).unbind(1));
+	hitbox_name_input->connect(SceneStringName(focus_exited), callable_mp(this, &SceneImportSettingsScreen::_hitbox_name_committed));
 	name_row->add_child(hitbox_name_input);
 
 	HBoxContainer *group_row = memnew(HBoxContainer);
@@ -5234,6 +5337,43 @@ void SceneImportSettingsScreen::_hitbox_name_changed(const String &p_name) {
 	_save_hitbox_config();
 }
 
+// On Enter or leaving the field: a hitbox name becomes a node name in the
+// imported scene and level overrides of its damage are stored by that path,
+// so it must be unique and not empty (duplicates got order-based suffixes
+// that moved when a box was removed).
+void SceneImportSettingsScreen::_hitbox_name_committed() {
+	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
+		return;
+	}
+	String base = model_hitboxes[selected_hitbox].name.strip_edges().validate_node_name();
+	if (base.is_empty()) {
+		base = TTR("Hitbox");
+	}
+	String name = base;
+	for (int suffix = 2;; suffix++) {
+		bool in_use = false;
+		for (int i = 0; i < model_hitboxes.size(); i++) {
+			if (i != selected_hitbox && model_hitboxes[i].name == name) {
+				in_use = true;
+				break;
+			}
+		}
+		if (!in_use) {
+			break;
+		}
+		name = vformat("%s %d", base, suffix);
+	}
+	if (name == model_hitboxes[selected_hitbox].name) {
+		return;
+	}
+	model_hitboxes.write[selected_hitbox].name = name;
+	if (hitbox_name_input) {
+		hitbox_name_input->set_text(name);
+	}
+	_populate_hitbox_tree();
+	_save_hitbox_config();
+}
+
 void SceneImportSettingsScreen::_hitbox_group_changed(int p_group) {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
@@ -5257,8 +5397,20 @@ void SceneImportSettingsScreen::_hitbox_attachment_changed(int p_attachment) {
 	}
 	Dictionary attachment = hitbox_attachment_option->get_item_metadata(p_attachment);
 	ModelHitbox &hitbox = model_hitboxes.write[selected_hitbox];
-	hitbox.skeleton_path = attachment.get("skeleton_path", String());
-	hitbox.bone_name = attachment.get("bone_name", String());
+	const String new_skeleton_path = attachment.get("skeleton_path", String());
+	const String new_bone_name = attachment.get("bone_name", String());
+	// The corners are in the attached bone's frame: re-express them in the new
+	// one so the box stays where it is instead of jumping with the numbers.
+	const Transform3D old_to_root = get_hitbox_frame_to_root(scene, hitbox.skeleton_path, hitbox.bone_name);
+	const Transform3D new_to_root = get_hitbox_frame_to_root(scene, new_skeleton_path, new_bone_name);
+	Vector3 minimum;
+	Vector3 maximum;
+	transform_hitbox_bounds(hitbox.minimum, hitbox.maximum, new_to_root.affine_inverse() * old_to_root, minimum, maximum);
+	hitbox.minimum = minimum;
+	hitbox.maximum = maximum;
+	hitbox.skeleton_path = new_skeleton_path;
+	hitbox.bone_name = new_bone_name;
+	_select_hitbox(selected_hitbox); // Shows the converted corners.
 	_update_hitbox_preview();
 	_save_hitbox_config();
 }
@@ -5287,6 +5439,11 @@ void SceneImportSettingsScreen::_hitbox_transform_changed(double p_value, int p_
 
 void SceneImportSettingsScreen::_save_hitbox_config() {
 	if (base_path.is_empty()) {
+		return;
+	}
+	// Opening a model without hitboxes must not create an empty sidecar: it
+	// would win over hitboxes added to the .import later and wipe them.
+	if (model_hitboxes.is_empty() && !FileAccess::exists(base_path + ".hitboxcfg")) {
 		return;
 	}
 	Array saved_hitboxes;
@@ -5983,8 +6140,9 @@ void SceneImportSettingsScreen::_lod_preset_selected(int p_index) {
 		levels.push_back(level);
 	}
 	_set_custom_lod_levels(levels);
-	MeshData &md = mesh_map[selected_id];
-	md.preview_lod_map.clear();
+	if (mesh_map.has(selected_id)) {
+		mesh_map[selected_id].preview_lod_map.clear();
+	}
 	_update_lod_settings_panel();
 }
 
@@ -5992,8 +6150,10 @@ void SceneImportSettingsScreen::_lod_reset_levels() {
 	if (selected_type != "Mesh" || !mesh_map.has(selected_id)) {
 		return;
 	}
-	mesh_map[selected_id].settings.erase("lods/custom_levels");
-	mesh_map[selected_id].settings.erase("lods/levels");
+	// Stored as "off" rather than erased: the sidecar only overrides keys it
+	// has, so an erased key brought back custom levels from the .import file.
+	mesh_map[selected_id].settings["lods/custom_levels"] = false;
+	mesh_map[selected_id].settings["lods/levels"] = Array();
 	mesh_map[selected_id].preview_lod_map.clear();
 	mesh_map[selected_id].live_preview_mesh.unref();
 	stats_selected_mesh.unref();
@@ -6106,7 +6266,7 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 	}
 	if (!md.has_import_id) {
 		lod_status = TTR("This mesh has no stable import ID. Name it in the source file before saving per-mesh LOD settings.");
-	} else if (!lod_settings_pending && enabled && md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]) && levels.size() > MAX(stats_level_faces.size() - 1, 0)) {
+	} else if (!md.lod_preview_dirty && enabled && md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]) && levels.size() > MAX(stats_level_faces.size() - 1, 0)) {
 		lod_status = vformat(TTR("Generated %d of %d requested LODs. The mesh could not be simplified further."), MAX(stats_level_faces.size() - 1, 0), levels.size());
 	}
 	lod_status_label->set_text(lod_status);
