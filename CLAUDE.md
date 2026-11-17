@@ -6,6 +6,10 @@ Trvalá pravidla projektu jsou v [AGENTS.md](AGENTS.md) (build jen `./tools/buil
 
 Stav k 2026-11-16, větev `codex/black-default-fps-level` (vše pushnuto). Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, ParticleImpactTable, ParticleLevelSetup, CameraShake3D, RadialDamage3D).
 
+## Model View (2026-11-17)
+- Revize ve třech částech, opravy v `56caa4cd` a `79e7a9a6`, rozdělení souboru v `0fa6fe27`: `scene_import_settings.cpp` drží dialog Godotu a kostru plochy, části FPS Studia jsou v `scene_import_settings_{hitboxes,lod,environment,materials}.cpp`, sdílené v `scene_import_settings_internal.h`. Nové věci Model View dávat do nich.
+- Neopravené (větší nebo nejisté): otevření velkého modelu kopíruje všechny `ImporterMesh` a generuje LOD synchronně (škola zablokuje editor), „Reference target“ nesedí, když engine úroveň LOD posune (clamp ×1,001 v `importer_mesh.cpp`), předvolby hitboxů nafukují boxy na natočených kostech (obal 8 rohů), `contents_aabb` zahrnuje transformaci kořene, druhý AnimationPlayer v modelu se ignoruje, změna meta `hitgroup` v Inspectoru nepřebarví box v Levelu. `lod_bias_slider` se nikde nevytváří (mrtvý člen).
+
 ## Kde jsme skončili
 Particle editor je pro FPS hru na motivy HL2 funkčně kompletní a je napojený v herním projektu (zásahy pistole podle povrchu, příprava levelu). Uživatel na otázku „chybí ještě něco“ dostal odpověď, že podstatné nic: další krok je ověření v GUI a ve hře a jeho zpětná vazba (screenshoty). Kouř ladí uživatel sám v GUI („hodně bude záležet, jak to nastavím“), do kouře (`make_soft_smoke`) nesahat bez žádosti. Procedurální zvuky jsou záměrně jen dočasné, uživatel je nahradí lepšími (soubor se stejným jménem v `res://vfx_sounds/`); okno Sound Generator nechtěl.
 
