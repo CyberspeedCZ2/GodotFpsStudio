@@ -2443,7 +2443,15 @@ void SceneImportSettingsScreen::_notification(int p_what) {
 			}
 		} break;
 
+		case NOTIFICATION_RESIZED: {
+			if (!panel_widths_restored) {
+				callable_mp(this, &SceneImportSettingsScreen::_restore_panel_widths).call_deferred();
+			}
+		} break;
 		case NOTIFICATION_VISIBILITY_CHANGED: {
+			if (!panel_widths_restored) {
+				callable_mp(this, &SceneImportSettingsScreen::_restore_panel_widths).call_deferred();
+			}
 			// Unlike the old modal dialog, switching to another workspace tab
 			// must NOT free the previewed model; it stays alive so the user
 			// can come back to it. Cleanup happens in open_settings() and
@@ -3497,15 +3505,10 @@ void fragment() {
 	lod_edit_timer->connect("timeout", callable_mp(this, &SceneImportSettingsScreen::_lod_edit_timer_timeout));
 	add_child(lod_edit_timer);
 
-	// Restore the user's panel width, or use a 400 px default while enforcing
-	// the inspector's 320 px minimum. Widths are stored before editor scaling.
-	const real_t content_minimum_width = data_mode->get_combined_minimum_size().x;
-	const real_t saved_content_width = MAX((real_t)EDITOR_DEF(MODEL_CONTENT_PANEL_WIDTH_SETTING, MODEL_CONTENT_PANEL_DEFAULT_WIDTH) * EDSCALE, content_minimum_width);
-	tree_split->set_split_offset(Math::round(saved_content_width - content_minimum_width));
-	const real_t panel_minimum_width = settings_panel_layout->get_combined_minimum_size().x;
-	const real_t saved_panel_width = MAX((real_t)EDITOR_DEF(MODEL_SETTINGS_PANEL_WIDTH_SETTING, MODEL_SETTINGS_PANEL_DEFAULT_WIDTH), MODEL_SETTINGS_PANEL_MIN_WIDTH) * EDSCALE;
-	const real_t desired_panel_width = MAX(panel_minimum_width, saved_panel_width);
-	property_split->set_split_offset(Math::round(panel_minimum_width - desired_panel_width));
+	// Panel widths are restored once the workspace has a real size
+	// (_restore_panel_widths); here only the settings get their defaults.
+	EDITOR_DEF(MODEL_CONTENT_PANEL_WIDTH_SETTING, MODEL_CONTENT_PANEL_DEFAULT_WIDTH);
+	EDITOR_DEF(MODEL_SETTINGS_PANEL_WIDTH_SETTING, MODEL_SETTINGS_PANEL_DEFAULT_WIDTH);
 
 	EditorNode::get_singleton()->register_hdr_viewport(base_viewport);
 	
@@ -3594,21 +3597,57 @@ void SceneImportSettingsScreen::_settings_tab_navigation_resized() {
 	settings_tab_bar->set_position(Size2((navigation_size.x - tab_bar_size.x) * 0.5, (navigation_size.y - tab_bar_size.y) * 0.5));
 }
 
+// The widths actually on screen are stored (unscaled) after the drag has been
+// laid out; computing them from the split offset and the panels' minimum
+// sizes gave other values on the next start (the minimums change with the
+// open tab and the theme).
 void SceneImportSettingsScreen::_tree_split_dragged(int) {
-	if (!data_mode) {
-		return;
-	}
-	const real_t content_width = data_mode->get_size().x / EDSCALE;
-	EditorSettings::get_singleton()->set_setting(MODEL_CONTENT_PANEL_WIDTH_SETTING, Math::round(content_width));
+	panel_widths_restored = true; // The user's layout from now on.
+	callable_mp(this, &SceneImportSettingsScreen::_save_panel_widths).call_deferred();
 }
 
-void SceneImportSettingsScreen::_property_split_dragged(int p_offset) {
-	if (!settings_tabs) {
+void SceneImportSettingsScreen::_property_split_dragged(int) {
+	panel_widths_restored = true;
+	callable_mp(this, &SceneImportSettingsScreen::_save_panel_widths).call_deferred();
+}
+
+void SceneImportSettingsScreen::_save_panel_widths() {
+	if (!data_mode || !settings_panel_layout || !is_visible_in_tree()) {
 		return;
 	}
-	const real_t minimum_width = settings_panel_layout->get_combined_minimum_size().x;
-	const real_t panel_width = MAX(minimum_width, minimum_width - p_offset) / EDSCALE;
-	EditorSettings::get_singleton()->set_setting(MODEL_SETTINGS_PANEL_WIDTH_SETTING, Math::round(panel_width));
+	EditorSettings::get_singleton()->set_setting(MODEL_CONTENT_PANEL_WIDTH_SETTING, Math::round(data_mode->get_size().x / EDSCALE));
+	EditorSettings::get_singleton()->set_setting(MODEL_SETTINGS_PANEL_WIDTH_SETTING, Math::round(settings_panel_layout->get_size().x / EDSCALE));
+	EditorSettings::get_singleton()->save();
+}
+
+// Once the workspace is laid out at its real size: move both splits so the
+// tree and the settings panel get their saved widths, keeping some room for
+// the 3D preview. Measured from the current sizes, so it does not depend on
+// how the split containers count their offsets.
+void SceneImportSettingsScreen::_restore_panel_widths() {
+	if (panel_widths_restored || !tree_split || !property_split || !data_mode || !settings_panel_layout || !is_visible_in_tree()) {
+		return;
+	}
+	const real_t total = tree_split->get_size().x;
+	if (total < 400 * EDSCALE || data_mode->get_size().x <= 0 || settings_panel_layout->get_size().x <= 0) {
+		return;
+	}
+	panel_widths_restored = true;
+	const real_t preview_room = 260 * EDSCALE;
+	real_t content_width = (real_t)EDITOR_GET(MODEL_CONTENT_PANEL_WIDTH_SETTING) * EDSCALE;
+	real_t panel_width = (real_t)EDITOR_GET(MODEL_SETTINGS_PANEL_WIDTH_SETTING) * EDSCALE;
+	content_width = MAX(content_width, data_mode->get_combined_minimum_size().x);
+	panel_width = MAX(panel_width, MAX(settings_panel_layout->get_combined_minimum_size().x, (real_t)MODEL_SETTINGS_PANEL_MIN_WIDTH * EDSCALE));
+	// A smaller window than when they were saved: shrink both, the preview
+	// keeps its room.
+	const real_t overflow = content_width + panel_width + preview_room - total;
+	if (overflow > 0) {
+		const real_t sum = content_width + panel_width;
+		content_width -= overflow * content_width / sum;
+		panel_width -= overflow * panel_width / sum;
+	}
+	tree_split->set_split_offset(tree_split->get_split_offset() + Math::round(content_width - data_mode->get_size().x));
+	property_split->set_split_offset(property_split->get_split_offset() - Math::round(panel_width - settings_panel_layout->get_size().x));
 }
 
 void SceneImportSettingsScreen::_lod_merge_angle_changed(double p_value) {

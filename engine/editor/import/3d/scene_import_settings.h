@@ -520,6 +520,9 @@ class SceneImportSettingsScreen : public Control {
 	void _clear_hitbox_preview();
 	void _tree_split_dragged(int p_offset);
 	void _property_split_dragged(int p_offset);
+	void _save_panel_widths();
+	void _restore_panel_widths();
+	bool panel_widths_restored = false;
 	void _update_material_editor();
 	void _clear_mesh_preview_material_overrides();
 	void _apply_import_materials_to_mesh_preview(const Ref<Mesh> &p_mesh);
