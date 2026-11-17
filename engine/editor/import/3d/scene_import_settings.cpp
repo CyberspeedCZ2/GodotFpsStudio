@@ -531,6 +531,7 @@ void SceneImportSettingsScreen::_fill_mesh(Tree *p_tree, const Ref<Mesh> &p_mesh
 		if (lod_source_skin_pose_transforms.has(import_id)) {
 			md.lod_skin_pose_transforms = lod_source_skin_pose_transforms[import_id];
 		}
+		md.lod_preview_deferred = lod_deferred_meshes.has(import_id);
 		md.lod_pending = lod_config_pending_meshes.has(import_id);
 		lod_settings_pending = lod_settings_pending || md.lod_pending;
 
@@ -1386,6 +1387,24 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 	// generation) so the statistics overlay can report the LOD level the
 	// preview camera selects. Must run before _update_scene() converts the
 	// ImporterMeshInstance3D nodes to MeshInstance3D.
+	// A big model (a whole map) defers this per mesh: generating every LOD
+	// up front blocked the editor for a long time.
+	{
+		uint64_t triangles = 0;
+		const TypedArray<Node> importer_nodes = scene->find_children("*", "ImporterMeshInstance3D", true, false);
+		for (int n = 0; n < importer_nodes.size(); n++) {
+			ImporterMeshInstance3D *importer_node = Object::cast_to<ImporterMeshInstance3D>(importer_nodes[n]);
+			const Ref<ImporterMesh> importer_mesh = importer_node ? importer_node->get_mesh() : Ref<ImporterMesh>();
+			for (int s = 0; importer_mesh.is_valid() && s < importer_mesh->get_surface_count(); s++) {
+				const Array arrays = importer_mesh->get_surface_arrays(s);
+				const PackedInt32Array indices = arrays.size() == Mesh::ARRAY_MAX ? PackedInt32Array(arrays[Mesh::ARRAY_INDEX]) : PackedInt32Array();
+				const PackedVector3Array vertices = arrays.size() == Mesh::ARRAY_MAX ? PackedVector3Array(arrays[Mesh::ARRAY_VERTEX]) : PackedVector3Array();
+				triangles += (indices.is_empty() ? vertices.size() : indices.size()) / 3;
+			}
+		}
+		lod_defer_generation = triangles > 250000;
+	}
+	lod_deferred_meshes.clear();
 	_generate_preview_lods(scene);
 
 	first_aabb = true;
@@ -1662,6 +1681,10 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 		lod_settings_pending = lod_settings_pending || entry.value.lod_pending;
 	}
 	_update_lod_settings_panel();
+	// A big model's mesh gets its preview LODs the first time it is shown.
+	if (p_type == "Mesh" && mesh_map.has(p_id) && mesh_map[p_id].lod_preview_deferred) {
+		_regenerate_lod_preview(mesh_map[p_id]);
+	}
 	if (settings_tabs) {
 		// Keep the open tab when it still applies (Hitboxes, Lighting,
 		// Environment, Details work for any selection); switch only from a

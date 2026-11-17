@@ -164,8 +164,12 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 		Ref<ImporterMesh> importer_mesh = src_mesh_node->get_mesh();
 		if (importer_mesh.is_valid() && importer_mesh->get_surface_count() > 0) {
 			String mesh_id = importer_mesh->get_meta("import_id", importer_mesh->get_name());
+			// generate_lods() only adds index lists and never touches the
+			// surface arrays, so the mesh itself is a clean source for later
+			// regeneration (_duplicate_importer_mesh drops its LODs): no deep
+			// copy of every mesh at open.
 			if (!mesh_id.is_empty() && !lod_source_meshes.has(mesh_id)) {
-				lod_source_meshes[mesh_id] = _duplicate_importer_mesh(importer_mesh);
+				lod_source_meshes[mesh_id] = importer_mesh;
 			}
 			// Start from the main "Generate LODs" import setting; per-mesh
 			// overrides ("generate/lods") stored in .import subresources may
@@ -242,7 +246,9 @@ void SceneImportSettingsScreen::_generate_preview_lods(Node *p_node) {
 				if (!mesh_id.is_empty()) {
 					lod_source_skin_pose_transforms[mesh_id] = skin_pose_transform_array;
 				}
-				if (generate_lods) {
+				if (generate_lods && lod_defer_generation && !mesh_id.is_empty()) {
+					lod_deferred_meshes.insert(mesh_id);
+				} else if (generate_lods) {
 					importer_mesh->generate_lods(merge_angle, skin_pose_transform_array, lod_count, lod_reduction, custom_lod_levels, lod_levels);
 				}
 			}
@@ -903,6 +909,16 @@ void SceneImportSettingsScreen::_finish_lod_edit_update() {
 	if (!md.lod_pending || md.lod_source_mesh.is_null()) {
 		return;
 	}
+	_regenerate_lod_preview(md);
+}
+
+// Rebuilds the selected mesh's preview from its clean source with its
+// current LOD settings and refreshes the stats and the panel.
+void SceneImportSettingsScreen::_regenerate_lod_preview(MeshData &md) {
+	if (md.lod_source_mesh.is_null()) {
+		return;
+	}
+	md.lod_preview_deferred = false;
 	for (const KeyValue<MeshInstance3D *, Ref<Mesh>> &entry : lod_swapped_meshes) {
 		if (entry.key != nullptr && entry.value.is_valid()) {
 			entry.key->set_mesh(entry.value);

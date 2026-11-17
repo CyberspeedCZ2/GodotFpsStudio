@@ -33,7 +33,7 @@ Seznam úrovní zobrazuje počty trojúhelníků a vrcholů. Během přepočtu n
 
 ## Náhled bez opakovaného importu
 
-Změna LOD nejprve vytvoří náhled z uloženého zdrojového `ImporterMesh`. Po krátké prodlevě se přepočítají geometrie, statistiky a automatické přepínání v náhledu. Běžné úpravy LOD proto nespouštějí úplný import modelu.
+Změna LOD nejprve vytvoří náhled z uloženého zdrojového `ImporterMesh`. Po krátké prodlevě se přepočítají geometrie, statistiky a automatické přepínání v náhledu. Běžné úpravy LOD proto nespouštějí úplný import modelu. Zdrojem náhledu je samotný `ImporterMesh` (generování LOD jeho data nemění), takže se při otevření nekopírují všechny meshe. U modelu nad 250 000 trojúhelníků se LOD náhledu negenerují hned při otevření, ale až když mesh poprvé vybereš; do té doby ukazuje náhled celé scény jen LOD 0. (Škola i policista mají kolem 41 000 trojúhelníků, generování trvá řádově 20 ms.)
 
 Rozpracované nastavení se průběžně ukládá do doprovodného souboru:
 

@@ -402,6 +402,8 @@ class SceneImportSettingsScreen : public Control {
 		HashMap<StringName, Variant> settings;
 		bool lod_pending = false;
 		bool lod_preview_dirty = false;
+		// Big model: its preview LODs are generated when it is first selected.
+		bool lod_preview_deferred = false;
 		Ref<ImporterMesh> lod_source_mesh;
 		Array lod_skin_pose_transforms;
 		Ref<Mesh> live_preview_mesh;
@@ -457,6 +459,11 @@ class SceneImportSettingsScreen : public Control {
 	Ref<ImporterMesh> _duplicate_importer_mesh(const Ref<ImporterMesh> &p_source) const;
 	void _schedule_lod_edit_update();
 	void _finish_lod_edit_update();
+	void _regenerate_lod_preview(MeshData &p_md);
+	// Opening a big model generates no preview LODs up front (it blocked the
+	// editor): each mesh gets them when selected.
+	bool lod_defer_generation = false;
+	HashSet<String> lod_deferred_meshes;
 	void _lod_edit_timer_timeout();
 	void _save_lod_config();
 
