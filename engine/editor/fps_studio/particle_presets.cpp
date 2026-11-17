@@ -948,6 +948,10 @@ uniform bool clip_vertical = true;
 // wall does not spread over the deck.
 uniform bool clip_to_water_area = false;
 instance uniform vec4 water_bounds = vec4(-1000000.0, -1000000.0, 1000000.0, 1000000.0);
+// Soft particles: fade where the sprite cuts into the floor or a wall
+// instead of ending in a hard line (0 = off).
+uniform float soft_distance = 0.6;
+uniform sampler2D depth_texture : hint_depth_texture, filter_nearest;
 varying vec3 world_vertex;
 instance uniform float water_surface_y = 100000.0;
 varying float particle_y;
@@ -983,7 +987,13 @@ void fragment() {
 		vec2 inside = min(world_vertex.xz - water_bounds.xy, water_bounds.zw - world_vertex.xz);
 		area = smoothstep(0.0, 0.08, min(inside.x, inside.y));
 	}
-	ALPHA = tex.a * COLOR.a * vertical * area;
+	float soft = 1.0;
+	if (soft_distance > 0.0) {
+		float d = texture(depth_texture, SCREEN_UV).x;
+		vec4 sv = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, d, 1.0);
+		soft = clamp((-sv.z / sv.w - -VERTEX.z) / soft_distance, 0.0, 1.0);
+	}
+	ALPHA = tex.a * COLOR.a * vertical * area * soft;
 }
 )");
 	}
@@ -1139,7 +1149,7 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	r_textures.push_back(cloud_texture);
 
 	// Single bubbles: many, larger, rising fast and wobbling up.
-	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 240, 4.0, true, 0.85, 0.16, BLEND_ALPHA);
+	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 240, 4.0, true, 0.85, 0.08, BLEND_ALPHA);
 	bubbles.material->set_proximity_fade_enabled(false);
 	bubbles.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.6);
 	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 7.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 5.0, 0)).set("scale", Vector2(0.35, 1.2));
