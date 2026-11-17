@@ -994,7 +994,8 @@ void fragment() {
 	material->set_shader_parameter("billboard", p_billboard);
 	material->set_shader_parameter("clip_vertical", p_clip_vertical);
 	material->set_shader_parameter("clip_to_water_area", p_clip_to_area);
-	material->set_render_priority(r_builder.material->get_render_priority());
+	// Below the surface: after the player's underwater haze (priority 100).
+	material->set_render_priority(p_keep_above || !p_clip_vertical ? r_builder.material->get_render_priority() : 110);
 	Ref<QuadMesh> quad = r_builder.node->get_draw_pass_mesh(0);
 	quad->set_material(material);
 }
@@ -1103,43 +1104,53 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 // Explosion under water (origin at the blast): a bright flash and light, a
 // gas bubble that swells and collapses, a cloud of bubbles rising and murk.
 void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
-	EmitterBuilder flash = add_emitter(p_effect, "Flash", 1, 0.12, true, 1.0, 3.0, BLEND_ADD);
+	// Under water everything here is drawn after the player's underwater haze
+	// (render priority, see clip_at_water_surface): the haze reads the depth of
+	// the wall behind the particles and covered them as if they were there.
+	EmitterBuilder flash = add_emitter(p_effect, "Flash", 1, 0.18, true, 1.0, 5.0, BLEND_ADD);
 	flash.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	flash.material->set_render_priority(110);
 	TextureRequest flash_texture = make_texture(flash.node, VFXTextureGenerator::TYPE_FLASH, "underwater_flash", 256);
 	set_param(flash_texture, "rays", 0);
 	set_colors(flash_texture, Color(0.55, 0.8, 1.0), Color(0.95, 0.98, 1.0));
 	r_textures.push_back(flash_texture);
 
-	EmitterBuilder shock = add_emitter(p_effect, "ShockBubble", 1, 0.4, true, 1.0, 3.0, BLEND_ALPHA);
+	// Gas bubble: swells and collapses.
+	EmitterBuilder shock = add_emitter(p_effect, "ShockBubble", 1, 0.45, true, 1.0, 3.5, BLEND_ALPHA);
 	shock.material->set_proximity_fade_enabled(false);
-	shock.set("color", Color(0.9, 0.96, 1.0, 0.85));
+	shock.set("color", Color(1.0, 1.0, 1.0, 1.0));
 	shock.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(0.45, 1.0), Vector2(1, 0.25) }));
-	shock.process->set_alpha_curve(make_curve({ Vector2(0, 0.9), Vector2(0.6, 0.7), Vector2(1, 0) }));
+	shock.process->set_alpha_curve(make_curve({ Vector2(0, 1.0), Vector2(0.6, 0.85), Vector2(1, 0) }));
 	clip_at_water_surface(shock);
 	TextureRequest bubble_texture = make_texture(shock.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256);
 	r_textures.push_back(bubble_texture);
 
-	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 120, 4.0, true, 0.9, 0.4, BLEND_ALPHA);
+	// Bubble cloud: a dense white mass of tiny bubbles billowing out and
+	// rising to the surface, the main thing seen under water.
+	EmitterBuilder cloud = add_emitter(p_effect, "BubbleCloud", 14, 3.2, true, 0.9, 2.2, BLEND_ALPHA);
+	cloud.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.5);
+	cloud.set("spread", 180.0).set("initial_velocity", Vector2(1.5, 4.0)).set("damping", Vector2(2.5, 3.5)).set("gravity", Vector3(0, 2.2, 0));
+	cloud.process->set_param_texture(ParticleProcessMaterial::PARAM_DAMPING, make_curve({ Vector2(0, 1), Vector2(0.35, 0.3), Vector2(1, 0.3) }));
+	cloud.set("color", Color(0.95, 0.98, 1.0, 0.75));
+	cloud.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.35), Vector2(0.3, 1.0), Vector2(1, 1.5) }, 1.5f));
+	cloud.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.06, 1), Vector2(0.6, 0.7), Vector2(1, 0) }));
+	TextureRequest cloud_texture = make_soft_smoke(cloud);
+	clip_at_water_surface(cloud);
+	r_textures.push_back(cloud_texture);
+
+	// Single bubbles: many, larger, rising fast and wobbling up.
+	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 200, 4.0, true, 0.85, 0.5, BLEND_ALPHA);
 	bubbles.material->set_proximity_fade_enabled(false);
-	bubbles.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.4);
-	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 6.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 4.5, 0)).set("scale", Vector2(0.3, 1.2));
-	bubbles.set("color", Color(0.9, 0.97, 1.0, 0.8));
-	bubbles.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.8, 0.8), Vector2(1, 0) }));
+	bubbles.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.6);
+	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 7.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 5.0, 0)).set("scale", Vector2(0.25, 1.3));
+	bubbles.set("turbulence_enabled", true).set("turbulence_noise_strength", 0.6).set("turbulence_noise_scale", 2.0);
+	bubbles.set("color", Color(1.0, 1.0, 1.0, 1.0));
+	bubbles.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.85, 0.9), Vector2(1, 0) }));
 	clip_at_water_surface(bubbles);
 	r_textures.push_back(make_texture(bubbles.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256));
 
-	EmitterBuilder churn = add_emitter(p_effect, "Churn", 4, 2.5, true, 0.85, 1.8, BLEND_ALPHA);
-	churn.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.6);
-	churn.set("spread", 180.0).set("initial_velocity", Vector2(0.5, 1.5)).set("damping", Vector2(1.0, 2.0)).set("gravity", Vector3(0, 0.6, 0));
-	churn.set("color", Color(0.6, 0.78, 0.86, 0.18));
-	churn.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.3) }, 1.3f));
-	churn.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
-	TextureRequest churn_texture = make_soft_smoke(churn);
-	clip_at_water_surface(churn);
-	r_textures.push_back(churn_texture);
-
-	add_light(p_effect, "LightFlash", Color(0.75, 0.9, 1.0), 10.0, 9.0, 0.0, 0.25, 0.0, Vector3());
-	add_camera_shake(p_effect, 0.6, 0.6, 5.0, 20.0, 0.0);
+	add_light(p_effect, "LightFlash", Color(0.75, 0.9, 1.0), 16.0, 12.0, 0.0, 0.3, 0.0, Vector3());
+	add_camera_shake(p_effect, 0.7, 0.7, 5.0, 20.0, 0.0);
 	add_sound_slot(p_effect, 8.0, 60.0);
 }
 
