@@ -2191,6 +2191,7 @@ ParticleEffect3D *ParticleEffect3D::spawn_attached(const Ref<PackedScene> &p_sce
 	} else {
 		effect->set_transform(p_local_transform);
 	}
+	effect->reset_physics_interpolation(); // Teleported from the pool (see spawn()).
 	effect->play();
 	return effect;
 }
@@ -2221,6 +2222,10 @@ ParticleEffect3D *ParticleEffect3D::spawn(const Ref<PackedScene> &p_scene, Node 
 	} else {
 		effect->set_transform(p_transform);
 	}
+	// A pooled effect is teleported from where it waited: with physics
+	// interpolation it would be drawn (and emit its first particles) on the
+	// way between the two places, off the spot it was spawned at.
+	effect->reset_physics_interpolation();
 	effect->play();
 	return effect;
 }

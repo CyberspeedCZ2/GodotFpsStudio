@@ -2580,6 +2580,15 @@ void FPSStudioParticleEditorPlugin::_apply_preset_textures(const Vector<FPSParti
 		}
 		Ref<Material> material = FPSParticleModuleStack::get_draw_material(request.emitter);
 		BaseMaterial3D *base_material = Object::cast_to<BaseMaterial3D>(material.ptr());
+		if (ShaderMaterial *shader_material = Object::cast_to<ShaderMaterial>(material.ptr())) {
+			// Preset shader materials (e.g. clipped at the water surface)
+			// take the texture as their albedo_texture uniform.
+			if (texture.is_valid()) {
+				shader_material->set_shader_parameter("albedo_texture", texture);
+				shader_material->set_shader_parameter("anim_frames", MAX(1, request.columns));
+			}
+			continue;
+		}
 		if (texture.is_null() || !base_material) {
 			continue;
 		}

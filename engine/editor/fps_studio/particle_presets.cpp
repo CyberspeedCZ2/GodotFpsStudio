@@ -17,6 +17,8 @@
 #include "scene/3d/light_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/resources/3d/primitive_meshes.h"
+#include "scene/resources/material.h"
+#include "scene/resources/shader.h"
 #include "scene/resources/curve_texture.h"
 #include "scene/resources/gradient.h"
 #include "scene/resources/gradient_texture.h"
@@ -906,6 +908,59 @@ void build_spark_shower(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 
 // Visibility bounds from the motion instead of a fixed 16 m cube: tighter
 // culling, and a smaller (finer) level collision bake.
+// Water as a translucent body: lit per pixel with light passing through from
+// behind (a billboard facing away from the sun would otherwise go grey).
+void light_as_water(EmitterBuilder &r_builder) {
+	r_builder.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_PIXEL);
+	r_builder.material->set_diffuse_mode(BaseMaterial3D::DIFFUSE_LAMBERT_WRAP);
+	r_builder.material->set_feature(BaseMaterial3D::FEATURE_BACKLIGHT, true);
+	r_builder.material->set_backlight(Color(0.45, 0.5, 0.55));
+	r_builder.material->set_flag(BaseMaterial3D::FLAG_DONT_RECEIVE_SHADOWS, true);
+}
+
+// Under water only: a billboard particle material that fades particles out at
+// the water surface. The pool sets the instance uniform water_surface_y on the
+// emitter when it spawns the effect (default: no surface, nothing clipped).
+void clip_at_water_surface(EmitterBuilder &r_builder) {
+	static Ref<Shader> shader;
+	if (shader.is_null()) {
+		shader.instantiate();
+		shader->set_code(R"(shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+uniform sampler2D albedo_texture : source_color, filter_linear_mipmap, hint_default_white;
+// Flipbook over the particle's life (sprite sheet frames per side; 1 = still).
+uniform int anim_frames = 1;
+instance uniform float water_surface_y = 100000.0;
+varying float particle_y;
+void vertex() {
+	// Billboard facing the camera, keeping the particle's scale.
+	mat4 billboard = mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	billboard[0] *= length(MODEL_MATRIX[0].xyz);
+	billboard[1] *= length(MODEL_MATRIX[1].xyz);
+	billboard[2] *= length(MODEL_MATRIX[2].xyz);
+	MODELVIEW_MATRIX = VIEW_MATRIX * billboard;
+	particle_y = MODEL_MATRIX[3].y;
+	if (anim_frames > 1) {
+		float frames = float(anim_frames);
+		float frame = clamp(floor(INSTANCE_CUSTOM.z * frames * frames), 0.0, frames * frames - 1.0);
+		UV = (UV + vec2(mod(frame, frames), floor(frame / frames))) / frames;
+	}
+}
+void fragment() {
+	vec4 tex = texture(albedo_texture, UV);
+	ALBEDO = tex.rgb * COLOR.rgb;
+	// Bubbles end at the surface, they do not fly on into the air.
+	ALPHA = tex.a * COLOR.a * (1.0 - smoothstep(water_surface_y - 0.25, water_surface_y - 0.02, particle_y));
+}
+)");
+	}
+	Ref<ShaderMaterial> material;
+	material.instantiate();
+	material->set_shader(shader);
+	Ref<QuadMesh> quad = r_builder.node->get_draw_pass_mesh(0);
+	quad->set_material(material);
+}
+
 // Explosion breaking the water surface (+Y up, origin on the surface): a
 // column of white water that grows from the surface and falls back, spray,
 // lingering mist, foam spreading on the water and a ring wave.
@@ -920,12 +975,15 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 	column_quad->set_center_offset(Vector3(0, 2.8, 0)); // Pivot at the base.
 	column.material->set_billboard_mode(BaseMaterial3D::BILLBOARD_FIXED_Y);
 	column.material->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
-	column.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
+	light_as_water(column);
 	column.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.45);
-	column.set("direction", Vector3(0, 1, 0)).set("spread", 6.0).set("initial_velocity", Vector2(2.5, 5.0)).set("gravity", Vector3(0, -9.8, 0)).set("damping", Vector2(0.5, 1.0));
+	// No gravity: falling, the sprites would sink through the surface and show
+	// as white slabs from under water. The column collapses by shrinking back
+	// into its base on the surface instead.
+	column.set("direction", Vector3(0, 1, 0)).set("spread", 6.0).set("initial_velocity", Vector2(0.6, 1.6)).set("damping", Vector2(1.5, 2.5));
 	column.set("scale", Vector2(0.6, 1.2)).set("angle", Vector2(-7, 7));
-	column.set("color", Color(0.96, 0.98, 1.0, 0.95));
-	column.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.12), Vector2(0.18, 1.0), Vector2(1, 1.15) }, 1.2f));
+	column.set("color", Color(0.8, 0.85, 0.9, 0.95));
+	column.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.12), Vector2(0.18, 1.0), Vector2(0.55, 1.1), Vector2(1, 0.25) }, 1.2f));
 	column.process->set_alpha_curve(make_curve({ Vector2(0, 0.9), Vector2(0.55, 0.85), Vector2(1, 0) }));
 	TextureRequest column_texture = make_texture(column.node, VFXTextureGenerator::TYPE_WATER_PLUME, "water_plume", 512);
 	r_textures.push_back(column_texture);
@@ -945,11 +1003,12 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 	// Mist hanging in the air after the column falls.
 	EmitterBuilder mist = add_emitter(p_effect, "Mist", 6, 3.5, true, 0.8, 3.0, BLEND_ALPHA);
 	ParticleEffect3D::set_emitter_delay(mist.node, 0.15);
-	mist.node->set_position(Vector3(0, 1.5, 0));
-	mist.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 1.0);
+	mist.node->set_position(Vector3(0, 2.4, 0)); // High enough not to dip under the surface.
+	mist.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.8);
 	mist.set("direction", Vector3(0, 1, 0)).set("spread", 70.0).set("initial_velocity", Vector2(1.5, 4.0)).set("damping", Vector2(2.0, 3.0)).set("gravity", Vector3(0, 0.2, 0));
 	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_DAMPING, make_curve({ Vector2(0, 1), Vector2(0.35, 0.0), Vector2(1, 0.0) }));
 	mist.set("color", Color(0.92, 0.95, 1.0, 0.5));
+	light_as_water(mist);
 	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.45), Vector2(1, 1.3) }, 1.3f));
 	mist.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
 	r_textures.push_back(make_soft_smoke(mist));
@@ -1002,6 +1061,7 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	shock.set("color", Color(0.9, 0.96, 1.0, 0.85));
 	shock.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(0.45, 1.0), Vector2(1, 0.25) }));
 	shock.process->set_alpha_curve(make_curve({ Vector2(0, 0.9), Vector2(0.6, 0.7), Vector2(1, 0) }));
+	clip_at_water_surface(shock);
 	TextureRequest bubble_texture = make_texture(shock.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256);
 	r_textures.push_back(bubble_texture);
 
@@ -1011,6 +1071,7 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 6.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 4.5, 0)).set("scale", Vector2(0.3, 1.2));
 	bubbles.set("color", Color(0.9, 0.97, 1.0, 0.8));
 	bubbles.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.8, 0.8), Vector2(1, 0) }));
+	clip_at_water_surface(bubbles);
 	r_textures.push_back(make_texture(bubbles.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256));
 
 	EmitterBuilder churn = add_emitter(p_effect, "Churn", 4, 2.5, true, 0.85, 1.8, BLEND_ALPHA);
@@ -1019,7 +1080,9 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	churn.set("color", Color(0.6, 0.78, 0.86, 0.18));
 	churn.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.3) }, 1.3f));
 	churn.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
-	r_textures.push_back(make_soft_smoke(churn));
+	TextureRequest churn_texture = make_soft_smoke(churn);
+	clip_at_water_surface(churn);
+	r_textures.push_back(churn_texture);
 
 	add_light(p_effect, "LightFlash", Color(0.75, 0.9, 1.0), 10.0, 9.0, 0.0, 0.25, 0.0, Vector3());
 	add_camera_shake(p_effect, 0.6, 0.6, 5.0, 20.0, 0.0);
