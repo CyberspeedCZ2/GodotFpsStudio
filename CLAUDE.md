@@ -4,7 +4,7 @@ Trvalá pravidla projektu jsou v [AGENTS.md](AGENTS.md) (build jen `./tools/buil
 
 - **Build (2026-11-17):** `tools/build_macos.sh` staví optimalizovaný editor `engine/bin/godot.macos.editor.arm64` (bez `dev_build`); `DEV_BUILD=1 ./tools/build_macos.sh` postaví ladicí `godot.macos.editor.dev.arm64` (`-O0`). Ve vývojovém buildu běžela i hra spuštěná z editoru několikrát pomaleji (škola s 15 NPC: fyzika 10 ms na krok, v boji 8–20 FPS; optimalizovaně 2 ms a 150–170 FPS).
 
-Stav k 2026-11-16, větev `codex/black-default-fps-level` (vše pushnuto). Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, ParticleImpactTable, ParticleLevelSetup, CameraShake3D, RadialDamage3D).
+Stav k 2026-11-17, větev `main` (vše pushnuto). Do 2026-11-17 se pracovalo ve větvi `codex/black-default-fps-level` (od 3. 11., pojmenovaná Codexem); `main` na ni byl posunut (fast-forward), dál se pracuje v `main`. Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, ParticleImpactTable, ParticleLevelSetup, CameraShake3D, RadialDamage3D).
 
 ## Model View (2026-11-17)
 - Revize ve třech částech, opravy v `56caa4cd` a `79e7a9a6`, rozdělení souboru v `0fa6fe27`: `scene_import_settings.cpp` drží dialog Godotu a kostru plochy, části FPS Studia jsou v `scene_import_settings_{hitboxes,lod,environment,materials}.cpp`, sdílené v `scene_import_settings_internal.h`. Nové věci Model View dávat do nich.
