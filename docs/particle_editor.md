@@ -151,6 +151,8 @@ Presety jsou v menu **Library**, v panelu knihovny a v **New → FPS Presets**, 
 | Explosions & Fire | Fire | animované plameny (sheet 4×4), jiskry, kouř a mihotavé světlo |
 | Explosions & Fire | Smoke Grenade | hustá kouřová clona na 8 s, která vyplní místnost a drží se od stěn (kolize), zvuk |
 | Explosions & Fire | Signal Flare | červené jádro, jiskry s kolizí, červený kouř, mihotavé světlo, zvuk |
+| Explosions & Fire | Water Explosion | výbuch prorážející hladinu (+Y, počátek na hladině): sloup bílé vody (svislé billboardy, které rostou odspodu a padají zpět), sprška kapek, mlha, pěna na hladině, vlna, otřes, slot na zvuk |
+| Explosions & Fire | Underwater Explosion | výbuch pod vodou: záblesk a světlo, plynová bublina, která se rozepne a splaskne, oblak stoupajících bublin, zakalení, otřes |
 | Environment | Smoke Plume | nepřetržitý stoupající sloup kouře s turbulencí |
 | Environment | Steam Leak | proud páry podél +Z s turbulencí, zvuk |
 | Environment | Electric Sparks | opakované modré jiskry s kolizí, elektrický oblouk, blikající světlo, zvuk |
@@ -294,6 +296,8 @@ Generátor je samostatný modul `engine/editor/fps_studio/vfx_texture_generator.
 - Caustics a Noise jsou vzory podporující skutečně bezešvé dlaždicování (periodický šum a periodické Voronoi buňky).
 - Emisivní světlo zvyšuje alfu, takže textura s běžným alpha blendingem vypadá na černém pozadí stejně jako aditivní výsledek.
 - **Debris Chunk** (kategorie Shapes) je osvětlený úlomek kamene, betonu nebo cihly: nepravidelný mnohoúhelník se zkosenými hranami, hřbetem, který rozdělí horní plochu na dvě fasety, a zrnitým povrchem. Ve sprite sheetu je každý snímek jiný úlomek; preset Bullet Impact používá list 4×4 `debris_chunk.png` s náhodným snímkem pro každou částici (Anim Offset 0–1, Anim Speed 0). Barvu úlomků mění barva částic (Color).
+- **Water Plume** (Shapes, typ 25) je sloup vody po výbuchu z boku: hustá pěnivá voda se svislými pruhy, nahoře koruna z bobulí vody a sprej kapek, spodek měkce mizí. Statický obrázek, růst a pád dělají částice (preset Water Explosion). Alfa je voda, barva její světlo od stinné k osvětlené straně.
+- **Foam** (Shapes, typ 26) je pěna na hladině shora: skvrna nebo prstenec (**Ring**) bublinek s roztrhaným okrajem, dírami a volitelnými paprsky do stran. Položí se naplocho a nechá rozlévat a mizet.
 - **Soft Smoke (Particles)** je rychlý 2D typ pro kouř z částic: nemá ostrou siluetu, průhlednost plynule slábne od středu, šum ho trhá na cáry a **Inner billows** přidávají osvětlené chuchvalce uvnitř, takže nepůsobí jako rozmazaná skvrna. Parametr **Life cycle** ve sprite sheetu udělá flipbook přes život částice (obláček mírně naroste, rozpadne se na cáry a zřídne), jak to dělají kouřové flipbooky v UE5. Objemový typ Smoke má tvrdý okraj a silné vlastní stíny, proto se na částice hodí méně.
 - Kouř v presetech je nastavený podle Source (HL2) a UE5 Niagara (`make_soft_smoke` v `particle_presets.cpp`):
   - sdílený flipbook `smoke_soft_life.png` 4×4 (1024 px) přehrávaný jednou přes život částice, neutrální barva obarvená barvou částice,

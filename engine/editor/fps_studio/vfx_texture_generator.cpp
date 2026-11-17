@@ -308,7 +308,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 25;
+constexpr int TYPE_COUNT = 27;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -600,6 +600,28 @@ struct TypeTable {
 			add_param(t, "jet", "Centre jet", 0.0f, 1.0f, 0.01f, 0.5f, "Share of variants with a column shooting up in the middle.");
 			add_param(t, "sheet", "Sheet opacity", 0.0f, 1.0f, 0.01f, 0.25f, "Opacity of the thin crown wall between its edges.");
 			add_param(t, "puddle", "Puddle", 0.0f, 1.0f, 0.01f, 0.6f, "Spreading flat ring of water on the ground.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_WATER_PLUME, "Water Plume", "Shapes", "Column of water thrown up by an explosion, seen from the side: dense frothy water with vertical streaks opening at the top into a crown of lumps and spray. A still image: particles grow it, lift it and let it fall. Alpha is the water, colour its light from the shadowed to the lit side.", 0.55f, 0.64f, 0.72f, 1.0f, 1.0f, 1.0f, "Shadow color", "Lit color", false, false);
+			add_param(t, "width", "Column width", 0.08f, 0.6f, 0.01f, 0.26f, "Half width of the column at its base.");
+			add_param(t, "flare", "Top flare", 0.0f, 1.5f, 0.01f, 0.75f, "How much the column opens out at the top.");
+			add_param(t, "height", "Height", 0.3f, 1.0f, 0.01f, 0.88f, "Height of the column in the image.");
+			add_param(t, "lumps", "Lumps", 0.0f, 1.0f, 0.01f, 0.6f, "Lumpy, uneven outline and crown.");
+			add_param(t, "streaks", "Streaks", 0.0f, 1.0f, 0.01f, 0.55f, "Vertical streaks of water running up the column.");
+			add_param(t, "spray", "Spray", 0.0f, 1.0f, 0.01f, 0.6f, "Droplets and spray around the crown.");
+			add_param(t, "density", "Density", 0.2f, 1.0f, 0.01f, 0.9f, "Opacity of the water body.");
+			add_param(t, "holes", "Holes", 0.0f, 1.0f, 0.01f, 0.45f, "Gaps tearing open in the upper part.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_FOAM, "Foam", "Shapes", "Foam on water seen from above: a patch or ring of bubbles with a torn, uneven edge and holes. Lay it flat on the surface and let it spread and fade. Alpha is the foam, colour its brightness.", 0.7f, 0.78f, 0.84f, 1.0f, 1.0f, 1.0f, "Thin foam color", "Thick foam color", false, false);
+			add_param(t, "radius", "Radius", 0.2f, 1.0f, 0.01f, 0.85f, "Size of the patch.");
+			add_param(t, "ring", "Ring", 0.0f, 1.0f, 0.01f, 0.0f, "0 = full patch, 1 = thin ring with an open middle.");
+			add_param(t, "bubbles", "Bubble size", 0.0f, 1.0f, 0.01f, 0.5f, "Size of the foam bubbles (small to large).");
+			add_param(t, "breakup", "Breakup", 0.0f, 1.0f, 0.01f, 0.6f, "Holes and a torn, uneven edge.");
+			add_param(t, "softness", "Edge softness", 0.0f, 1.0f, 0.01f, 0.5f, "How softly the foam thins out at the edge.");
+			add_param(t, "streaks", "Streaks", 0.0f, 1.0f, 0.01f, 0.35f, "Foam stretched outward in radial streaks.");
 			push(t);
 		}
 		if (i != TYPE_COUNT) {
@@ -1627,6 +1649,115 @@ inline float segment_distance(float px, float py, float ax, float ay, float bx, 
 	return len2(px - ax - ex * r_t, py - ay - ey * r_t);
 }
 
+void render_water_plume(const FrameContext &c, float x, float y, float *r_px) {
+	const Settings &s = *c.s;
+	const float width = param(c, 0);
+	const float flare = param(c, 1);
+	const float height = param(c, 2);
+	const float lumps = param(c, 3);
+	const float streaks = param(c, 4);
+	const float spray = param(c, 5);
+	const float density = param(c, 6);
+	const float holes_amount = param(c, 7);
+	const uint32_t seed = s.seed * 7919u + 25u;
+	const V3 noff = seed_offset(seed);
+	const float base = -0.97f;
+	const float top = base + 1.9f * height;
+	const float h = saturate((y - base) / maxf(top - base, 1e-3f)); // 0 base .. 1 top.
+	// Half width: widening a little going up, opening into a crown at the top.
+	const float open = std::pow(saturate((h - 0.5f) / 0.5f), 1.6f);
+	float w = width * (0.6f + 0.4f * h) + flare * width * open * 1.8f;
+	const float edge_noise = fbm(V3(x * 3.2f + noff.x, y * 2.6f + noff.y, 0.4f), 4, 0.55f, seed);
+	w *= 1.0f + lumps * 0.32f * edge_noise;
+	// Crown top: a lumpy, rounded upper edge.
+	const float cap = top + lumps * 0.14f * fbm(V3(x * 4.5f + noff.z, 1.3f, 2.1f), 3, 0.5f, seed + 5u) - 0.08f * (x / maxf(w, 0.05f)) * (x / maxf(w, 0.05f));
+	const float aa = 0.015f;
+	// Soft foot: the column rises out of the water, no hard bottom edge.
+	float inside = smoothstepf(w + aa, w - w * 0.22f, absf(x)) * smoothstepf(cap + aa, cap - 0.1f, y) * smoothstepf(base, base + 0.14f, y);
+	const float froth = billow(V3(x * 6.5f + noff.y, y * 5.5f, 1.7f), 4, 0.5f, seed + 9u);
+	const float streak = gnoise3(x * 16.0f / maxf(width * 4.0f, 0.3f) + noff.x, y * 1.6f, 0.3f, seed + 7u) * 0.5f + 0.5f;
+	const float core = smoothstepf(w, 0.0f, absf(x));
+	float body = density * mixf(0.5f, 1.0f, core) * mixf(1.0f, 0.55f + 0.7f * streak, streaks) * (0.7f + 0.55f * froth);
+	// The upper part tears open into separate lumps.
+	const float tear = smoothstepf(0.45f, 0.95f, h) * smoothstepf(0.32f, 0.6f, froth + 0.25f * gnoise3(x * 9.0f, y * 9.0f, 3.3f, seed + 11u));
+	// Light from the left: lit side, shadowed side, bright froth.
+	float shade = 0.55f - 0.4f * (x / maxf(w, 0.05f)) + froth * 0.35f + 0.15f * h;
+	float water = inside * saturate(body * 1.3f) * (1.0f - holes_amount * tear);
+	// Crown: round lumps of water bulging out of the top and the upper sides,
+	// so the column does not end in a flat cut.
+	const float top_w = width + flare * width * 1.8f;
+	const int crown_lumps = 5 + int(lumps * 12.0f + 0.5f);
+	for (int i = 0; i < crown_lumps; i++) {
+		const float r1 = hash01(hash3i(i, 11, 71, seed));
+		const float r2 = hash01(hash3i(i, 13, 72, seed));
+		const float r3 = hash01(hash3i(i, 17, 73, seed));
+		const float side = r1 * 2.0f - 1.0f;
+		const float lh = mixf(0.62f, 1.0f, r2); // Along the upper part.
+		const float lw = width * (0.6f + 0.4f * lh) + flare * width * std::pow(saturate((lh - 0.5f) / 0.5f), 1.6f) * 1.8f;
+		const float lx = side * lw * 0.85f;
+		const float ly = base + (top - base) * lh + top_w * 0.08f * (1.0f - absf(side));
+		const float lr = top_w * mixf(0.16f, 0.34f, r3) * (0.85f + 0.3f * lumps);
+		const float lump_noise = fbm(V3((x - lx) * 7.0f, (y - ly) * 7.0f, float(i) * 1.7f), 3, 0.5f, seed + 13u);
+		const float d = len2(x - lx, y - ly) / lr + lump_noise * 0.25f;
+		const float a = smoothstepf(1.0f, 0.7f, d) * density * (0.85f + 0.3f * froth);
+		if (a > water) {
+			water = maxf(water, saturate(a));
+			// Lit on the upper left of each lump.
+			shade = 0.6f + 0.4f * saturate(((ly - y) * -1.0f + (lx - x)) / lr * 0.6f + 0.4f) + froth * 0.2f;
+		}
+	}
+	// Spray: droplets and small lumps around the crown and the sides.
+	const int drops = int(spray * 70.0f + 0.5f);
+	for (int i = 0; i < drops; i++) {
+		const float r1 = hash01(hash3i(i, 3, 91, seed));
+		const float r2 = hash01(hash3i(i, 5, 92, seed));
+		const float r3 = hash01(hash3i(i, 7, 93, seed));
+		const float side = r1 * 2.0f - 1.0f;
+		const float dh = mixf(0.35f, 1.08f, std::sqrt(r2));
+		const float dy = base + (top - base) * dh;
+		const float local_w = width * (0.6f + 0.4f * dh) + flare * width * std::pow(saturate((dh - 0.5f) / 0.5f), 1.6f) * 1.8f;
+		const float dx = side * local_w * mixf(0.9f, 1.7f, r3);
+		const float dr = (0.006f + 0.014f * r3 * r3) * (0.6f + 0.6f * dh);
+		// Drops falling off are a little stretched vertically.
+		const float d = len2((x - dx) / dr, (y - dy) / (dr * 1.6f));
+		const float a = smoothstepf(1.0f, 0.6f, d);
+		if (a > water) {
+			water = a;
+			shade = 0.75f + 0.25f * (1.0f - side);
+		}
+	}
+	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(shade)), water, s);
+}
+
+void render_foam(const FrameContext &c, float x, float y, float *r_px) {
+	const Settings &s = *c.s;
+	const float radius = param(c, 0);
+	const float ring = param(c, 1);
+	const float bubbles = param(c, 2);
+	const float breakup = param(c, 3);
+	const float softness = param(c, 4);
+	const float streaks = param(c, 5);
+	const uint32_t seed = s.seed * 7919u + 26u;
+	const V3 noff = seed_offset(seed);
+	const float ang = std::atan2(y, x);
+	// Torn edge: the radius wobbles around the patch.
+	const float wobble = fbm(V3(std::cos(ang) * 2.2f + noff.x, std::sin(ang) * 2.2f + noff.y, 0.7f), 4, 0.55f, seed);
+	const float r = len2(x, y) / maxf(radius * (1.0f + breakup * 0.18f * wobble), 0.05f);
+	float mask = smoothstepf(1.0f, mixf(0.92f, 0.45f, softness), r);
+	// Ring: an open middle, softly filled toward the outer edge.
+	mask *= mixf(1.0f, smoothstepf(0.35f, 0.75f, r), ring);
+	// Bubbles: rounded cells from billowy noise, smaller or larger.
+	const float cell_scale = mixf(26.0f, 8.0f, bubbles);
+	// Streaks: the foam stretched outward along the radius.
+	const float sx = x * mixf(1.0f, 0.35f, streaks * saturate(r));
+	const float sy = y * mixf(1.0f, 0.35f, streaks * saturate(r));
+	const float cells = billow(V3(sx * cell_scale + noff.z, sy * cell_scale, 2.3f), 3, 0.5f, seed + 3u);
+	const float foam = smoothstepf(0.18f, 0.5f, cells);
+	const float holes = smoothstepf(0.05f, -0.25f, fbm(V3(x * 4.0f + noff.y, y * 4.0f, 5.1f), 4, 0.55f, seed + 5u)) * breakup;
+	const float alpha = mask * mixf(0.45f, 1.0f, foam) * (1.0f - holes * 0.9f);
+	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(foam * 0.8f + 0.2f)), alpha, s);
+}
+
 void render_water_splash(const FrameContext &c, float x, float y, float *r_px) {
 	const Settings &s = *c.s;
 	const int frames = maxi(int(param(c, 0) + 0.5f), 2);
@@ -2387,6 +2518,12 @@ void render_uv(const FrameContext &c, float u, float v, float *r_out) {
 			break;
 		case TYPE_WATER_SPLASH:
 			render_water_splash(c, x, y, r_out);
+			break;
+		case TYPE_WATER_PLUME:
+			render_water_plume(c, x, y, r_out);
+			break;
+		case TYPE_FOAM:
+			render_foam(c, x, y, r_out);
 			break;
 		case TYPE_BULLET_HOLE:
 		case TYPE_SCORCH:

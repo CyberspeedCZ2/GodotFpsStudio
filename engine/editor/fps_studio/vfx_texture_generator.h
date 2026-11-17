@@ -56,6 +56,14 @@ enum TypeID {
 	// the columns are its frames (default 8 columns x 4 rows). Alpha is the
 	// water, colour is its glint, so a refracting shader can use it as water.
 	TYPE_WATER_SPLASH = 24,
+	// Column of water thrown up by an explosion, seen from the side: a dense
+	// frothy column with vertical streaks that opens at the top into a crown
+	// of lumps and spray. Still image (grow and fall it with particles).
+	// Alpha is the water, colour its light (shadow side to lit side).
+	TYPE_WATER_PLUME = 25,
+	// Foam on the water seen from above: a patch or a ring of bubbles with a
+	// torn edge. Alpha is the foam, colour its brightness.
+	TYPE_FOAM = 26,
 };
 
 static constexpr int MAX_PARAMS = 10;

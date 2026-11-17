@@ -906,6 +906,126 @@ void build_spark_shower(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_te
 
 // Visibility bounds from the motion instead of a fixed 16 m cube: tighter
 // culling, and a smaller (finer) level collision bake.
+// Explosion breaking the water surface (+Y up, origin on the surface): a
+// column of white water that grows from the surface and falls back, spray,
+// lingering mist, foam spreading on the water and a ring wave.
+void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	// Column: upright sprites (fixed Y billboard, so they stay vertical when
+	// seen from above) growing from their base.
+	// Few large sprites: they cover the screen up close, so each one costs
+	// fill rate (overdraw), not particle count.
+	EmitterBuilder column = add_emitter(p_effect, "Column", 5, 2.2, true, 0.85, 1.0, BLEND_ALPHA);
+	Ref<QuadMesh> column_quad = column.node->get_draw_pass_mesh(0);
+	column_quad->set_size(Vector2(3.8, 5.6));
+	column_quad->set_center_offset(Vector3(0, 2.8, 0)); // Pivot at the base.
+	column.material->set_billboard_mode(BaseMaterial3D::BILLBOARD_FIXED_Y);
+	column.material->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
+	column.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
+	column.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.45);
+	column.set("direction", Vector3(0, 1, 0)).set("spread", 6.0).set("initial_velocity", Vector2(2.5, 5.0)).set("gravity", Vector3(0, -9.8, 0)).set("damping", Vector2(0.5, 1.0));
+	column.set("scale", Vector2(0.6, 1.2)).set("angle", Vector2(-7, 7));
+	column.set("color", Color(0.96, 0.98, 1.0, 0.95));
+	column.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.12), Vector2(0.18, 1.0), Vector2(1, 1.15) }, 1.2f));
+	column.process->set_alpha_curve(make_curve({ Vector2(0, 0.9), Vector2(0.55, 0.85), Vector2(1, 0) }));
+	TextureRequest column_texture = make_texture(column.node, VFXTextureGenerator::TYPE_WATER_PLUME, "water_plume", 512);
+	r_textures.push_back(column_texture);
+
+	// Spray: droplets thrown up and out, falling back.
+	EmitterBuilder spray = add_emitter(p_effect, "Spray", 160, 1.6, true, 0.95, 0.2, BLEND_ALPHA, true);
+	spray.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.35);
+	spray.set("direction", Vector3(0, 1, 0)).set("spread", 35.0).set("initial_velocity", Vector2(6.0, 15.0)).set("gravity", Vector3(0, -9.8, 0)).set("damping", Vector2(0.2, 0.6)).set("scale", Vector2(0.6, 1.4));
+	spray.set("color", Color(0.95, 0.98, 1.0, 1.0));
+	spray.material->set_proximity_fade_enabled(false);
+	TextureRequest spray_texture = make_texture(spray.node, VFXTextureGenerator::TYPE_SPARK, "water_droplet", 128);
+	set_colors(spray_texture, WHITE_TINT_A, WHITE_TINT_B);
+	set_param(spray_texture, "glow", 0.3f);
+	set_param(spray_texture, "flicker", 0.0f);
+	r_textures.push_back(spray_texture);
+
+	// Mist hanging in the air after the column falls.
+	EmitterBuilder mist = add_emitter(p_effect, "Mist", 6, 3.5, true, 0.8, 3.0, BLEND_ALPHA);
+	ParticleEffect3D::set_emitter_delay(mist.node, 0.15);
+	mist.node->set_position(Vector3(0, 1.5, 0));
+	mist.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 1.0);
+	mist.set("direction", Vector3(0, 1, 0)).set("spread", 70.0).set("initial_velocity", Vector2(1.5, 4.0)).set("damping", Vector2(2.0, 3.0)).set("gravity", Vector3(0, 0.2, 0));
+	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_DAMPING, make_curve({ Vector2(0, 1), Vector2(0.35, 0.0), Vector2(1, 0.0) }));
+	mist.set("color", Color(0.92, 0.95, 1.0, 0.5));
+	mist.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.45), Vector2(1, 1.3) }, 1.3f));
+	mist.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
+	r_textures.push_back(make_soft_smoke(mist));
+
+	// Foam spreading on the surface (flat, no spin: the angle would tilt it).
+	EmitterBuilder foam = add_emitter(p_effect, "Foam", 2, 6.0, true, 1.0, 4.0, BLEND_ALPHA);
+	Ref<QuadMesh> foam_quad = foam.node->get_draw_pass_mesh(0);
+	foam_quad->set_orientation(PlaneMesh::FACE_Y);
+	foam.material->set_billboard_mode(BaseMaterial3D::BILLBOARD_DISABLED);
+	foam.material->set_proximity_fade_enabled(false);
+	foam.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
+	foam.node->set_position(Vector3(0, 0.03, 0));
+	foam.set("scale", Vector2(0.8, 1.3)).set("color", Color(0.95, 0.98, 1.0, 0.85));
+	foam.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.25), Vector2(0.15, 0.8), Vector2(1, 1.3) }, 1.3f));
+	foam.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.05, 0.9), Vector2(0.6, 0.6), Vector2(1, 0) }));
+	r_textures.push_back(make_texture(foam.node, VFXTextureGenerator::TYPE_FOAM, "water_foam", 512));
+
+	// Ring wave running out over the water.
+	EmitterBuilder ring = add_emitter(p_effect, "Ring", 2, 1.4, true, 0.7, 1.0, BLEND_ALPHA);
+	Ref<QuadMesh> ring_quad = ring.node->get_draw_pass_mesh(0);
+	ring_quad->set_orientation(PlaneMesh::FACE_Y);
+	ring.material->set_billboard_mode(BaseMaterial3D::BILLBOARD_DISABLED);
+	ring.material->set_proximity_fade_enabled(false);
+	ring.node->set_position(Vector3(0, 0.04, 0));
+	ring.set("scale", Vector2(4.0, 6.0)).set("color", Color(0.92, 0.97, 1.0, 0.6));
+	ring.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(1, 1.0) }));
+	ring.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest ring_texture = make_texture(ring.node, VFXTextureGenerator::TYPE_WAVE_RING, "water_ripple", 256);
+	set_param(ring_texture, "progress", 0.85f);
+	set_param(ring_texture, "animate_progress", 0.0f);
+	set_colors(ring_texture, WHITE_TINT_A, WHITE_TINT_B);
+	r_textures.push_back(ring_texture);
+
+	add_camera_shake(p_effect, 0.5, 0.6, 4.0, 25.0, 0.0);
+	add_sound_slot(p_effect, 10.0, 90.0); // Pick a water blast sound in the editor.
+}
+
+// Explosion under water (origin at the blast): a bright flash and light, a
+// gas bubble that swells and collapses, a cloud of bubbles rising and murk.
+void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
+	EmitterBuilder flash = add_emitter(p_effect, "Flash", 1, 0.12, true, 1.0, 3.0, BLEND_ADD);
+	flash.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
+	TextureRequest flash_texture = make_texture(flash.node, VFXTextureGenerator::TYPE_FLASH, "underwater_flash", 256);
+	set_param(flash_texture, "rays", 0);
+	set_colors(flash_texture, Color(0.55, 0.8, 1.0), Color(0.95, 0.98, 1.0));
+	r_textures.push_back(flash_texture);
+
+	EmitterBuilder shock = add_emitter(p_effect, "ShockBubble", 1, 0.4, true, 1.0, 3.0, BLEND_ALPHA);
+	shock.material->set_proximity_fade_enabled(false);
+	shock.set("color", Color(0.9, 0.96, 1.0, 0.85));
+	shock.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(0.45, 1.0), Vector2(1, 0.25) }));
+	shock.process->set_alpha_curve(make_curve({ Vector2(0, 0.9), Vector2(0.6, 0.7), Vector2(1, 0) }));
+	TextureRequest bubble_texture = make_texture(shock.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256);
+	r_textures.push_back(bubble_texture);
+
+	EmitterBuilder bubbles = add_emitter(p_effect, "Bubbles", 120, 4.0, true, 0.9, 0.4, BLEND_ALPHA);
+	bubbles.material->set_proximity_fade_enabled(false);
+	bubbles.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.4);
+	bubbles.set("spread", 180.0).set("initial_velocity", Vector2(2.0, 6.0)).set("damping", Vector2(2.5, 4.0)).set("gravity", Vector3(0, 4.5, 0)).set("scale", Vector2(0.3, 1.2));
+	bubbles.set("color", Color(0.9, 0.97, 1.0, 0.8));
+	bubbles.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.8, 0.8), Vector2(1, 0) }));
+	r_textures.push_back(make_texture(bubbles.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256));
+
+	EmitterBuilder churn = add_emitter(p_effect, "Churn", 4, 2.5, true, 0.85, 1.8, BLEND_ALPHA);
+	churn.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.6);
+	churn.set("spread", 180.0).set("initial_velocity", Vector2(0.5, 1.5)).set("damping", Vector2(1.0, 2.0)).set("gravity", Vector3(0, 0.6, 0));
+	churn.set("color", Color(0.6, 0.78, 0.86, 0.18));
+	churn.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.5), Vector2(1, 1.3) }, 1.3f));
+	churn.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.1, 1), Vector2(1, 0) }));
+	r_textures.push_back(make_soft_smoke(churn));
+
+	add_light(p_effect, "LightFlash", Color(0.75, 0.9, 1.0), 10.0, 9.0, 0.0, 0.25, 0.0, Vector3());
+	add_camera_shake(p_effect, 0.6, 0.6, 5.0, 20.0, 0.0);
+	add_sound_slot(p_effect, 8.0, 60.0);
+}
+
 void fit_visibility_aabb(GPUParticles3D *p_emitter) {
 	const AABB default_aabb(Vector3(-8, -8, -8), Vector3(16, 16, 16));
 	if (p_emitter->get_visibility_aabb() != default_aabb) {
@@ -996,6 +1116,10 @@ String get_preset_name(int p_preset) {
 			return "Insect Blood";
 		case PRESET_SPARK_SHOWER:
 			return "Spark Shower";
+		case PRESET_WATER_EXPLOSION:
+			return "Water Explosion";
+		case PRESET_UNDERWATER_EXPLOSION:
+			return "Underwater Explosion";
 	}
 	return String();
 }
@@ -1021,6 +1145,8 @@ String get_preset_category(int p_preset) {
 		case PRESET_FIRE:
 		case PRESET_SMOKE_GRENADE:
 		case PRESET_SIGNAL_FLARE:
+		case PRESET_WATER_EXPLOSION:
+		case PRESET_UNDERWATER_EXPLOSION:
 			return "Explosions & Fire";
 	}
 	return "Environment";
@@ -1087,6 +1213,10 @@ String get_preset_description(int p_preset) {
 			return "Yellow-green insect blood: mist and droplets along +Z with a matching splatter decal on the wall behind.";
 		case PRESET_SPARK_SHOWER:
 			return "Broken light fixture: irregular bursts of falling sparks that bounce, a pop flash, buzzing flicker light and a sound slot.";
+		case PRESET_WATER_EXPLOSION:
+			return "Explosion breaking the water (+Y up, origin on the surface): a column of white water that grows and falls back, spray, lingering mist, foam spreading on the water, a ring wave and camera shake.";
+		case PRESET_UNDERWATER_EXPLOSION:
+			return "Explosion under water: flash and light, a gas bubble that swells and collapses, a cloud of rising bubbles, murk and camera shake.";
 	}
 	return String();
 }
@@ -1188,6 +1318,12 @@ ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures
 			break;
 		case PRESET_SPARK_SHOWER:
 			build_spark_shower(effect, r_textures);
+			break;
+		case PRESET_WATER_EXPLOSION:
+			build_water_explosion(effect, r_textures);
+			break;
+		case PRESET_UNDERWATER_EXPLOSION:
+			build_underwater_explosion(effect, r_textures);
 			break;
 	}
 	for (int i = 0; i < effect->get_child_count(); i++) {
