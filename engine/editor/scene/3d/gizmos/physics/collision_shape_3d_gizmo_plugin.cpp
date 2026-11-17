@@ -30,6 +30,10 @@
 
 #include "collision_shape_3d_gizmo_plugin.h"
 
+#include "core/object/callable_mp.h"
+#include "editor/docks/inspector_dock.h"
+#include "editor/inspector/editor_inspector.h"
+
 #include "core/math/convex_hull.h"
 #include "core/math/geometry_3d.h"
 #include "editor/editor_node.h"
@@ -414,8 +418,30 @@ void CollisionShape3DGizmoPlugin::commit_handle(const EditorNode3DGizmo *p_gizmo
 	}
 }
 
+void CollisionShape3DGizmoPlugin::_inspector_property_edited(const String &p_property) {
+	if (!p_property.begins_with("metadata/")) {
+		return;
+	}
+	EditorInspector *inspector = InspectorDock::get_inspector_singleton();
+	Node *node = inspector ? Object::cast_to<Node>(inspector->get_edited_object()) : nullptr;
+	if (node == nullptr || !node->has_meta("fps_studio_hitbox")) {
+		return;
+	}
+	for (int i = 0; i < node->get_child_count(); i++) {
+		CollisionShape3D *shape = Object::cast_to<CollisionShape3D>(node->get_child(i));
+		if (shape) {
+			shape->update_gizmos();
+		}
+	}
+}
+
 void CollisionShape3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
 	CollisionShape3D *cs = Object::cast_to<CollisionShape3D>(p_gizmo->get_node_3d());
+	// Connected on the first draw: the Inspector dock exists by then.
+	if (!inspector_connected && InspectorDock::get_inspector_singleton()) {
+		inspector_connected = true;
+		InspectorDock::get_inspector_singleton()->connect("property_edited", callable_mp(this, &CollisionShape3DGizmoPlugin::_inspector_property_edited));
+	}
 
 	p_gizmo->clear();
 	Node *fps_hitbox_node = get_fps_studio_hitbox_node(cs);

@@ -337,7 +337,10 @@ class SceneImportSettingsScreen : public Control {
 	MeshInstance3D *mesh_preview = nullptr;
 	Ref<SphereMesh> material_preview;
 
-	AnimationPlayer *animation_player = nullptr;
+	AnimationPlayer *animation_player = nullptr; // The one holding the selected animation.
+	// Every AnimationPlayer in the model: with more than one, selecting an
+	// animation switches animation_player to the one that has it.
+	Vector<AnimationPlayer *> animation_players;
 	List<Skeleton3D *> skeletons;
 	PanelContainer *animation_preview = nullptr;
 	HSlider *animation_slider = nullptr;

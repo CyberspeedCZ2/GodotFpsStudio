@@ -907,14 +907,17 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 			// For rigged models, derive each segment from its own joint chain.
 			// The lower box follows the wrist/hand or ankle/foot root, while
 			// excluding fingers and toes so they cannot pull the box off the limb.
+			Vector<Vector3> joint_points; // Model-root space, when the box comes from joints.
 			if (is_limb_part && matched_skeleton && matched_bone >= 0 && lower_bone >= 0 && !migrate_legacy_hitbox) {
 				Vector3 points_minimum;
 				Vector3 points_maximum;
 				bool first_point = true;
 				const Transform3D skeleton_to_scene = scene_root->get_global_transform().affine_inverse() * matched_skeleton->get_global_transform();
 				if (segment == 0) {
-					include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin), points_minimum, points_maximum, first_point);
-					include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(lower_bone).origin), points_minimum, points_maximum, first_point);
+					joint_points.push_back(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(matched_bone).origin));
+					joint_points.push_back(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(lower_bone).origin));
+					include_point(joint_points[0], points_minimum, points_maximum, first_point);
+					include_point(joint_points[1], points_minimum, points_maximum, first_point);
 				} else {
 					for (int bone = 0; bone < matched_skeleton->get_bone_count(); bone++) {
 						int ancestor = bone;
@@ -925,7 +928,8 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 							if (is_hitbox_digit_bone_name(matched_skeleton->get_bone_name(bone))) {
 								continue;
 							}
-							include_point(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(bone).origin), points_minimum, points_maximum, first_point);
+							joint_points.push_back(skeleton_to_scene.xform(matched_skeleton->get_bone_global_rest(bone).origin));
+							include_point(joint_points[joint_points.size() - 1], points_minimum, points_maximum, first_point);
 						}
 					}
 				}
@@ -942,7 +946,23 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 			hitbox.name = unique_hitbox_name(is_limb_part ? limb_names[segment] : TTR(preset_names[part]));
 			hitbox.hitgroup = preset_hitgroups[part];
 			hitbox.damage = get_default_hitbox_damage(hitbox.hitgroup);
-			if (matched_skeleton && matched_bone >= 0 && scene_root) {
+			if (matched_skeleton && matched_bone >= 0 && scene_root && !joint_points.is_empty() && attachment_bone >= 0) {
+				// Bound the joints in the bone's own frame: a model-root box
+				// turned into a rotated bone frame is the box of its 8 corners,
+				// up to ~1.4x larger per axis on a bone at 45 degrees.
+				const Transform3D root_to_bone = matched_skeleton->get_bone_global_rest(attachment_bone).affine_inverse() * matched_skeleton->get_global_transform().affine_inverse() * scene_root->get_global_transform();
+				Vector3 points_minimum;
+				Vector3 points_maximum;
+				bool first_point = true;
+				for (const Vector3 &point : joint_points) {
+					include_point(root_to_bone.xform(point), points_minimum, points_maximum, first_point);
+				}
+				const real_t padding = MAX(contents_aabb.size.y * 0.025, 0.025);
+				hitbox.minimum = points_minimum - Vector3(padding, padding, padding);
+				hitbox.maximum = points_maximum + Vector3(padding, padding, padding);
+				hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
+				hitbox.bone_name = matched_skeleton->get_bone_name(attachment_bone);
+			} else if (matched_skeleton && matched_bone >= 0 && scene_root) {
 				convert_root_bounds_to_bone(root_minimum, root_maximum, matched_skeleton, attachment_bone, hitbox.minimum, hitbox.maximum);
 				hitbox.skeleton_path = String(scene->get_path_to(matched_skeleton));
 				hitbox.bone_name = matched_skeleton->get_bone_name(attachment_bone >= 0 ? attachment_bone : matched_bone);

@@ -678,8 +678,12 @@ void SceneImportSettingsScreen::_fill_scene(Node *p_node, TreeItem *p_parent_ite
 			} else if (Object::cast_to<AnimationPlayer>(p_node)) {
 				category = ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_ANIMATION_NODE;
 
-				animation_player = Object::cast_to<AnimationPlayer>(p_node);
-				animation_player->connect(SceneStringName(animation_finished), callable_mp(this, &SceneImportSettingsScreen::_animation_finished));
+				AnimationPlayer *player = Object::cast_to<AnimationPlayer>(p_node);
+				player->connect(SceneStringName(animation_finished), callable_mp(this, &SceneImportSettingsScreen::_animation_finished));
+				animation_players.push_back(player);
+				if (animation_player == nullptr) {
+					animation_player = player;
+				}
 			} else if (Object::cast_to<Skeleton3D>(p_node)) {
 				category = ResourceImporterScene::INTERNAL_IMPORT_CATEGORY_SKELETON_3D_NODE;
 				Skeleton3D *skeleton = Object::cast_to<Skeleton3D>(p_node);
@@ -1551,6 +1555,16 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 	} else if (p_type == "Animation") {
 		node_selected->hide(); // Always hide just in case.
 		mesh_preview->hide();
+		// Play it on the AnimationPlayer that has it (a model can have more).
+		for (AnimationPlayer *player : animation_players) {
+			if (player != animation_player && player->has_animation(StringName(p_id))) {
+				if (animation_player && animation_player->is_playing()) {
+					animation_player->stop();
+				}
+				animation_player = player;
+				break;
+			}
+		}
 		_reset_animation(p_id);
 
 		if (Object::cast_to<Node3D>(scene)) {
@@ -1911,10 +1925,11 @@ void SceneImportSettingsScreen::_scene_tree_selected() {
 
 void SceneImportSettingsScreen::_cleanup() {
 	skeletons.clear();
-	if (animation_player != nullptr) {
-		animation_player->disconnect(SceneStringName(animation_finished), callable_mp(this, &SceneImportSettingsScreen::_animation_finished));
-		animation_player = nullptr;
+	for (AnimationPlayer *player : animation_players) {
+		player->disconnect(SceneStringName(animation_finished), callable_mp(this, &SceneImportSettingsScreen::_animation_finished));
 	}
+	animation_players.clear();
+	animation_player = nullptr;
 	set_process(false);
 }
 

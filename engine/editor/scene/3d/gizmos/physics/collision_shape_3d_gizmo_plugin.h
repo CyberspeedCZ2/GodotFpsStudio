@@ -47,6 +47,10 @@ class CollisionShape3DGizmoPlugin : public EditorNode3DGizmoPlugin {
 	Ref<StandardMaterial3D> fps_hitbox_selected_fill_materials[8];
 	Ref<StandardMaterial3D> fps_hitbox_outline_materials[8];
 	Ref<StandardMaterial3D> fps_hitbox_selected_outline_materials[8];
+	// Redraws an FPS hitbox when its metadata (hitgroup) is edited in the
+	// Inspector: a metadata change alone does not update gizmos.
+	bool inspector_connected = false;
+	void _inspector_property_edited(const String &p_property);
 
 	inline static bool show_only_when_selected = false;
 
