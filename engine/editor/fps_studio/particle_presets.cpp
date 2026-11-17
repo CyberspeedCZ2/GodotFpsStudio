@@ -1122,7 +1122,7 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	shock.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(0.45, 1.0), Vector2(1, 0.25) }));
 	shock.process->set_alpha_curve(make_curve({ Vector2(0, 1.0), Vector2(0.6, 0.85), Vector2(1, 0) }));
 	clip_at_water_surface(shock);
-	TextureRequest bubble_texture = make_texture(shock.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256);
+	TextureRequest bubble_texture = make_texture(shock.node, VFXTextureGenerator::TYPE_UNDERWATER_BUBBLE, "underwater_bubble_sphere", 256);
 	r_textures.push_back(bubble_texture);
 
 	// Bubble cloud: a dense white mass of tiny bubbles billowing out and
@@ -1147,7 +1147,11 @@ void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureReques
 	bubbles.set("color", Color(1.0, 1.0, 1.0, 1.0));
 	bubbles.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.85, 0.9), Vector2(1, 0) }));
 	clip_at_water_surface(bubbles);
-	r_textures.push_back(make_texture(bubbles.node, VFXTextureGenerator::TYPE_BUBBLES, "underwater_bubble", 256));
+	// Real bubbles (sphere, rim, highlight): 4x4 sheet of differently squashed
+	// ones, a random one per particle.
+	TextureRequest single_bubbles = make_texture(bubbles.node, VFXTextureGenerator::TYPE_UNDERWATER_BUBBLE, "underwater_bubble_sheet", 512, 4);
+	single_bubbles.random_frame = true;
+	r_textures.push_back(single_bubbles);
 
 	add_light(p_effect, "LightFlash", Color(0.75, 0.9, 1.0), 16.0, 12.0, 0.0, 0.3, 0.0, Vector3());
 	add_camera_shake(p_effect, 0.7, 0.7, 5.0, 20.0, 0.0);

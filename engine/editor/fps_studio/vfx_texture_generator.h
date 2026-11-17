@@ -64,6 +64,10 @@ enum TypeID {
 	// Foam on the water seen from above: a patch or a ring of bubbles with a
 	// torn edge. Alpha is the foam, colour its brightness.
 	TYPE_FOAM = 26,
+	// One air bubble under water: a clear sphere with a bright rim, a sharp
+	// highlight, light coming through from below and a slight wobble. In a
+	// sheet every frame is a differently squashed bubble (random variants).
+	TYPE_UNDERWATER_BUBBLE = 27,
 };
 
 static constexpr int MAX_PARAMS = 10;

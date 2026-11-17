@@ -308,7 +308,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 27;
+constexpr int TYPE_COUNT = 28;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -622,6 +622,17 @@ struct TypeTable {
 			add_param(t, "breakup", "Breakup", 0.0f, 1.0f, 0.01f, 0.6f, "Holes and a torn, uneven edge.");
 			add_param(t, "softness", "Edge softness", 0.0f, 1.0f, 0.01f, 0.5f, "How softly the foam thins out at the edge.");
 			add_param(t, "streaks", "Streaks", 0.0f, 1.0f, 0.01f, 0.35f, "Foam stretched outward in radial streaks.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_UNDERWATER_BUBBLE, "Underwater Bubble", "Shapes", "One air bubble under water: a clear sphere with a bright rim, a sharp highlight on top, light coming through from below and a slight wobble. In a sheet every frame is a differently squashed bubble, so particles can pick a random one.", 0.55f, 0.7f, 0.8f, 1.0f, 1.0f, 1.0f, "Rim color", "Highlight color", false, false);
+			add_param(t, "rim", "Rim", 0.0f, 1.0f, 0.01f, 0.6f, "Brightness of the bright edge.");
+			add_param(t, "rim_width", "Rim width", 0.02f, 0.4f, 0.01f, 0.14f, "Width of the edge.");
+			add_param(t, "highlight", "Highlight", 0.0f, 1.0f, 0.01f, 1.0f, "Sharp reflection of the light above.");
+			add_param(t, "highlight_size", "Highlight size", 0.05f, 0.5f, 0.01f, 0.22f, "Size of the reflection.");
+			add_param(t, "inner_light", "Inner light", 0.0f, 1.0f, 0.01f, 0.4f, "Light coming through the bubble from below.");
+			add_param(t, "body", "Body", 0.0f, 1.0f, 0.01f, 0.25f, "Opacity of the clear middle.");
+			add_param(t, "wobble", "Wobble", 0.0f, 1.0f, 0.01f, 0.25f, "Squashed, uneven shape of rising bubbles.");
 			push(t);
 		}
 		if (i != TYPE_COUNT) {
@@ -1758,6 +1769,49 @@ void render_foam(const FrameContext &c, float x, float y, float *r_px) {
 	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(foam * 0.8f + 0.2f)), alpha, s);
 }
 
+void render_underwater_bubble(const FrameContext &c, float x, float y, float *r_px) {
+	// x, y are rotated per variant below.
+	const Settings &s = *c.s;
+	const float rim = param(c, 0);
+	const float rim_width = param(c, 1);
+	const float highlight = param(c, 2);
+	const float highlight_size = param(c, 3);
+	const float inner_light = param(c, 4);
+	const float body = param(c, 5);
+	const float wobble = param(c, 6);
+	// Each sheet frame is another bubble: squashed wider than tall, uneven.
+	const uint32_t seed = s.seed * 7919u + 27u + uint32_t(s.life * 977.0f);
+	const V3 noff = seed_offset(seed);
+	// Rising bubbles flatten and tilt: each variant its own squash and tilt.
+	const float squash = 1.0f + wobble * 0.6f * (hash01(hash3i(1, 2, 3, seed)) - 0.25f);
+	const float tilt = (hash01(hash3i(4, 5, 6, seed)) - 0.5f) * wobble * 0.9f;
+	const float tx = x * std::cos(tilt) - y * std::sin(tilt);
+	const float ty = x * std::sin(tilt) + y * std::cos(tilt);
+	x = tx;
+	y = ty;
+	const float px = x / squash;
+	const float py = y * squash;
+	const float ang = std::atan2(py, px);
+	const float radius = 0.86f * (1.0f + wobble * 0.16f * gnoise3(std::cos(ang) * 1.8f + noff.x, std::sin(ang) * 1.8f + noff.y, 0.5f, seed));
+	const float r = len2(px, py) / radius;
+	const float aa = 0.02f;
+	const float inside = smoothstepf(1.0f + aa, 1.0f - aa, r);
+	if (inside <= 0.0f) {
+		write_flat(r_px, c.color_a, 0.0f, s);
+		return;
+	}
+	// Bright edge (seen through more surface at a grazing angle), softer inwards.
+	const float edge = std::pow(smoothstepf(1.0f - rim_width * 2.5f, 1.0f, r), 1.5f) * rim;
+	// Light coming in from below, glowing on the lower inner side.
+	const float lower = smoothstepf(0.9f, 0.0f, len2(px + 0.1f, py + 0.45f)) * inner_light;
+	// Sharp highlight up and to the left, with a small second one below right.
+	const float hl = smoothstepf(highlight_size, highlight_size * 0.55f, len2((px + 0.38f) * 1.2f, (py - 0.42f) * 1.6f)) * highlight;
+	const float hl2 = smoothstepf(highlight_size * 0.45f, highlight_size * 0.2f, len2(px - 0.42f, py + 0.4f)) * highlight * 0.5f;
+	const float alpha = inside * saturate(body + edge + lower * 0.6f + hl + hl2);
+	const float bright = saturate(hl + hl2 + lower * 0.5f);
+	write_flat(r_px, mix3(c.color_a, c.color_b, bright), alpha, s);
+}
+
 void render_water_splash(const FrameContext &c, float x, float y, float *r_px) {
 	const Settings &s = *c.s;
 	const int frames = maxi(int(param(c, 0) + 0.5f), 2);
@@ -2524,6 +2578,9 @@ void render_uv(const FrameContext &c, float u, float v, float *r_out) {
 			break;
 		case TYPE_FOAM:
 			render_foam(c, x, y, r_out);
+			break;
+		case TYPE_UNDERWATER_BUBBLE:
+			render_underwater_bubble(c, x, y, r_out);
 			break;
 		case TYPE_BULLET_HOLE:
 		case TYPE_SCORCH:

@@ -2587,6 +2587,21 @@ void FPSStudioParticleEditorPlugin::_apply_preset_textures(const Vector<FPSParti
 				shader_material->set_shader_parameter("albedo_texture", texture);
 				shader_material->set_shader_parameter("anim_frames", MAX(1, request.columns));
 			}
+			// The shader picks the frame from the particle's animation value:
+			// random variants get a fixed random offset, sheets play over life.
+			if (request.columns > 1) {
+				if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(request.emitter)) {
+					Ref<Material> process = gpu->get_process_material();
+					if (process.is_valid()) {
+						if (request.random_frame) {
+							process->set("anim_speed", Vector2(0.0, 0.0));
+							process->set("anim_offset", Vector2(0.0, 1.0));
+						} else if (Vector2(process->get("anim_speed")) == Vector2()) {
+							process->set("anim_speed", Vector2(1.0, 1.0));
+						}
+					}
+				}
+			}
 			continue;
 		}
 		if (texture.is_null() || !base_material) {
