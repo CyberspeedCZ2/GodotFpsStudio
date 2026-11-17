@@ -86,7 +86,9 @@ Ref<Environment> create_model_view_environment(const Ref<ShaderMaterial> &p_sky_
 	Ref<Sky> sky;
 	sky.instantiate();
 	sky->set_material(p_sky_material);
-	sky->set_process_mode(Sky::PROCESS_MODE_REALTIME);
+	// Re-rendered only when a parameter changes (sun, clouds), spread over a
+	// few frames; REALTIME re-rendered the radiance every frame.
+	sky->set_process_mode(Sky::PROCESS_MODE_INCREMENTAL);
 
 	Ref<Environment> preview_environment;
 	preview_environment.instantiate();
@@ -149,7 +151,8 @@ void SceneImportSettingsScreen::_setup_model_preview_environment() {
 	_update_model_preview_environment();
 
 	if (preview_sun_animation_timer != nullptr) {
-		preview_sun_animation_timer->set_wait_time(0.1);
+		// 30 steps a second: the sun and its shadows glide instead of jumping.
+		preview_sun_animation_timer->set_wait_time(1.0 / 30.0);
 		if (preview_sun_animation_enabled && is_visible_in_tree()) {
 			preview_sun_animation_timer->start();
 		} else {
@@ -206,6 +209,7 @@ void SceneImportSettingsScreen::_update_model_preview_environment() {
 	preview_sky_material->set_shader_parameter("cloud_coverage", cloud_coverage);
 	preview_sky_material->set_shader_parameter("cloud_scale", cloud_scale);
 	preview_sky_material->set_shader_parameter("cloud_speed", cloud_speed);
+	_update_preview_cloud_timer();
 	const float ambient_energy = Math::lerp(0.2f, 1.35f, daylight);
 	environment->set_ambient_light_color(Color(0.72, 0.78, 0.9).lerp(Color(1.0, 1.0, 1.0), daylight));
 	environment->set_ambient_light_energy(ambient_energy);
@@ -221,6 +225,30 @@ void SceneImportSettingsScreen::_preview_time_of_day_changed(double p_value) {
 	_update_preview_time_of_day_label(preview_time_of_day);
 	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "day_night_time", preview_time_of_day);
 	_update_model_preview_environment();
+}
+
+// Clouds drift only while they are on, have a speed and Model View is seen.
+void SceneImportSettingsScreen::_update_preview_cloud_timer() {
+	if (preview_cloud_timer == nullptr) {
+		return;
+	}
+	const bool clouds_enabled = preview_clouds_toggle != nullptr && preview_clouds_toggle->is_pressed();
+	const float cloud_speed = preview_cloud_speed_slider != nullptr ? preview_cloud_speed_slider->get_value() : 0.0f;
+	if (clouds_enabled && cloud_speed > 0.0f && is_visible_in_tree()) {
+		if (preview_cloud_timer->is_stopped()) {
+			preview_cloud_timer->start();
+		}
+	} else {
+		preview_cloud_timer->stop();
+	}
+}
+
+void SceneImportSettingsScreen::_preview_cloud_step() {
+	if (preview_sky_material.is_null()) {
+		return;
+	}
+	preview_cloud_time = Math::fmod(preview_cloud_time + (float)preview_cloud_timer->get_wait_time(), 100000.0f);
+	preview_sky_material->set_shader_parameter("cloud_time", preview_cloud_time);
 }
 
 void SceneImportSettingsScreen::_preview_sun_animation_step() {

@@ -81,6 +81,8 @@
 #include "servers/rendering/rendering_server.h"
 #include "servers/text/text_server.h"
 #include "scene_import_settings_internal.h"
+#include "core/input/input_event.h"
+#include "core/input/shortcut.h"
 
 static constexpr int MODEL_HITBOX_CONFIG_VERSION = 3;
 static constexpr int MODEL_HITBOX_ATTACHMENT_VERSION = 2;
@@ -276,6 +278,43 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	hitbox_remove_button->set_flat(true);
 	hitbox_remove_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_remove_hitbox));
 	list_toolbar->add_child(hitbox_remove_button);
+	// Undo/Redo also on Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z while the focus is in
+	// this tab (outside it the editor's own Undo keeps the keys).
+	Ref<InputEventKey> undo_key;
+	undo_key.instantiate();
+	undo_key->set_keycode(Key::Z);
+	undo_key->set_command_or_control_autoremap(true);
+	Ref<Shortcut> undo_shortcut;
+	undo_shortcut.instantiate();
+	undo_shortcut->set_events({ undo_key });
+	Ref<InputEventKey> redo_key = undo_key->duplicate();
+	redo_key->set_shift_pressed(true);
+	Ref<Shortcut> redo_shortcut;
+	redo_shortcut.instantiate();
+	redo_shortcut->set_events({ redo_key });
+	hitbox_undo_button = memnew(Button);
+	hitbox_undo_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("UndoRedo"), EditorStringName(EditorIcons)));
+	hitbox_undo_button->set_tooltip_text(TTR("Undo Hitbox Change"));
+	hitbox_undo_button->set_flat(true);
+	hitbox_undo_button->set_shortcut(undo_shortcut);
+	hitbox_undo_button->set_shortcut_context(p_tab);
+	hitbox_undo_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_undo));
+	list_toolbar->add_child(hitbox_undo_button);
+	hitbox_redo_button = memnew(Button);
+	hitbox_redo_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Redo"), EditorStringName(EditorIcons)));
+	hitbox_redo_button->set_tooltip_text(TTR("Redo Hitbox Change"));
+	hitbox_redo_button->set_flat(true);
+	hitbox_redo_button->set_shortcut(redo_shortcut);
+	hitbox_redo_button->set_shortcut_context(p_tab);
+	hitbox_redo_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_redo));
+	list_toolbar->add_child(hitbox_redo_button);
+	Button *revert_button = memnew(Button);
+	revert_button->set_button_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Reload"), EditorStringName(EditorIcons)));
+	revert_button->set_tooltip_text(TTR("Revert to Imported Hitboxes (the ones the last Apply Changes wrote)"));
+	revert_button->set_flat(true);
+	revert_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_hitbox_revert_to_imported));
+	list_toolbar->add_child(revert_button);
+	_update_hitbox_undo_buttons();
 
 	hitbox_tree = memnew(Tree);
 	hitbox_tree->set_columns(2);
@@ -525,6 +564,7 @@ void SceneImportSettingsScreen::_select_hitbox(int p_index, bool p_refresh_tree)
 }
 
 void SceneImportSettingsScreen::_add_hitbox() {
+	_push_hitbox_undo();
 	ModelHitbox hitbox;
 	hitbox.name = vformat(TTR("Hitbox %d"), model_hitboxes.size() + 1);
 	if (scene) {
@@ -542,6 +582,7 @@ void SceneImportSettingsScreen::_duplicate_hitbox() {
 	if (selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
 	}
+	_push_hitbox_undo();
 	ModelHitbox duplicate = model_hitboxes[selected_hitbox];
 	const String base_name = duplicate.name + TTR(" Copy");
 	duplicate.name = base_name;
@@ -575,6 +616,7 @@ void SceneImportSettingsScreen::_generate_hitbox_preset(int p_preset, bool p_onl
 	if (p_preset < HITBOX_PRESET_HUMANOID_SET || p_preset > HITBOX_PRESET_RIGHT_LEG) {
 		return;
 	}
+	_push_hitbox_undo();
 
 	static const char *preset_names[] = { "Head", "Chest", "Stomach", "Left Arm", "Right Arm", "Left Leg", "Right Leg" };
 	static const int preset_hitgroups[] = { 1, 2, 3, 4, 5, 6, 7 };
@@ -926,10 +968,100 @@ void SceneImportSettingsScreen::_remove_hitbox() {
 	if (selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
 	}
+	_push_hitbox_undo();
 	model_hitboxes.remove_at(selected_hitbox);
 	selected_hitbox = MIN(selected_hitbox, model_hitboxes.size() - 1);
 	_select_hitbox(selected_hitbox);
 	_save_hitbox_config();
+}
+
+// Records the list before a change. Consecutive changes with the same
+// non-empty key (typing a name, dragging a value) make a single step.
+void SceneImportSettingsScreen::_push_hitbox_undo(const String &p_coalesce_key) {
+	if (!p_coalesce_key.is_empty() && p_coalesce_key == hitbox_undo_coalesce_key && !hitbox_undo_stack.is_empty()) {
+		return;
+	}
+	hitbox_undo_coalesce_key = p_coalesce_key;
+	HitboxSnapshot snapshot;
+	snapshot.hitboxes = model_hitboxes;
+	snapshot.selected = selected_hitbox;
+	hitbox_undo_stack.push_back(snapshot);
+	if (hitbox_undo_stack.size() > 100) {
+		hitbox_undo_stack.remove_at(0);
+	}
+	hitbox_redo_stack.clear();
+	_update_hitbox_undo_buttons();
+}
+
+void SceneImportSettingsScreen::_restore_hitbox_snapshot(const HitboxSnapshot &p_snapshot) {
+	model_hitboxes = p_snapshot.hitboxes;
+	selected_hitbox = model_hitboxes.is_empty() ? -1 : CLAMP(p_snapshot.selected, 0, model_hitboxes.size() - 1);
+	hitbox_undo_coalesce_key = String();
+	_populate_hitbox_tree();
+	_select_hitbox(selected_hitbox);
+	_update_hitbox_preview();
+	_save_hitbox_config();
+	_update_hitbox_undo_buttons();
+}
+
+void SceneImportSettingsScreen::_hitbox_undo() {
+	if (hitbox_undo_stack.is_empty()) {
+		return;
+	}
+	HitboxSnapshot current;
+	current.hitboxes = model_hitboxes;
+	current.selected = selected_hitbox;
+	hitbox_redo_stack.push_back(current);
+	const HitboxSnapshot snapshot = hitbox_undo_stack[hitbox_undo_stack.size() - 1];
+	hitbox_undo_stack.remove_at(hitbox_undo_stack.size() - 1);
+	_restore_hitbox_snapshot(snapshot);
+}
+
+void SceneImportSettingsScreen::_hitbox_redo() {
+	if (hitbox_redo_stack.is_empty()) {
+		return;
+	}
+	HitboxSnapshot current;
+	current.hitboxes = model_hitboxes;
+	current.selected = selected_hitbox;
+	hitbox_undo_stack.push_back(current);
+	const HitboxSnapshot snapshot = hitbox_redo_stack[hitbox_redo_stack.size() - 1];
+	hitbox_redo_stack.remove_at(hitbox_redo_stack.size() - 1);
+	_restore_hitbox_snapshot(snapshot);
+}
+
+// Back to the hitboxes the last Apply Changes wrote into the .import file
+// (one undo step, so it can be taken back too).
+void SceneImportSettingsScreen::_hitbox_revert_to_imported() {
+	_push_hitbox_undo();
+	HitboxSnapshot imported;
+	const Array saved = defaults.has("fps_studio/hitboxes") ? Array(defaults["fps_studio/hitboxes"]) : Array();
+	for (const Variant &value : saved) {
+		if (value.get_type() != Variant::DICTIONARY) {
+			continue;
+		}
+		const Dictionary item = value;
+		ModelHitbox hitbox;
+		hitbox.name = item.get("name", vformat(TTR("Hitbox %d"), imported.hitboxes.size() + 1));
+		hitbox.minimum = item.get("minimum", Vector3(-0.5, -0.5, -0.5));
+		hitbox.maximum = item.get("maximum", Vector3(0.5, 0.5, 0.5));
+		hitbox.hitgroup = CLAMP((int)item.get("hitgroup", 0), 0, 7);
+		hitbox.damage = CLAMP((real_t)item.get("damage", get_default_hitbox_damage(hitbox.hitgroup)), 0.0, 10000.0);
+		hitbox.skeleton_path = item.get("skeleton_path", String());
+		hitbox.bone_name = item.get("bone_name", String());
+		imported.hitboxes.push_back(hitbox);
+	}
+	imported.selected = 0;
+	_restore_hitbox_snapshot(imported);
+}
+
+void SceneImportSettingsScreen::_update_hitbox_undo_buttons() {
+	if (hitbox_undo_button) {
+		hitbox_undo_button->set_disabled(hitbox_undo_stack.is_empty());
+	}
+	if (hitbox_redo_button) {
+		hitbox_redo_button->set_disabled(hitbox_redo_stack.is_empty());
+	}
 }
 
 void SceneImportSettingsScreen::_hitbox_tree_selected() {
@@ -949,6 +1081,7 @@ void SceneImportSettingsScreen::_hitbox_name_changed(const String &p_name) {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
 	}
+	_push_hitbox_undo(vformat("name:%d", selected_hitbox));
 	model_hitboxes.write[selected_hitbox].name = p_name;
 	_populate_hitbox_tree();
 	_save_hitbox_config();
@@ -962,6 +1095,7 @@ void SceneImportSettingsScreen::_hitbox_name_committed() {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
 	}
+	_push_hitbox_undo(vformat("name:%d", selected_hitbox));
 	String base = model_hitboxes[selected_hitbox].name.strip_edges().validate_node_name();
 	if (base.is_empty()) {
 		base = TTR("Hitbox");
@@ -995,6 +1129,7 @@ void SceneImportSettingsScreen::_hitbox_group_changed(int p_group) {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
 	}
+	_push_hitbox_undo(String());
 	model_hitboxes.write[selected_hitbox].hitgroup = CLAMP(p_group, 0, 7);
 	_populate_hitbox_tree();
 	_save_hitbox_config();
@@ -1004,6 +1139,7 @@ void SceneImportSettingsScreen::_hitbox_damage_changed(double p_value) {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size()) {
 		return;
 	}
+	_push_hitbox_undo(vformat("damage:%d", selected_hitbox));
 	model_hitboxes.write[selected_hitbox].damage = CLAMP((real_t)p_value, 0.0, 10000.0);
 	_save_hitbox_config();
 }
@@ -1012,6 +1148,7 @@ void SceneImportSettingsScreen::_hitbox_attachment_changed(int p_attachment) {
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size() || !hitbox_attachment_option || p_attachment < 0) {
 		return;
 	}
+	_push_hitbox_undo();
 	Dictionary attachment = hitbox_attachment_option->get_item_metadata(p_attachment);
 	ModelHitbox &hitbox = model_hitboxes.write[selected_hitbox];
 	const String new_skeleton_path = attachment.get("skeleton_path", String());
@@ -1036,6 +1173,8 @@ void SceneImportSettingsScreen::_hitbox_transform_changed(double p_value, int p_
 	if (hitbox_ui_updating || selected_hitbox < 0 || selected_hitbox >= model_hitboxes.size() || p_axis < 0 || p_axis > 2) {
 		return;
 	}
+	// Dragging one field is one undo step.
+	_push_hitbox_undo(vformat("bounds:%d:%d:%d", selected_hitbox, p_field, p_axis));
 	ModelHitbox &hitbox = model_hitboxes.write[selected_hitbox];
 	if (p_field == 0) {
 		hitbox.minimum[p_axis] = p_value;
@@ -1087,6 +1226,11 @@ void SceneImportSettingsScreen::_save_hitbox_config() {
 void SceneImportSettingsScreen::_load_hitbox_config() {
 	model_hitboxes.clear();
 	selected_hitbox = -1;
+	// Another model (or a fresh load after Apply): the history is not theirs.
+	hitbox_undo_stack.clear();
+	hitbox_redo_stack.clear();
+	hitbox_undo_coalesce_key = String();
+	_update_hitbox_undo_buttons();
 	hitbox_config_version = MODEL_HITBOX_CONFIG_VERSION;
 	if (base_path.is_empty()) {
 		return;

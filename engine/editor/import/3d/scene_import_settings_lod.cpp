@@ -1158,7 +1158,26 @@ void SceneImportSettingsScreen::_update_lod_settings_panel() {
 	preset->add_item(TTR("Balanced"));
 	preset->add_item(TTR("Performance"));
 	preset->add_item(TTR("Custom"));
-	preset->select(md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"]) ? 4 : 0);
+	// Recognise the presets from their levels (3 levels, the same keep
+	// fraction, neutral timing), so a picked preset does not read "Custom".
+	int preset_index = 0;
+	if (md.settings.has("lods/custom_levels") && bool(md.settings["lods/custom_levels"])) {
+		preset_index = 4;
+		const Array preset_levels = md.settings.has("lods/levels") ? Array(md.settings["lods/levels"]) : Array();
+		const double preset_keeps[3] = { 0.7, 0.5, 0.35 };
+		for (int candidate = 0; candidate < 3 && preset_levels.size() == 3; candidate++) {
+			bool matches = true;
+			for (int i = 0; i < 3 && matches; i++) {
+				const Dictionary level = preset_levels[i];
+				matches = Math::is_equal_approx((double)level.get("keep", -1.0), preset_keeps[candidate]) && Math::is_equal_approx((double)level.get("transition_bias", -1.0), 1.0);
+			}
+			if (matches) {
+				preset_index = candidate + 1;
+				break;
+			}
+		}
+	}
+	preset->select(preset_index);
 	preset->set_item_disabled(4, true);
 	preset->set_disabled(!md.has_import_id);
 	preset->connect(SceneStringName(item_selected), callable_mp(this, &SceneImportSettingsScreen::_lod_preset_selected));

@@ -133,6 +133,9 @@ uniform bool clouds_enabled = true;
 uniform float cloud_coverage : hint_range(0.0, 1.0) = 0.5;
 uniform float cloud_scale : hint_range(0.2, 5.0) = 1.5;
 uniform float cloud_speed : hint_range(0.0, 0.1) = 0.01;
+// Advanced by the editor only while clouds move (no TIME: a TIME sky is
+// re-rendered and redrawn every frame even when nothing changes).
+uniform float cloud_time = 0.0;
 uniform vec3 cloud_color : source_color = vec3(1.0, 1.0, 1.0);
 uniform vec3 cloud_shadow_color : source_color = vec3(0.55, 0.60, 0.70);
 
@@ -201,7 +204,7 @@ void sky() {
 		float ray_up = max(ray_direction.y, 0.015);
 		float start_distance = CLOUD_BASE_HEIGHT / ray_up;
 		float step_distance = CLOUD_LAYER_THICKNESS / (float(CLOUD_MARCH_STEPS) * ray_up);
-		vec2 wind = vec2(TIME * cloud_speed, TIME * cloud_speed * 0.35);
+		vec2 wind = vec2(cloud_time * cloud_speed, cloud_time * cloud_speed * 0.35);
 		float transmittance = 1.0;
 		vec3 cloud_light = vec3(0.0);
 		float horizon_fade = smoothstep(0.01, 0.18, up);
@@ -1215,6 +1218,10 @@ void SceneImportSettingsScreen::update_view() {
 }
 
 void SceneImportSettingsScreen::open_settings(const String &p_path, const String &p_scene_import_type) {
+	if (_ask_about_unsaved_changes(false, p_path, p_scene_import_type)) {
+		return;
+	}
+	import_options_dirty = false; // A fresh model, nothing edited yet.
 	if (lod_edit_timer) {
 		lod_edit_timer->stop();
 	}
@@ -1677,6 +1684,7 @@ void SceneImportSettingsScreen::_select(Tree *p_from, const String &p_type, cons
 }
 
 void SceneImportSettingsScreen::_inspector_property_edited(const String &p_name) {
+	import_options_dirty = true;
 	if (p_name == "settings/loop_mode") {
 		if (!animation_map.has(selected_id)) {
 			return;
@@ -2043,6 +2051,7 @@ Error SceneImportSettingsScreen::_re_import() {
 	if (material_save_error != OK) {
 		return material_save_error;
 	}
+	import_options_dirty = false;
 	HashMap<StringName, Variant> main_settings;
 
 	// The inspector's current map belongs to the selected subresource. Build
@@ -2138,6 +2147,67 @@ Error SceneImportSettingsScreen::_re_import() {
 	return OK;
 }
 
+bool SceneImportSettingsScreen::_has_unsaved_changes() const {
+	if (import_options_dirty) {
+		return true;
+	}
+	for (const KeyValue<String, MaterialData> &entry : material_map) {
+		if (entry.value.modified) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// True when the dialog was shown and the open/close waits for the answer.
+// LOD and hitbox edits never ask: they are kept in their sidecar files.
+bool SceneImportSettingsScreen::_ask_about_unsaved_changes(bool p_close, const String &p_path, const String &p_type) {
+	if (skip_unsaved_check || scene == nullptr || unsaved_changes_dialog == nullptr || !_has_unsaved_changes()) {
+		return false;
+	}
+	if (!p_close && p_path == base_path) {
+		return false; // Reopening the same model (after a reimport).
+	}
+	pending_close = p_close;
+	pending_open_path = p_path;
+	pending_open_type = p_type;
+	unsaved_changes_dialog->set_text(vformat(TTR("\"%s\" has import setting or material changes that Apply Changes has not written yet.\nApply them before continuing?"), base_path.get_file()));
+	unsaved_changes_dialog->popup_centered();
+	return true;
+}
+
+void SceneImportSettingsScreen::_unsaved_changes_apply() {
+	if (_re_import() != OK) {
+		return; // The error is shown; stay on this model.
+	}
+	_continue_after_unsaved_changes();
+}
+
+void SceneImportSettingsScreen::_unsaved_changes_action(const StringName &p_action) {
+	if (p_action != StringName("discard")) {
+		return;
+	}
+	unsaved_changes_dialog->hide();
+	import_options_dirty = false;
+	for (KeyValue<String, MaterialData> &entry : material_map) {
+		entry.value.modified = false;
+	}
+	_continue_after_unsaved_changes();
+}
+
+void SceneImportSettingsScreen::_continue_after_unsaved_changes() {
+	skip_unsaved_check = true;
+	if (pending_close) {
+		_close_screen();
+	} else if (!pending_open_path.is_empty()) {
+		open_settings(pending_open_path, pending_open_type);
+	}
+	skip_unsaved_check = false;
+	pending_close = false;
+	pending_open_path = String();
+	pending_open_type = String();
+}
+
 void SceneImportSettingsScreen::_update_empty_state() {
 	// The empty-state hint is shown whenever the workspace has no model loaded
 	// (e.g. when the user switches to the "Model" tab manually).
@@ -2145,6 +2215,10 @@ void SceneImportSettingsScreen::_update_empty_state() {
 }
 
 void SceneImportSettingsScreen::_close_screen() {
+	if (_ask_about_unsaved_changes(true, String(), String())) {
+		return;
+	}
+	import_options_dirty = false;
 	_save_lod_config();
 	_save_hitbox_config();
 	if (lod_edit_timer) {
@@ -2359,6 +2433,7 @@ void SceneImportSettingsScreen::_notification(int p_what) {
 					preview_sun_animation_timer->stop();
 				}
 			}
+			_update_preview_cloud_timer();
 		} break;
 	}
 }
@@ -3308,8 +3383,12 @@ void fragment() {
 	add_environment_slider(preview_cloud_coverage_label, preview_cloud_coverage_slider, TTR("Cloud Coverage: 50%"), 0.0, 1.0, 0.01, TTR("Set how much of the preview sky is covered by clouds."), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_coverage_changed));
 	add_environment_slider(preview_cloud_scale_label, preview_cloud_scale_slider, TTR("Cloud Scale: 1.50"), 0.2, 5.0, 0.1, TTR("Set the size of the procedural clouds."), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_scale_changed));
 	add_environment_slider(preview_cloud_speed_label, preview_cloud_speed_slider, TTR("Cloud Speed: 0.010"), 0.0, 0.1, 0.001, TTR("Set the speed of the procedural cloud movement."), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_speed_changed));
+	preview_cloud_timer = memnew(Timer);
+	preview_cloud_timer->set_wait_time(1.0 / 30.0);
+	preview_cloud_timer->connect(SNAME("timeout"), callable_mp(this, &SceneImportSettingsScreen::_preview_cloud_step));
+	add_child(preview_cloud_timer);
 	preview_sun_animation_timer = memnew(Timer);
-	preview_sun_animation_timer->set_wait_time(0.1);
+	preview_sun_animation_timer->set_wait_time(1.0 / 30.0);
 	preview_sun_animation_timer->connect(SNAME("timeout"), callable_mp(this, &SceneImportSettingsScreen::_preview_sun_animation_step));
 	add_child(preview_sun_animation_timer);
 
@@ -3336,6 +3415,13 @@ void fragment() {
 	close_button->connect(SceneStringName(pressed), callable_mp(this, &SceneImportSettingsScreen::_close_screen));
 	confirm_hb->add_child(close_button);
 
+	unsaved_changes_dialog = memnew(ConfirmationDialog);
+	unsaved_changes_dialog->set_title(TTR("Unsaved Model Changes"));
+	unsaved_changes_dialog->set_ok_button_text(TTR("Apply Changes"));
+	unsaved_changes_dialog->add_button(TTR("Discard"), DisplayServer::get_singleton()->get_swap_cancel_ok(), "discard");
+	unsaved_changes_dialog->connect(SceneStringName(confirmed), callable_mp(this, &SceneImportSettingsScreen::_unsaved_changes_apply));
+	unsaved_changes_dialog->connect("custom_action", callable_mp(this, &SceneImportSettingsScreen::_unsaved_changes_action));
+	add_child(unsaved_changes_dialog);
 	external_paths = memnew(ConfirmationDialog);
 	add_child(external_paths);
 	external_path_tree = memnew(Tree);

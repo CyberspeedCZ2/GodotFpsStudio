@@ -107,6 +107,8 @@ class SceneImportSettingsScreen : public Control {
 	WorldEnvironment *preview_world_environment_node = nullptr;
 	Ref<ShaderMaterial> preview_sky_material;
 	Timer *preview_sun_animation_timer = nullptr;
+	Timer *preview_cloud_timer = nullptr;
+	float preview_cloud_time = 0.0f;
 	Label *preview_time_of_day_label = nullptr;
 	HSlider *preview_time_of_day_slider = nullptr;
 	CheckButton *preview_sun_animation_toggle = nullptr;
@@ -237,6 +239,17 @@ class SceneImportSettingsScreen : public Control {
 	OptionButton *hitbox_attachment_option = nullptr;
 	Button *hitbox_duplicate_button = nullptr;
 	Button *hitbox_remove_button = nullptr;
+	Button *hitbox_undo_button = nullptr;
+	Button *hitbox_redo_button = nullptr;
+	// Model View edits are not in the editor's global history: hitbox edits
+	// keep their own snapshots (list + selection) for Undo/Redo.
+	struct HitboxSnapshot {
+		Vector<ModelHitbox> hitboxes;
+		int selected = -1;
+	};
+	Vector<HitboxSnapshot> hitbox_undo_stack;
+	Vector<HitboxSnapshot> hitbox_redo_stack;
+	String hitbox_undo_coalesce_key;
 	Ref<Material> hitbox_preview_materials[8];
 	Ref<Material> hitbox_selected_preview_materials[8];
 	SpinBox *hitbox_minimum_inputs[3] = {};
@@ -480,6 +493,12 @@ class SceneImportSettingsScreen : public Control {
 	void _hitbox_preset_selected(int p_preset);
 	void _generate_hitbox_preset(int p_preset, bool p_only_missing);
 	void _remove_hitbox();
+	void _push_hitbox_undo(const String &p_coalesce_key = String());
+	void _hitbox_undo();
+	void _hitbox_redo();
+	void _hitbox_revert_to_imported();
+	void _restore_hitbox_snapshot(const HitboxSnapshot &p_snapshot);
+	void _update_hitbox_undo_buttons();
 	void _hitbox_tree_selected();
 	void _hitbox_name_changed(const String &p_name);
 	void _hitbox_name_committed();
@@ -505,6 +524,8 @@ class SceneImportSettingsScreen : public Control {
 	void _setup_model_preview_environment();
 	void _update_model_preview_environment();
 	void _preview_time_of_day_changed(double p_value);
+	void _update_preview_cloud_timer();
+	void _preview_cloud_step();
 	void _preview_sun_animation_step();
 	void _preview_sun_animation_toggled(bool p_enabled);
 	void _preview_sun_cycle_duration_changed(double p_value);
@@ -563,6 +584,19 @@ class SceneImportSettingsScreen : public Control {
 	MenuButton *action_menu = nullptr;
 
 	ConfirmationDialog *external_paths = nullptr;
+	// Asked before opening another model or closing with import option or
+	// material edits that Apply Changes has not written yet.
+	ConfirmationDialog *unsaved_changes_dialog = nullptr;
+	bool import_options_dirty = false;
+	bool skip_unsaved_check = false;
+	bool pending_close = false;
+	String pending_open_path;
+	String pending_open_type;
+	bool _has_unsaved_changes() const;
+	bool _ask_about_unsaved_changes(bool p_close, const String &p_path, const String &p_type);
+	void _unsaved_changes_apply();
+	void _unsaved_changes_action(const StringName &p_action);
+	void _continue_after_unsaved_changes();
 	Tree *external_path_tree = nullptr;
 	EditorFileDialog *save_path = nullptr;
 	OptionButton *external_extension_type = nullptr;
