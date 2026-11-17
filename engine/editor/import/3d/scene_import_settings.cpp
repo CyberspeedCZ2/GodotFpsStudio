@@ -3376,6 +3376,7 @@ void fragment() {
 		settings_tab_bar->set_tab_tooltip(i, vformat(TTR("Show %s settings"), settings_tab_names[i]));
 	}
 	settings_tab_bar->connect(SNAME("tab_changed"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_bar_changed));
+	settings_tab_bar->connect(SNAME("tab_clicked"), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_bar_clicked));
 	settings_tab_navigation->connect(SceneStringName(resized), callable_mp(this, &SceneImportSettingsScreen::_settings_tab_navigation_resized));
 	VSeparator *settings_navigation_separator = memnew(VSeparator);
 	settings_navigation_separator->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -3450,6 +3451,7 @@ void fragment() {
 	const int saved_settings_tab = CLAMP(get_model_settings_tab_index(EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "settings_tab", 0)), 0, MODEL_SETTINGS_TAB_COUNT - 1);
 	settings_tabs->set_current_tab(saved_settings_tab);
 	_settings_tab_changed(saved_settings_tab);
+	_set_settings_panel_collapsed(EditorSettings::get_singleton()->get_project_metadata("fps_studio_model_view", "settings_panel_collapsed", false));
 
 	// Bottom action bar replacing the modal dialog's OK/Cancel buttons.
 	HBoxContainer *confirm_hb = memnew(HBoxContainer);
@@ -3600,8 +3602,42 @@ void SceneImportSettingsScreen::_settings_tab_changed(int p_tab) {
 }
 
 void SceneImportSettingsScreen::_settings_tab_bar_changed(int p_tab) {
+	settings_tab_just_changed = true; // tab_clicked follows for the same click.
 	if (settings_tabs && p_tab >= 0 && p_tab < MODEL_SETTINGS_TAB_COUNT) {
 		settings_tabs->set_current_tab(p_tab);
+	}
+}
+
+// TabBar sends tab_changed (only for another tab) and then tab_clicked.
+void SceneImportSettingsScreen::_settings_tab_bar_clicked(int p_tab) {
+	const bool changed = settings_tab_just_changed;
+	settings_tab_just_changed = false;
+	if (settings_panel_collapsed) {
+		_set_settings_panel_collapsed(false);
+	} else if (!changed && settings_tabs && p_tab == settings_tabs->get_current_tab()) {
+		_set_settings_panel_collapsed(true);
+	}
+}
+
+void SceneImportSettingsScreen::_set_settings_panel_collapsed(bool p_collapsed) {
+	settings_panel_collapsed = p_collapsed;
+	if (settings_tabs) {
+		settings_tabs->set_visible(!p_collapsed);
+	}
+	if (property_split) {
+		// Collapsed: the panel keeps just its navigation strip, the split
+		// offset (the user's width) comes back when it is shown again.
+		property_split->set_collapsed(p_collapsed);
+	}
+	if (settings_tab_bar) {
+		for (int i = 0; i < settings_tab_bar->get_tab_count(); i++) {
+			const String name = settings_tab_bar->get_tab_title(i);
+			settings_tab_bar->set_tab_tooltip(i, p_collapsed ? vformat(TTR("Show %s settings"), name) : vformat(TTR("Show %s settings (click the open tab again to hide the panel)"), name));
+		}
+	}
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_model_view", "settings_panel_collapsed", p_collapsed);
+	if (!p_collapsed && !panel_widths_restored) {
+		callable_mp(this, &SceneImportSettingsScreen::_restore_panel_widths).call_deferred();
 	}
 }
 
@@ -3637,6 +3673,12 @@ void SceneImportSettingsScreen::_save_panel_widths() {
 	if (!data_mode || !settings_panel_layout || !is_visible_in_tree()) {
 		return;
 	}
+	if (settings_panel_collapsed) {
+		// Only the tree width; the hidden panel keeps its saved width.
+		EditorSettings::get_singleton()->set_setting(MODEL_CONTENT_PANEL_WIDTH_SETTING, Math::round(data_mode->get_size().x / EDSCALE));
+		EditorSettings::get_singleton()->save();
+		return;
+	}
 	EditorSettings::get_singleton()->set_setting(MODEL_CONTENT_PANEL_WIDTH_SETTING, Math::round(data_mode->get_size().x / EDSCALE));
 	EditorSettings::get_singleton()->set_setting(MODEL_SETTINGS_PANEL_WIDTH_SETTING, Math::round(settings_panel_layout->get_size().x / EDSCALE));
 	EditorSettings::get_singleton()->save();
@@ -3647,7 +3689,7 @@ void SceneImportSettingsScreen::_save_panel_widths() {
 // the 3D preview. Measured from the current sizes, so it does not depend on
 // how the split containers count their offsets.
 void SceneImportSettingsScreen::_restore_panel_widths() {
-	if (panel_widths_restored || !tree_split || !property_split || !data_mode || !settings_panel_layout || !is_visible_in_tree()) {
+	if (panel_widths_restored || settings_panel_collapsed || !tree_split || !property_split || !data_mode || !settings_panel_layout || !is_visible_in_tree()) {
 		return;
 	}
 	const real_t total = tree_split->get_size().x;

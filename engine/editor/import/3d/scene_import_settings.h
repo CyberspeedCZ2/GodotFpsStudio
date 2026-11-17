@@ -492,6 +492,12 @@ class SceneImportSettingsScreen : public Control {
 	void _lod_merge_angle_changed(double p_value);
 	void _settings_tab_changed(int p_tab);
 	void _settings_tab_bar_changed(int p_tab);
+	// Clicking the open tab in the vertical navigation hides the settings
+	// panel (the preview takes the room), clicking any tab shows it again.
+	void _settings_tab_bar_clicked(int p_tab);
+	void _set_settings_panel_collapsed(bool p_collapsed);
+	bool settings_panel_collapsed = false;
+	bool settings_tab_just_changed = false;
 	void _settings_tab_navigation_resized();
 	void _build_hitbox_editor(VBoxContainer *p_tab);
 	void _populate_hitbox_tree();
