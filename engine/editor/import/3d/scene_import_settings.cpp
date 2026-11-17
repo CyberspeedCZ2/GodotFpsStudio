@@ -3232,6 +3232,11 @@ void fragment() {
 	settings_tabs->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	settings_tabs->set_tabs_visible(false);
+	// The panel cannot get narrower than its widest tab needs, whichever tab
+	// is open (the tabs' scroll containers do not scroll sideways, so their
+	// content sets the minimum): nothing gets cut off, and the width does not
+	// jump when switching tabs.
+	settings_tabs->set_use_hidden_tabs_for_min_size(true);
 	Ref<StyleBoxFlat> settings_surface_style = editor_theme->get_stylebox(SceneStringName(panel), SNAME("TabContainer"))->duplicate();
 	Color settings_surface_color = model_view_surface.lerp(model_view_accent, 0.025);
 	settings_surface_style->set_bg_color(settings_surface_color);
@@ -3249,6 +3254,7 @@ void fragment() {
 	lod_panel_scroll->set_name(TTR("LOD"));
 	lod_panel_scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	lod_panel_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	lod_panel_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 	lod_panel_scroll->add_child(lod_settings_panel);
 	settings_tabs->add_child(lod_panel_scroll);
 	int tab_index = 1;
@@ -3380,6 +3386,7 @@ void fragment() {
 	environment_scroll->set_name(TTR("Environment"));
 	environment_scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	environment_scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	environment_scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
 	settings_tabs->add_child(environment_scroll);
 	VBoxContainer *environment_tab = memnew(VBoxContainer);
 	environment_tab->set_h_size_flags(Control::SIZE_EXPAND_FILL);

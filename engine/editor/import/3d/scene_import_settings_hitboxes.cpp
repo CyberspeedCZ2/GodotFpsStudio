@@ -219,6 +219,7 @@ void SceneImportSettingsScreen::_build_hitbox_editor(VBoxContainer *p_tab) {
 	ScrollContainer *scroll = memnew(ScrollContainer);
 	scroll->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	scroll->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED); // Content sets the panel's minimum width.
 	p_tab->add_child(scroll);
 	VBoxContainer *content = memnew(VBoxContainer);
 	content->set_h_size_flags(Control::SIZE_EXPAND_FILL);
