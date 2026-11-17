@@ -1673,7 +1673,7 @@ void render_water_plume(const FrameContext &c, float x, float y, float *r_px) {
 	const float cap = top + lumps * 0.14f * fbm(V3(x * 4.5f + noff.z, 1.3f, 2.1f), 3, 0.5f, seed + 5u) - 0.08f * (x / maxf(w, 0.05f)) * (x / maxf(w, 0.05f));
 	const float aa = 0.015f;
 	// Soft foot: the column rises out of the water, no hard bottom edge.
-	float inside = smoothstepf(w + aa, w - w * 0.22f, absf(x)) * smoothstepf(cap + aa, cap - 0.1f, y) * smoothstepf(base, base + 0.14f, y);
+	float inside = smoothstepf(w + aa, w - w * 0.22f, absf(x)) * smoothstepf(cap + aa, cap - 0.1f, y) * smoothstepf(base, base + 0.04f, y);
 	const float froth = billow(V3(x * 6.5f + noff.y, y * 5.5f, 1.7f), 4, 0.5f, seed + 9u);
 	const float streak = gnoise3(x * 16.0f / maxf(width * 4.0f, 0.3f) + noff.x, y * 1.6f, 0.3f, seed + 7u) * 0.5f + 0.5f;
 	const float core = smoothstepf(w, 0.0f, absf(x));

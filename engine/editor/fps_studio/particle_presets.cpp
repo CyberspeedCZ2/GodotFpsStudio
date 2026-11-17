@@ -928,7 +928,7 @@ void light_as_water(EmitterBuilder &r_builder) {
 // Under water only: a billboard particle material that fades particles out at
 // the water surface. The pool sets the instance uniform water_surface_y on the
 // emitter when it spawns the effect (default: no surface, nothing clipped).
-void clip_at_water_surface(EmitterBuilder &r_builder, bool p_keep_above = false, bool p_billboard = true) {
+void clip_at_water_surface(EmitterBuilder &r_builder, bool p_keep_above = false, bool p_billboard = true, bool p_clip_vertical = true, bool p_clip_to_area = false) {
 	static Ref<Shader> shader;
 	if (shader.is_null()) {
 		shader.instantiate();
@@ -942,6 +942,13 @@ uniform int anim_frames = 1;
 uniform bool keep_above_surface = false;
 // Camera facing quad; off for velocity-aligned streaks (emitter aligns them).
 uniform bool billboard = true;
+// Off for things lying on the surface (foam): no fade above or below it.
+uniform bool clip_vertical = true;
+// Only inside the water's area (the pool sets water_bounds), so foam near a
+// wall does not spread over the deck.
+uniform bool clip_to_water_area = false;
+instance uniform vec4 water_bounds = vec4(-1000000.0, -1000000.0, 1000000.0, 1000000.0);
+varying vec3 world_vertex;
 instance uniform float water_surface_y = 100000.0;
 varying float particle_y;
 void vertex() {
@@ -952,6 +959,9 @@ void vertex() {
 		facing[1] *= length(MODEL_MATRIX[1].xyz);
 		facing[2] *= length(MODEL_MATRIX[2].xyz);
 		MODELVIEW_MATRIX = VIEW_MATRIX * facing;
+		world_vertex = (facing * vec4(VERTEX, 1.0)).xyz;
+	} else {
+		world_vertex = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	}
 	particle_y = MODEL_MATRIX[3].y;
 	if (anim_frames > 1) {
@@ -967,7 +977,13 @@ void fragment() {
 	// when it falls back into the water.
 	float below = 1.0 - smoothstep(water_surface_y - 0.25, water_surface_y - 0.02, particle_y);
 	float above = smoothstep(water_surface_y - 0.05, water_surface_y + 0.1, particle_y);
-	ALPHA = tex.a * COLOR.a * (keep_above_surface ? above : below);
+	float vertical = clip_vertical ? (keep_above_surface ? above : below) : 1.0;
+	float area = 1.0;
+	if (clip_to_water_area) {
+		vec2 inside = min(world_vertex.xz - water_bounds.xy, water_bounds.zw - world_vertex.xz);
+		area = smoothstep(0.0, 0.08, min(inside.x, inside.y));
+	}
+	ALPHA = tex.a * COLOR.a * vertical * area;
 }
 )");
 	}
@@ -976,6 +992,8 @@ void fragment() {
 	material->set_shader(shader);
 	material->set_shader_parameter("keep_above_surface", p_keep_above);
 	material->set_shader_parameter("billboard", p_billboard);
+	material->set_shader_parameter("clip_vertical", p_clip_vertical);
+	material->set_shader_parameter("clip_to_water_area", p_clip_to_area);
 	material->set_render_priority(r_builder.material->get_render_priority());
 	Ref<QuadMesh> quad = r_builder.node->get_draw_pass_mesh(0);
 	quad->set_material(material);
@@ -998,7 +1016,9 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 	EmitterBuilder column = add_emitter(p_effect, "Column", 5, 2.2, true, 0.85, 1.0, BLEND_ALPHA);
 	Ref<QuadMesh> column_quad = column.node->get_draw_pass_mesh(0);
 	column_quad->set_size(Vector2(3.8, 5.0));
-	column_quad->set_center_offset(Vector3(0, 2.5, 0)); // Pivot at the base.
+	// Pivot at the base, a little under the surface: the column rises out of
+	// the water instead of starting above it.
+	column_quad->set_center_offset(Vector3(0, 2.4, 0));
 	column.material->set_billboard_mode(BaseMaterial3D::BILLBOARD_FIXED_Y);
 	column.material->set_flag(BaseMaterial3D::FLAG_BILLBOARD_KEEP_SCALE, true);
 	light_as_water(column);
@@ -1051,6 +1071,8 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 	foam.material->set_shading_mode(BaseMaterial3D::SHADING_MODE_PER_VERTEX);
 	foam.node->set_position(Vector3(0, 0.03, 0));
 	draw_over_water(foam);
+	// Lying on the surface, kept inside the pool (it spread over the deck).
+	clip_at_water_surface(foam, false, false, false, true);
 	foam.set("scale", Vector2(0.8, 1.3)).set("color", Color(0.95, 0.98, 1.0, 0.95));
 	foam.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.25), Vector2(0.15, 0.8), Vector2(1, 1.3) }, 1.3f));
 	foam.process->set_alpha_curve(make_curve({ Vector2(0, 0), Vector2(0.05, 0.9), Vector2(0.6, 0.6), Vector2(1, 0) }));
@@ -1064,6 +1086,7 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 	ring.material->set_proximity_fade_enabled(false);
 	ring.node->set_position(Vector3(0, 0.04, 0));
 	draw_over_water(ring);
+	clip_at_water_surface(ring, false, false, false, true);
 	ring.set("scale", Vector2(4.0, 6.0)).set("color", Color(0.92, 0.97, 1.0, 0.6));
 	ring.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 0.15), Vector2(1, 1.0) }));
 	ring.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(1, 0) }));
