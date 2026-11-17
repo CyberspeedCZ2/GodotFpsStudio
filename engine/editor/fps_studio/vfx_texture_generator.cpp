@@ -66,6 +66,8 @@ inline float smoothstepf(float a, float b, float v) {
 }
 inline float maxf(float a, float b) { return a > b ? a : b; }
 inline float minf(float a, float b) { return a < b ? a : b; }
+inline int maxi(int a, int b) { return a > b ? a : b; }
+inline float absf(float v) { return v < 0.0f ? -v : v; }
 inline float fractf(float v) { return v - std::floor(v); }
 inline float len2(float x, float y) { return std::sqrt(x * x + y * y); }
 
@@ -306,7 +308,7 @@ void add_param(TypeInfo &r_info, const char *p_key, const char *p_label, float p
 	param.tooltip = p_tooltip;
 }
 
-constexpr int TYPE_COUNT = 24;
+constexpr int TYPE_COUNT = 25;
 
 struct TypeTable {
 	TypeInfo types[TYPE_COUNT];
@@ -585,6 +587,19 @@ struct TypeTable {
 			add_param(t, "grain", "Grain", 0.0f, 1.0f, 0.01f, 0.5f, "Grainy, pitted surface detail.");
 			add_param(t, "light_angle", "Light angle", -180.0f, 180.0f, 1.0f, 120.0f, "Direction of the key light.");
 			add_param(t, "shading", "Shading", 0.0f, 1.0f, 0.01f, 0.75f, "Contrast between lit and shadowed facets.");
+			push(t);
+		}
+		{
+			TypeInfo t = make_type(TYPE_WATER_SPLASH, "Water Splash", "Shapes", "Splash of a drop hitting water or a wet floor, seen from the side: a thin crown with a lip and fingers, droplets flying off, an optional jet in the middle and a spreading puddle. In a sheet each row is one splash animation and the columns are its frames (8 columns x 4 rows: 4 random variants). Alpha is the water, colour its glint.", 0.62f, 0.74f, 0.86f, 1.0f, 1.0f, 1.0f, "Water color", "Glint color", false, false);
+			add_param(t, "frames", "Frames per splash", 2.0f, 16.0f, 1.0f, 8.0f, "Sheet columns: frames of one splash animation (the life cycle).");
+			add_param(t, "variants", "Variants", 1.0f, 16.0f, 1.0f, 4.0f, "Sheet rows: different random splashes.");
+			add_param(t, "crown_height", "Crown height", 0.1f, 1.0f, 0.01f, 0.6f, "Height of the crown sheet.");
+			add_param(t, "crown_width", "Crown width", 0.1f, 0.9f, 0.01f, 0.5f, "Radius of the crown lip.");
+			add_param(t, "fingers", "Fingers", 0.0f, 16.0f, 1.0f, 9.0f, "Thin fingers on the crown lip that throw droplets.");
+			add_param(t, "droplets", "Droplets", 0.0f, 24.0f, 1.0f, 12.0f, "Droplets flying away from the splash.");
+			add_param(t, "jet", "Centre jet", 0.0f, 1.0f, 0.01f, 0.5f, "Share of variants with a column shooting up in the middle.");
+			add_param(t, "sheet", "Sheet opacity", 0.0f, 1.0f, 0.01f, 0.25f, "Opacity of the thin crown wall between its edges.");
+			add_param(t, "puddle", "Puddle", 0.0f, 1.0f, 0.01f, 0.6f, "Spreading flat ring of water on the ground.");
 			push(t);
 		}
 		if (i != TYPE_COUNT) {
@@ -1601,6 +1616,184 @@ void render_soft_smoke(const FrameContext &c, float x, float y, float *r_px) {
 	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(lit)), alpha, s);
 }
 
+/* Water splash ----------------------------------------------------------- */
+
+// Distance from p to the segment a-b and the position t (0..1) along it.
+inline float segment_distance(float px, float py, float ax, float ay, float bx, float by, float &r_t) {
+	const float ex = bx - ax;
+	const float ey = by - ay;
+	const float l2 = maxf(ex * ex + ey * ey, 1e-8f);
+	r_t = clampf(((px - ax) * ex + (py - ay) * ey) / l2, 0.0f, 1.0f);
+	return len2(px - ax - ex * r_t, py - ay - ey * r_t);
+}
+
+void render_water_splash(const FrameContext &c, float x, float y, float *r_px) {
+	const Settings &s = *c.s;
+	const int frames = maxi(int(param(c, 0) + 0.5f), 2);
+	const int variants = maxi(int(param(c, 1) + 0.5f), 1);
+	const float crown_height = param(c, 2);
+	const float crown_width = param(c, 3);
+	const int fingers = int(param(c, 4) + 0.5f);
+	const int droplets = int(param(c, 5) + 0.5f);
+	const float jet_share = param(c, 6);
+	const float sheet = param(c, 7);
+	const float puddle = param(c, 8);
+	// Sheet frame -> variant (row) and time in its animation (column).
+	const int total = frames * variants;
+	const int index = int(std::floor(saturate(s.life) * float(total - 1) + 0.5f));
+	const int variant = index / frames;
+	const float t = float(index % frames) / float(frames - 1);
+	const uint32_t seed = s.seed * 7919u + uint32_t(variant) * 104729u;
+	auto rnd = [&](int p_index) -> float {
+		return hash01(hash3i(p_index, variant, 57, seed));
+	};
+
+	const float ground = -0.82f;
+	const float yy = y - ground; // Height above the surface.
+	float water = 0.0f; // Alpha of the water.
+	float glint = 0.0f; // Bright edges and highlights.
+	auto add = [&](float a, float g) {
+		water = maxf(water, a);
+		glint = maxf(glint, g * a);
+	};
+	const float aa = 0.012f;
+	const float scale_v = 0.85f + 0.3f * rnd(1); // Splashes differ in size.
+	const float fade = 1.0f - smoothstepf(0.72f, 1.0f, t);
+
+	// Incoming drop just above the surface on the first frame.
+	if (t < 0.5f / float(frames - 1)) {
+		const float dr = 0.09f;
+		const float dx = x / dr;
+		const float dy = (yy - 0.16f) / (dr * 1.35f);
+		const float d = len2(dx, dy);
+		add(smoothstepf(1.0f, 0.85f, d), smoothstepf(0.9f, 0.6f, len2(dx + 0.35f, dy - 0.35f)) * 0.9f + 0.2f);
+		// A first small ring where it touches.
+		const float rr = len2(x / 0.16f, yy / 0.035f);
+		add(smoothstepf(0.25f, 0.0f, absf(rr - 1.0f)) * 0.6f, 0.6f);
+		write_flat(r_px, mix3(c.color_a, c.color_b, saturate(glint)), water, s);
+		return;
+	}
+
+	// Crown: rises fast, then sinks back while the lip spreads out.
+	const V3 noff = seed_offset(seed);
+	const float rise = smoothstepf(0.0f, 0.3f, t);
+	const float collapse = smoothstepf(0.45f, 0.95f, t);
+	const float height = crown_height * scale_v * (rise - collapse * 0.95f) * (0.85f + 0.3f * rnd(2));
+	const float lip = crown_width * scale_v * mixf(0.5f, 1.0f, rise) * (1.0f + collapse * 0.45f);
+	const float base_r = lip * 0.32f;
+	if (height > 0.01f && yy >= -0.01f && yy <= height + 0.1f) {
+		const float h = saturate(yy / maxf(height, 1e-3f));
+		// Thin sheet flaring out like a tulip; its edge wobbles with noise.
+		const float flare = std::pow(h, 1.6f);
+		const float wobble_r = 1.0f + 0.12f * gnoise3(yy * 9.0f + noff.x, noff.y, float(variant), seed + 3u);
+		const float wall_r = mixf(base_r, lip, flare) * wobble_r;
+		const float ax = absf(x);
+		if (yy <= height && ax <= wall_r + aa) {
+			const float edge = smoothstepf(wall_r * 0.82f, wall_r, ax); // Seen edge-on: the bright outline.
+			const float inside = smoothstepf(wall_r + aa, wall_r - aa, ax);
+			// The sheet tears: holes and streaks running up the wall.
+			const float tear = gnoise3(x * 14.0f + noff.z, yy * 5.0f, float(variant) * 3.0f, seed + 4u) * 0.5f + 0.5f;
+			const float body = sheet * smoothstepf(0.25f, 0.75f, tear) * (0.4f + 0.6f * h);
+			add(inside * mixf(body, 0.75f, edge) * fade, edge * 0.85f + tear * 0.15f);
+		}
+		// Lip: the rim, an uneven ellipse broken into pieces.
+		const float ang = std::atan2((yy - height) / maxf(lip * 0.22f, 0.01f), x / maxf(lip, 0.01f));
+		const float rim_r = 1.0f + 0.1f * gnoise3(std::cos(ang) * 3.0f + noff.x, std::sin(ang) * 3.0f + noff.y, float(variant), seed + 6u);
+		const float lr = len2(x / maxf(lip, 0.01f), (yy - height) / maxf(lip * 0.22f, 0.01f));
+		const float broken = smoothstepf(-0.2f, 0.25f, gnoise3(std::cos(ang) * 4.0f + noff.z, std::sin(ang) * 4.0f, float(variant) + 7.0f, seed + 8u));
+		add(smoothstepf(0.11f, 0.0f, absf(lr - rim_r)) * mixf(0.35f, 0.9f, broken) * fade, 1.0f);
+	}
+	// Fingers grow from the lip, bending outwards; drops break off their tips.
+	for (int i = 0; i < fingers; i++) {
+		if (rnd(200 + i) < 0.25f) {
+			continue; // Some places on the lip throw nothing.
+		}
+		const float phi = (float(i) + (rnd(10 + i) - 0.5f) * 0.8f) / float(maxi(fingers, 1)) * TAU;
+		const float depth = std::sin(phi); // > 0 in front of the crown.
+		const float fx = std::cos(phi) * lip;
+		const float fy = height + depth * lip * 0.22f;
+		const float len = (0.04f + 0.16f * rnd(30 + i) * rnd(31 + i) * 2.0f) * scale_v * (rise - collapse);
+		if (len <= 0.005f || height <= 0.02f) {
+			continue;
+		}
+		// Curved finger: up first, then bending out (quadratic curve in 3 parts).
+		const float out = (fx >= 0.0f ? 1.0f : -1.0f) * (0.3f + 0.5f * rnd(40 + i)) * len;
+		float px0 = fx;
+		float py0 = fy;
+		float best = 1e9f;
+		float best_t = 0.0f;
+		for (int k = 1; k <= 3; k++) {
+			const float u = float(k) / 3.0f;
+			const float px1 = fx + out * u * u;
+			const float py1 = fy + len * u;
+			float st = 0.0f;
+			const float d = segment_distance(x, yy, px0, py0, px1, py1, st);
+			if (d < best) {
+				best = d;
+				best_t = (float(k - 1) + st) / 3.0f;
+			}
+			px0 = px1;
+			py0 = py1;
+		}
+		const float w = mixf(0.022f, 0.005f, best_t) * scale_v;
+		add(smoothstepf(w + aa, w - aa * 0.5f, best) * 0.8f * fade, 0.75f);
+		// The drop at the tip breaks off and flies on.
+		const float detach = saturate((t - 0.28f) / 0.5f);
+		const float bx = px0 + out * detach * 1.2f;
+		const float by = py0 + len * detach * 1.1f - detach * detach * 0.45f;
+		const float br = (0.012f + 0.014f * rnd(50 + i)) * scale_v;
+		const float bd = len2(x - bx, yy - by);
+		add(smoothstepf(br + aa, br - aa, bd) * fade, smoothstepf(br, br * 0.2f, len2(x - bx + br * 0.4f, yy - by - br * 0.4f)) * 0.9f + 0.3f);
+	}
+	// Droplets flying away on ballistic arcs.
+	for (int i = 0; i < droplets; i++) {
+		const float start = 0.05f + 0.25f * rnd(70 + i);
+		const float age = t - start;
+		if (age <= 0.0f) {
+			continue;
+		}
+		const float side = rnd(90 + i) < 0.5f ? -1.0f : 1.0f;
+		const float vx = side * (0.4f + 1.1f * rnd(110 + i)) * scale_v;
+		const float vy = (1.1f + 1.4f * rnd(130 + i)) * scale_v * crown_height * 1.6f;
+		const float gravity = 3.2f;
+		const float px = side * base_r * 0.8f + vx * age;
+		const float py = 0.05f + vy * age - 0.5f * gravity * age * age;
+		if (py < -0.02f) {
+			continue;
+		}
+		const float r = (0.01f + 0.018f * rnd(150 + i)) * scale_v;
+		// Slightly stretched along the flight.
+		const float vel_y = vy - gravity * age;
+		const float stretch = 1.0f + minf(len2(vx, vel_y) * 0.15f, 0.8f);
+		const float dx = x - px;
+		const float dy = (yy - py) / stretch;
+		const float d = len2(dx, dy);
+		add(smoothstepf(r + aa, r - aa, d) * fade, smoothstepf(r, r * 0.2f, len2(dx + r * 0.4f, dy - r * 0.4f)) * 0.9f + 0.3f);
+	}
+	// Centre jet (Worthington jet) on some variants: rises after the crown.
+	if (rnd(5) < jet_share) {
+		const float jt = saturate((t - 0.35f) / 0.5f);
+		const float jh = crown_height * scale_v * 0.9f * std::sin(jt * PI) * (0.8f + 0.4f * rnd(6));
+		if (jh > 0.01f) {
+			const float w = mixf(0.05f, 0.018f, saturate(yy / maxf(jh, 0.01f))) * scale_v;
+			if (yy >= 0.0f && yy <= jh) {
+				add(smoothstepf(w + aa, w - aa, absf(x)) * 0.8f * fade, smoothstepf(w * 0.2f, w, absf(x + w * 0.4f)) < 0.5f ? 0.9f : 0.4f);
+			}
+			const float tr = 0.035f * scale_v;
+			add(smoothstepf(tr + aa, tr - aa, len2(x, yy - jh - tr * 0.6f)) * fade, 0.8f);
+		}
+	}
+	// Puddle: a flat ring spreading on the surface.
+	if (puddle > 0.0f) {
+		const float pr = mixf(0.25f, 0.95f, std::sqrt(t)) * scale_v;
+		const float ring = len2(x / pr, yy / maxf(pr * 0.09f, 0.01f));
+		const float band = smoothstepf(0.18f, 0.0f, absf(ring - 1.0f));
+		const float flat = smoothstepf(1.0f, 0.6f, ring) * 0.25f;
+		add(maxf(band * 0.7f, flat) * puddle * (1.0f - t * 0.85f), band * 0.8f);
+	}
+	write_flat(r_px, mix3(c.color_a, c.color_b, saturate(glint)), water, s);
+}
+
 /* Debris ----------------------------------------------------------------- */
 
 void render_debris(const FrameContext &c, float x, float y, float *r_px) {
@@ -2191,6 +2384,9 @@ void render_uv(const FrameContext &c, float u, float v, float *r_out) {
 			break;
 		case TYPE_DEBRIS:
 			render_debris(c, x, y, r_out);
+			break;
+		case TYPE_WATER_SPLASH:
+			render_water_splash(c, x, y, r_out);
 			break;
 		case TYPE_BULLET_HOLE:
 		case TYPE_SCORCH:

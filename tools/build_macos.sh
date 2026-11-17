@@ -28,8 +28,20 @@ if [[ ! -d "$ENGINE" || ! -f "$ENGINE/SConstruct" ]]; then
     fail "engine/ source directory with SConstruct is missing."
 fi
 
+# Optimised editor by default. DEV_BUILD=1 builds the unoptimised debug
+# binary (dev_build=yes): easier to debug in C++, but the engine (physics,
+# navigation, rendering setup) runs several times slower, also in the games
+# started from the editor.
+if [[ "${DEV_BUILD:-0}" == "1" ]]; then
+    BUILD_FLAGS=(dev_build=yes)
+    EDITOR_BINARY="$ENGINE/bin/godot.macos.editor.dev.arm64"
+else
+    BUILD_FLAGS=()
+    EDITOR_BINARY="$ENGINE/bin/godot.macos.editor.arm64"
+fi
+
 if [[ -z "${VULKAN_SDK:-}" || ! -d "${VULKAN_SDK:-/nonexistent}" ]]; then
-    [[ -x "$ENGINE/bin/godot.macos.editor.dev.arm64" && -f "$ENGINE/.sconsign5.dblite" ]] || fail "Vulkan SDK/MoltenVK is required for a clean build. Install it using engine/misc/scripts/install_vulkan_sdk_macos.sh and set VULKAN_SDK. An existing configured SCons build can be rebuilt without reinstalling the SDK."
+    [[ -f "$ENGINE/.sconsign5.dblite" ]] || fail "Vulkan SDK/MoltenVK is required for a clean build. Install it using engine/misc/scripts/install_vulkan_sdk_macos.sh and set VULKAN_SDK. An existing configured SCons build can be rebuilt without reinstalling the SDK."
     printf 'Using the existing configured SCons build cache; no Vulkan SDK installation is needed for this rebuild.\n'
 fi
 
@@ -38,9 +50,9 @@ export CLANG_MODULE_CACHE_PATH="$ENGINE/bin/clang-module-cache"
 mkdir -p "$CLANG_MODULE_CACHE_PATH"
 printf 'Building Godot %s editor for macOS arm64...\n' "$TAG"
 JOBS="$(sysctl -n hw.ncpu 2>/dev/null || echo 4)"
-scons -j"$JOBS" platform=macos arch=arm64 dev_build=yes "cxxflags=-fmodules-cache-path=$CLANG_MODULE_CACHE_PATH"
+scons -j"$JOBS" platform=macos arch=arm64 ${BUILD_FLAGS[@]+"${BUILD_FLAGS[@]}"} "cxxflags=-fmodules-cache-path=$CLANG_MODULE_CACHE_PATH"
 
-DEV_BINARY="$ENGINE/bin/godot.macos.editor.dev.arm64"
+DEV_BINARY="$EDITOR_BINARY"
 UNIBUILDER_PACK="$ENGINE/bin/FPSStudioUnibuilder.pck"
 APP_STAGE="$(mktemp -d "$ROOT/.godot-fps-build.XXXXXX")"
 trap 'rm -rf "$APP_STAGE"' EXIT

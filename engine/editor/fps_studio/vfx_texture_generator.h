@@ -50,6 +50,12 @@ enum TypeID {
 	// Particle debris: a lit rock / concrete chip. In a sheet every frame is a
 	// different chip, so particles can pick a random variant.
 	TYPE_DEBRIS = 23,
+	// Water splash of a falling drop, seen from the side: crown sheet with a
+	// lip and fingers, flying droplets, an optional centre jet and a spreading
+	// puddle. A sheet is several splash animations: each row is one variant,
+	// the columns are its frames (default 8 columns x 4 rows). Alpha is the
+	// water, colour is its glint, so a refracting shader can use it as water.
+	TYPE_WATER_SPLASH = 24,
 };
 
 static constexpr int MAX_PARAMS = 10;

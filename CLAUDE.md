@@ -2,6 +2,8 @@
 
 Trvalá pravidla projektu jsou v [AGENTS.md](AGENTS.md) (build jen `./tools/build_macos.sh`, GUI editoru nespouštět bez žádosti, žádné ZIP archivy, zachovat UniBuilder, po kontrole diffu commit + push). Tento soubor zachycuje, kde práce skončila.
 
+- **Build (2026-11-17):** `tools/build_macos.sh` staví optimalizovaný editor `engine/bin/godot.macos.editor.arm64` (bez `dev_build`); `DEV_BUILD=1 ./tools/build_macos.sh` postaví ladicí `godot.macos.editor.dev.arm64` (`-O0`). Ve vývojovém buildu běžela i hra spuštěná z editoru několikrát pomaleji (škola s 15 NPC: fyzika 10 ms na krok, v boji 8–20 FPS; optimalizovaně 2 ms a 150–170 FPS).
+
 Stav k 2026-11-16, větev `codex/black-default-fps-level` (vše pushnuto). Uživatelská dokumentace Particle je v `docs/particle_editor.md`, třídy v `engine/doc/classes/` (ParticleEffect3D, ParticleImpactTable, ParticleLevelSetup, CameraShake3D, RadialDamage3D).
 
 ## Kde jsme skončili
@@ -12,6 +14,7 @@ Particle editor je pro FPS hru na motivy HL2 funkčně kompletní a je napojený
 ### VFX Texture Generator (`engine/editor/fps_studio/vfx_texture_generator.*`)
 - Samostatný modul bez závislostí na editoru, vždy kompilovaný s `-O3` (`engine/editor/fps_studio/SCsub`; dev build je jinak `-O0`). Asynchronní náhled přes `WorkerThreadPool`, recepty `.cfg` v3. Uživatel potvrdil vzhled i rychlost.
 - Typy: objemové (Fire, Smoke, Cloud, Explosion, Explosion Ring), energetické HDR, vzory (Caustics, Noise, **Cell Noise 21**, **Marble Noise 22**; obě tilovatelné, parametry jen jako deskriptory, plugin je načte sám).
+- **Water Splash 24** (`render_water_splash`, 2D, 2026-11-17): boční pohled na dopad kapky (korunka s roztrhanou stěnou a zahnutými prsty, odtrhávající se a balistické kapičky, u části variant středový sloupek, louže). List: řádek = varianta, sloupce = snímky (parametry `frames`, `variants`; editor dělá jen čtvercové listy → 8×8). Alfa = voda, barva = lesk. Hra: `vfx_textures/rain_splash_sheet.png` (recept vedle), rozstřiky deště.
 - **Soft Smoke (Particles)** TYPE 20 (`render_soft_smoke`, 2D): měkký obláček bez siluety, parametry `billows` a `lifecycle` (flipbook).
 - **Decals** TYPE 16–19 (`render_decal`, `write_flat`): Bullet Hole (surface 0 beton, 1 kov s lístky, 2 dřevo), Scorch, Glass Crack, Splatter. Normal mapy z výšky povrchu (`Settings::output_normal`, `normal_strength`, `has_height_normal()` pro 16–19). Apply na stopu Decal nastaví `texture_albedo`/`texture_normal`.
 - ID typů jsou uložená v receptech, nikdy je nepřečíslovat (nové jen na konec, `TypeTable` hlídá `TYPE_COUNT`).
