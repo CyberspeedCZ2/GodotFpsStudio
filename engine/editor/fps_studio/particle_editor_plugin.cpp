@@ -8193,9 +8193,9 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_hint->set_h_size_flags(Control::SIZE_SHRINK_END);
 	timeline_toolbar->add_child(timeline_hint);
 	timeline_markers_menu = memnew(MenuButton);
-	timeline_markers_menu->set_text(TTR("Markers"));
-	timeline_markers_menu->set_flat(false);
-	timeline_markers_menu->set_tooltip_text(TTR("Jump to a marker (keys 1-9 jump to the first nine)."));
+	timeline_markers_menu->set_flat(true);
+	timeline_markers_menu->set_meta("icon_name", "Marker"); // Set with the other toolbar icons.
+	timeline_markers_menu->set_tooltip_text(TTR("Markers: jump to one (keys 1-9 jump to the first nine), add or delete."));
 	timeline_markers_menu->get_popup()->connect("about_to_popup", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_markers_menu_about_to_popup));
 	timeline_markers_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_markers_menu_id));
 	timeline_toolbar->add_child(timeline_markers_menu);
