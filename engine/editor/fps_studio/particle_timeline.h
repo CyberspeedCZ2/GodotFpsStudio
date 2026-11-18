@@ -82,6 +82,9 @@ private:
 	real_t drag_marker_press_x = 0.0;
 	Array drag_marker_old;
 	int context_marker = -1;
+	int selected_marker = -1; // Clicked marker: Delete removes it.
+	mutable Vector<Rect2> marker_label_rects; // Names in the ruler, clickable too.
+	void _delete_marker(int p_index);
 	real_t drag_reorder_press_y = 0.0;
 	bool drag_reorder_active = false;
 	int drag_reorder_gap = -1; // Insert before this row (== row count: at the end).
@@ -179,6 +182,10 @@ public:
 	void add_marker_at_playhead();
 	double get_jump_time(int p_dir, bool p_markers_only) const;
 	void jump(int p_dir, bool p_markers_only) { _jump(p_dir, p_markers_only); }
+	// Markers sorted by time: [{time, name, color}]; 1-9 jump to them.
+	Array get_markers() const { return _markers_to_array(); }
+	void jump_to_marker(int p_index);
+	void delete_all_markers() { _on_context_menu_id(RULER_DELETE_ALL_MARKERS); }
 
 	virtual Size2 get_minimum_size() const override;
 	virtual String get_tooltip(const Point2 &p_pos) const override;

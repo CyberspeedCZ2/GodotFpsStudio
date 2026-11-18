@@ -5447,6 +5447,8 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 		if (key->get_keycode() == Key::M && timeline_view && !key->is_command_or_control_pressed() && !key->is_alt_pressed()) {
 			timeline_view->set_current_time(preview_time);
 			timeline_view->add_marker_at_playhead();
+		} else if (key->get_keycode() >= Key::KEY_1 && key->get_keycode() <= Key::KEY_9 && timeline_view && !key->is_command_or_control_pressed() && !key->is_alt_pressed()) {
+			timeline_view->jump_to_marker(int(key->get_keycode()) - int(Key::KEY_1));
 		} else if (key->get_keycode() == Key::SPACE) {
 			_on_timeline_play_toggle();
 		} else if (key->get_keycode() == Key::HOME || (key->get_keycode() == Key::R && !key->is_command_or_control_pressed())) {
@@ -6320,6 +6322,50 @@ void FPSStudioParticleEditorPlugin::_on_new_seed_pressed() {
 	}
 	reseed_preview_emitters(preview_effect);
 	_restart_preview_at(preview_time);
+}
+
+static const int MARKERS_MENU_ADD = 1000;
+static const int MARKERS_MENU_DELETE_ALL = 1001;
+
+void FPSStudioParticleEditorPlugin::_on_markers_menu_about_to_popup() {
+	PopupMenu *popup = timeline_markers_menu->get_popup();
+	popup->clear();
+	const Array markers = timeline_view ? timeline_view->get_markers() : Array();
+	for (int i = 0; i < markers.size(); i++) {
+		const Dictionary marker = markers[i];
+		const String label = vformat("%s   %s s", String(marker.get("name", "")), String::num(double(marker.get("time", 0.0)), 2));
+		if (i < 9) {
+			popup->add_item(label, i, Key(int(Key::KEY_1) + i));
+		} else {
+			popup->add_item(label, i);
+		}
+		// A small colored square in front, like the marker head.
+		Ref<Image> swatch = Image::create_empty(int(10 * EDSCALE), int(10 * EDSCALE), false, Image::FORMAT_RGBA8);
+		swatch->fill(FPSParticleTimeline::get_marker_color(int(marker.get("color", 0))));
+		popup->set_item_icon(-1, ImageTexture::create_from_image(swatch));
+	}
+	if (markers.is_empty()) {
+		popup->add_item(TTR("No markers yet"), -1);
+		popup->set_item_disabled(-1, true);
+	}
+	popup->add_separator();
+	popup->add_item(TTR("Add Marker at Playhead"), MARKERS_MENU_ADD, Key::M);
+	popup->add_item(TTR("Delete All Markers"), MARKERS_MENU_DELETE_ALL);
+	popup->set_item_disabled(-1, markers.is_empty());
+}
+
+void FPSStudioParticleEditorPlugin::_on_markers_menu_id(int p_id) {
+	if (!timeline_view) {
+		return;
+	}
+	if (p_id == MARKERS_MENU_ADD) {
+		timeline_view->set_current_time(preview_time);
+		timeline_view->add_marker_at_playhead();
+	} else if (p_id == MARKERS_MENU_DELETE_ALL) {
+		timeline_view->delete_all_markers();
+	} else if (p_id >= 0) {
+		timeline_view->jump_to_marker(p_id);
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_take_compare_snapshot() {
@@ -7442,11 +7488,19 @@ const Ref<Texture2D> FPSStudioParticleEditorPlugin::get_plugin_icon() const {
 // both keys for typing.
 void FPSStudioParticleEditorPlugin::input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventKey> key = p_event;
-	if (key.is_null() || !key->is_pressed() || key->is_echo() || !screen || !screen->is_visible_in_tree() || !_get_effect_root()) {
+	if (key.is_null() || !key->is_pressed() || !screen || !screen->is_visible_in_tree() || !_get_effect_root()) {
 		return;
 	}
 	const Key code = key->get_keycode();
-	if ((code != Key::SPACE && code != Key::R) || key->is_command_or_control_pressed() || key->is_alt_pressed() || key->is_shift_pressed()) {
+	if (key->is_command_or_control_pressed() || key->is_alt_pressed()) {
+		return;
+	}
+	// Space, R, 1-9 (jump to marker) and Shift + Up / Down (previous / next
+	// marker) work anywhere in the workspace; held arrows repeat.
+	const bool marker_step = key->is_shift_pressed() && (code == Key::UP || code == Key::DOWN);
+	const bool marker_number = !key->is_shift_pressed() && !key->is_echo() && code >= Key::KEY_1 && code <= Key::KEY_9;
+	const bool transport = !key->is_shift_pressed() && !key->is_echo() && (code == Key::SPACE || code == Key::R);
+	if (!marker_step && !marker_number && !transport) {
 		return;
 	}
 	Viewport *viewport = screen->get_viewport();
@@ -7454,7 +7508,21 @@ void FPSStudioParticleEditorPlugin::input(const Ref<InputEvent> &p_event) {
 	if (focus && (!screen->is_ancestor_of(focus) || Object::cast_to<LineEdit>(focus) || Object::cast_to<TextEdit>(focus))) {
 		return; // Typing, or the keys belong to another part of the editor.
 	}
-	if (code == Key::SPACE) {
+	if (focus && (Object::cast_to<SpinBox>(focus->get_parent()) || focus->is_class("EditorSpinSlider"))) {
+		return; // Number fields take digits and arrows.
+	}
+	if (marker_step) {
+		if (!timeline_view) {
+			return;
+		}
+		timeline_view->set_current_time(preview_time);
+		timeline_view->jump(code == Key::UP ? -1 : 1, true);
+	} else if (marker_number) {
+		if (!timeline_view) {
+			return;
+		}
+		timeline_view->jump_to_marker(int(code) - int(Key::KEY_1));
+	} else if (code == Key::SPACE) {
 		_on_timeline_play_toggle();
 	} else {
 		_on_restart_pressed();
@@ -8111,6 +8179,13 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_hint->set_clip_text(true);
 	timeline_hint->set_h_size_flags(Control::SIZE_SHRINK_END);
 	timeline_toolbar->add_child(timeline_hint);
+	timeline_markers_menu = memnew(MenuButton);
+	timeline_markers_menu->set_text(TTR("Markers"));
+	timeline_markers_menu->set_flat(false);
+	timeline_markers_menu->set_tooltip_text(TTR("Jump to a marker (keys 1-9 jump to the first nine)."));
+	timeline_markers_menu->get_popup()->connect("about_to_popup", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_markers_menu_about_to_popup));
+	timeline_markers_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_markers_menu_id));
+	timeline_toolbar->add_child(timeline_markers_menu);
 	Button *timeline_snap = memnew(Button);
 	timeline_snap->set_flat(true);
 	timeline_snap->set_toggle_mode(true);

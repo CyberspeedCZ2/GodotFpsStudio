@@ -275,6 +275,7 @@ void FPSParticleTimeline::set_effect(Node *p_effect) {
 	if (changed) {
 		set_loop_region(0.0, -1.0); // The loop region belongs to the previous effect.
 		drag_marker = -1;
+		selected_marker = -1;
 		if (rename_popup) {
 			rename_popup->hide();
 		}
@@ -311,6 +312,9 @@ void FPSParticleTimeline::refresh() {
 	}
 	if (drag_mode != DRAG_MARKER) {
 		_load_markers(); // Undo / redo and file loads change them from outside.
+		if (selected_marker >= markers.size()) {
+			selected_marker = -1;
+		}
 	}
 	update_minimum_size();
 	queue_redraw();
@@ -324,7 +328,7 @@ String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 	const int marker = _marker_at(p_pos);
 	if (marker >= 0) {
 		const Marker &m = markers[marker];
-		return vformat(TTR("Marker \"%s\" at %s s"), m.name, String::num(m.time, 2)) + "\n" + TTR("Click to jump here, drag to move (Shift: no snapping), double-click to rename, right-click for color and delete. Shift + Up / Down jumps between markers.");
+		return vformat(TTR("Marker \"%s\" at %s s"), m.name, String::num(m.time, 2)) + "\n" + TTR("Click to jump here and select it (Delete removes it), drag to move (Shift: no snapping), double-click to rename, right-click for color. Keys 1-9 jump to the first nine markers, Shift + Up / Down to the previous / next one.");
 	}
 	if (_is_on_end_flag(p_pos)) {
 		return TTR("Playback end: playback stops here, or goes back to the start flag with Loop on. Drag it, press O at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
@@ -475,7 +479,15 @@ void FPSParticleTimeline::_store_markers(const Array &p_old) {
 	} else {
 		effect->set_meta(MARKERS_META, current);
 	}
+	// Sorting may change indices: keep the same marker selected.
+	const double selected_time = selected_marker >= 0 && selected_marker < markers.size() ? markers[selected_marker].time : -1.0;
 	_load_markers();
+	selected_marker = -1;
+	for (int i = 0; selected_time >= 0.0 && i < markers.size(); i++) {
+		if (Math::is_equal_approx(markers[i].time, selected_time)) {
+			selected_marker = i;
+		}
+	}
 	queue_redraw();
 	emit_signal(SNAME("markers_committed"), p_old, current);
 }
@@ -486,12 +498,20 @@ int FPSParticleTimeline::_marker_at(const Point2 &p_pos) const {
 		return -1;
 	}
 	int best = -1;
-	real_t best_distance = 7 * EDSCALE;
+	real_t best_distance = 8 * EDSCALE;
 	for (int i = 0; i < markers.size(); i++) {
 		const real_t distance = Math::abs(p_pos.x - _time_to_x(markers[i].time));
 		if (distance <= best_distance) {
 			best = i;
 			best_distance = distance;
+		}
+	}
+	if (best < 0) {
+		// The name next to the head counts as the marker too.
+		for (int i = 0; i < MIN(markers.size(), marker_label_rects.size()); i++) {
+			if (marker_label_rects[i].has_point(p_pos)) {
+				return i;
+			}
 		}
 	}
 	return best;
@@ -513,6 +533,36 @@ void FPSParticleTimeline::add_marker_at_playhead() {
 	marker.color = markers.size() % MARKER_PALETTE_SIZE;
 	markers.push_back(marker);
 	_store_markers(old);
+}
+
+void FPSParticleTimeline::_delete_marker(int p_index) {
+	if (p_index < 0 || p_index >= markers.size()) {
+		return;
+	}
+	const Array old = _markers_to_array();
+	markers.remove_at(p_index);
+	selected_marker = -1;
+	_store_markers(old);
+}
+
+void FPSParticleTimeline::jump_to_marker(int p_index) {
+	const Array sorted = _markers_to_array();
+	if (p_index < 0 || p_index >= sorted.size()) {
+		return;
+	}
+	const double time = double(Dictionary(sorted[p_index]).get("time", 0.0));
+	for (int i = 0; i < markers.size(); i++) {
+		if (Math::is_equal_approx(markers[i].time, time)) {
+			selected_marker = i;
+		}
+	}
+	emit_signal(SNAME("scrub_requested"), time);
+	// Bring it into view when zoomed in.
+	if (time < view_start || time > view_start + view_length) {
+		view_start = time - view_length * 0.3;
+		_clamp_view();
+	}
+	queue_redraw();
 }
 
 void FPSParticleTimeline::_open_marker_rename(int p_index) {
@@ -616,6 +666,7 @@ void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 			if (!markers.is_empty()) {
 				const Array old = _markers_to_array();
 				markers.clear();
+				selected_marker = -1;
 				_store_markers(old);
 			}
 			return;
@@ -625,11 +676,7 @@ void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 			return;
 		}
 		case MARKER_DELETE: {
-			if (context_marker >= 0 && context_marker < markers.size()) {
-				const Array old = _markers_to_array();
-				markers.remove_at(context_marker);
-				_store_markers(old);
-			}
+			_delete_marker(context_marker);
 			return;
 		}
 		case RULER_LOOP_START: {
@@ -693,7 +740,14 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		Node *selected = Object::cast_to<Node>(ObjectDB::get_instance(selected_id));
 		const Key code = key->get_keycode();
 		const bool command = key->is_command_or_control_pressed();
-		if (code == Key::SPACE) {
+		if ((code == Key::KEY_DELETE || code == Key::BACKSPACE) && selected_marker >= 0 && selected_marker < markers.size()) {
+			_delete_marker(selected_marker);
+		} else if (code >= Key::KEY_1 && code <= Key::KEY_9 && !command && !key->is_alt_pressed()) {
+			jump_to_marker(int(code) - int(Key::KEY_1));
+		} else if (code == Key::ESCAPE && selected_marker >= 0) {
+			selected_marker = -1;
+			queue_redraw();
+		} else if (code == Key::SPACE) {
 			emit_signal(SNAME("play_toggle_requested"));
 		} else if (code == Key::HOME || (code == Key::R && !command)) {
 			emit_signal(SNAME("restart_requested"));
@@ -853,6 +907,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 					if (mb->is_double_click()) {
 						_open_marker_rename(marker);
 					} else {
+						selected_marker = marker;
 						drag_mode = DRAG_MARKER;
 						drag_marker = marker;
 						drag_marker_moved = false;
@@ -863,6 +918,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 					accept_event();
 					return;
 				}
+				selected_marker = -1; // Clicking elsewhere lets Delete act on tracks again.
 				if (!mb->is_shift_pressed() && _is_on_end_flag(pos)) {
 					drag_mode = DRAG_END;
 				} else if (!mb->is_shift_pressed() && _is_on_start_flag(pos)) {
@@ -884,6 +940,10 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			Node *track = _track_at_row(row);
 			if (!track) {
 				return;
+			}
+			if (selected_marker >= 0) {
+				selected_marker = -1;
+				queue_redraw();
 			}
 			if (_visibility_rect(row).has_point(pos)) {
 				emit_signal(SNAME("track_action"), track, ACTION_TOGGLE_VISIBLE);
@@ -1298,7 +1358,9 @@ void FPSParticleTimeline::_notification(int p_what) {
 
 			// Marker heads (pentagons, as in Resolve) with their names in the
 			// upper half of the ruler.
+			marker_label_rects.resize(markers.size());
 			for (int i = 0; i < markers.size(); i++) {
+				marker_label_rects.write[i] = Rect2();
 				const real_t mx = _time_to_x(markers[i].time);
 				if (mx < _name_width() - 1 || mx > size.x + 1) {
 					continue;
@@ -1313,11 +1375,19 @@ void FPSParticleTimeline::_notification(int p_what) {
 				head.push_back(Point2(mx, ruler_top + h));
 				head.push_back(Point2(mx - w, ruler_top + h * 0.6));
 				draw_colored_polygon(head, color);
+				if (i == selected_marker) {
+					Vector<Point2> outline = head;
+					outline.push_back(head[0]);
+					draw_polyline(outline, Color(1, 1, 1), 1.5 * EDSCALE);
+					draw_line(Point2(mx, ruler_top + _ruler_height()), Point2(mx, size.y), Color(color, 0.9), 1.5 * EDSCALE);
+				}
 				const int small_size = int(font_size * 0.72);
 				const real_t next_x = i + 1 < markers.size() ? _time_to_x(markers[i + 1].time) : size.x;
 				const real_t room = (next_x > mx ? next_x : size.x) - mx - w - 6 * EDSCALE;
 				if (room > 24 * EDSCALE) {
-					draw_string(font, Point2(mx + w + 3 * EDSCALE, ruler_top + h * 0.82), markers[i].name, HORIZONTAL_ALIGNMENT_LEFT, MIN(room, 140 * EDSCALE), small_size, Color(color, 0.95));
+					const real_t label_width = MIN(MIN(room, real_t(140 * EDSCALE)), font->get_string_size(markers[i].name, HORIZONTAL_ALIGNMENT_LEFT, -1, small_size).x);
+					draw_string(font, Point2(mx + w + 3 * EDSCALE, ruler_top + h * 0.82), markers[i].name, HORIZONTAL_ALIGNMENT_LEFT, MIN(room, 140 * EDSCALE), small_size, i == selected_marker ? Color(1, 1, 1) : Color(color, 0.95));
+					marker_label_rects.write[i] = Rect2(mx + w, ruler_top, label_width + 6 * EDSCALE, _ruler_height() * 0.5);
 				}
 			}
 

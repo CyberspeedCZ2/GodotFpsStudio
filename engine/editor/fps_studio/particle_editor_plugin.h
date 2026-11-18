@@ -257,6 +257,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	// A/B wipe: a snapshot of the preview against the live one.
 	FPSPreviewCompareOverlay *preview_compare = nullptr;
 	MenuButton *preview_compare_menu = nullptr;
+	MenuButton *timeline_markers_menu = nullptr; // Jump to a marker.
 	Button *convert_shader_button = nullptr;
 	Button *convert_graph_button = nullptr;
 	Node *track_clipboard = nullptr; // Copied/cut track subtree, owned here.
@@ -441,6 +442,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_new_seed_pressed();
 	void _reseed_preview_for_next_run();
 	void _on_compare_menu_id(int p_id);
+	void _on_markers_menu_about_to_popup();
+	void _on_markers_menu_id(int p_id);
 	void _take_compare_snapshot();
 	void _layout_preview_overlays();
 	void _update_preview_perf(const String &p_bbcode);
