@@ -5358,6 +5358,29 @@ void FPSStudioParticleEditorPlugin::_apply_curve_preset(bool p_alpha, int p_pres
 	undo_redo->commit_action();
 }
 
+void FPSStudioParticleEditorPlugin::_on_particle_color_fix_pressed() {
+	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
+	if (!gpu) {
+		return;
+	}
+	Ref<Material> draw_material = gpu->get_material_override();
+	if (draw_material.is_null() && gpu->get_draw_passes() > 0 && gpu->get_draw_pass_mesh(0).is_valid() && gpu->get_draw_pass_mesh(0)->get_surface_count() > 0) {
+		draw_material = gpu->get_draw_pass_mesh(0)->surface_get_material(0);
+	}
+	Ref<BaseMaterial3D> base = draw_material;
+	if (base.is_null()) {
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action_for_history(TTR("Use Particle Color"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_property(base.ptr(), "vertex_color_use_as_albedo", true);
+	undo_redo->add_undo_property(base.ptr(), "vertex_color_use_as_albedo", false);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", gpu, effect_document_serial);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", gpu, effect_document_serial);
+	undo_redo->commit_action();
+}
+
 void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 	if (!curve_panel) {
 		return;
@@ -5394,6 +5417,21 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 	}
 	if (alpha_curve_info->is_visible()) {
 		alpha_curve_info->set_text(TTR("This curve resource is not a CurveTexture. Open Advanced properties to inspect it."));
+	}
+	{
+		// A StandardMaterial3D without "Use as Albedo" never sees the particle
+		// color the process material computes (base color, alpha and color curves).
+		Ref<Material> draw_material = gpu->get_material_override();
+		if (draw_material.is_null() && gpu->get_draw_passes() > 0 && gpu->get_draw_pass_mesh(0).is_valid() && gpu->get_draw_pass_mesh(0)->get_surface_count() > 0) {
+			draw_material = gpu->get_draw_pass_mesh(0)->surface_get_material(0);
+		}
+		BaseMaterial3D *base = Object::cast_to<BaseMaterial3D>(draw_material.ptr());
+		const bool ignores_color = base && !base->get_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR);
+		particle_color_warning->set_visible(ignores_color);
+		particle_color_fix_button->set_visible(ignores_color);
+		if (ignores_color) {
+			particle_color_warning->add_theme_color_override(SceneStringName(font_color), particle_color_warning->get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
+		}
 	}
 
 	Ref<Texture2D> scale_texture = material->get_param_texture(ParticleProcessMaterial::PARAM_SCALE);
@@ -8381,6 +8419,17 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	alpha_curve_info = memnew(Label);
 	alpha_curve_info->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	alpha_curve_card->add_child(alpha_curve_info);
+	particle_color_warning = memnew(Label);
+	particle_color_warning->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	particle_color_warning->set_text(TTR("The material ignores particle color, so Alpha over Life, Base Color and Color over Life have no effect. Turn on Use Particle Color (Renderer)."));
+	particle_color_warning->set_visible(false);
+	alpha_curve_card->add_child(particle_color_warning);
+	particle_color_fix_button = memnew(Button);
+	particle_color_fix_button->set_text(TTR("Use Particle Color"));
+	particle_color_fix_button->set_tooltip_text(TTR("Turn on Vertex Color > Use as Albedo in this emitter's material, so its color and alpha curves apply."));
+	particle_color_fix_button->set_visible(false);
+	particle_color_fix_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_particle_color_fix_pressed));
+	alpha_curve_card->add_child(particle_color_fix_button);
 	HBoxContainer *alpha_curve_actions = memnew(HBoxContainer);
 	alpha_curve_card->add_child(alpha_curve_actions);
 	alpha_curve_add_button = memnew(Button);

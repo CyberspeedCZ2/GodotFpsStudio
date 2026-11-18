@@ -218,6 +218,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	MenuButton *alpha_curve_presets_button = nullptr;
 	MenuButton *scale_curve_presets_button = nullptr;
 	Label *alpha_curve_info = nullptr;
+	// The draw material ignores particle color: alpha / color curves do nothing.
+	Label *particle_color_warning = nullptr;
+	Button *particle_color_fix_button = nullptr;
 	Label *scale_curve_info = nullptr;
 	Button *particle_graph_button = nullptr;
 	Label *particle_logic_status = nullptr;
@@ -577,6 +580,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_emitter_property_edited(const String &p_property);
 	void _on_curve_changed();
 	void _on_add_alpha_curve_pressed();
+	void _on_particle_color_fix_pressed();
 	void _on_add_scale_curve_pressed();
 	void _on_alpha_curve_preset_selected(int p_preset_id);
 	void _on_scale_curve_preset_selected(int p_preset_id);
