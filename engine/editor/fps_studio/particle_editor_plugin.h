@@ -92,6 +92,9 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Button *open_effect_button = nullptr;
 	Button *save_effect_button = nullptr;
 	Button *add_to_level_button = nullptr;
+	Button *close_effect_button = nullptr;
+	ConfirmationDialog *close_document_confirmation = nullptr;
+	bool close_after_save = false; // Save and Close of a never-saved effect waits for the file dialog.
 	Label *document_title = nullptr;
 	Label *document_path_label = nullptr;
 	Label *document_status_label = nullptr;
@@ -582,6 +585,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_add_alpha_curve_pressed();
 	void _on_particle_color_fix_pressed();
 	void _update_curve_time_display();
+	void _on_close_effect_pressed();
+	void _close_effect_document();
+	void _on_close_confirmation_action(const StringName &p_action);
+	void _on_save_dialog_canceled() { close_after_save = false; }
 	void _on_add_scale_curve_pressed();
 	void _on_alpha_curve_preset_selected(int p_preset_id);
 	void _on_scale_curve_preset_selected(int p_preset_id);

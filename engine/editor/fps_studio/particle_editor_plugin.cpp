@@ -936,6 +936,9 @@ void FPSStudioParticleEditorPlugin::_update_document_header() {
 	if (add_to_level_button) {
 		add_to_level_button->set_disabled(!has_document || _get_active_scene_root() == nullptr);
 	}
+	if (close_effect_button) {
+		close_effect_button->set_disabled(!has_document);
+	}
 	if (new_effect_menu) {
 		new_effect_menu->set_disabled(false);
 	}
@@ -4726,6 +4729,51 @@ void FPSStudioParticleEditorPlugin::_confirm_replace_document() {
 	}
 }
 
+void FPSStudioParticleEditorPlugin::_on_close_effect_pressed() {
+	Node *effect = _get_effect_root();
+	if (!effect) {
+		return;
+	}
+	if (!effect_dirty) {
+		_close_effect_document();
+		return;
+	}
+	close_document_confirmation->set_text(vformat(TTR("%s has unsaved changes. Save them before closing?"), effect->get_name()));
+	close_document_confirmation->popup_centered();
+}
+
+void FPSStudioParticleEditorPlugin::_on_close_confirmation_action(const StringName &p_action) {
+	if (p_action != StringName("save_and_close")) {
+		return;
+	}
+	close_document_confirmation->hide();
+	if (effect_path.is_empty()) {
+		close_after_save = true; // Closes once the file dialog has saved it.
+		_on_save_scene_pressed();
+		return;
+	}
+	_save_emitter_scene(effect_path);
+	if (!effect_dirty) { // Saved.
+		_close_effect_document();
+	}
+}
+
+// Leaves the workspace empty, as before anything was opened.
+void FPSStudioParticleEditorPlugin::_close_effect_document() {
+	close_after_save = false;
+	if (!_get_effect_root()) {
+		return;
+	}
+	solo_emitter_id = ObjectID();
+	if (preview_compare) {
+		preview_compare->clear_snapshot();
+		preview_compare->set_visible(false);
+	}
+	_set_effect_document(nullptr, String(), false);
+	_update_emitter_tree();
+	_update_preview_stats();
+}
+
 void FPSStudioParticleEditorPlugin::_on_save_scene_pressed() {
 	Node *effect = _get_effect_root();
 	if (!effect || !save_scene_dialog) {
@@ -4781,6 +4829,9 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	saved_paths.push_back(save_path);
 	EditorNode::get_singleton()->preload_reimporting_with_path_in_edited_scenes(saved_paths);
 	EditorNode::get_singleton()->reload_instances_with_path_in_edited_scenes();
+	if (close_after_save) {
+		callable_mp(this, &FPSStudioParticleEditorPlugin::_close_effect_document).call_deferred();
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_request_load_particle_scene(const String &p_path) {
@@ -7551,10 +7602,21 @@ const Ref<Texture2D> FPSStudioParticleEditorPlugin::get_plugin_icon() const {
 // both keys for typing.
 void FPSStudioParticleEditorPlugin::input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventKey> key = p_event;
-	if (key.is_null() || !key->is_pressed() || !screen || !screen->is_visible_in_tree() || !_get_effect_root()) {
+	if (key.is_null() || !key->is_pressed() || !screen || !screen->is_visible_in_tree()) {
 		return;
 	}
 	const Key code = key->get_keycode();
+	// Cmd/Ctrl+W closes the particle effect here, not the level scene tab.
+	if (code == Key::W && key->is_command_or_control_pressed() && !key->is_shift_pressed() && !key->is_alt_pressed() && !key->is_echo()) {
+		_on_close_effect_pressed();
+		if (Viewport *viewport = screen->get_viewport()) {
+			viewport->set_input_as_handled();
+		}
+		return;
+	}
+	if (!_get_effect_root()) {
+		return;
+	}
 	// Cmd/Ctrl+S saves the particle effect here, not the level scene.
 	if (code == Key::S && key->is_command_or_control_pressed() && !key->is_shift_pressed() && !key->is_alt_pressed() && !key->is_echo()) {
 		_on_save_scene_pressed();
@@ -7699,6 +7761,11 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_to_level_button->set_tooltip_text(TTR("Create an instance of the complete particle effect in the open Level scene."));
 	add_to_level_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_add_effect_to_level));
 	document_toolbar->add_child(add_to_level_button);
+	close_effect_button = memnew(Button);
+	close_effect_button->set_text(TTR("Close"));
+	close_effect_button->set_tooltip_text(TTR("Close this particle effect (Cmd/Ctrl+W). Asks first when there are unsaved changes."));
+	close_effect_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_close_effect_pressed));
+	document_toolbar->add_child(close_effect_button);
 	layout_menu = memnew(MenuButton);
 	layout_menu->set_text(TTR("Layout"));
 	layout_menu->set_flat(false);
@@ -8918,6 +8985,14 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	replace_document_confirmation->set_cancel_button_text(TTR("Cancel"));
 	replace_document_confirmation->connect(SceneStringName(confirmed), callable_mp(this, &FPSStudioParticleEditorPlugin::_confirm_replace_document));
 	add_child(replace_document_confirmation);
+	close_document_confirmation = memnew(ConfirmationDialog);
+	close_document_confirmation->set_title(TTR("Close Particle Effect"));
+	close_document_confirmation->set_ok_button_text(TTR("Close Without Saving"));
+	close_document_confirmation->set_cancel_button_text(TTR("Cancel"));
+	close_document_confirmation->add_button(TTR("Save and Close"), true, "save_and_close");
+	close_document_confirmation->connect(SceneStringName(confirmed), callable_mp(this, &FPSStudioParticleEditorPlugin::_close_effect_document));
+	close_document_confirmation->connect("custom_action", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_close_confirmation_action));
+	add_child(close_document_confirmation);
 
 	load_scene_dialog = memnew(EditorFileDialog);
 	load_scene_dialog->set_access(EditorFileDialog::ACCESS_RESOURCES);
@@ -8935,6 +9010,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	save_scene_dialog->add_filter("*.tscn", TTR("Godot Scene"));
 	add_child(save_scene_dialog);
 	save_scene_dialog->connect("file_selected", callable_mp(this, &FPSStudioParticleEditorPlugin::_save_emitter_scene));
+	save_scene_dialog->connect("canceled", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_save_dialog_canceled));
 
 	_update_document_ui();
 	_update_particle_graph_controls();
