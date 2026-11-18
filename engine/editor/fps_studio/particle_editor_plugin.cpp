@@ -580,10 +580,15 @@ static void clear_preview_transform_origin(Node *p_node) {
 	}
 }
 
-static void copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_root = true) {
+// Copies only what differs and returns true when anything did. Setting a
+// particle node property restarts the emitter even to the same value (amount,
+// lifetime, ...), so copying everything on every edit dropped the paused
+// preview back to time 0: the effect looked smaller after any change.
+static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_root = true) {
 	if (!p_source || !p_preview) {
-		return;
+		return false;
 	}
+	bool changed = false;
 	List<PropertyInfo> properties;
 	p_source->get_property_list(&properties);
 	for (const PropertyInfo &property : properties) {
@@ -593,15 +598,19 @@ static void copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 		}
 		bool valid = false;
 		Variant value = p_source->get(property.name, &valid);
-		if (valid) {
+		if (valid && p_preview->get(property.name) != value) {
 			p_preview->set(property.name, value);
+			changed = true;
 		}
 	}
 	if (Node3D *source_3d = Object::cast_to<Node3D>(p_source)) {
 		if (Node3D *preview_3d = Object::cast_to<Node3D>(p_preview)) {
 			Transform3D transform = source_3d->get_transform();
 			transform.origin = Vector3();
-			preview_3d->set_transform(transform);
+			if (preview_3d->get_transform() != transform) {
+				preview_3d->set_transform(transform);
+				changed = true;
+			}
 		}
 	}
 	// The effect root is always shown; muted (hidden) tracks stay hidden.
@@ -611,10 +620,14 @@ static void copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 		const Variant visible = p_source->get("visible", &valid);
 		source_visible = !valid || bool(visible);
 	}
-	p_preview->set("visible", source_visible);
-	for (int i = 0; i < MIN(p_source->get_child_count(), p_preview->get_child_count()); i++) {
-		copy_preview_properties(p_source->get_child(i), p_preview->get_child(i), false);
+	if (bool(p_preview->get("visible")) != source_visible) {
+		p_preview->set("visible", source_visible);
+		changed = true;
 	}
+	for (int i = 0; i < MIN(p_source->get_child_count(), p_preview->get_child_count()); i++) {
+		changed = copy_preview_properties(p_source->get_child(i), p_preview->get_child(i), false) || changed;
+	}
+	return changed;
 }
 
 Node *FPSStudioParticleEditorPlugin::_get_active_scene_root() const {
@@ -1231,7 +1244,11 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	if (!source || !preview_effect) {
 		return;
 	}
-	copy_preview_properties(source, preview_effect);
+	// A changed emitter may have restarted from time 0: replay it at the
+	// playhead (edits to shared materials and meshes change nothing here).
+	if (copy_preview_properties(source, preview_effect)) {
+		preview_restart_queued = true;
+	}
 	_apply_preview_defaults(preview_effect);
 	_apply_preview_solo();
 	_apply_preview_event_toggles();
