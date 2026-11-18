@@ -59,6 +59,8 @@ class PanelContainer;
 class QuadMesh;
 class SubViewport;
 class SubViewportContainer;
+class RichTextLabel;
+class FPSPreviewCompareOverlay;
 class SpinBox;
 class SplitContainer;
 class Tree;
@@ -242,6 +244,19 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Node3D *preview_floor_collision = nullptr;
 	MenuButton *preview_view_menu = nullptr;
 	Label *preview_stats_label = nullptr;
+	// Cost info over the 3D preview (View > Performance Info).
+	PanelContainer *preview_perf_panel = nullptr;
+	RichTextLabel *preview_perf_label = nullptr;
+	bool preview_show_perf = true;
+	double preview_measured_gpu_ms = 0.0; // Smoothed render time of the preview viewport.
+	double preview_measured_cpu_ms = 0.0;
+	// Lock Seed: Restart and Loop keep the same random look.
+	CheckButton *preview_lock_seed_toggle = nullptr;
+	Button *preview_new_seed_button = nullptr;
+	bool preview_lock_seed = false;
+	// A/B wipe: a snapshot of the preview against the live one.
+	FPSPreviewCompareOverlay *preview_compare = nullptr;
+	MenuButton *preview_compare_menu = nullptr;
 	Button *convert_shader_button = nullptr;
 	Button *convert_graph_button = nullptr;
 	Node *track_clipboard = nullptr; // Copied/cut track subtree, owned here.
@@ -415,6 +430,15 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _set_emitter_visible(Object *p_emitter, bool p_visible);
 	void _on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration);
 	void _apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration);
+	void _on_timeline_markers_committed(const Array &p_old, const Array &p_new);
+	void _apply_timeline_markers(Object *p_effect, const Array &p_markers);
+	void _on_lock_seed_toggled(bool p_locked);
+	void _on_new_seed_pressed();
+	void _reseed_preview_for_next_run();
+	void _on_compare_menu_id(int p_id);
+	void _take_compare_snapshot();
+	void _layout_preview_overlays();
+	void _update_preview_perf(const String &p_bbcode);
 	Node *_convert_to_effect_root(Node *p_root);
 	void _assign_level_owners(Node *p_instance, Node *p_owner);
 	void _create_preset_document(int p_preset);

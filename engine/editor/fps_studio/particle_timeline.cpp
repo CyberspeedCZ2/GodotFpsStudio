@@ -15,6 +15,8 @@
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/node_3d.h"
 #include "scene/3d/particle_effect_3d.h"
+#include "scene/gui/line_edit.h"
+#include "scene/gui/popup.h"
 #include "scene/gui/popup_menu.h"
 #include "scene/gui/scroll_container.h"
 #include "scene/resources/font.h"
@@ -22,6 +24,27 @@
 
 static const double TIMELINE_SNAP = 0.05;
 static const double TIMELINE_MIN_VIEW = 0.1;
+static const char *MARKERS_META = "_fps_timeline_markers";
+
+// Marker colors, as in DaVinci Resolve's marker palette.
+static const struct {
+	const char *name;
+	Color color;
+} MARKER_PALETTE[] = {
+	{ "Blue", Color(0.33, 0.6, 1.0) },
+	{ "Cyan", Color(0.3, 0.85, 0.9) },
+	{ "Green", Color(0.4, 0.85, 0.4) },
+	{ "Yellow", Color(1.0, 0.85, 0.3) },
+	{ "Red", Color(1.0, 0.35, 0.35) },
+	{ "Pink", Color(1.0, 0.5, 0.8) },
+	{ "Purple", Color(0.7, 0.5, 1.0) },
+	{ "White", Color(0.92, 0.92, 0.92) },
+};
+static const int MARKER_PALETTE_SIZE = sizeof(MARKER_PALETTE) / sizeof(MARKER_PALETTE[0]);
+
+Color FPSParticleTimeline::get_marker_color(int p_index) {
+	return MARKER_PALETTE[CLAMP(p_index, 0, MARKER_PALETTE_SIZE - 1)].color;
+}
 
 Color FPSParticleTimeline::get_track_color(Node *p_track, int p_row) {
 	if (p_track && !ParticleEffect3D::is_emitter(p_track)) {
@@ -187,6 +210,11 @@ double FPSParticleTimeline::_snap_to_edges(double p_time, bool p_free) const {
 	};
 	consider(0.0);
 	consider(content_length);
+	for (int i = 0; i < markers.size(); i++) {
+		if (i != drag_marker || drag_mode != DRAG_MARKER) { // Not onto itself.
+			consider(markers[i].time);
+		}
+	}
 	for (const ObjectID &id : track_ids) {
 		Node *track = Object::cast_to<Node>(ObjectDB::get_instance(id));
 		if (!track) {
@@ -246,6 +274,10 @@ void FPSParticleTimeline::set_effect(Node *p_effect) {
 	effect_id = new_id;
 	if (changed) {
 		set_loop_region(0.0, -1.0); // The loop region belongs to the previous effect.
+		drag_marker = -1;
+		if (rename_popup) {
+			rename_popup->hide();
+		}
 	}
 	refresh();
 }
@@ -277,6 +309,9 @@ void FPSParticleTimeline::refresh() {
 	if (drag_mode == DRAG_NONE) {
 		_update_content_length();
 	}
+	if (drag_mode != DRAG_MARKER) {
+		_load_markers(); // Undo / redo and file loads change them from outside.
+	}
 	update_minimum_size();
 	queue_redraw();
 }
@@ -286,6 +321,11 @@ Size2 FPSParticleTimeline::get_minimum_size() const {
 }
 
 String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
+	const int marker = _marker_at(p_pos);
+	if (marker >= 0) {
+		const Marker &m = markers[marker];
+		return vformat(TTR("Marker \"%s\" at %s s"), m.name, String::num(m.time, 2)) + "\n" + TTR("Click to jump here, drag to move (Shift: no snapping), double-click to rename, right-click for color and delete. Shift + Up / Down jumps between markers.");
+	}
 	if (_is_on_end_flag(p_pos)) {
 		return TTR("Playback end: playback stops here, or goes back to the start flag with Loop on. Drag it, press O at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
 	}
@@ -293,7 +333,7 @@ String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 		return TTR("Playback start: Play and Restart begin here. Drag it, press I at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
 	}
 	if (_in_ruler(p_pos.y)) {
-		return TTR("Click or drag to scrub; , and . step one frame (Shift: 0.1 s). Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans. Fit (F) shows the playback range, again the whole effect.") + "\n" + TTR("The green flags are where playback starts and ends (drag them, or I / O at the playhead). Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
+		return TTR("Click or drag to scrub; , and . step one frame (Shift: 0.1 s), Up / Down jump to the previous / next edge or marker, M adds a marker. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans. Fit (F) shows the playback range, again the whole effect.") + "\n" + TTR("The green flags are where playback starts and ends (drag them, or I / O at the playhead). Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
 	}
 	const int row = _row_at(p_pos.y);
 	Node *track = _track_at_row(row);
@@ -384,8 +424,211 @@ bool FPSParticleTimeline::_is_on_end_flag(const Point2 &p_pos) const {
 	return !_is_on_start_flag(p_pos) || Math::abs(p_pos.x - x) < Math::abs(p_pos.x - _time_to_x(get_playback_start()));
 }
 
+void FPSParticleTimeline::_load_markers() {
+	markers.clear();
+	Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(effect_id));
+	if (!effect || !effect->has_meta(MARKERS_META)) {
+		return;
+	}
+	const Array stored = effect->get_meta(MARKERS_META);
+	for (int i = 0; i < stored.size(); i++) {
+		const Dictionary entry = stored[i];
+		Marker marker;
+		marker.time = MAX(0.0, double(entry.get("time", 0.0)));
+		marker.name = entry.get("name", String());
+		marker.color = CLAMP(int(entry.get("color", 0)), 0, MARKER_PALETTE_SIZE - 1);
+		markers.push_back(marker);
+	}
+}
+
+Array FPSParticleTimeline::_markers_to_array() const {
+	// Sorted by time, so jumping and the saved file read in order.
+	Vector<Marker> sorted = markers;
+	for (int i = 1; i < sorted.size(); i++) {
+		for (int j = i; j > 0 && sorted[j - 1].time > sorted[j].time; j--) {
+			SWAP(sorted.write[j - 1], sorted.write[j]);
+		}
+	}
+	Array result;
+	for (const Marker &marker : sorted) {
+		Dictionary entry;
+		entry["time"] = marker.time;
+		entry["name"] = marker.name;
+		entry["color"] = marker.color;
+		result.push_back(entry);
+	}
+	return result;
+}
+
+// Writes the markers into the effect and tells the editor (undo, Save *).
+void FPSParticleTimeline::_store_markers(const Array &p_old) {
+	Node *effect = Object::cast_to<Node>(ObjectDB::get_instance(effect_id));
+	if (!effect) {
+		return;
+	}
+	const Array current = _markers_to_array();
+	if (current.is_empty()) {
+		effect->remove_meta(MARKERS_META);
+	} else {
+		effect->set_meta(MARKERS_META, current);
+	}
+	_load_markers();
+	queue_redraw();
+	emit_signal(SNAME("markers_committed"), p_old, current);
+}
+
+// Markers sit in the upper half of the ruler (the flags use the lower half).
+int FPSParticleTimeline::_marker_at(const Point2 &p_pos) const {
+	if (!_in_ruler(p_pos.y) || p_pos.y >= _ruler_top() + _ruler_height() * 0.5 || p_pos.x < _name_width() - 2 * EDSCALE) {
+		return -1;
+	}
+	int best = -1;
+	real_t best_distance = 7 * EDSCALE;
+	for (int i = 0; i < markers.size(); i++) {
+		const real_t distance = Math::abs(p_pos.x - _time_to_x(markers[i].time));
+		if (distance <= best_distance) {
+			best = i;
+			best_distance = distance;
+		}
+	}
+	return best;
+}
+
+void FPSParticleTimeline::add_marker_at_playhead() {
+	if (!Object::cast_to<Node>(ObjectDB::get_instance(effect_id))) {
+		return;
+	}
+	for (const Marker &marker : markers) {
+		if (Math::abs(marker.time - current_time) < 0.0005) {
+			return; // One marker per spot.
+		}
+	}
+	const Array old = _markers_to_array();
+	Marker marker;
+	marker.time = MAX(0.0, current_time);
+	marker.name = vformat(TTR("Marker %d"), markers.size() + 1);
+	marker.color = markers.size() % MARKER_PALETTE_SIZE;
+	markers.push_back(marker);
+	_store_markers(old);
+}
+
+void FPSParticleTimeline::_open_marker_rename(int p_index) {
+	if (p_index < 0 || p_index >= markers.size()) {
+		return;
+	}
+	rename_marker = p_index;
+	rename_edit->set_text(markers[p_index].name);
+	const Point2 position = get_screen_position() + Point2(_time_to_x(markers[p_index].time), _ruler_top() + _ruler_height());
+	rename_popup->set_position(position);
+	rename_popup->reset_size();
+	rename_popup->popup();
+	rename_edit->grab_focus();
+	rename_edit->select_all();
+}
+
+void FPSParticleTimeline::_on_marker_rename_submitted(const String &p_text) {
+	rename_popup->hide();
+	const String name = p_text.strip_edges();
+	if (rename_marker < 0 || rename_marker >= markers.size() || name.is_empty() || name == markers[rename_marker].name) {
+		return;
+	}
+	const Array old = _markers_to_array();
+	markers.write[rename_marker].name = name;
+	_store_markers(old);
+}
+
+// Previous / next edit point, as Up / Down in a video editor: track starts
+// and ends, the playback flags, the effect's end and markers.
+double FPSParticleTimeline::get_jump_time(int p_dir, bool p_markers_only) const {
+	Vector<double> points;
+	for (const Marker &marker : markers) {
+		points.push_back(marker.time);
+	}
+	if (!p_markers_only) {
+		points.push_back(0.0);
+		points.push_back(content_length);
+		if (has_loop_region()) {
+			points.push_back(loop_start);
+			points.push_back(loop_end);
+		}
+		for (const ObjectID &id : track_ids) {
+			Node *track = Object::cast_to<Node>(ObjectDB::get_instance(id));
+			if (!track) {
+				continue;
+			}
+			double start, active_end, visual_end;
+			ParticleEffect3D::get_track_window(track, start, active_end, visual_end);
+			points.push_back(start);
+			if (active_end >= 0.0) {
+				points.push_back(active_end);
+			}
+			if (visual_end >= 0.0) {
+				points.push_back(visual_end);
+			}
+		}
+	}
+	const double epsilon = 0.004;
+	double best = current_time;
+	bool found = false;
+	for (double point : points) {
+		if (point < 0.0 || point > content_length + 0.0001) {
+			continue;
+		}
+		if (p_dir > 0 && point > current_time + epsilon && (!found || point < best)) {
+			best = point;
+			found = true;
+		} else if (p_dir < 0 && point < current_time - epsilon && (!found || point > best)) {
+			best = point;
+			found = true;
+		}
+	}
+	return best;
+}
+
+void FPSParticleTimeline::_jump(int p_dir, bool p_markers_only) {
+	const double target = get_jump_time(p_dir, p_markers_only);
+	if (!Math::is_equal_approx(target, current_time)) {
+		emit_signal(SNAME("scrub_requested"), target);
+	}
+}
+
 void FPSParticleTimeline::_on_context_menu_id(int p_id) {
+	if (p_id >= MARKER_COLOR_FIRST && p_id < MARKER_COLOR_FIRST + MARKER_PALETTE_SIZE) {
+		if (context_marker >= 0 && context_marker < markers.size() && markers[context_marker].color != p_id - MARKER_COLOR_FIRST) {
+			const Array old = _markers_to_array();
+			markers.write[context_marker].color = p_id - MARKER_COLOR_FIRST;
+			_store_markers(old);
+		}
+		return;
+	}
 	switch (p_id) {
+		case RULER_ADD_MARKER: {
+			const double saved = current_time;
+			current_time = context_time;
+			add_marker_at_playhead();
+			current_time = saved;
+			return;
+		}
+		case RULER_DELETE_ALL_MARKERS: {
+			if (!markers.is_empty()) {
+				const Array old = _markers_to_array();
+				markers.clear();
+				_store_markers(old);
+			}
+			return;
+		}
+		case MARKER_RENAME: {
+			_open_marker_rename(context_marker);
+			return;
+		}
+		case MARKER_DELETE: {
+			if (context_marker >= 0 && context_marker < markers.size()) {
+				const Array old = _markers_to_array();
+				markers.remove_at(context_marker);
+				_store_markers(old);
+			}
+			return;
+		}
 		case RULER_LOOP_START: {
 			_set_playback_start(context_time);
 			return;
@@ -430,6 +673,11 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		accept_event();
 		return;
 	}
+	if (key.is_valid() && key->is_pressed() && (key->get_keycode() == Key::UP || key->get_keycode() == Key::DOWN) && !key->is_command_or_control_pressed() && !key->is_alt_pressed()) {
+		_jump(key->get_keycode() == Key::UP ? -1 : 1, key->is_shift_pressed());
+		accept_event();
+		return;
+	}
 	if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
 		Node *selected = Object::cast_to<Node>(ObjectDB::get_instance(selected_id));
 		const Key code = key->get_keycode();
@@ -463,6 +711,8 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			}
 		} else if (code == Key::O && !command) {
 			_set_playback_end(current_time);
+		} else if (code == Key::M && !command && !key->is_alt_pressed()) {
+			add_marker_at_playhead();
 		} else {
 			return;
 		}
@@ -517,11 +767,27 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		if (mb->get_button_index() == MouseButton::RIGHT && mb->is_pressed() && _in_ruler(pos.y) && pos.x >= _name_width()) {
 			context_time = _snap(MAX(0.0, _x_to_time(pos.x)), mb->is_shift_pressed());
 			context_track = ObjectID();
+			context_marker = _marker_at(pos);
 			context_menu->clear();
-			context_menu->add_item(TTR("Start Playback Here"), RULER_LOOP_START, Key::I);
-			context_menu->add_item(TTR("End Playback Here"), RULER_LOOP_END, Key::O);
-			context_menu->add_item(TTR("Play Whole Effect"), RULER_LOOP_CLEAR, KeyModifierMask::ALT | Key::I);
-			context_menu->set_item_disabled(-1, !has_loop_region());
+			if (context_marker >= 0) {
+				context_menu->add_item(TTR("Rename Marker..."), MARKER_RENAME);
+				context_menu->add_separator(TTR("Color"));
+				for (int i = 0; i < MARKER_PALETTE_SIZE; i++) {
+					context_menu->add_radio_check_item(TTR(MARKER_PALETTE[i].name), MARKER_COLOR_FIRST + i);
+					context_menu->set_item_checked(-1, markers[context_marker].color == i);
+				}
+				context_menu->add_separator();
+				context_menu->add_item(TTR("Delete Marker"), MARKER_DELETE);
+			} else {
+				context_menu->add_item(TTR("Start Playback Here"), RULER_LOOP_START, Key::I);
+				context_menu->add_item(TTR("End Playback Here"), RULER_LOOP_END, Key::O);
+				context_menu->add_item(TTR("Play Whole Effect"), RULER_LOOP_CLEAR, KeyModifierMask::ALT | Key::I);
+				context_menu->set_item_disabled(-1, !has_loop_region());
+				context_menu->add_separator();
+				context_menu->add_item(TTR("Add Marker Here"), RULER_ADD_MARKER, Key::M);
+				context_menu->add_item(TTR("Delete All Markers"), RULER_DELETE_ALL_MARKERS);
+				context_menu->set_item_disabled(-1, markers.is_empty());
+			}
 			context_menu->set_position(get_screen_position() + pos);
 			context_menu->reset_size();
 			context_menu->popup();
@@ -569,6 +835,21 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		if (mb->is_pressed()) {
 			grab_focus();
 			if (_in_ruler(pos.y)) {
+				const int marker = _marker_at(pos);
+				if (marker >= 0) {
+					if (mb->is_double_click()) {
+						_open_marker_rename(marker);
+					} else {
+						drag_mode = DRAG_MARKER;
+						drag_marker = marker;
+						drag_marker_moved = false;
+						drag_marker_press_x = pos.x;
+						drag_marker_old = _markers_to_array();
+						emit_signal(SNAME("scrub_requested"), markers[marker].time);
+					}
+					accept_event();
+					return;
+				}
 				if (!mb->is_shift_pressed() && _is_on_end_flag(pos)) {
 					drag_mode = DRAG_END;
 				} else if (!mb->is_shift_pressed() && _is_on_start_flag(pos)) {
@@ -639,6 +920,14 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		} else {
 			const DragMode finished = drag_mode;
 			drag_mode = DRAG_NONE;
+			if (finished == DRAG_MARKER) {
+				if (drag_marker_moved) {
+					_store_markers(drag_marker_old);
+				}
+				drag_marker = -1;
+				accept_event();
+				return;
+			}
 			Node *track = Object::cast_to<Node>(ObjectDB::get_instance(drag_track));
 			drag_track = ObjectID();
 			if ((finished == DRAG_MOVE || finished == DRAG_RESIZE) && track) {
@@ -668,6 +957,16 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			// Edges only (no grid): scrubbing stays smooth between them.
 			const double edge = _snap_to_edges(time, mm->is_shift_pressed());
 			emit_signal(SNAME("scrub_requested"), CLAMP(Math::is_equal_approx(edge, _snap(time, false)) ? time : edge, 0.0, content_length));
+			accept_event();
+			return;
+		}
+		if (drag_mode == DRAG_MARKER) {
+			if (drag_marker >= 0 && drag_marker < markers.size() && (drag_marker_moved || Math::abs(pos.x - drag_marker_press_x) > 4 * EDSCALE)) {
+				drag_marker_moved = true;
+				markers.write[drag_marker].time = CLAMP(_snap_to_edges(MAX(0.0, time), mm->is_shift_pressed()), 0.0, content_length);
+				emit_signal(SNAME("scrub_requested"), markers[drag_marker].time);
+				queue_redraw();
+			}
 			accept_event();
 			return;
 		}
@@ -712,6 +1011,8 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			} else if (pos.x >= _time_to_x(start) && (active_end < 0.0 || pos.x <= _time_to_x(active_end))) {
 				shape = CURSOR_DRAG;
 			}
+		} else if (_marker_at(pos) >= 0) {
+			shape = CURSOR_POINTING_HAND;
 		} else if (!mm->is_shift_pressed() && (_is_on_start_flag(pos) || _is_on_end_flag(pos))) {
 			shape = CURSOR_HSIZE;
 		} else if (_in_ruler(pos.y) && pos.x >= _name_width()) {
@@ -860,6 +1161,14 @@ void FPSParticleTimeline::_notification(int p_what) {
 				draw_string(font, Point2(x_end_marker + 3 * EDSCALE, size.y - 4 * EDSCALE), TTR("End"), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8, dim);
 			}
 
+			// Marker lines through the tracks.
+			for (int i = 0; i < markers.size(); i++) {
+				const real_t mx = _time_to_x(markers[i].time);
+				if (mx >= _name_width() && mx <= size.x) {
+					draw_line(Point2(mx, _ruler_height()), Point2(mx, size.y), Color(get_marker_color(markers[i].color), i == drag_marker ? 0.8 : 0.35), 1.0 * EDSCALE);
+				}
+			}
+
 			// Playhead with a handle in the ruler.
 			const real_t x_play = _time_to_x(current_time);
 			if (x_play >= _name_width() && x_play <= size.x) {
@@ -931,6 +1240,31 @@ void FPSParticleTimeline::_notification(int p_what) {
 				}
 			}
 
+			// Marker heads (pentagons, as in Resolve) with their names in the
+			// upper half of the ruler.
+			for (int i = 0; i < markers.size(); i++) {
+				const real_t mx = _time_to_x(markers[i].time);
+				if (mx < _name_width() - 1 || mx > size.x + 1) {
+					continue;
+				}
+				const Color color = get_marker_color(markers[i].color);
+				const real_t w = 5 * EDSCALE;
+				const real_t h = _ruler_height() * 0.46;
+				Vector<Point2> head;
+				head.push_back(Point2(mx - w, ruler_top + 1 * EDSCALE));
+				head.push_back(Point2(mx + w, ruler_top + 1 * EDSCALE));
+				head.push_back(Point2(mx + w, ruler_top + h * 0.6));
+				head.push_back(Point2(mx, ruler_top + h));
+				head.push_back(Point2(mx - w, ruler_top + h * 0.6));
+				draw_colored_polygon(head, color);
+				const int small_size = int(font_size * 0.72);
+				const real_t next_x = i + 1 < markers.size() ? _time_to_x(markers[i + 1].time) : size.x;
+				const real_t room = (next_x > mx ? next_x : size.x) - mx - w - 6 * EDSCALE;
+				if (room > 24 * EDSCALE) {
+					draw_string(font, Point2(mx + w + 3 * EDSCALE, ruler_top + h * 0.82), markers[i].name, HORIZONTAL_ALIGNMENT_LEFT, MIN(room, 140 * EDSCALE), small_size, Color(color, 0.95));
+				}
+			}
+
 			if (x_play >= _name_width() && x_play <= size.x) {
 				const Color play_color(1.0, 0.36, 0.3);
 				draw_line(Point2(x_play, ruler_top + _ruler_height() * 0.4), Point2(x_play, ruler_top + _ruler_height()), play_color, 2 * EDSCALE);
@@ -955,6 +1289,7 @@ void FPSParticleTimeline::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("track_action", PropertyInfo(Variant::OBJECT, "track"), PropertyInfo(Variant::INT, "action")));
 	ADD_SIGNAL(MethodInfo("play_toggle_requested"));
 	ADD_SIGNAL(MethodInfo("restart_requested"));
+	ADD_SIGNAL(MethodInfo("markers_committed", PropertyInfo(Variant::ARRAY, "old_markers"), PropertyInfo(Variant::ARRAY, "new_markers")));
 	ADD_SIGNAL(MethodInfo("loop_region_changed", PropertyInfo(Variant::FLOAT, "start"), PropertyInfo(Variant::FLOAT, "end")));
 }
 
@@ -965,4 +1300,11 @@ FPSParticleTimeline::FPSParticleTimeline() {
 	context_menu = memnew(PopupMenu);
 	context_menu->connect(SceneStringName(id_pressed), callable_mp(this, &FPSParticleTimeline::_on_context_menu_id));
 	add_child(context_menu);
+	rename_popup = memnew(PopupPanel);
+	add_child(rename_popup);
+	rename_edit = memnew(LineEdit);
+	rename_edit->set_custom_minimum_size(Size2(180, 0) * EDSCALE);
+	rename_edit->set_placeholder(TTR("Marker name"));
+	rename_edit->connect(SceneStringName(text_submitted), callable_mp(this, &FPSParticleTimeline::_on_marker_rename_submitted));
+	rename_popup->add_child(rename_edit);
 }

@@ -11,7 +11,9 @@
 #include "core/templates/vector.h"
 #include "scene/gui/control.h"
 
+class LineEdit;
 class PopupMenu;
+class PopupPanel;
 
 // Niagara-style effect timeline: one track per emitter (and per timed event
 // node) of a ParticleEffect3D with its start delay, active window and
@@ -46,6 +48,7 @@ private:
 		DRAG_LOOP,
 		DRAG_START, // The playback start flag on the ruler.
 		DRAG_END, // The playback end flag.
+		DRAG_MARKER, // A marker in the ruler (moves once dragged a few pixels).
 	};
 	void _set_playback_start(double p_time);
 	bool _is_on_start_flag(const Point2 &p_pos) const;
@@ -56,7 +59,37 @@ private:
 		RULER_LOOP_START = 100,
 		RULER_LOOP_END,
 		RULER_LOOP_CLEAR,
+		RULER_ADD_MARKER,
+		RULER_DELETE_ALL_MARKERS,
+		MARKER_RENAME = 200,
+		MARKER_DELETE,
+		MARKER_COLOR_FIRST = 220, // + index into the marker palette.
 	};
+
+	// Named, colored points on the ruler (like markers in a video editor),
+	// saved with the effect as root metadata so they travel with the file.
+	struct Marker {
+		double time = 0.0;
+		String name;
+		int color = 0;
+	};
+	Vector<Marker> markers;
+	int drag_marker = -1;
+	bool drag_marker_moved = false;
+	real_t drag_marker_press_x = 0.0;
+	Array drag_marker_old;
+	int context_marker = -1;
+	PopupPanel *rename_popup = nullptr;
+	LineEdit *rename_edit = nullptr;
+	int rename_marker = -1;
+
+	void _load_markers();
+	Array _markers_to_array() const;
+	void _store_markers(const Array &p_old);
+	int _marker_at(const Point2 &p_pos) const;
+	void _open_marker_rename(int p_index);
+	void _on_marker_rename_submitted(const String &p_text);
+	void _jump(int p_dir, bool p_markers_only);
 
 	ObjectID effect_id;
 	ObjectID selected_id;
@@ -134,6 +167,12 @@ public:
 	double get_playback_end() const { return has_loop_region() ? loop_end : content_length; }
 	double get_loop_start() const { return loop_start; }
 	double get_loop_end() const { return loop_end; }
+	// Markers: M adds one at the playhead. Up / Down jump to the previous /
+	// next edge (track start or end, flag, marker); Shift: markers only.
+	static Color get_marker_color(int p_index);
+	void add_marker_at_playhead();
+	double get_jump_time(int p_dir, bool p_markers_only) const;
+	void jump(int p_dir, bool p_markers_only) { _jump(p_dir, p_markers_only); }
 
 	virtual Size2 get_minimum_size() const override;
 	virtual String get_tooltip(const Point2 &p_pos) const override;

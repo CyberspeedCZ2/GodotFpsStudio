@@ -87,6 +87,9 @@
 #include "scene/gui/line_edit.h"
 #include "scene/gui/text_edit.h"
 #include "scene/gui/menu_button.h"
+#include "scene/gui/rich_text_label.h"
+#include "servers/rendering/rendering_server.h"
+#include "particle_preview_compare.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/panel_container.h"
 #include "scene/gui/popup_menu.h"
@@ -619,7 +622,8 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 	for (const PropertyInfo &property : properties) {
 		if (!(property.usage & PROPERTY_USAGE_STORAGE) || (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) || property.name == "name" || property.name == "owner" || property.name == "script" ||
 				property.name == "scene_file_path" || property.name == "emitting" || property.name == "visible" || property.name == "transform" ||
-				property.name == "speed_scale") { // The preview's play / pause.
+				property.name == "speed_scale" || // The preview's play / pause.
+				property.name == "metadata/_fps_timeline_markers") { // Editor only; would restart the preview.
 			continue;
 		}
 		// The preview keeps its own seed so a paused frame stays the same
@@ -1184,6 +1188,18 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 		return;
 	}
 	rebuilding_preview = true;
+	// Seeds the preview picked itself, by node path: a rebuild of the same
+	// effect (timing change, undo) keeps the look of the paused frame.
+	HashMap<String, int64_t> kept_seeds;
+	if (preview_effect) {
+		Vector<Node *> old_tracks;
+		collect_tracks(preview_effect, old_tracks);
+		for (Node *track : old_tracks) {
+			if (track->has_meta(SNAME("_fps_preview_seed"))) {
+				kept_seeds[String(preview_effect->get_path_to(track))] = int64_t(track->get("seed"));
+			}
+		}
+	}
 	if (preview_effect) {
 		preview_root->remove_child(preview_effect);
 		preview_effect->queue_free();
@@ -1206,6 +1222,16 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	preview_effect->set_name("ParticlePreviewEffect");
 	clear_preview_scripts(preview_effect);
 	apply_preview_defaults(preview_effect, preview_quad);
+	if (!new_document && !kept_seeds.is_empty()) {
+		Vector<Node *> new_tracks;
+		collect_tracks(preview_effect, new_tracks);
+		for (Node *track : new_tracks) {
+			const int64_t *seed = kept_seeds.getptr(String(preview_effect->get_path_to(track)));
+			if (seed && track->has_meta(SNAME("_fps_preview_seed"))) {
+				track->set("seed", *seed);
+			}
+		}
+	}
 	clear_preview_transform_origin(preview_effect);
 	preview_root->add_child(preview_effect);
 
@@ -1419,7 +1445,7 @@ void FPSStudioParticleEditorPlugin::_rewind_preview_if_finished() {
 	if (timeline_view) {
 		timeline_view->set_current_time(preview_time);
 	}
-	reseed_preview_emitters(preview_effect);
+	_reseed_preview_for_next_run();
 	_restart_preview_at(preview_time);
 	_update_time_label();
 }
@@ -1433,7 +1459,7 @@ void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
 	if (timeline) {
 		timeline->set_value_no_signal(preview_time);
 	}
-	reseed_preview_emitters(preview_effect);
+	_reseed_preview_for_next_run();
 	_restart_preview_at(preview_time);
 	_set_preview_playing(true);
 	_update_time_label();
@@ -5262,8 +5288,17 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 		preview_container->accept_event();
 		return;
 	}
+	if (key.is_valid() && key->is_pressed() && timeline_view && (key->get_keycode() == Key::UP || key->get_keycode() == Key::DOWN) && !key->is_command_or_control_pressed() && !key->is_alt_pressed()) {
+		timeline_view->set_current_time(preview_time);
+		timeline_view->jump(key->get_keycode() == Key::UP ? -1 : 1, key->is_shift_pressed());
+		preview_container->accept_event();
+		return;
+	}
 	if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
-		if (key->get_keycode() == Key::SPACE) {
+		if (key->get_keycode() == Key::M && timeline_view && !key->is_command_or_control_pressed() && !key->is_alt_pressed()) {
+			timeline_view->set_current_time(preview_time);
+			timeline_view->add_marker_at_playhead();
+		} else if (key->get_keycode() == Key::SPACE) {
 			_on_timeline_play_toggle();
 		} else if (key->get_keycode() == Key::HOME || (key->get_keycode() == Key::R && !key->is_command_or_control_pressed())) {
 			_on_restart_pressed();
@@ -5450,7 +5485,7 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 }
 
 // View menu check items that are remembered in the editor layout.
-static const int PREVIEW_VIEW_OPTIONS[] = { 10, 11, 12, 13, 14, 15, 16, 17 };
+static const int PREVIEW_VIEW_OPTIONS[] = { 10, 11, 12, 13, 14, 15, 16, 17, 18 };
 
 void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
 	PopupMenu *popup = preview_view_menu->get_popup();
@@ -5517,6 +5552,10 @@ void FPSStudioParticleEditorPlugin::_set_preview_view_option(int p_id, bool p_ch
 		case 17:
 			preview_play_shake = checked;
 			_sync_preview_properties();
+			break;
+		case 18:
+			preview_show_perf = checked;
+			_update_preview_stats();
 			break;
 	}
 }
@@ -5644,6 +5683,180 @@ static double estimate_particle_area(Node *p_emitter) {
 	return face * scale * scale;
 }
 
+// Cost model for one effect at 2560x1440, the resolution the game is tuned
+// for. Rough rules of thumb, calibrated against tests/perf_water_explosion.gd
+// (surface + underwater water explosion 3.8 m from the camera: ~3.6 screen
+// layers of overdraw, measured ~1.2 ms GPU). Meant to point at what is
+// expensive, not to replace a profiler.
+static const double COST_SCREEN_LAYER_MS = 0.25; // One blended, textured layer over the whole screen.
+static const double COST_EMITTER_GPU_MS = 0.03; // Process dispatch + draw of one live emitter.
+static const double COST_CLOSE_UP_DISTANCE = 3.0; // Typical "it went off next to me" distance.
+static const double COST_CLOSE_UP_FOV = 85.0; // The player camera (fps_character.tscn).
+static const double COST_GPU_PARTICLE_MS = 0.0000025; // Simulating one GPU particle.
+static const double COST_GPU_VERTEX_MS = 0.000002; // Drawing one particle quad.
+static const double COST_CPU_PARTICLE_MS = 0.00035; // One live CPUParticles3D particle per frame.
+static const double COST_EFFECT_GPU_WARN = 0.5;
+static const double COST_EFFECT_GPU_HEAVY = 1.5;
+static const double COST_EFFECT_CPU_WARN = 0.25;
+static const double COST_EFFECT_CPU_HEAVY = 0.75;
+static const double COST_TRACK_GPU_WARN = 0.3;
+static const double COST_TRACK_GPU_HEAVY = 0.8;
+
+struct FPSTrackCostTraits {
+	bool emitter = false;
+	bool cpu = false;
+	bool opaque = false;
+	bool lit = false;
+	bool lit_per_vertex = false;
+	bool soft = false;
+	bool screen_read = false;
+	bool collision = false;
+	bool trails = false;
+	bool sorted = false;
+	bool light = false;
+	bool light_shadow = false;
+	bool decal = false;
+	double area = 1.0;
+	int amount = 0;
+};
+
+static Ref<Material> get_track_draw_material(Node *p_track) {
+	if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(p_track)) {
+		if (geometry->get_material_override().is_valid()) {
+			return geometry->get_material_override();
+		}
+	}
+	const Ref<Mesh> mesh = FPSParticleModuleStack::get_draw_mesh(p_track);
+	if (mesh.is_valid() && mesh->get_surface_count() > 0) {
+		return mesh->surface_get_material(0);
+	}
+	return Ref<Material>();
+}
+
+static FPSTrackCostTraits get_track_cost_traits(Node *p_track) {
+	FPSTrackCostTraits traits;
+	if (Light3D *light = Object::cast_to<Light3D>(p_track)) {
+		traits.light = true;
+		traits.light_shadow = light->has_shadow();
+		return traits;
+	}
+	if (Object::cast_to<Decal>(p_track)) {
+		traits.decal = true;
+		return traits;
+	}
+	if (!ParticleEffect3D::is_emitter(p_track)) {
+		return traits;
+	}
+	traits.emitter = true;
+	traits.amount = int(p_track->get("amount"));
+	traits.area = estimate_particle_area(p_track);
+	if (GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_track)) {
+		traits.collision = ParticleEffect3D::emitter_uses_collision(gpu);
+		traits.trails = gpu->is_trail_enabled();
+		traits.sorted = gpu->get_draw_order() == GPUParticles3D::DRAW_ORDER_VIEW_DEPTH;
+	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_track)) {
+		traits.cpu = true;
+		traits.sorted = cpu->get_draw_order() == CPUParticles3D::DRAW_ORDER_VIEW_DEPTH;
+	}
+	const Ref<Material> material = get_track_draw_material(p_track);
+	if (BaseMaterial3D *base = Object::cast_to<BaseMaterial3D>(material.ptr())) {
+		traits.lit = base->get_shading_mode() != BaseMaterial3D::SHADING_MODE_UNSHADED;
+		traits.lit_per_vertex = base->get_shading_mode() == BaseMaterial3D::SHADING_MODE_PER_VERTEX;
+		traits.opaque = base->get_transparency() == BaseMaterial3D::TRANSPARENCY_DISABLED;
+		traits.soft = base->is_proximity_fade_enabled();
+		traits.screen_read = base->get_feature(BaseMaterial3D::FEATURE_REFRACTION);
+	} else if (ShaderMaterial *shader_material = Object::cast_to<ShaderMaterial>(material.ptr())) {
+		const Ref<Shader> shader = shader_material->get_shader();
+		const String code = shader.is_valid() ? shader->get_code() : String();
+		traits.lit = !code.contains("unshaded");
+		traits.soft = code.contains("hint_depth_texture");
+		traits.screen_read = code.contains("hint_screen_texture");
+	}
+	return traits;
+}
+
+struct FPSTrackCost {
+	double gpu_ms = 0.0;
+	double cpu_ms = 0.0;
+	double live = 0.0;
+	double overdraw = 0.0;
+};
+
+// Cost of one track at effect time p_time; p_screen_share is the share of
+// the screen one particle covers from the current camera.
+static FPSTrackCost estimate_track_cost(Node *p_track, const FPSTrackCostTraits &p_traits, double p_time, double p_screen_share) {
+	FPSTrackCost cost;
+	double start, active_end, visual_end;
+	ParticleEffect3D::get_track_window(p_track, start, active_end, visual_end);
+	const bool active = p_time >= start && (visual_end < 0.0 || p_time <= visual_end);
+	if (p_traits.light) {
+		if (active) {
+			cost.gpu_ms = p_traits.light_shadow ? 0.35 : 0.05;
+			cost.cpu_ms = p_traits.light_shadow ? 0.08 : 0.01;
+		}
+		return cost;
+	}
+	if (p_traits.decal) {
+		cost.gpu_ms = active ? 0.02 : 0.0;
+		return cost;
+	}
+	if (!p_traits.emitter) {
+		cost.cpu_ms = active ? 0.005 : 0.0; // Sound, shake, damage: a little script time.
+		return cost;
+	}
+	cost.live = estimate_live_particles(p_track, p_time);
+	if (cost.live <= 0.0) {
+		return cost;
+	}
+	cost.overdraw = cost.live * MIN(p_screen_share, 1.0);
+	double fill = COST_SCREEN_LAYER_MS * (p_traits.opaque ? 0.3 : 1.0);
+	if (p_traits.lit) {
+		fill *= p_traits.lit_per_vertex ? 1.2 : 1.6;
+	}
+	if (p_traits.soft) {
+		fill *= 1.2;
+	}
+	if (p_traits.screen_read) {
+		fill *= 1.6;
+	}
+	double vertex = cost.live * COST_GPU_VERTEX_MS * (p_traits.trails ? 8.0 : 1.0);
+	cost.gpu_ms = cost.overdraw * fill + vertex + COST_EMITTER_GPU_MS;
+	if (p_traits.cpu) {
+		cost.cpu_ms = cost.live * COST_CPU_PARTICLE_MS + p_traits.amount * 0.00003 + 0.01;
+		if (p_traits.sorted) {
+			cost.cpu_ms += cost.live * 0.0002;
+		}
+	} else {
+		double simulate = p_traits.amount * COST_GPU_PARTICLE_MS;
+		if (p_traits.collision) {
+			simulate *= 3.0;
+		}
+		if (p_traits.trails) {
+			simulate *= 4.0;
+		}
+		if (p_traits.sorted) {
+			simulate += p_traits.amount * 0.000005;
+		}
+		cost.gpu_ms += simulate;
+		cost.cpu_ms = 0.01;
+	}
+	return cost;
+}
+
+static String cost_color_tag(double p_value, double p_warn, double p_heavy) {
+	if (p_value >= p_heavy) {
+		return "[color=#ff6b6b]";
+	}
+	if (p_value >= p_warn) {
+		return "[color=#ffcc55]";
+	}
+	return "[color=#8fe39a]";
+}
+
+static String format_ms(double p_ms) {
+	return String::num(p_ms, p_ms < 0.1 ? 3 : 2) + " ms";
+}
+
 void FPSStudioParticleEditorPlugin::_update_preview_stats() {
 	if (!preview_stats_label) {
 		return;
@@ -5651,70 +5864,356 @@ void FPSStudioParticleEditorPlugin::_update_preview_stats() {
 	Node *source = _get_effect_root();
 	if (!source) {
 		preview_stats_label->set_text(String());
+		_update_preview_perf(String());
 		return;
 	}
 	Vector<Node *> tracks;
 	collect_tracks(source, tracks);
-	int visible_tracks = 0;
-	int emitters = 0;
-	int max_particles = 0;
-	double live_particles = 0.0;
-	// Overdraw: how many times the particles would cover the whole preview
-	// image (sum of every live particle's share of the screen). Additive and
-	// alpha-blended quads cost fill rate per layer, which dominates on GPUs.
-	double overdraw = 0.0;
 	const double fov = preview_camera ? Math::deg_to_rad(double(preview_camera->get_fov())) : Math::deg_to_rad(70.0);
 	const double tan_half = Math::tan(fov * 0.5);
 	const Vector3 camera_position = preview_camera && preview_camera->is_inside_tree() ? preview_camera->get_global_position() : Vector3(0, 0, preview_camera_distance);
+
+	struct TrackInfo {
+		Node *track = nullptr;
+		FPSTrackCostTraits traits;
+		double screen_share = 0.0;
+		double close_share = 0.0; // From COST_CLOSE_UP_DISTANCE.
+		double peak_gpu = 0.0;
+		double peak_overdraw = 0.0;
+	};
+	Vector<TrackInfo> infos;
+	int visible_tracks = 0;
+	int max_particles = 0;
+	bool any_screen_read = false;
 	for (Node *track : tracks) {
 		Node3D *track_3d = Object::cast_to<Node3D>(track);
 		if (track_3d && !track_3d->is_visible()) {
 			continue;
 		}
 		visible_tracks++;
-		if (!ParticleEffect3D::is_emitter(track)) {
+		TrackInfo info;
+		info.track = track;
+		info.traits = get_track_cost_traits(track);
+		if (info.traits.emitter) {
+			max_particles += info.traits.amount;
+			// Overdraw: the share of the preview image one particle covers
+			// from this camera distance. Blended quads cost fill rate per layer,
+			// which dominates on GPUs.
+			Node3D *preview_track = preview_effect ? Object::cast_to<Node3D>(preview_effect->get_node_or_null(source->get_path_to(track))) : nullptr;
+			const Vector3 position = preview_track && preview_track->is_inside_tree() ? preview_track->get_global_position() : Vector3();
+			const double distance = MAX(0.25, double(camera_position.distance_to(position)));
+			const double view_height = 2.0 * distance * tan_half;
+			info.screen_share = info.traits.area / (view_height * view_height * (16.0 / 9.0));
+			const double close_height = 2.0 * COST_CLOSE_UP_DISTANCE * Math::tan(Math::deg_to_rad(COST_CLOSE_UP_FOV) * 0.5);
+			info.close_share = info.traits.area / (close_height * close_height * (16.0 / 9.0));
+			any_screen_read = any_screen_read || info.traits.screen_read;
+		}
+		infos.push_back(info);
+	}
+
+	// Now, and the peak over the whole effect (sampled).
+	double now_gpu = any_screen_read ? 0.1 : 0.0; // Copying the screen once for refraction.
+	double now_cpu = 0.0;
+	double now_live = 0.0;
+	double now_overdraw = 0.0;
+	for (TrackInfo &info : infos) {
+		const FPSTrackCost cost = estimate_track_cost(info.track, info.traits, preview_time, info.screen_share);
+		now_gpu += cost.gpu_ms;
+		now_cpu += cost.cpu_ms;
+		now_live += cost.live;
+		now_overdraw += cost.overdraw;
+	}
+	double peak_gpu = 0.0;
+	double peak_cpu = 0.0;
+	double peak_overdraw = 0.0;
+	double peak_time = 0.0;
+	double close_peak_gpu = 0.0;
+	const int samples = 60;
+	const double span = MAX(0.1, preview_duration);
+	for (int i = 0; i <= samples; i++) {
+		const double t = span * i / samples;
+		double gpu = any_screen_read ? 0.1 : 0.0;
+		double cpu = 0.0;
+		double overdraw = 0.0;
+		double close_gpu = gpu;
+		for (TrackInfo &info : infos) {
+			const FPSTrackCost close_cost = estimate_track_cost(info.track, info.traits, t, info.close_share);
+			const double close_track = close_cost.gpu_ms;
+			close_gpu += close_track;
+			const FPSTrackCost cost = estimate_track_cost(info.track, info.traits, t, info.screen_share);
+			gpu += cost.gpu_ms;
+			cpu += cost.cpu_ms;
+			overdraw += cost.overdraw;
+			info.peak_gpu = MAX(info.peak_gpu, MAX(cost.gpu_ms, close_track));
+			info.peak_overdraw = MAX(info.peak_overdraw, MAX(cost.overdraw, close_cost.overdraw));
+		}
+		if (gpu > peak_gpu) {
+			peak_gpu = gpu;
+			peak_time = t;
+		}
+		peak_cpu = MAX(peak_cpu, cpu);
+		peak_overdraw = MAX(peak_overdraw, overdraw);
+		close_peak_gpu = MAX(close_peak_gpu, close_gpu);
+	}
+
+	// Per track: what makes it expensive (shown in the overlay and as a
+	// colored cost next to each emitter in the list).
+	Vector<String> issues;
+	HashMap<ObjectID, double> track_peak;
+	for (const TrackInfo &info : infos) {
+		const int issues_before = issues.size();
+		track_peak[info.track->get_instance_id()] = info.peak_gpu;
+		const String name = info.track->get_name();
+		const bool heavy = info.peak_gpu >= COST_TRACK_GPU_HEAVY;
+		const bool warn = info.peak_gpu >= COST_TRACK_GPU_WARN;
+		const String tag = heavy ? "[color=#ff6b6b]" : "[color=#ffcc55]";
+		if (info.traits.light_shadow) {
+			issues.push_back(tag + vformat(TTR("%s: the light casts shadows (expensive; turn Shadow off unless it really shows)."), name) + "[/color]");
+		}
+		if (!info.traits.emitter) {
 			continue;
 		}
-		emitters++;
-		max_particles += int(track->get("amount"));
-		const double live = estimate_live_particles(track, preview_time);
-		live_particles += live;
-		Node3D *preview_track = preview_effect ? Object::cast_to<Node3D>(preview_effect->get_node_or_null(source->get_path_to(track))) : nullptr;
-		const Vector3 position = preview_track && preview_track->is_inside_tree() ? preview_track->get_global_position() : Vector3();
-		const double distance = MAX(0.25, double(camera_position.distance_to(position)));
-		const double view_height = 2.0 * distance * tan_half;
-		const double screen_share = estimate_particle_area(track) / (view_height * view_height * (16.0 / 9.0));
-		overdraw += live * MIN(screen_share, 1.0);
+		if (info.traits.cpu && info.traits.amount >= 300) {
+			issues.push_back(String(info.traits.amount >= 1000 ? "[color=#ff6b6b]" : "[color=#ffcc55]") + vformat(TTR("%s: %d CPU particles cost CPU time every frame; GPU particles are much cheaper."), name, info.traits.amount) + "[/color]");
+		}
+		if (!warn) {
+			continue;
+		}
+		if (info.peak_overdraw >= 4.0) {
+			issues.push_back(tag + vformat(TTR("%s: overdraw up to %sx; big particles cover the screen many times (smaller Scale, fewer particles or shorter lifetime)."), name, String::num(info.peak_overdraw, 0)) + "[/color]");
+		}
+		if (info.traits.lit && info.peak_overdraw >= 2.0) {
+			issues.push_back(tag + vformat(TTR("%s: lit material; Unshaded is cheaper for smoke, mist and sparks."), name) + "[/color]");
+		}
+		if (info.traits.collision && info.traits.amount >= 1000) {
+			issues.push_back(tag + vformat(TTR("%s: collision on %d particles."), name, info.traits.amount) + "[/color]");
+		}
+		if (info.traits.trails && info.traits.amount >= 200) {
+			issues.push_back(tag + vformat(TTR("%s: trails on %d particles."), name, info.traits.amount) + "[/color]");
+		}
+		if (issues.size() == issues_before) {
+			issues.push_back(tag + vformat(TTR("%s: up to %s GPU."), name, format_ms(info.peak_gpu)) + "[/color]");
+		}
 	}
-	String text = vformat(TTR("%d tracks, ~%d / %d particles"), visible_tracks, int(Math::round(live_particles)), max_particles);
-	text += vformat(TTR(", overdraw %sx"), String::num(overdraw, overdraw < 10.0 ? 1 : 0));
-	if (preview_viewport) {
-		const int draw_calls = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_DRAW_CALLS_IN_FRAME);
-		const int primitives = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_PRIMITIVES_IN_FRAME);
-		text += vformat(TTR(", %d draws, %s tris"), draw_calls, primitives >= 1000 ? String::num(primitives / 1000.0, 1) + "k" : itos(primitives));
+	if (emitter_tree && emitter_tree->get_root()) {
+		for (TreeItem *item = emitter_tree->get_root()->get_first_child(); item; item = item->get_next()) {
+			const Variant id = item->get_metadata(0);
+			if (id.get_type() != Variant::INT) {
+				continue;
+			}
+			const ObjectID object_id = ObjectID(uint64_t(id));
+			Node *track = Object::cast_to<Node>(ObjectDB::get_instance(object_id));
+			if (!track || !ParticleEffect3D::is_emitter(track)) {
+				continue;
+			}
+			String detail = item->get_text(1);
+			const int cut = detail.find(String::utf8(" · ~"));
+			if (cut >= 0) {
+				detail = detail.substr(0, cut);
+			}
+			const double *peak = track_peak.getptr(object_id);
+			if (!peak) {
+				item->set_text(1, detail);
+				item->set_custom_color(1, emitter_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
+				continue;
+			}
+			item->set_text(1, detail + String::utf8(" · ~") + String::num(*peak, *peak < 0.1 ? 2 : 1) + " ms");
+			if (*peak >= COST_TRACK_GPU_HEAVY) {
+				item->set_custom_color(1, Color(1.0, 0.42, 0.42));
+			} else if (*peak >= COST_TRACK_GPU_WARN) {
+				item->set_custom_color(1, Color(1.0, 0.8, 0.33));
+			} else {
+				item->set_custom_color(1, emitter_tree->get_theme_color(SNAME("font_disabled_color"), EditorStringName(Editor)));
+			}
+			item->set_tooltip_text(1, vformat(TTR("Estimated GPU cost of this emitter at its busiest moment, at 2560x1440, from the current preview camera or from 3 m, whichever is more. Yellow from %s ms, red from %s ms."), String::num(COST_TRACK_GPU_WARN, 1), String::num(COST_TRACK_GPU_HEAVY, 1)));
+		}
 	}
-	// Budgets for one effect in a first-person shooter: many can be on screen
-	// at once (impacts during a firefight), so warn early.
-	String warning;
-	bool heavy = false;
-	if (max_particles > 4000 || overdraw > 12.0) {
-		heavy = true;
-		warning = TTR("Heavy effect: reduce Amount or particle size; several of these on screen will cost a lot of GPU time.");
-	} else if (max_particles > 1500 || overdraw > 5.0 || emitters > 8) {
-		warning = TTR("Moderately heavy effect: fine as a one-off, but watch out if it plays often (impacts, muzzle flashes).");
-	}
-	preview_stats_label->set_text(warning.is_empty() ? text : String::utf8("⚠ ") + text);
-	preview_stats_label->set_modulate(Color(1, 1, 1, warning.is_empty() ? 0.6 : 1.0));
-	if (warning.is_empty()) {
+
+	// Short summary next to the transport controls.
+	// Judged by the worse of this view and a close-up: fill cost grows fast
+	// as the camera gets near.
+	const double worst_gpu = MAX(peak_gpu, close_peak_gpu);
+	const bool heavy = worst_gpu >= COST_EFFECT_GPU_HEAVY || peak_cpu >= COST_EFFECT_CPU_HEAVY;
+	const bool warn = worst_gpu >= COST_EFFECT_GPU_WARN || peak_cpu >= COST_EFFECT_CPU_WARN;
+	String text = vformat(TTR("%d tracks, ~%d / %d particles, GPU ~%s"), visible_tracks, int(Math::round(now_live)), max_particles, format_ms(now_gpu));
+	preview_stats_label->set_text(warn ? String::utf8("⚠ ") + text : text);
+	preview_stats_label->set_modulate(Color(1, 1, 1, warn ? 1.0 : 0.6));
+	if (!warn) {
 		preview_stats_label->remove_theme_color_override(SceneStringName(font_color));
 	} else {
 		preview_stats_label->add_theme_color_override(SceneStringName(font_color), preview_stats_label->get_theme_color(heavy ? SNAME("error_color") : SNAME("warning_color"), EditorStringName(Editor)));
 	}
-	String tooltip = TTR("Visible tracks, estimated live / maximum particles of visible emitters, estimated overdraw (how many times the particles cover the whole preview image at this camera distance), draw calls and primitives rendered in the preview.");
-	if (!warning.is_empty()) {
-		tooltip += "\n\n" + warning;
+	preview_stats_label->set_tooltip_text(TTR("Visible tracks, estimated live / maximum particles and estimated GPU time of the effect right now. Details in the Performance Info box over the preview (View menu)."));
+
+	// Measured render time of the preview viewport (includes the grid, floor
+	// and post effects, at the preview's own resolution).
+	String measured;
+	if (preview_viewport) {
+		const RID rid = preview_viewport->get_viewport_rid();
+		const double gpu = RS::get_singleton()->viewport_get_measured_render_time_gpu(rid);
+		const double cpu = RS::get_singleton()->viewport_get_measured_render_time_cpu(rid);
+		preview_measured_gpu_ms = preview_measured_gpu_ms <= 0.0 ? gpu : Math::lerp(preview_measured_gpu_ms, gpu, 0.3);
+		preview_measured_cpu_ms = preview_measured_cpu_ms <= 0.0 ? cpu : Math::lerp(preview_measured_cpu_ms, cpu, 0.3);
+		if (preview_measured_gpu_ms > 0.0) {
+			const Vector2i size = preview_viewport->get_size();
+			measured = vformat(TTR("Preview render %dx%d (measured): GPU %s, CPU %s"), size.x, size.y, format_ms(preview_measured_gpu_ms), format_ms(preview_measured_cpu_ms));
+		}
 	}
-	preview_stats_label->set_tooltip_text(tooltip);
+
+	String bbcode = "[b]" + TTR("Cost estimate") + "[/b] [color=#ffffff88]" + TTR("one effect, 2560x1440, this camera distance") + "[/color]\n";
+	bbcode += "GPU  " + cost_color_tag(now_gpu, COST_EFFECT_GPU_WARN, COST_EFFECT_GPU_HEAVY) + format_ms(now_gpu) + "[/color]   " + TTR("peak") + " " + cost_color_tag(peak_gpu, COST_EFFECT_GPU_WARN, COST_EFFECT_GPU_HEAVY) + format_ms(peak_gpu) + "[/color] " + vformat(TTR("at %s s"), String::num(peak_time, 2)) + "\n";
+	bbcode += "     " + vformat(TTR("close-up (%s m, game FOV): peak"), String::num(COST_CLOSE_UP_DISTANCE, 0)) + " " + cost_color_tag(close_peak_gpu, COST_EFFECT_GPU_WARN, COST_EFFECT_GPU_HEAVY) + format_ms(close_peak_gpu) + "[/color]\n";
+	bbcode += "CPU  " + cost_color_tag(now_cpu, COST_EFFECT_CPU_WARN, COST_EFFECT_CPU_HEAVY) + format_ms(now_cpu) + "[/color]   " + TTR("peak") + " " + cost_color_tag(peak_cpu, COST_EFFECT_CPU_WARN, COST_EFFECT_CPU_HEAVY) + format_ms(peak_cpu) + "[/color]\n";
+	bbcode += vformat(TTR("Particles ~%d / %d, overdraw %sx (peak %sx)"), int(Math::round(now_live)), max_particles, String::num(now_overdraw, now_overdraw < 10.0 ? 1 : 0), String::num(peak_overdraw, peak_overdraw < 10.0 ? 1 : 0));
+	if (preview_viewport) {
+		const int draw_calls = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_DRAW_CALLS_IN_FRAME);
+		const int primitives = preview_viewport->get_render_info(Viewport::RENDER_INFO_TYPE_VISIBLE, Viewport::RENDER_INFO_PRIMITIVES_IN_FRAME);
+		bbcode += vformat(TTR(", %d draws, %s tris"), draw_calls, primitives >= 1000 ? String::num(primitives / 1000.0, 1) + "k" : itos(primitives));
+	}
+	if (!measured.is_empty()) {
+		bbcode += "\n[color=#ffffff88]" + measured + "[/color]";
+	}
+	if (heavy) {
+		bbcode += "\n[color=#ff6b6b]" + TTR("Heavy: several of these on screen at once will cost a lot of frame time.") + "[/color]";
+	} else if (warn) {
+		bbcode += "\n[color=#ffcc55]" + TTR("Moderate: fine as a one-off, watch out if it plays often (impacts, muzzle flashes).") + "[/color]";
+	}
+	for (int i = 0; i < MIN(issues.size(), 5); i++) {
+		bbcode += "\n" + issues[i];
+	}
+	if (issues.size() > 5) {
+		bbcode += "\n" + vformat(TTR("... and %d more"), issues.size() - 5);
+	}
+	_update_preview_perf(bbcode);
+}
+
+void FPSStudioParticleEditorPlugin::_update_preview_perf(const String &p_bbcode) {
+	if (!preview_perf_panel || !preview_perf_label) {
+		return;
+	}
+	const bool show = preview_show_perf && !p_bbcode.is_empty();
+	preview_perf_panel->set_visible(show);
+	if (show && preview_perf_label->get_text() != p_bbcode) {
+		preview_perf_label->set_text(p_bbcode);
+		preview_perf_panel->reset_size();
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_layout_preview_overlays() {
+	if (!preview_container) {
+		return;
+	}
+	const Size2 size = preview_container->get_size();
+	if (preview_compare) {
+		preview_compare->set_position(Point2());
+		preview_compare->set_size(size);
+	}
+	if (preview_perf_panel) {
+		preview_perf_panel->set_position(Point2(8, 8) * EDSCALE);
+		preview_perf_label->set_custom_minimum_size(Size2(MIN(real_t(460) * EDSCALE, MAX(real_t(120), size.x - 16 * EDSCALE)), 0));
+		preview_perf_panel->reset_size();
+	}
+}
+
+// Markers live in the effect (root metadata), so they are part of the
+// document: undoable and saved with the file.
+void FPSStudioParticleEditorPlugin::_on_timeline_markers_committed(const Array &p_old, const Array &p_new) {
+	Node *effect = _get_effect_root();
+	if (!effect) {
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action_for_history(TTR("Edit Timeline Markers"), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_method(this, "_apply_timeline_markers", effect, p_new);
+	undo_redo->add_undo_method(this, "_apply_timeline_markers", effect, p_old);
+	undo_redo->commit_action();
+}
+
+void FPSStudioParticleEditorPlugin::_apply_timeline_markers(Object *p_effect, const Array &p_markers) {
+	Node *effect = Object::cast_to<Node>(p_effect);
+	if (!effect) {
+		return;
+	}
+	if (p_markers.is_empty()) {
+		effect->remove_meta(SNAME("_fps_timeline_markers"));
+	} else {
+		effect->set_meta(SNAME("_fps_timeline_markers"), p_markers.duplicate(true));
+	}
+	if (effect == _get_effect_root()) {
+		_mark_document_dirty();
+		if (timeline_view) {
+			timeline_view->refresh();
+		}
+	}
+}
+
+// New random look for the next run, unless Lock Seed keeps the current one.
+void FPSStudioParticleEditorPlugin::_reseed_preview_for_next_run() {
+	if (!preview_lock_seed) {
+		reseed_preview_emitters(preview_effect);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_lock_seed_toggled(bool p_locked) {
+	preview_lock_seed = p_locked;
+	if (preview_lock_seed_toggle) {
+		preview_lock_seed_toggle->set_pressed_no_signal(p_locked);
+	}
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_particle", "lock_seed", p_locked);
+}
+
+// Another random look at the same moment (e.g. to browse variants of a
+// paused frame); with Lock Seed on it becomes the kept look.
+void FPSStudioParticleEditorPlugin::_on_new_seed_pressed() {
+	if (!preview_effect) {
+		return;
+	}
+	reseed_preview_emitters(preview_effect);
+	_restart_preview_at(preview_time);
+}
+
+void FPSStudioParticleEditorPlugin::_take_compare_snapshot() {
+	if (!preview_viewport || !preview_compare) {
+		return;
+	}
+	const Ref<Image> image = preview_viewport->get_texture()->get_image();
+	if (image.is_null() || image->is_empty()) {
+		return;
+	}
+	preview_compare->set_snapshot(ImageTexture::create_from_image(image), vformat(TTR("snapshot at %s s"), String::num(preview_time, 2)));
+	preview_compare->set_visible(true);
+	_layout_preview_overlays();
+	if (preview_compare_menu) {
+		PopupMenu *popup = preview_compare_menu->get_popup();
+		popup->set_item_disabled(popup->get_item_index(1), false);
+		popup->set_item_checked(popup->get_item_index(1), true);
+		popup->set_item_disabled(popup->get_item_index(2), false);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_compare_menu_id(int p_id) {
+	if (!preview_compare || !preview_compare_menu) {
+		return;
+	}
+	PopupMenu *popup = preview_compare_menu->get_popup();
+	switch (p_id) {
+		case 0:
+			_take_compare_snapshot();
+			break;
+		case 1: {
+			const bool show = !popup->is_item_checked(popup->get_item_index(1)) && preview_compare->has_snapshot();
+			popup->set_item_checked(popup->get_item_index(1), show);
+			preview_compare->set_visible(show);
+		} break;
+		case 2:
+			preview_compare->clear_snapshot();
+			preview_compare->set_visible(false);
+			popup->set_item_checked(popup->get_item_index(1), false);
+			popup->set_item_disabled(popup->get_item_index(1), true);
+			popup->set_item_disabled(popup->get_item_index(2), true);
+			break;
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_on_convert_shader_pressed() {
@@ -6247,7 +6746,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			if (preview_loop) {
 				const double span = MAX(0.01, loop_to - loop_from);
 				preview_time = loop_from + Math::fmod(preview_time - loop_to, span);
-				reseed_preview_emitters(preview_effect);
+				_reseed_preview_for_next_run();
 				_restart_preview_at(preview_time);
 			} else {
 				// Loop off: stop on the end (flag) frame and hold it.
@@ -6319,9 +6818,12 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 void FPSStudioParticleEditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("_on_emitter_name_changed"), &FPSStudioParticleEditorPlugin::_on_emitter_name_changed);
 	ClassDB::bind_method(D_METHOD("bake_preset_scene", "preset", "path"), &FPSStudioParticleEditorPlugin::bake_preset_scene);
+	// Opens an effect scene in the workspace (asks first when there are unsaved changes); for tools and tests.
+	ClassDB::bind_method(D_METHOD("open_effect", "path"), &FPSStudioParticleEditorPlugin::_request_load_particle_scene);
 	ClassDB::bind_method(D_METHOD("_on_effect_name_changed"), &FPSStudioParticleEditorPlugin::_on_effect_name_changed);
 	ClassDB::bind_method(D_METHOD("_on_emitter_hierarchy_history_changed", "preferred_emitter", "document_serial"), &FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed);
 	ClassDB::bind_method(D_METHOD("_apply_emitter_timing", "emitter", "delay", "duration"), &FPSStudioParticleEditorPlugin::_apply_emitter_timing);
+	ClassDB::bind_method(D_METHOD("_apply_timeline_markers", "effect", "markers"), &FPSStudioParticleEditorPlugin::_apply_timeline_markers);
 	ClassDB::bind_method(D_METHOD("_assign_level_owners", "instance", "owner"), &FPSStudioParticleEditorPlugin::_assign_level_owners);
 	ClassDB::bind_method(D_METHOD("_set_emitter_visible", "emitter", "visible"), &FPSStudioParticleEditorPlugin::_set_emitter_visible);
 }
@@ -7087,6 +7589,9 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->add_check_item(TTR("Emitter Bounds"), 12);
 		view_popup->add_check_item(TTR("Floor"), 15);
 		view_popup->set_item_tooltip(view_popup->get_item_index(15), TTR("Show a ground plane to judge height, lighting and decals."));
+		view_popup->add_check_item(TTR("Performance Info"), 18);
+		view_popup->set_item_checked(view_popup->get_item_index(18), preview_show_perf);
+		view_popup->set_item_tooltip(view_popup->get_item_index(18), TTR("Estimated GPU and CPU cost of the effect over the preview, with what makes it expensive (red = heavy)."));
 		view_popup->add_check_item(TTR("Damage & Shake Radius"), 14);
 		view_popup->set_item_checked(view_popup->get_item_index(14), preview_show_radii);
 		view_popup->set_item_tooltip(view_popup->get_item_index(14), TTR("Rings around Damage (red) and Camera Shake (blue) events: inner = full strength, outer = fade out."));
@@ -7104,6 +7609,20 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_view_menu_id));
 	}
 	preview_toolbar->add_child(preview_view_menu);
+	preview_compare_menu = memnew(MenuButton);
+	preview_compare_menu->set_text(TTR("A/B"));
+	preview_compare_menu->set_flat(false);
+	preview_compare_menu->set_tooltip_text(TTR("Compare before / after: take a snapshot of the preview (A), change the effect, then drag the divider over the live preview (B)."));
+	{
+		PopupMenu *compare_popup = preview_compare_menu->get_popup();
+		compare_popup->add_item(TTR("Take Snapshot (A)"), 0);
+		compare_popup->add_check_item(TTR("Show A/B Wipe"), 1);
+		compare_popup->set_item_disabled(-1, true);
+		compare_popup->add_item(TTR("Clear Snapshot"), 2);
+		compare_popup->set_item_disabled(-1, true);
+		compare_popup->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_compare_menu_id));
+	}
+	preview_toolbar->add_child(preview_compare_menu);
 	texture_generator_button = memnew(Button);
 	texture_generator_button->set_text(TTR("Texture Generator..."));
 	texture_generator_button->set_tooltip_text(TTR("Create and export a procedural VFX texture for a particle emitter."));
@@ -7136,6 +7655,34 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	// Without a 3D listener AudioStreamPlayer3D nodes in the preview stay silent.
 	preview_viewport->set_as_audio_listener_3d(true);
 	preview_container->add_child(preview_viewport);
+	// Real render time of the preview, shown next to the estimate.
+	RS::get_singleton()->viewport_set_measure_render_time(preview_viewport->get_viewport_rid(), true);
+	preview_compare = memnew(FPSPreviewCompareOverlay);
+	preview_compare->set_visible(false);
+	preview_container->add_child(preview_compare);
+	preview_perf_panel = memnew(PanelContainer);
+	{
+		Ref<StyleBoxFlat> perf_style;
+		perf_style.instantiate();
+		perf_style->set_bg_color(Color(0.0, 0.0, 0.0, 0.55));
+		perf_style->set_corner_radius_all(int(4 * EDSCALE));
+		perf_style->set_content_margin_all(6 * EDSCALE);
+		preview_perf_panel->add_theme_style_override(SceneStringName(panel), perf_style);
+	}
+	preview_perf_panel->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	preview_perf_panel->set_visible(false);
+	preview_container->add_child(preview_perf_panel);
+	preview_perf_label = memnew(RichTextLabel);
+	preview_perf_label->set_use_bbcode(true);
+	preview_perf_label->set_fit_content(true);
+	preview_perf_label->set_scroll_active(false);
+	preview_perf_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	preview_perf_label->set_mouse_filter(Control::MOUSE_FILTER_IGNORE);
+	preview_perf_label->add_theme_font_size_override(SNAME("normal_font_size"), 12 * EDSCALE);
+	preview_perf_label->add_theme_font_size_override(SNAME("bold_font_size"), 12 * EDSCALE);
+	preview_perf_panel->add_child(preview_perf_label);
+	// The container only sizes its SubViewport; the overlays follow by hand.
+	preview_container->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_layout_preview_overlays));
 	preview_root = memnew(Node3D);
 	preview_root->set_name("ParticlePreviewWorld");
 	preview_viewport->add_child(preview_root);
@@ -7304,6 +7851,20 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_loop_toggle->set_pressed(preview_loop);
 	preview_loop_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_loop_toggled));
 	transport->add_child(preview_loop_toggle);
+	preview_lock_seed = EditorSettings::get_singleton() ? bool(EditorSettings::get_singleton()->get_project_metadata("fps_studio_particle", "lock_seed", false)) : false;
+	preview_lock_seed_toggle = memnew(CheckButton);
+	preview_lock_seed_toggle->set_text(TTR("Lock Seed"));
+	preview_lock_seed_toggle->set_pressed(preview_lock_seed);
+	preview_lock_seed_toggle->set_tooltip_text(TTR("Keep the same random look on Restart and Loop, so a change you make is the only difference you see. Off: every run looks a little different, as in the game. Effects saved with a fixed seed always look the same."));
+	preview_lock_seed_toggle->connect(SceneStringName(toggled), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_lock_seed_toggled));
+	transport->add_child(preview_lock_seed_toggle);
+	preview_new_seed_button = memnew(Button);
+	preview_new_seed_button->set_flat(true);
+	preview_new_seed_button->set_meta("icon_name", "RandomNumberGenerator");
+	preview_new_seed_button->set_tooltip_text(TTR("New random look at the current moment (with Lock Seed on, this look is kept)."));
+	preview_new_seed_button->connect(SceneStringName(pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_new_seed_pressed));
+	transport->add_child(preview_new_seed_button);
+	layout_icon_buttons.push_back(preview_new_seed_button);
 
 	// Timeline & Logic live in a panel that can be closed, maximized (hiding
 	// the preview) or detached into its own window through WindowWrapper.
@@ -7425,6 +7986,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_view->connect("play_toggle_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_play_toggle));
 	timeline_view->connect("restart_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_restart_pressed));
 	timeline_view->connect("loop_region_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed));
+	timeline_view->connect("markers_committed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_markers_committed));
 	timeline_scroll->add_child(timeline_view);
 	// The timeline draws its ruler at the visible top; redraw while scrolling.
 	timeline_scroll->get_v_scroll_bar()->connect(SceneStringName(value_changed), callable_mp((CanvasItem *)timeline_view, &CanvasItem::queue_redraw).unbind(1));
