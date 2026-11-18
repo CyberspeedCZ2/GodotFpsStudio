@@ -51,6 +51,9 @@ public:
 
 	void set_curve(Ref<Curve> p_curve);
 	Ref<Curve> get_curve();
+	// FPS Studio: show X in other units (e.g. seconds of a particle's life:
+	// scale = lifetime, suffix = " s"). Scale <= 0 shows the curve's own X.
+	void set_x_display(float p_scale, const String &p_suffix);
 
 	Size2 get_minimum_size() const override;
 
@@ -143,6 +146,9 @@ private:
 
 	bool snap_enabled = false;
 	int snap_count = 10;
+	float x_display_scale = 0.0;
+	String x_display_suffix;
+	String _format_x(real_t p_x) const;
 };
 
 // CurveEdit + toolbar
@@ -168,6 +174,7 @@ protected:
 public:
 	static const int DEFAULT_SNAP;
 	void set_curve(const Ref<Curve> &p_curve);
+	void set_x_display(float p_scale, const String &p_suffix) { curve_editor_rect->set_x_display(p_scale, p_suffix); }
 
 	CurveEditor();
 };

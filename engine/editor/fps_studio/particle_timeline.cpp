@@ -14,7 +14,10 @@
 #include "editor/editor_string_names.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/node_3d.h"
+#include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/particle_effect_3d.h"
+#include "scene/resources/curve_texture.h"
+#include "scene/resources/particle_process_material.h"
 #include "scene/gui/line_edit.h"
 #include "scene/gui/popup.h"
 #include "scene/gui/popup_menu.h"
@@ -358,7 +361,8 @@ String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 	const String active = active_end < 0.0 ? TTR("continuous") : vformat(TTR("%s s"), String::num(active_end - start, 2));
 	String text = vformat(TTR("%s\nStart: %s s\nActive: %s"), track->get_name(), String::num(start, 2), active);
 	if (ParticleEffect3D::is_emitter(track)) {
-		text += vformat(TTR("\nParticles: %d, lifetime %s s"), int(track->get("amount")), String::num(double(track->get("lifetime")), 2));
+		text += vformat(TTR("\nParticles: %d, each lives %s s (the thin tail)"), int(track->get("amount")), String::num(double(track->get("lifetime")), 2));
+		text += "\n" + TTR("White line: Alpha over Life of the first particle (diamonds are its points). Blue ticks: Scale over Life points.");
 	}
 	return text + "\n\n" + TTR("Drag the bar to change the start, its right edge to change the length (Shift: no snapping). Double-click resets the length. Right-click for more.");
 }
@@ -1135,6 +1139,69 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 	}
 }
 
+static Ref<Curve> get_curve_of(const Ref<Texture2D> &p_texture) {
+	const CurveTexture *curve_texture = Object::cast_to<CurveTexture>(p_texture.ptr());
+	return curve_texture ? curve_texture->get_curve() : Ref<Curve>();
+}
+
+void FPSParticleTimeline::_draw_life_curves(Node *p_track, double p_start, real_t p_row_y, float p_alpha) {
+	const GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_track);
+	const ParticleProcessMaterial *process = gpu ? Object::cast_to<ParticleProcessMaterial>(gpu->get_process_material().ptr()) : nullptr;
+	if (!process) {
+		return;
+	}
+	const double lifetime = MAX(0.001, gpu->get_lifetime());
+	const real_t x0 = _time_to_x(p_start);
+	const real_t x1 = _time_to_x(p_start + lifetime);
+	if (x1 < _name_width() || x0 > get_size().x || x1 - x0 < 8 * EDSCALE) {
+		return;
+	}
+	const real_t top = p_row_y + _row_height() * 0.12;
+	const real_t height = _row_height() * 0.76;
+	const real_t left = _name_width();
+	const real_t right = get_size().x - 2 * EDSCALE;
+	const Ref<Curve> alpha_curve = get_curve_of(process->get_alpha_curve());
+	if (alpha_curve.is_valid() && alpha_curve->get_point_count() > 0) {
+		const Color line_color(1, 1, 1, 0.55 * p_alpha);
+		Vector<Point2> line;
+		const int steps = CLAMP(int((x1 - x0) / (3 * EDSCALE)), 8, 200);
+		const real_t max_value = MAX(real_t(0.001), alpha_curve->get_max_value());
+		for (int i = 0; i <= steps; i++) {
+			const real_t t = real_t(i) / steps;
+			const real_t x = x0 + (x1 - x0) * t;
+			if (x < left || x > right) {
+				continue;
+			}
+			const real_t value = CLAMP(alpha_curve->sample_baked(t) / max_value, real_t(0.0), real_t(1.0));
+			line.push_back(Point2(x, top + height * (1.0 - value)));
+		}
+		if (line.size() >= 2) {
+			draw_polyline(line, line_color, 1.0 * EDSCALE, true);
+		}
+		for (int i = 0; i < alpha_curve->get_point_count(); i++) {
+			const Vector2 point = alpha_curve->get_point_position(i);
+			const real_t x = x0 + (x1 - x0) * point.x;
+			if (x < left || x > right) {
+				continue;
+			}
+			const real_t y = top + height * (1.0 - CLAMP(point.y / max_value, real_t(0.0), real_t(1.0)));
+			const real_t r = 3 * EDSCALE;
+			Vector<Point2> diamond = { Point2(x, y - r), Point2(x + r, y), Point2(x, y + r), Point2(x - r, y) };
+			draw_colored_polygon(diamond, Color(1, 1, 1, 0.85 * p_alpha));
+		}
+	}
+	const Ref<Curve> scale_curve = get_curve_of(process->get_param_texture(ParticleProcessMaterial::PARAM_SCALE));
+	if (scale_curve.is_valid()) {
+		for (int i = 0; i < scale_curve->get_point_count(); i++) {
+			const real_t x = x0 + (x1 - x0) * scale_curve->get_point_position(i).x;
+			if (x < left || x > right) {
+				continue;
+			}
+			draw_line(Point2(x, p_row_y + _row_height() * 0.8), Point2(x, p_row_y + _row_height() * 0.96), Color(0.6, 0.9, 1.0, 0.8 * p_alpha), 2 * EDSCALE);
+		}
+	}
+}
+
 void FPSParticleTimeline::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_MOUSE_EXIT: {
@@ -1244,14 +1311,21 @@ void FPSParticleTimeline::_notification(int p_what) {
 					bar_style->set_border_color(Color(1, 1, 1, 0.8));
 					draw_style_box(bar_style, Rect2(x_start, bar_top, MAX(real_t(4.0), x_end - x_start), bar_height));
 					bar_style->set_border_width_all(0);
-					// Label inside the bar when it fits.
+					// Label inside the bar when it fits: particle count and how long
+					// each particle lives (the thin tail), shorter when narrow.
 					String label;
+					String short_label;
 					if (ParticleEffect3D::is_emitter(track)) {
-						label = vformat(U"%d × %ss", int(track->get("amount")), String::num(double(track->get("lifetime")), 2));
+						const int amount = int(track->get("amount"));
+						const String life = String::num(double(track->get("lifetime")), 2);
+						label = amount == 1 ? vformat(TTR("1 particle · life %s s"), life) : vformat(TTR("%d particles · life %s s"), amount, life);
+						short_label = vformat(TTR("life %s s"), life);
 					}
 					const real_t label_width = font->get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8).x;
-					if (!label.is_empty() && x_end - x_start > label_width + 12 * EDSCALE) {
-						draw_string(font, Point2(x_start + 6 * EDSCALE, bar_top + bar_height * 0.72), label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8, Color(0, 0, 0, 0.75 * alpha));
+					const real_t short_width = font->get_string_size(short_label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8).x;
+					const String shown = x_end - x_start > label_width + 12 * EDSCALE ? label : (x_end - x_start > short_width + 12 * EDSCALE ? short_label : String());
+					if (!shown.is_empty()) {
+						draw_string(font, Point2(x_start + 6 * EDSCALE, bar_top + bar_height * 0.72), shown, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8, Color(0, 0, 0, 0.75 * alpha));
 					}
 					if (active_end < 0.0) {
 						draw_string(font, Point2(x_end - 16 * EDSCALE, bar_top + bar_height * 0.76), U"∞", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0, 0, 0, 0.7 * alpha));
@@ -1259,6 +1333,10 @@ void FPSParticleTimeline::_notification(int p_what) {
 						draw_rect(Rect2(x_end - 3 * EDSCALE, bar_top + 3 * EDSCALE, 2 * EDSCALE, bar_height - 6 * EDSCALE), Color(1, 1, 1, 0.6 * alpha));
 					}
 				}
+				// Over-life curves of the first particle (born at the start):
+				// the Alpha over Life shape as a line, its points as diamonds,
+				// Scale over Life points as ticks at the bottom.
+				_draw_life_curves(track, start, y, alpha);
 			}
 
 			// Effect end marker.

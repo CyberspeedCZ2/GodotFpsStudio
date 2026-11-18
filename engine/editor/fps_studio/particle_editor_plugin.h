@@ -581,6 +581,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_curve_changed();
 	void _on_add_alpha_curve_pressed();
 	void _on_particle_color_fix_pressed();
+	void _update_curve_time_display();
 	void _on_add_scale_curve_pressed();
 	void _on_alpha_curve_preset_selected(int p_preset_id);
 	void _on_scale_curve_preset_selected(int p_preset_id);

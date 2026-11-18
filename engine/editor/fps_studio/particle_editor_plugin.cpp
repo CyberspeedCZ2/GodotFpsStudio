@@ -1060,6 +1060,7 @@ void FPSStudioParticleEditorPlugin::_mark_document_dirty() {
 
 void FPSStudioParticleEditorPlugin::_flush_document_refresh() {
 	document_refresh_queued = false;
+	_update_curve_time_display(); // Lifetime may have changed.
 	_update_preview_duration();
 	_update_document_header();
 	_update_emitter_tree();
@@ -5381,10 +5382,24 @@ void FPSStudioParticleEditorPlugin::_on_particle_color_fix_pressed() {
 	undo_redo->commit_action();
 }
 
+// Over-life curves are in parts of a particle's life (0-1); show their X in
+// seconds of the emitter's Lifetime, so a point reads as "1.5 s after birth".
+void FPSStudioParticleEditorPlugin::_update_curve_time_display() {
+	Node *emitter = _get_edited_emitter();
+	const double lifetime = emitter && ParticleEffect3D::is_emitter(emitter) ? double(emitter->get("lifetime")) : 0.0;
+	if (alpha_curve_editor) {
+		alpha_curve_editor->set_x_display(lifetime, " s");
+	}
+	if (scale_curve_editor) {
+		scale_curve_editor->set_x_display(lifetime, " s");
+	}
+}
+
 void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 	if (!curve_panel) {
 		return;
 	}
+	_update_curve_time_display();
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(_get_edited_emitter());
 	Ref<ParticleProcessMaterial> material;
 	if (gpu) {

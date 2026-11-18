@@ -99,6 +99,7 @@ private:
 	void _open_marker_rename(int p_index);
 	void _on_marker_rename_submitted(const String &p_text);
 	void _jump(int p_dir, bool p_markers_only);
+	void _draw_life_curves(Node *p_track, double p_start, real_t p_row_y, float p_alpha);
 
 	ObjectID effect_id;
 	ObjectID selected_id;

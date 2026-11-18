@@ -817,7 +817,7 @@ void CurveEdit::_redraw() {
 
 	for (int i = 0; i <= grid_steps.x; ++i) {
 		real_t x = curve->get_min_domain() + i * step_size.x;
-		draw_string(font, get_view_pos(Vector2(x, curve->get_min_value())) + Vector2(pad, font_height - pad), String::num(x, 2), HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, text_color);
+		draw_string(font, get_view_pos(Vector2(x, curve->get_min_value())) + Vector2(pad, font_height - pad), _format_x(x), HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, text_color);
 	}
 
 	for (int i = 0; i <= grid_steps.y; ++i) {
@@ -910,7 +910,7 @@ void CurveEdit::_redraw() {
 		float width = view_size.x - 50 * EDSCALE;
 		text_color.a *= 0.8;
 
-		draw_string(font, Vector2(25 * EDSCALE, font_height - Math::round(2 * EDSCALE)), vformat("(%.2f, %.2f)", point_pos.x, point_pos.y), HORIZONTAL_ALIGNMENT_CENTER, width, font_size, text_color);
+		draw_string(font, Vector2(25 * EDSCALE, font_height - Math::round(2 * EDSCALE)), vformat("(%s, %.2f)", _format_x(point_pos.x), point_pos.y), HORIZONTAL_ALIGNMENT_CENTER, width, font_size, text_color);
 
 	} else if (selected_index != -1 && selected_tangent_index != TANGENT_NONE) {
 		float width = view_size.x - 50 * EDSCALE;
@@ -952,6 +952,22 @@ void CurveEditor::_set_snap_count(int p_snap_count) {
 
 void CurveEditor::_on_preset_item_selected(int p_preset_id) {
 	curve_editor_rect->use_preset(p_preset_id);
+}
+
+void CurveEdit::set_x_display(float p_scale, const String &p_suffix) {
+	if (Math::is_equal_approx(x_display_scale, p_scale) && x_display_suffix == p_suffix) {
+		return;
+	}
+	x_display_scale = p_scale;
+	x_display_suffix = p_suffix;
+	queue_redraw();
+}
+
+String CurveEdit::_format_x(real_t p_x) const {
+	if (x_display_scale <= 0.0) {
+		return String::num(p_x, 2);
+	}
+	return String::num(p_x * x_display_scale, 2) + x_display_suffix;
 }
 
 void CurveEditor::set_curve(const Ref<Curve> &p_curve) {
