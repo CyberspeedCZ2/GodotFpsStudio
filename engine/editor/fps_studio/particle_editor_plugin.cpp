@@ -5467,18 +5467,20 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 	}
 	if (mouse_button.is_valid()) {
 		const MouseButton button_index = mouse_button->get_button_index();
-		if (button_index == MouseButton::LEFT || button_index == MouseButton::RIGHT) {
-			preview_orbit_dragging = mouse_button->is_pressed();
-			if (mouse_button->is_pressed()) {
-				preview_pan_dragging = false;
-			}
-			preview_container->accept_event();
-			return;
-		}
-		if (button_index == MouseButton::MIDDLE) {
-			preview_pan_dragging = mouse_button->is_pressed();
-			if (mouse_button->is_pressed()) {
+		// Left orbits, right pans, middle held zooms (drag up: closer).
+		if (button_index == MouseButton::LEFT || button_index == MouseButton::RIGHT || button_index == MouseButton::MIDDLE) {
+			const bool pressed = mouse_button->is_pressed();
+			if (pressed) {
 				preview_orbit_dragging = false;
+				preview_pan_dragging = false;
+				preview_zoom_dragging = false;
+			}
+			if (button_index == MouseButton::LEFT) {
+				preview_orbit_dragging = pressed;
+			} else if (button_index == MouseButton::RIGHT) {
+				preview_pan_dragging = pressed;
+			} else {
+				preview_zoom_dragging = pressed;
 			}
 			preview_container->accept_event();
 			return;
@@ -5491,18 +5493,24 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 		}
 	}
 	Ref<InputEventMouseMotion> mouse_motion = p_event;
-	if (mouse_motion.is_valid() && (preview_orbit_dragging || preview_pan_dragging)) {
+	if (mouse_motion.is_valid() && (preview_orbit_dragging || preview_pan_dragging || preview_zoom_dragging)) {
 		const BitField<MouseButtonMask> button_mask = mouse_motion->get_button_mask();
-		if (preview_pan_dragging && !button_mask.has_flag(MouseButtonMask::MIDDLE)) {
+		if (preview_pan_dragging && !button_mask.has_flag(MouseButtonMask::RIGHT)) {
 			preview_pan_dragging = false;
 			return;
 		}
-		if (preview_orbit_dragging && !button_mask.has_flag(MouseButtonMask::LEFT) && !button_mask.has_flag(MouseButtonMask::RIGHT)) {
+		if (preview_zoom_dragging && !button_mask.has_flag(MouseButtonMask::MIDDLE)) {
+			preview_zoom_dragging = false;
+			return;
+		}
+		if (preview_orbit_dragging && !button_mask.has_flag(MouseButtonMask::LEFT)) {
 			preview_orbit_dragging = false;
 			return;
 		}
 		const Vector2 relative = mouse_motion->get_relative();
-		if (preview_pan_dragging) {
+		if (preview_zoom_dragging) {
+			preview_camera_distance = CLAMP(preview_camera_distance * Math::exp(relative.y * 0.01), 0.2, 120.0);
+		} else if (preview_pan_dragging) {
 			const real_t viewport_height = MAX(1.0, preview_container->get_size().height);
 			const real_t world_per_pixel = 2.0 * preview_camera_distance * Math::tan(Math::deg_to_rad(preview_camera->get_fov()) * 0.5) / viewport_height;
 			const Basis camera_basis = preview_camera->get_global_transform().basis;
@@ -7874,7 +7882,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	preview_container->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	preview_container->set_mouse_filter(Control::MOUSE_FILTER_STOP);
 	preview_container->set_focus_mode(Control::FOCUS_ALL);
-	preview_container->set_tooltip_text(TTR("Drag with the left or right mouse button to orbit, middle mouse button to pan, and use the wheel to zoom."));
+	preview_container->set_tooltip_text(TTR("Left mouse button: orbit. Right mouse button: pan. Hold the middle mouse button and drag up / down (or use the wheel) to zoom."));
 	preview_container->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_preview_gui_input));
 	preview_panel->add_child(preview_container);
 	preview_viewport = memnew(SubViewport);

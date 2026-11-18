@@ -319,6 +319,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool preview_loop = true;
 	bool preview_orbit_dragging = false;
 	bool preview_pan_dragging = false;
+	bool preview_zoom_dragging = false; // Middle button held: drag up / down zooms.
 	bool rebuilding_preview = false;
 	ObjectID preview_source_id; // Effect root the preview copy was made from.
 	ObjectID particle_graph_shader_id;
