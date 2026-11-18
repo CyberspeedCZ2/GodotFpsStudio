@@ -247,7 +247,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	// Cost info over the 3D preview (View > Performance Info).
 	PanelContainer *preview_perf_panel = nullptr;
 	RichTextLabel *preview_perf_label = nullptr;
-	bool preview_show_perf = true;
+	bool preview_show_perf = false; // Off by default; the View menu choice is remembered.
 	double preview_measured_gpu_ms = 0.0; // Smoothed render time of the preview viewport.
 	double preview_measured_cpu_ms = 0.0;
 	// Lock Seed: Restart and Loop keep the same random look.
