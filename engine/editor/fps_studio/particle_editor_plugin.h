@@ -313,6 +313,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	bool module_stack_editing = false;
 	double preview_loop_start = 0.0; // Timeline loop region (end <= start = none).
 	double preview_loop_end = -1.0;
+	bool restoring_playback_range = false; // Opening an effect: don't overwrite its saved range.
 	bool preview_restart_queued = false; // Event metadata changed: replay at the current time.
 	double preview_time = 0.0;
 	double preview_duration = 5.0;

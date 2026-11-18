@@ -50,6 +50,7 @@ private:
 	void _set_playback_start(double p_time);
 	bool _is_on_start_flag(const Point2 &p_pos) const;
 	void _set_playback_end(double p_time);
+	double _snap_to_edges(double p_time, bool p_free) const;
 	bool _is_on_end_flag(const Point2 &p_pos) const;
 	enum RulerAction {
 		RULER_LOOP_START = 100,

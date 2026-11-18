@@ -1090,7 +1090,16 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 	effect_root_id = p_root ? p_root->get_instance_id() : ObjectID();
 	effect_path = p_path;
 	if (timeline_view) {
+		restoring_playback_range = true;
 		timeline_view->set_effect(p_root);
+		if (!p_path.is_empty()) {
+			const Dictionary ranges = EditorSettings::get_singleton()->get_project_metadata("fps_studio_particle", "playback_ranges", Dictionary());
+			const Vector2 range = ranges.get(p_path, Vector2(0, -1));
+			if (range.y > range.x) {
+				timeline_view->set_loop_region(range.x, range.y);
+			}
+		}
+		restoring_playback_range = false;
 	}
 	effect_dirty = p_dirty;
 	edited_emitter_id = ObjectID();
@@ -3854,6 +3863,17 @@ void FPSStudioParticleEditorPlugin::_on_timeline_scrub(double p_time) {
 void FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed(double p_start, double p_end) {
 	preview_loop_start = p_start;
 	preview_loop_end = p_end;
+	// Remembered per effect file in the project's editor metadata (not in the
+	// effect itself, so the game never sees it).
+	if (!restoring_playback_range && !effect_path.is_empty()) {
+		Dictionary ranges = EditorSettings::get_singleton()->get_project_metadata("fps_studio_particle", "playback_ranges", Dictionary());
+		if (p_end > p_start) {
+			ranges[effect_path] = Vector2(p_start, p_end);
+		} else {
+			ranges.erase(effect_path);
+		}
+		EditorSettings::get_singleton()->set_project_metadata("fps_studio_particle", "playback_ranges", ranges);
+	}
 	if (p_end > p_start && preview_effect && (preview_time < p_start || preview_time > p_end)) {
 		// Jump into the region so the change is visible right away.
 		preview_time = p_start;
@@ -4570,6 +4590,8 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	effect_path = save_path;
 	effect->set_scene_file_path(save_path);
 	effect_dirty = false;
+	_on_timeline_loop_region_changed(preview_loop_start, preview_loop_end); // The range goes with a Save As.
+
 	_remember_effect(save_path);
 	_update_document_ui();
 	EditorFileSystem::get_singleton()->scan_changes();
@@ -5230,6 +5252,15 @@ void FPSStudioParticleEditorPlugin::_on_curve_changed() {
 
 void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventKey> key = p_event;
+	if (key.is_valid() && key->is_pressed() && (key->get_keycode() == Key::COMMA || key->get_keycode() == Key::PERIOD)) {
+		// One frame (1/30 s) back / forward, Shift: 0.1 s; held down it repeats.
+		// Counted in whole steps: the time slider rounds to 0.01 s.
+		const double step = key->is_shift_pressed() ? 0.1 : 1.0 / 30.0;
+		const double dir = key->get_keycode() == Key::COMMA ? -1.0 : 1.0;
+		_on_timeline_scrub((Math::round(preview_time / step) + dir) * step);
+		preview_container->accept_event();
+		return;
+	}
 	if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
 		if (key->get_keycode() == Key::SPACE) {
 			_on_timeline_play_toggle();
@@ -6212,14 +6243,18 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		const double loop_from = has_region ? preview_loop_start : 0.0;
 		const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_end)) : preview_duration;
 		if (preview_time >= loop_to) {
-			if (preview_loop || has_region) {
+			if (preview_loop) {
 				const double span = MAX(0.01, loop_to - loop_from);
 				preview_time = loop_from + Math::fmod(preview_time - loop_to, span);
 				reseed_preview_emitters(preview_effect);
 				_restart_preview_at(preview_time);
 			} else {
-				preview_time = preview_duration;
+				// Loop off: stop on the end (flag) frame and hold it.
+				preview_time = loop_to;
 				_set_preview_playing(false);
+				if (has_region) {
+					_restart_preview_at(preview_time);
+				}
 			}
 		}
 		if (timeline) {

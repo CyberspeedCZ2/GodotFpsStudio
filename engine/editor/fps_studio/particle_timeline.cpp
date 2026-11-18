@@ -166,6 +166,45 @@ double FPSParticleTimeline::_snap(double p_value, bool p_shift) const {
 	return Math::snapped(p_value, TIMELINE_SNAP);
 }
 
+// Flags and the playhead catch the edges of the tracks (start, end of
+// emission, end of the last particle) within a few pixels, else the grid.
+// Shift moves them freely.
+double FPSParticleTimeline::_snap_to_edges(double p_time, bool p_free) const {
+	if (p_free) {
+		return p_time;
+	}
+	double best = p_time;
+	real_t best_px = 8 * EDSCALE;
+	auto consider = [&](double p_edge) {
+		if (p_edge < 0.0) {
+			return;
+		}
+		const real_t px = Math::abs(_time_to_x(p_edge) - _time_to_x(p_time));
+		if (px < best_px) {
+			best_px = px;
+			best = p_edge;
+		}
+	};
+	consider(0.0);
+	consider(content_length);
+	for (const ObjectID &id : track_ids) {
+		Node *track = Object::cast_to<Node>(ObjectDB::get_instance(id));
+		if (!track) {
+			continue;
+		}
+		const Node3D *track_3d = Object::cast_to<Node3D>(track);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
+		double start, active_end, visual_end;
+		ParticleEffect3D::get_track_window(track, start, active_end, visual_end);
+		consider(start);
+		consider(active_end);
+		consider(visual_end);
+	}
+	return best != p_time ? best : _snap(p_time, false);
+}
+
 void FPSParticleTimeline::zoom_in() {
 	_zoom_at(0.7, _name_width() + _timeline_width() * 0.5);
 }
@@ -174,7 +213,21 @@ void FPSParticleTimeline::zoom_out() {
 	_zoom_at(1.0 / 0.7, _name_width() + _timeline_width() * 0.5);
 }
 
+// With a playback range set, Fit shows just that range; again shows the
+// whole effect.
 void FPSParticleTimeline::fit_view() {
+	if (has_loop_region()) {
+		const double span = loop_end - loop_start;
+		const double length = MAX(TIMELINE_MIN_VIEW, span * 1.15);
+		const double start = loop_start - (length - span) * 0.5;
+		if (!(user_zoomed && Math::is_equal_approx(view_start, start) && Math::is_equal_approx(view_length, length))) {
+			view_length = length;
+			view_start = start;
+			user_zoomed = true;
+			queue_redraw();
+			return;
+		}
+	}
 	user_zoomed = false;
 	_update_content_length();
 	queue_redraw();
@@ -234,13 +287,13 @@ Size2 FPSParticleTimeline::get_minimum_size() const {
 
 String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 	if (_is_on_end_flag(p_pos)) {
-		return TTR("Playback end: playback loops back to the start flag here. Drag it, press O at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
+		return TTR("Playback end: playback stops here, or goes back to the start flag with Loop on. Drag it, press O at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
 	}
 	if (_is_on_start_flag(p_pos)) {
 		return TTR("Playback start: Play and Restart begin here. Drag it, press I at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
 	}
 	if (_in_ruler(p_pos.y)) {
-		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("The green flags are where playback starts and ends (drag them, or I / O at the playhead). Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
+		return TTR("Click or drag to scrub; , and . step one frame (Shift: 0.1 s). Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans. Fit (F) shows the playback range, again the whole effect.") + "\n" + TTR("The green flags are where playback starts and ends (drag them, or I / O at the playhead). Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
 	}
 	const int row = _row_at(p_pos.y);
 	Node *track = _track_at_row(row);
@@ -368,6 +421,15 @@ void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 
 void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventKey> key = p_event;
+	if (key.is_valid() && key->is_pressed() && (key->get_keycode() == Key::COMMA || key->get_keycode() == Key::PERIOD)) {
+		// One frame (1/30 s) back / forward, Shift: 0.1 s; held down it repeats.
+		// Counted in whole steps: the time slider rounds to 0.01 s.
+		const double step = key->is_shift_pressed() ? 0.1 : 1.0 / 30.0;
+		const double dir = key->get_keycode() == Key::COMMA ? -1.0 : 1.0;
+		emit_signal(SNAME("scrub_requested"), CLAMP((Math::round(current_time / step) + dir) * step, 0.0, content_length));
+		accept_event();
+		return;
+	}
 	if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
 		Node *selected = Object::cast_to<Node>(ObjectDB::get_instance(selected_id));
 		const Key code = key->get_keycode();
@@ -603,17 +665,19 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			return;
 		}
 		if (drag_mode == DRAG_SCRUB) {
-			emit_signal(SNAME("scrub_requested"), CLAMP(time, 0.0, content_length));
+			// Edges only (no grid): scrubbing stays smooth between them.
+			const double edge = _snap_to_edges(time, mm->is_shift_pressed());
+			emit_signal(SNAME("scrub_requested"), CLAMP(Math::is_equal_approx(edge, _snap(time, false)) ? time : edge, 0.0, content_length));
 			accept_event();
 			return;
 		}
 		if (drag_mode == DRAG_END) {
-			_set_playback_end(_snap(MAX(0.0, time), mm->is_shift_pressed()));
+			_set_playback_end(_snap_to_edges(MAX(0.0, time), mm->is_shift_pressed()));
 			accept_event();
 			return;
 		}
 		if (drag_mode == DRAG_START) {
-			_set_playback_start(_snap(MAX(0.0, time), mm->is_shift_pressed()));
+			_set_playback_start(_snap_to_edges(MAX(0.0, time), mm->is_shift_pressed()));
 			accept_event();
 			return;
 		}
