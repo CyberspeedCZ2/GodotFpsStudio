@@ -7555,6 +7555,14 @@ void FPSStudioParticleEditorPlugin::input(const Ref<InputEvent> &p_event) {
 		return;
 	}
 	const Key code = key->get_keycode();
+	// Cmd/Ctrl+S saves the particle effect here, not the level scene.
+	if (code == Key::S && key->is_command_or_control_pressed() && !key->is_shift_pressed() && !key->is_alt_pressed() && !key->is_echo()) {
+		_on_save_scene_pressed();
+		if (Viewport *viewport = screen->get_viewport()) {
+			viewport->set_input_as_handled();
+		}
+		return;
+	}
 	if (key->is_command_or_control_pressed() || key->is_alt_pressed()) {
 		return;
 	}
