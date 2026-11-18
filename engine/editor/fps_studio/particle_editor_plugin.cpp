@@ -5429,9 +5429,6 @@ void FPSStudioParticleEditorPlugin::_refresh_curve_editors() {
 		const bool ignores_color = base && !base->get_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR);
 		particle_color_warning->set_visible(ignores_color);
 		particle_color_fix_button->set_visible(ignores_color);
-		if (ignores_color) {
-			particle_color_warning->add_theme_color_override(SceneStringName(font_color), particle_color_warning->get_theme_color(SNAME("warning_color"), EditorStringName(Editor)));
-		}
 	}
 
 	Ref<Texture2D> scale_texture = material->get_param_texture(ParticleProcessMaterial::PARAM_SCALE);
@@ -8423,6 +8420,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	particle_color_warning->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	particle_color_warning->set_text(TTR("The material ignores particle color, so Alpha over Life, Base Color and Color over Life have no effect. Turn on Use Particle Color (Renderer)."));
 	particle_color_warning->set_visible(false);
+	// Fixed white: the card's theme gave this label black text.
+	particle_color_warning->add_theme_color_override(SceneStringName(font_color), Color(0.95, 0.95, 0.95));
 	alpha_curve_card->add_child(particle_color_warning);
 	particle_color_fix_button = memnew(Button);
 	particle_color_fix_button->set_text(TTR("Use Particle Color"));
