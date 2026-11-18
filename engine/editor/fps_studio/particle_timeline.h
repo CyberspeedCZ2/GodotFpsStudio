@@ -44,7 +44,10 @@ private:
 		DRAG_RESIZE,
 		DRAG_PAN,
 		DRAG_LOOP,
+		DRAG_START, // The playback start flag on the ruler.
 	};
+	void _set_playback_start(double p_time);
+	bool _is_on_start_flag(const Point2 &p_pos) const;
 	enum RulerAction {
 		RULER_LOOP_START = 100,
 		RULER_LOOP_END,
@@ -121,6 +124,8 @@ public:
 	// Loop region of the preview; p_end < 0 clears it. Emits loop_region_changed.
 	void set_loop_region(double p_start, double p_end);
 	bool has_loop_region() const { return loop_end > loop_start; }
+	// Where Play and Restart begin: the loop region start, else 0.
+	double get_playback_start() const { return has_loop_region() ? loop_start : 0.0; }
 	double get_loop_start() const { return loop_start; }
 	double get_loop_end() const { return loop_end; }
 

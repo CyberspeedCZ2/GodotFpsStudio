@@ -128,7 +128,14 @@ void FPSParticleTimeline::_update_content_length() {
 	if (infinite) {
 		total = MAX(total, max_start + max_tail * 2.0 + 1.0);
 	}
-	content_length = MAX(1.0, total);
+	// A start set without an end plays to the effect's end, also after the
+	// effect gets longer or shorter.
+	const double new_length = MAX(1.0, total);
+	if (has_loop_region() && Math::is_equal_approx(loop_end, content_length) && !Math::is_equal_approx(new_length, content_length)) {
+		content_length = new_length;
+		_set_playback_start(loop_start);
+	}
+	content_length = new_length;
 	if (!user_zoomed) {
 		view_start = 0.0;
 		view_length = MAX(2.0, content_length * 1.12);
@@ -226,8 +233,11 @@ Size2 FPSParticleTimeline::get_minimum_size() const {
 }
 
 String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
+	if (_is_on_start_flag(p_pos)) {
+		return TTR("Playback start: Play and Restart begin here. Drag it, press I at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
+	}
 	if (_in_ruler(p_pos.y)) {
-		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("Shift + drag sets the preview loop region; I / O set its start / end at the playhead, Alt + I or right-click clears it.");
+		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("The green flag is where playback starts (drag it, or I at the playhead); O sets where it ends. Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
 	}
 	const int row = _row_at(p_pos.y);
 	Node *track = _track_at_row(row);
@@ -271,11 +281,32 @@ void FPSParticleTimeline::set_loop_region(double p_start, double p_end) {
 	_set_loop_region_internal(MAX(0.0, MIN(p_start, p_end < 0.0 ? p_start : p_end)), p_end < 0.0 ? -1.0 : MAX(p_start, p_end));
 }
 
+// Moves where playback begins and keeps the end (the effect's end when no
+// loop region was set). Back at 0 with the effect's end is no region at all.
+void FPSParticleTimeline::_set_playback_start(double p_time) {
+	const double end = has_loop_region() ? loop_end : content_length;
+	const double start = CLAMP(p_time, 0.0, MAX(0.0, end - TIMELINE_SNAP));
+	if (start <= 0.0001 && end >= content_length - 0.0001) {
+		set_loop_region(0.0, -1.0);
+	} else {
+		set_loop_region(start, MAX(end, start + TIMELINE_SNAP));
+	}
+}
+
+// The flag sits in the lower half of the ruler; the playhead handle is in the
+// upper half, so both can be grabbed when they overlap.
+bool FPSParticleTimeline::_is_on_start_flag(const Point2 &p_pos) const {
+	if (!_in_ruler(p_pos.y) || p_pos.x < _name_width() - 2 * EDSCALE) {
+		return false;
+	}
+	const real_t x = _time_to_x(get_playback_start());
+	return p_pos.y >= _ruler_top() + _ruler_height() * 0.5 && p_pos.x >= x - 4 * EDSCALE && p_pos.x <= x + 11 * EDSCALE;
+}
+
 void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 	switch (p_id) {
 		case RULER_LOOP_START: {
-			const double end = has_loop_region() ? loop_end : content_length;
-			set_loop_region(context_time, MAX(end, context_time + TIMELINE_SNAP));
+			_set_playback_start(context_time);
 			return;
 		}
 		case RULER_LOOP_END: {
@@ -339,7 +370,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			if (key->is_alt_pressed()) {
 				set_loop_region(0.0, -1.0);
 			} else {
-				set_loop_region(current_time, MAX(has_loop_region() ? loop_end : content_length, current_time + TIMELINE_SNAP));
+				_set_playback_start(current_time);
 			}
 		} else if (code == Key::O && !command) {
 			set_loop_region(MIN(has_loop_region() ? loop_start : 0.0, current_time), current_time);
@@ -398,9 +429,9 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			context_time = _snap(MAX(0.0, _x_to_time(pos.x)), mb->is_shift_pressed());
 			context_track = ObjectID();
 			context_menu->clear();
-			context_menu->add_item(TTR("Set Loop Start Here"), RULER_LOOP_START, Key::I);
-			context_menu->add_item(TTR("Set Loop End Here"), RULER_LOOP_END, Key::O);
-			context_menu->add_item(TTR("Clear Loop Region"), RULER_LOOP_CLEAR, KeyModifierMask::ALT | Key::I);
+			context_menu->add_item(TTR("Start Playback Here"), RULER_LOOP_START, Key::I);
+			context_menu->add_item(TTR("End Playback Here"), RULER_LOOP_END, Key::O);
+			context_menu->add_item(TTR("Play Whole Effect"), RULER_LOOP_CLEAR, KeyModifierMask::ALT | Key::I);
 			context_menu->set_item_disabled(-1, !has_loop_region());
 			context_menu->set_position(get_screen_position() + pos);
 			context_menu->reset_size();
@@ -449,7 +480,9 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		if (mb->is_pressed()) {
 			grab_focus();
 			if (_in_ruler(pos.y)) {
-				if (pos.x >= _name_width()) {
+				if (!mb->is_shift_pressed() && _is_on_start_flag(pos)) {
+					drag_mode = DRAG_START;
+				} else if (pos.x >= _name_width()) {
 					if (mb->is_shift_pressed()) {
 						// Shift+drag on the ruler draws the loop region.
 						drag_mode = DRAG_LOOP;
@@ -545,6 +578,11 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			accept_event();
 			return;
 		}
+		if (drag_mode == DRAG_START) {
+			_set_playback_start(_snap(MAX(0.0, time), mm->is_shift_pressed()));
+			accept_event();
+			return;
+		}
 		if (drag_mode == DRAG_LOOP) {
 			const double t = _snap(MAX(0.0, time), false);
 			set_loop_region(MIN(drag_loop_anchor, t), MAX(drag_loop_anchor, t));
@@ -576,6 +614,8 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			} else if (pos.x >= _time_to_x(start) && (active_end < 0.0 || pos.x <= _time_to_x(active_end))) {
 				shape = CURSOR_DRAG;
 			}
+		} else if (!mm->is_shift_pressed() && _is_on_start_flag(pos)) {
+			shape = CURSOR_HSIZE;
 		} else if (_in_ruler(pos.y) && pos.x >= _name_width()) {
 			shape = mm->is_shift_pressed() ? CURSOR_HSPLIT : CURSOR_POINTING_HAND; // Scrub the playhead.
 		}
@@ -757,6 +797,23 @@ void FPSParticleTimeline::_notification(int p_what) {
 				for (int minor = 1; minor < 5; minor++) {
 					const real_t mx = _time_to_x(t + step * minor / 5.0);
 					draw_line(Point2(mx, ruler_top + _ruler_height() * 0.8), Point2(mx, ruler_top + _ruler_height()), Color(font_color, 0.18));
+				}
+			}
+
+			// Playback start flag (green), always shown.
+			const real_t x_flag = _time_to_x(get_playback_start());
+			if (x_flag >= _name_width() - 1 && x_flag <= size.x) {
+				const Color flag_color(0.4, 0.85, 0.45);
+				const real_t bottom = ruler_top + _ruler_height();
+				const real_t flag_h = _ruler_height() * 0.45;
+				draw_line(Point2(x_flag, bottom - flag_h), Point2(x_flag, bottom), flag_color, 2 * EDSCALE);
+				Vector<Point2> flag;
+				flag.push_back(Point2(x_flag, bottom - flag_h));
+				flag.push_back(Point2(x_flag + 9 * EDSCALE, bottom - flag_h * 0.72));
+				flag.push_back(Point2(x_flag, bottom - flag_h * 0.44));
+				draw_colored_polygon(flag, flag_color);
+				if (has_loop_region()) {
+					draw_line(Point2(x_flag, bottom), Point2(x_flag, size.y), Color(flag_color, 0.5), 1.0 * EDSCALE);
 				}
 			}
 

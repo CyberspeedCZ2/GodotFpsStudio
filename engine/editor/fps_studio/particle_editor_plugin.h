@@ -516,6 +516,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _update_texture_time_controls();
 	void _apply_generated_texture();
 	void _on_play_toggled(bool p_pressed);
+	void _rewind_preview_if_finished();
 	void _on_restart_pressed();
 	void _on_timeline_changed(double p_value);
 	void _on_speed_changed(double p_value);

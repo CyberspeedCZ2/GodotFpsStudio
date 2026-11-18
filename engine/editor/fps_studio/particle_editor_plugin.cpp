@@ -532,15 +532,39 @@ static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad) {
 		if (ParticleEffect3D::emitter_uses_collision(gpu)) {
 			ParticleEffect3D::apply_collision_substeps(gpu, 0.2);
 		}
+		if (!gpu->get_use_fixed_seed()) {
+			gpu->set_seed(Math::rand());
+			gpu->set_use_fixed_seed(true);
+			gpu->set_meta(SNAME("_fps_preview_seed"), true);
+		}
 		gpu->set_emitting(true);
 	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
 		if (cpu->get_mesh().is_null()) {
 			cpu->set_mesh(p_quad);
 		}
+		if (!cpu->get_use_fixed_seed()) {
+			cpu->set_seed(Math::rand());
+			cpu->set_use_fixed_seed(true);
+			cpu->set_meta(SNAME("_fps_preview_seed"), true);
+		}
 		cpu->set_emitting(true);
 	}
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		apply_preview_defaults(p_node->get_child(i), p_quad);
+	}
+}
+
+// A new random look for the next run (Restart, next loop); edits in between
+// keep the same seed, so a paused frame does not change.
+static void reseed_preview_emitters(Node *p_node) {
+	if (!p_node) {
+		return;
+	}
+	if (p_node->has_meta(SNAME("_fps_preview_seed"))) {
+		p_node->set("seed", Math::rand());
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		reseed_preview_emitters(p_node->get_child(i));
 	}
 }
 
@@ -593,8 +617,17 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 	p_source->get_property_list(&properties);
 	for (const PropertyInfo &property : properties) {
 		if (!(property.usage & PROPERTY_USAGE_STORAGE) || (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) || property.name == "name" || property.name == "owner" || property.name == "script" ||
-				property.name == "scene_file_path" || property.name == "emitting" || property.name == "visible" || property.name == "transform") {
+				property.name == "scene_file_path" || property.name == "emitting" || property.name == "visible" || property.name == "transform" ||
+				property.name == "speed_scale") { // The preview's play / pause.
 			continue;
+		}
+		// The preview keeps its own seed so a paused frame stays the same
+		// after an edit; an effect authored with a fixed seed uses that one.
+		if (property.name == "seed" || property.name == "use_fixed_seed") {
+			if (!bool(p_source->get("use_fixed_seed"))) {
+				continue;
+			}
+			p_preview->remove_meta(SNAME("_fps_preview_seed"));
 		}
 		bool valid = false;
 		Variant value = p_source->get(property.name, &valid);
@@ -1198,7 +1231,13 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	if (timeline_view) {
 		timeline_view->refresh();
 	}
-	preview_time = preview_loop_end > preview_loop_start ? preview_loop_start : 0.0;
+	// A rebuild of the same effect (timing, lifetime, undo, coming back to the
+	// tab) stays at the playhead, so a paused moment can be tuned.
+	if (new_document) {
+		preview_time = preview_loop_end > preview_loop_start ? preview_loop_start : 0.0;
+	} else {
+		preview_time = CLAMP(preview_time, 0.0, preview_duration);
+	}
 	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
 		timeline->set_max(preview_duration);
@@ -1346,7 +1385,33 @@ void FPSStudioParticleEditorPlugin::_on_play_toggled(bool p_pressed) {
 	if (!_get_effect_root()) {
 		return;
 	}
+	if (p_pressed) {
+		_rewind_preview_if_finished();
+	}
 	_set_preview_playing(p_pressed);
+}
+
+// Play after the effect has run out starts again at the playback start.
+void FPSStudioParticleEditorPlugin::_rewind_preview_if_finished() {
+	if (!preview_effect) {
+		return;
+	}
+	const bool has_region = preview_loop_end > preview_loop_start;
+	const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_end)) : preview_duration;
+	if (preview_time < loop_to - 0.001) {
+		return;
+	}
+	preview_time = has_region ? preview_loop_start : 0.0;
+	preview_time_label_update_accumulator = 0.0;
+	if (timeline) {
+		timeline->set_value_no_signal(preview_time);
+	}
+	if (timeline_view) {
+		timeline_view->set_current_time(preview_time);
+	}
+	reseed_preview_emitters(preview_effect);
+	_restart_preview_at(preview_time);
+	_update_time_label();
 }
 
 void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
@@ -1358,6 +1423,7 @@ void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
 	if (timeline) {
 		timeline->set_value_no_signal(preview_time);
 	}
+	reseed_preview_emitters(preview_effect);
 	_restart_preview_at(preview_time);
 	_set_preview_playing(true);
 	_update_time_label();
@@ -6079,6 +6145,9 @@ void FPSStudioParticleEditorPlugin::_on_timeline_play_toggle() {
 	if (!_get_effect_root()) {
 		return;
 	}
+	if (!preview_playing) {
+		_rewind_preview_if_finished();
+	}
 	_set_preview_playing(!preview_playing);
 }
 
@@ -6146,6 +6215,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 			if (preview_loop || has_region) {
 				const double span = MAX(0.01, loop_to - loop_from);
 				preview_time = loop_from + Math::fmod(preview_time - loop_to, span);
+				reseed_preview_emitters(preview_effect);
 				_restart_preview_at(preview_time);
 			} else {
 				preview_time = preview_duration;
