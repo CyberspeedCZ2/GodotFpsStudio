@@ -1630,6 +1630,15 @@ void Viewport::_gui_show_tooltip_at(const Point2i &p_pos) {
 			gui.tooltip_control->get_global_transform_with_canvas().affine_inverse().xform(gui.last_mouse_pos),
 			&tooltip_owner);
 	gui.tooltip_text = gui.tooltip_text.strip_edges();
+	if (!gui_tooltips_enabled && tooltip_owner) {
+		bool keep = false;
+		for (Node *node = tooltip_owner; node && !keep; node = node->get_parent()) {
+			keep = node->has_meta(SNAME("_fps_keep_tooltips"));
+		}
+		if (!keep) {
+			return;
+		}
+	}
 
 	// Controls can implement `make_custom_tooltip` to provide their own tooltip.
 	// This should be a Control node which will be added as child to a TooltipPanel.

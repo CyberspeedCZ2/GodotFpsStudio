@@ -48,6 +48,7 @@
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/main/node.h"
+#include "scene/main/viewport.h"
 #include "scene/gui/split_container.h"
 
 static constexpr int FPS_STUDIO_LAYOUT_VERSION = 1;
@@ -123,6 +124,11 @@ void FPSStudioWorkspace::_on_center_split_drag_ended() {
 	}
 }
 
+// Editor Settings > Interface > Editor > Show Tooltips.
+void FPSStudioWorkspace::_apply_tooltip_setting() {
+	Viewport::set_gui_tooltips_enabled(bool(EDITOR_GET("interface/editor/show_tooltips")));
+}
+
 HistoryDock *FPSStudioWorkspace::create_builtin_docks(
 		EditorDockManager *p_dock_manager, Node *p_scene_root, EditorSelection *p_editor_selection,
 		EditorData &p_editor_data, Ref<ConfigFile> &p_default_layout, const String &p_editor_section,
@@ -145,6 +151,10 @@ HistoryDock *FPSStudioWorkspace::create_builtin_docks(
 	filesystem_dock->connect("display_mode_changed", p_save_layout);
 	p_connect_filesystem_signals.call(filesystem_dock);
 	p_dock_manager->add_dock(filesystem_dock);
+	// Its previews stay when tooltips are turned off in Editor Settings.
+	filesystem_dock->set_meta(SNAME("_fps_keep_tooltips"), true);
+	_apply_tooltip_setting();
+	EditorSettings::get_singleton()->connect("settings_changed", callable_mp_static(&FPSStudioWorkspace::_apply_tooltip_setting));
 
 	memnew(InspectorDock(p_editor_data));
 	p_dock_manager->add_dock(InspectorDock::get_singleton());

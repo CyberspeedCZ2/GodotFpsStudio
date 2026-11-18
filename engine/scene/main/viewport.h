@@ -374,6 +374,17 @@ private:
 	VRSUpdateMode vrs_update_mode = VRS_UPDATE_ONCE;
 	Ref<Texture2D> vrs_texture;
 
+	// FPS Studio: the editor can turn tooltips off (Editor Settings >
+	// Interface > Editor > Show Tooltips); controls under a node with the
+	// meta "_fps_keep_tooltips" (the Content Browser) keep theirs.
+	static inline bool gui_tooltips_enabled = true;
+
+public:
+	static void set_gui_tooltips_enabled(bool p_enabled) { gui_tooltips_enabled = p_enabled; }
+	static bool are_gui_tooltips_enabled() { return gui_tooltips_enabled; }
+
+private:
+
 	struct GUI {
 		bool mouse_in_viewport = false;
 		HashMap<int, ObjectID> touch_focus;

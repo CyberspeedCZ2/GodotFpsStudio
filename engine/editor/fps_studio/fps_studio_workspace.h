@@ -71,6 +71,7 @@ private:
 
 protected:
 	static void _bind_methods();
+	static void _apply_tooltip_setting();
 
 public:
 	void configure_dock_manager(EditorDockManager *p_dock_manager);
