@@ -363,6 +363,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_emitter_renamed();
 	void _on_emitter_name_changed();
 	void _rebuild_preview();
+	void _update_preview_duration();
 	void _clear_preview_scripts(Node *p_node);
 	void _apply_preview_defaults(Node *p_node);
 	void _sync_preview_properties();

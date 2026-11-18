@@ -1055,6 +1055,7 @@ void FPSStudioParticleEditorPlugin::_mark_document_dirty() {
 
 void FPSStudioParticleEditorPlugin::_flush_document_refresh() {
 	document_refresh_queued = false;
+	_update_preview_duration();
 	_update_document_header();
 	_update_emitter_tree();
 }
@@ -1235,35 +1236,7 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	clear_preview_transform_origin(preview_effect);
 	preview_root->add_child(preview_effect);
 
-	Vector<Node *> emitters;
-	collect_tracks(source, emitters);
-	// Finite effects loop over their full timeline (delays + emission +
-	// lifetime); continuous ones over the visible timeline span.
-	preview_duration = 0.1;
-	double max_start = 0.0;
-	double max_lifetime = 0.1;
-	bool infinite = false;
-	for (Node *emitter : emitters) {
-		Node3D *track_3d = Object::cast_to<Node3D>(emitter);
-		if (track_3d && !track_3d->is_visible()) {
-			continue;
-		}
-		double start, emission_end, visual_end;
-		ParticleEffect3D::get_track_window(emitter, start, emission_end, visual_end);
-		max_start = MAX(max_start, start);
-		if (ParticleEffect3D::is_emitter(emitter)) {
-			max_lifetime = MAX(max_lifetime, double(emitter->get("lifetime")));
-		}
-		if (visual_end < 0.0) {
-			infinite = true;
-		} else {
-			preview_duration = MAX(preview_duration, visual_end);
-		}
-	}
-	if (infinite) {
-		preview_duration = MAX(preview_duration, max_start + max_lifetime);
-	}
-	preview_duration = MAX(preview_duration, 0.1);
+	_update_preview_duration();
 	if (timeline_view) {
 		timeline_view->refresh();
 	}
@@ -1290,6 +1263,71 @@ void FPSStudioParticleEditorPlugin::_rebuild_preview() {
 	}
 	_update_time_label();
 	rebuilding_preview = false;
+}
+
+// Finite effects loop over their full timeline (delays + emission +
+// lifetime); continuous ones over the visible timeline span. Recomputed on
+// every rebuild, edit and restart, so a wrong value cannot stick.
+void FPSStudioParticleEditorPlugin::_update_preview_duration() {
+	Node *source = _get_effect_root();
+	if (!source) {
+		return;
+	}
+	Vector<Node *> emitters;
+	collect_tracks(source, emitters);
+	double duration = 0.1;
+	double max_start = 0.0;
+	double max_lifetime = 0.1;
+	bool infinite = false;
+	int counted = 0;
+	for (Node *emitter : emitters) {
+		Node3D *track_3d = Object::cast_to<Node3D>(emitter);
+		if (track_3d && !track_3d->is_visible()) {
+			continue;
+		}
+		counted++;
+		double start, emission_end, visual_end;
+		ParticleEffect3D::get_track_window(emitter, start, emission_end, visual_end);
+		max_start = MAX(max_start, start);
+		if (ParticleEffect3D::is_emitter(emitter)) {
+			max_lifetime = MAX(max_lifetime, double(emitter->get("lifetime")));
+		}
+		if (visual_end < 0.0) {
+			infinite = true;
+		} else {
+			duration = MAX(duration, visual_end);
+		}
+	}
+	if (infinite) {
+		duration = MAX(duration, max_start + max_lifetime);
+	}
+	duration = MAX(duration, 0.1);
+	if (duration <= 0.1 + 0.0001 && !emitters.is_empty()) {
+		// Should not happen with real tracks; report what was seen so the
+		// cause can be found (seen once after deleting a track, 2026-11-18).
+		String seen;
+		for (Node *emitter : emitters) {
+			double start, emission_end, visual_end;
+			ParticleEffect3D::get_track_window(emitter, start, emission_end, visual_end);
+			const Node3D *track_3d = Object::cast_to<Node3D>(emitter);
+			seen += vformat(" %s(visible=%s in_tree=%s start=%s end=%s visual=%s)", emitter->get_name(), track_3d ? (track_3d->is_visible() ? "yes" : "no") : "-", emitter->is_inside_tree() ? "yes" : "no", String::num(start, 3), String::num(emission_end, 3), String::num(visual_end, 3));
+		}
+		WARN_PRINT(vformat("Particle preview length fell to 0.1 s with %d tracks (%d counted):%s", emitters.size(), counted, seen));
+	}
+	if (Math::is_equal_approx(duration, preview_duration)) {
+		return;
+	}
+	preview_duration = duration;
+	if (timeline) {
+		timeline->set_max(preview_duration);
+	}
+	if (!rebuilding_preview) {
+		preview_time = CLAMP(preview_time, 0.0, preview_duration);
+		if (timeline) {
+			timeline->set_value_no_signal(preview_time);
+		}
+		_update_time_label();
+	}
 }
 
 void FPSStudioParticleEditorPlugin::_clear_preview_scripts(Node *p_node) {
@@ -1454,6 +1492,7 @@ void FPSStudioParticleEditorPlugin::_on_restart_pressed() {
 	if (!preview_effect) {
 		return;
 	}
+	_update_preview_duration();
 	preview_time = preview_loop_end > preview_loop_start ? preview_loop_start : 0.0;
 	preview_time_label_update_accumulator = 0.0;
 	if (timeline) {
