@@ -346,6 +346,9 @@ String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
 	if (_solo_rect(row).has_point(p_pos)) {
 		return TTR("Solo: preview only this track.");
 	}
+	if (p_pos.x < _name_width()) {
+		return vformat(TTR("%s\nDrag the name up or down to reorder (or Alt + Up / Down). Double-click to rename."), track->get_name());
+	}
 	double start, active_end, visual_end;
 	ParticleEffect3D::get_track_window(track, start, active_end, visual_end);
 	const String active = active_end < 0.0 ? TTR("continuous") : vformat(TTR("%s s"), String::num(active_end - start, 2));
@@ -673,6 +676,14 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		accept_event();
 		return;
 	}
+	if (key.is_valid() && key->is_pressed() && (key->get_keycode() == Key::UP || key->get_keycode() == Key::DOWN) && key->is_alt_pressed() && !key->is_command_or_control_pressed()) {
+		Node *selected = Object::cast_to<Node>(ObjectDB::get_instance(selected_id));
+		if (selected) {
+			emit_signal(SNAME("track_action"), selected, key->get_keycode() == Key::UP ? ACTION_MOVE_UP : ACTION_MOVE_DOWN);
+		}
+		accept_event();
+		return;
+	}
 	if (key.is_valid() && key->is_pressed() && (key->get_keycode() == Key::UP || key->get_keycode() == Key::DOWN) && !key->is_command_or_control_pressed() && !key->is_alt_pressed()) {
 		_jump(key->get_keycode() == Key::UP ? -1 : 1, key->is_shift_pressed());
 		accept_event();
@@ -806,6 +817,8 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 				context_menu->add_item(TTR("Paste"), ACTION_PASTE, KeyModifierMask::CMD_OR_CTRL | Key::V);
 				context_menu->set_item_disabled(-1, !can_paste);
 				context_menu->add_item(TTR("Rename"), ACTION_RENAME);
+				context_menu->add_item(TTR("Move Up"), ACTION_MOVE_UP, KeyModifierMask::ALT | Key::UP);
+				context_menu->add_item(TTR("Move Down"), ACTION_MOVE_DOWN, KeyModifierMask::ALT | Key::DOWN);
 				context_menu->add_separator();
 				context_menu->add_check_item(TTR("Visible"), ACTION_TOGGLE_VISIBLE, Key::H);
 				context_menu->set_item_checked(-1, !Object::cast_to<Node3D>(track) || Object::cast_to<Node3D>(track)->is_visible());
@@ -886,6 +899,13 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			if (pos.x < _name_width()) {
 				if (mb->is_double_click()) {
 					emit_signal(SNAME("track_action"), track, ACTION_RENAME);
+				} else {
+					// Dragging the name up or down reorders the track.
+					drag_mode = DRAG_REORDER;
+					drag_track = track->get_instance_id();
+					drag_reorder_press_y = pos.y;
+					drag_reorder_active = false;
+					drag_reorder_gap = -1;
 				}
 				accept_event();
 				return;
@@ -920,6 +940,22 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		} else {
 			const DragMode finished = drag_mode;
 			drag_mode = DRAG_NONE;
+			if (finished == DRAG_REORDER) {
+				Node *moved = Object::cast_to<Node>(ObjectDB::get_instance(drag_track));
+				const int row = track_ids.find(drag_track);
+				const int gap = drag_reorder_gap;
+				const bool active = drag_reorder_active;
+				drag_track = ObjectID();
+				drag_reorder_active = false;
+				drag_reorder_gap = -1;
+				set_default_cursor_shape(CURSOR_ARROW);
+				queue_redraw();
+				if (active && moved && row >= 0 && gap >= 0 && gap != row && gap != row + 1) {
+					emit_signal(SNAME("track_move_requested"), moved, gap < track_ids.size() ? _track_at_row(gap) : nullptr);
+				}
+				accept_event();
+				return;
+			}
 			if (finished == DRAG_MARKER) {
 				if (drag_marker_moved) {
 					_store_markers(drag_marker_old);
@@ -957,6 +993,19 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			// Edges only (no grid): scrubbing stays smooth between them.
 			const double edge = _snap_to_edges(time, mm->is_shift_pressed());
 			emit_signal(SNAME("scrub_requested"), CLAMP(Math::is_equal_approx(edge, _snap(time, false)) ? time : edge, 0.0, content_length));
+			accept_event();
+			return;
+		}
+		if (drag_mode == DRAG_REORDER) {
+			if (!drag_reorder_active && Math::abs(pos.y - drag_reorder_press_y) > 4 * EDSCALE) {
+				drag_reorder_active = true;
+			}
+			if (drag_reorder_active) {
+				const real_t rows_y = pos.y - _ruler_height();
+				drag_reorder_gap = CLAMP(int(Math::round(rows_y / _row_height())), 0, track_ids.size());
+				set_default_cursor_shape(CURSOR_VSIZE);
+				queue_redraw();
+			}
 			accept_event();
 			return;
 		}
@@ -1161,6 +1210,13 @@ void FPSParticleTimeline::_notification(int p_what) {
 				draw_string(font, Point2(x_end_marker + 3 * EDSCALE, size.y - 4 * EDSCALE), TTR("End"), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8, dim);
 			}
 
+			// Where a dragged track would land.
+			if (drag_mode == DRAG_REORDER && drag_reorder_active && drag_reorder_gap >= 0) {
+				const real_t gy = _ruler_height() + drag_reorder_gap * _row_height();
+				draw_line(Point2(0, gy), Point2(size.x, gy), accent, 2 * EDSCALE);
+				draw_rect(Rect2(0, gy - 3 * EDSCALE, 6 * EDSCALE, 6 * EDSCALE), accent);
+			}
+
 			// Marker lines through the tracks.
 			for (int i = 0; i < markers.size(); i++) {
 				const real_t mx = _time_to_x(markers[i].time);
@@ -1289,6 +1345,7 @@ void FPSParticleTimeline::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("track_action", PropertyInfo(Variant::OBJECT, "track"), PropertyInfo(Variant::INT, "action")));
 	ADD_SIGNAL(MethodInfo("play_toggle_requested"));
 	ADD_SIGNAL(MethodInfo("restart_requested"));
+	ADD_SIGNAL(MethodInfo("track_move_requested", PropertyInfo(Variant::OBJECT, "track"), PropertyInfo(Variant::OBJECT, "before")));
 	ADD_SIGNAL(MethodInfo("markers_committed", PropertyInfo(Variant::ARRAY, "old_markers"), PropertyInfo(Variant::ARRAY, "new_markers")));
 	ADD_SIGNAL(MethodInfo("loop_region_changed", PropertyInfo(Variant::FLOAT, "start"), PropertyInfo(Variant::FLOAT, "end")));
 }

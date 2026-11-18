@@ -4152,11 +4152,116 @@ static Vector<String> get_dropped_audio_files(const Variant &p_data) {
 	return files;
 }
 
+// The direct child of the effect root that holds p_node (tracks are moved
+// as a whole, with whatever hangs under them).
+static Node *get_top_level_track(Node *p_effect, Node *p_node) {
+	while (p_node && p_node->get_parent() && p_node->get_parent() != p_effect) {
+		p_node = p_node->get_parent();
+	}
+	return p_node && p_node->get_parent() == p_effect ? p_node : nullptr;
+}
+
+// Moves a track before another one (null: to the end), undoable. The order
+// is the order of the timeline, the emitter list and the saved scene.
+void FPSStudioParticleEditorPlugin::_move_track(Node *p_track, Node *p_before) {
+	Node *effect = _get_effect_root();
+	Node *track = get_top_level_track(effect, p_track);
+	if (!effect || !track) {
+		return;
+	}
+	Node *before = p_before ? get_top_level_track(effect, p_before) : nullptr;
+	if (before == track) {
+		return;
+	}
+	const int old_index = track->get_index();
+	int new_index = before ? before->get_index() : effect->get_child_count() - 1;
+	if (before && old_index < new_index) {
+		new_index--; // move_child counts without the moved node.
+	}
+	if (new_index == old_index) {
+		return;
+	}
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action_for_history(vformat(TTR("Move Track %s"), track->get_name()), EditorUndoRedoManager::GLOBAL_HISTORY);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_method(effect, "move_child", track, new_index);
+	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", track, effect_document_serial);
+	undo_redo->add_undo_method(effect, "move_child", track, old_index);
+	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", track, effect_document_serial);
+	undo_redo->commit_action();
+}
+
+// One place up (-1) or down (+1) among the tracks.
+void FPSStudioParticleEditorPlugin::_move_track_by(Node *p_track, int p_direction) {
+	Node *effect = _get_effect_root();
+	Node *track = get_top_level_track(effect, p_track);
+	if (!track) {
+		return;
+	}
+	Vector<Node *> tracks;
+	for (int i = 0; i < effect->get_child_count(); i++) {
+		Node *child = effect->get_child(i);
+		Vector<Node *> inside;
+		collect_tracks(child, inside);
+		if (!inside.is_empty()) {
+			tracks.push_back(child);
+		}
+	}
+	const int at = tracks.find(track);
+	if (at < 0) {
+		return;
+	}
+	if (p_direction < 0 && at > 0) {
+		_move_track(track, tracks[at - 1]);
+	} else if (p_direction > 0 && at + 1 < tracks.size()) {
+		_move_track(track, at + 2 < tracks.size() ? tracks[at + 2] : nullptr);
+	}
+}
+
+void FPSStudioParticleEditorPlugin::_on_timeline_track_move(Object *p_track, Object *p_before) {
+	_move_track(Object::cast_to<Node>(p_track), Object::cast_to<Node>(p_before));
+}
+
+Variant FPSStudioParticleEditorPlugin::_get_emitter_tree_drag_data(const Point2 &p_point) {
+	TreeItem *item = emitter_tree ? emitter_tree->get_item_at_position(p_point) : nullptr;
+	if (!item || item->get_metadata(0).get_type() != Variant::INT) {
+		return Variant();
+	}
+	Label *preview = memnew(Label);
+	preview->set_text(item->get_text(0));
+	emitter_tree->set_drag_preview(preview);
+	Dictionary data;
+	data["type"] = "fps_particle_track";
+	data["id"] = item->get_metadata(0);
+	return data;
+}
+
 bool FPSStudioParticleEditorPlugin::_can_drop_on_emitter_tree(const Point2 &p_point, const Variant &p_data) const {
-	return _get_effect_root() && !get_dropped_audio_files(p_data).is_empty();
+	if (!_get_effect_root()) {
+		return false;
+	}
+	const Dictionary data = p_data;
+	if (data.get("type", "") == "fps_particle_track") {
+		emitter_tree->set_drop_mode_flags(Tree::DROP_MODE_INBETWEEN);
+		return true;
+	}
+	emitter_tree->set_drop_mode_flags(Tree::DROP_MODE_ON_ITEM);
+	return !get_dropped_audio_files(p_data).is_empty();
 }
 
 void FPSStudioParticleEditorPlugin::_drop_on_emitter_tree(const Point2 &p_point, const Variant &p_data) {
+	const Dictionary data = p_data;
+	if (data.get("type", "") == "fps_particle_track") {
+		Node *track = Object::cast_to<Node>(ObjectDB::get_instance(ObjectID(uint64_t(data.get("id", 0)))));
+		TreeItem *item = emitter_tree->get_item_at_position(p_point);
+		Node *before = nullptr;
+		if (item) {
+			TreeItem *target = emitter_tree->get_drop_section_at_position(p_point) > 0 ? item->get_next() : item;
+			before = target && target->get_metadata(0).get_type() == Variant::INT ? Object::cast_to<Node>(ObjectDB::get_instance(ObjectID(uint64_t(target->get_metadata(0))))) : nullptr;
+		}
+		_move_track(track, before);
+		return;
+	}
 	const Vector<String> files = get_dropped_audio_files(p_data);
 	if (files.is_empty() || !_get_effect_root()) {
 		return;
@@ -5324,6 +5429,11 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 		const double step = key->is_shift_pressed() ? 0.1 : 1.0 / 30.0;
 		const double dir = key->get_keycode() == Key::COMMA ? -1.0 : 1.0;
 		_on_timeline_scrub((Math::round(preview_time / step) + dir) * step);
+		preview_container->accept_event();
+		return;
+	}
+	if (key.is_valid() && key->is_pressed() && key->is_alt_pressed() && !key->is_command_or_control_pressed() && (key->get_keycode() == Key::UP || key->get_keycode() == Key::DOWN)) {
+		_move_track_by(_get_edited_emitter(), key->get_keycode() == Key::UP ? -1 : 1);
 		preview_container->accept_event();
 		return;
 	}
@@ -6653,6 +6763,12 @@ bool FPSStudioParticleEditorPlugin::_handle_track_clipboard_key(const Ref<InputE
 
 void FPSStudioParticleEditorPlugin::_on_emitter_tree_gui_input(const Ref<InputEvent> &p_event) {
 	// Only while the list itself has focus (renaming uses its own line edit).
+	const Ref<InputEventKey> key = p_event;
+	if (key.is_valid() && key->is_pressed() && key->is_alt_pressed() && !key->is_command_or_control_pressed() && (key->get_keycode() == Key::UP || key->get_keycode() == Key::DOWN)) {
+		_move_track_by(_get_edited_emitter(), key->get_keycode() == Key::UP ? -1 : 1);
+		emitter_tree->accept_event();
+		return;
+	}
 	if (_handle_track_clipboard_key(p_event)) {
 		emitter_tree->accept_event();
 	}
@@ -6670,6 +6786,12 @@ void FPSStudioParticleEditorPlugin::_on_timeline_track_action(Object *p_track, i
 	switch (p_action) {
 		case FPSParticleTimeline::ACTION_DUPLICATE:
 			_duplicate_emitter(track);
+			break;
+		case FPSParticleTimeline::ACTION_MOVE_UP:
+			_move_track_by(track, -1);
+			break;
+		case FPSParticleTimeline::ACTION_MOVE_DOWN:
+			_move_track_by(track, 1);
 			break;
 		case FPSParticleTimeline::ACTION_COPY:
 			_copy_track(track);
@@ -7546,8 +7668,8 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	emitter_tree->connect(SceneStringName(item_selected), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_selected));
 	emitter_tree->connect("item_edited", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_renamed));
 	emitter_tree->connect(SceneStringName(gui_input), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_emitter_tree_gui_input));
-	emitter_tree->set_drag_forwarding(Callable(), callable_mp(this, &FPSStudioParticleEditorPlugin::_can_drop_on_emitter_tree), callable_mp(this, &FPSStudioParticleEditorPlugin::_drop_on_emitter_tree));
-	emitter_tree->set_tooltip_text(TTR("Drop audio files here to add Sound events (or onto a Sound track to replace its sound)."));
+	emitter_tree->set_drag_forwarding(callable_mp(this, &FPSStudioParticleEditorPlugin::_get_emitter_tree_drag_data), callable_mp(this, &FPSStudioParticleEditorPlugin::_can_drop_on_emitter_tree), callable_mp(this, &FPSStudioParticleEditorPlugin::_drop_on_emitter_tree));
+	emitter_tree->set_tooltip_text(TTR("Drag a track up or down to reorder it (or Alt + Up / Down). Drop audio files here to add Sound events (or onto a Sound track to replace its sound)."));
 	left_panel->add_child(emitter_tree);
 
 	// Library of effect files below the emitter list; folded away when not needed.
@@ -8025,6 +8147,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	timeline_view->connect("play_toggle_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_play_toggle));
 	timeline_view->connect("restart_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_restart_pressed));
 	timeline_view->connect("loop_region_changed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed));
+	timeline_view->connect("track_move_requested", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_track_move));
 	timeline_view->connect("markers_committed", callable_mp(this, &FPSStudioParticleEditorPlugin::_on_timeline_markers_committed));
 	timeline_scroll->add_child(timeline_view);
 	// The timeline draws its ruler at the visible top; redraw while scrolling.

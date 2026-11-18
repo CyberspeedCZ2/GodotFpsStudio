@@ -36,6 +36,8 @@ public:
 		ACTION_COPY,
 		ACTION_CUT,
 		ACTION_PASTE, // Track may be null (paste into the effect).
+		ACTION_MOVE_UP,
+		ACTION_MOVE_DOWN,
 	};
 
 private:
@@ -49,6 +51,7 @@ private:
 		DRAG_START, // The playback start flag on the ruler.
 		DRAG_END, // The playback end flag.
 		DRAG_MARKER, // A marker in the ruler (moves once dragged a few pixels).
+		DRAG_REORDER, // A track name dragged up / down to change the order.
 	};
 	void _set_playback_start(double p_time);
 	bool _is_on_start_flag(const Point2 &p_pos) const;
@@ -79,6 +82,9 @@ private:
 	real_t drag_marker_press_x = 0.0;
 	Array drag_marker_old;
 	int context_marker = -1;
+	real_t drag_reorder_press_y = 0.0;
+	bool drag_reorder_active = false;
+	int drag_reorder_gap = -1; // Insert before this row (== row count: at the end).
 	PopupPanel *rename_popup = nullptr;
 	LineEdit *rename_edit = nullptr;
 	int rename_marker = -1;

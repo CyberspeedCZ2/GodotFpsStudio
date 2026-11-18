@@ -410,6 +410,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_timeline_scrub(double p_time);
 	void _on_timeline_emitter_selected(Object *p_emitter);
 	void _on_timeline_track_action(Object *p_track, int p_action);
+	void _on_timeline_track_move(Object *p_track, Object *p_before);
+	void _move_track(Node *p_track, Node *p_before);
+	void _move_track_by(Node *p_track, int p_direction);
+	Variant _get_emitter_tree_drag_data(const Point2 &p_point);
 	void _on_timeline_play_toggle();
 	void _apply_preview_solo();
 	void _apply_preview_event_toggles();
