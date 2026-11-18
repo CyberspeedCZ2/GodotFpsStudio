@@ -584,6 +584,7 @@ protected:
 	void _notification(int p_what);
 
 public:
+	void input(const Ref<InputEvent> &p_event) override;
 	bool has_main_screen() const override { return true; }
 	void make_visible(bool p_visible) override;
 	void edit(Object *p_object) override;

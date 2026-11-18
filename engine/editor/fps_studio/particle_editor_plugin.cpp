@@ -85,6 +85,7 @@
 #include "scene/gui/grid_container.h"
 #include "scene/gui/label.h"
 #include "scene/gui/line_edit.h"
+#include "scene/gui/text_edit.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/panel_container.h"
@@ -5264,7 +5265,7 @@ void FPSStudioParticleEditorPlugin::_on_preview_gui_input(const Ref<InputEvent> 
 	if (key.is_valid() && key->is_pressed() && !key->is_echo()) {
 		if (key->get_keycode() == Key::SPACE) {
 			_on_timeline_play_toggle();
-		} else if (key->get_keycode() == Key::HOME) {
+		} else if (key->get_keycode() == Key::HOME || (key->get_keycode() == Key::R && !key->is_command_or_control_pressed())) {
 			_on_restart_pressed();
 		} else if (key->get_keycode() == Key::F && !key->is_command_or_control_pressed()) {
 			_frame_preview();
@@ -6773,7 +6774,35 @@ const Ref<Texture2D> FPSStudioParticleEditorPlugin::get_plugin_icon() const {
 	return EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("GPUParticles3D"), EditorStringName(EditorIcons));
 }
 
+// Space plays / pauses and R restarts anywhere in the Particle workspace,
+// before buttons and checkboxes take Space for themselves. Text fields keep
+// both keys for typing.
+void FPSStudioParticleEditorPlugin::input(const Ref<InputEvent> &p_event) {
+	Ref<InputEventKey> key = p_event;
+	if (key.is_null() || !key->is_pressed() || key->is_echo() || !screen || !screen->is_visible_in_tree() || !_get_effect_root()) {
+		return;
+	}
+	const Key code = key->get_keycode();
+	if ((code != Key::SPACE && code != Key::R) || key->is_command_or_control_pressed() || key->is_alt_pressed() || key->is_shift_pressed()) {
+		return;
+	}
+	Viewport *viewport = screen->get_viewport();
+	Control *focus = viewport ? viewport->gui_get_focus_owner() : nullptr;
+	if (focus && (!screen->is_ancestor_of(focus) || Object::cast_to<LineEdit>(focus) || Object::cast_to<TextEdit>(focus))) {
+		return; // Typing, or the keys belong to another part of the editor.
+	}
+	if (code == Key::SPACE) {
+		_on_timeline_play_toggle();
+	} else {
+		_on_restart_pressed();
+	}
+	if (viewport) {
+		viewport->set_input_as_handled();
+	}
+}
+
 FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
+	set_process_input(true);
 	set_process(true);
 	// Seconds the mouse rests on a Library item before its bigger, playing
 	// preview opens (0 turns it off).

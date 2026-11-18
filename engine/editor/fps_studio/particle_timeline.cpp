@@ -436,7 +436,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		const bool command = key->is_command_or_control_pressed();
 		if (code == Key::SPACE) {
 			emit_signal(SNAME("play_toggle_requested"));
-		} else if (code == Key::HOME) {
+		} else if (code == Key::HOME || (code == Key::R && !command)) {
 			emit_signal(SNAME("restart_requested"));
 		} else if (code == Key::F) {
 			fit_view();
