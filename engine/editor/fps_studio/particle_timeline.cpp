@@ -1318,7 +1318,7 @@ void FPSParticleTimeline::_notification(int p_what) {
 					if (ParticleEffect3D::is_emitter(track)) {
 						const int amount = int(track->get("amount"));
 						const String life = String::num(double(track->get("lifetime")), 2);
-						label = amount == 1 ? vformat(TTR("1 particle · life %s s"), life) : vformat(TTR("%d particles · life %s s"), amount, life);
+						label = amount == 1 ? vformat(TTR("1 particle, life %s s"), life) : vformat(TTR("%d particles, life %s s"), amount, life);
 						short_label = vformat(TTR("life %s s"), life);
 					}
 					const real_t label_width = font->get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size * 0.8).x;
