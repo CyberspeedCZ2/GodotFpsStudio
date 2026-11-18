@@ -1685,10 +1685,14 @@ void ParticleEffect3D::seek(double p_time) {
 		}
 		double run = p_time - state.delay;
 		if (state.duration > 0.0 && run >= state.duration) {
-			// Emission is over; simulate up to its end and let the tail age.
+			// Emission is over: simulate its length with emitting on, then the
+			// tail with emitting off (the residual part of the request does
+			// that and leaves the emitter off). request_particles_process()
+			// turns emitting back on, and setting it off afterwards made the
+			// whole request run without emission: continuous emitters (Column)
+			// showed nothing when seeking past their emission end.
 			state.ended = true;
-			emitter->call("request_particles_process", run);
-			_set_emitter_emitting(emitter, false, false);
+			emitter->call("request_particles_process", state.duration, MAX(run - state.duration, 0.0001));
 		} else {
 			emitter->call("request_particles_process", run);
 		}
