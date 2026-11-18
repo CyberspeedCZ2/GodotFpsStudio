@@ -643,8 +643,13 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 	}
 	if (Node3D *source_3d = Object::cast_to<Node3D>(p_source)) {
 		if (Node3D *preview_3d = Object::cast_to<Node3D>(p_preview)) {
+			// Only the effect root sits at the preview's origin; tracks keep their
+			// own offset (Mist 2.4 m up), as in the game. Clearing it on every
+			// track dropped them to 0 after any edit, until the next rebuild.
 			Transform3D transform = source_3d->get_transform();
-			transform.origin = Vector3();
+			if (p_is_root) {
+				transform.origin = Vector3();
+			}
 			if (preview_3d->get_transform() != transform) {
 				preview_3d->set_transform(transform);
 				changed = true;
