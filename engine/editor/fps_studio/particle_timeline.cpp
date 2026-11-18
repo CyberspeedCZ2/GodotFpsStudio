@@ -233,11 +233,14 @@ Size2 FPSParticleTimeline::get_minimum_size() const {
 }
 
 String FPSParticleTimeline::get_tooltip(const Point2 &p_pos) const {
+	if (_is_on_end_flag(p_pos)) {
+		return TTR("Playback end: playback loops back to the start flag here. Drag it, press O at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
+	}
 	if (_is_on_start_flag(p_pos)) {
 		return TTR("Playback start: Play and Restart begin here. Drag it, press I at the playhead or right-click the ruler. Alt + I plays the whole effect again.");
 	}
 	if (_in_ruler(p_pos.y)) {
-		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("The green flag is where playback starts (drag it, or I at the playhead); O sets where it ends. Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
+		return TTR("Click or drag to scrub. Ctrl/Cmd + wheel zooms, Shift + wheel or middle drag pans.") + "\n" + TTR("The green flags are where playback starts and ends (drag them, or I / O at the playhead). Shift + drag sets both; Alt + I or right-click plays the whole effect again.");
 	}
 	const int row = _row_at(p_pos.y);
 	Node *track = _track_at_row(row);
@@ -303,6 +306,31 @@ bool FPSParticleTimeline::_is_on_start_flag(const Point2 &p_pos) const {
 	return p_pos.y >= _ruler_top() + _ruler_height() * 0.5 && p_pos.x >= x - 4 * EDSCALE && p_pos.x <= x + 11 * EDSCALE;
 }
 
+// Moves where playback ends and keeps the start. Back at the effect's end
+// with the start at 0 is no region at all.
+void FPSParticleTimeline::_set_playback_end(double p_time) {
+	const double start = get_playback_start();
+	const double end = MAX(p_time, start + TIMELINE_SNAP);
+	if (start <= 0.0001 && end >= content_length - 0.0001) {
+		set_loop_region(0.0, -1.0);
+	} else {
+		set_loop_region(start, end);
+	}
+}
+
+// Mirror of the start flag: it points left, from its line.
+bool FPSParticleTimeline::_is_on_end_flag(const Point2 &p_pos) const {
+	if (!_in_ruler(p_pos.y) || p_pos.x < _name_width() - 2 * EDSCALE) {
+		return false;
+	}
+	const real_t x = _time_to_x(get_playback_end());
+	if (!(p_pos.y >= _ruler_top() + _ruler_height() * 0.5 && p_pos.x >= x - 11 * EDSCALE && p_pos.x <= x + 4 * EDSCALE)) {
+		return false;
+	}
+	// Flags touching each other: the nearer line wins.
+	return !_is_on_start_flag(p_pos) || Math::abs(p_pos.x - x) < Math::abs(p_pos.x - _time_to_x(get_playback_start()));
+}
+
 void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 	switch (p_id) {
 		case RULER_LOOP_START: {
@@ -310,8 +338,7 @@ void FPSParticleTimeline::_on_context_menu_id(int p_id) {
 			return;
 		}
 		case RULER_LOOP_END: {
-			const double start = has_loop_region() ? loop_start : 0.0;
-			set_loop_region(MIN(start, context_time), context_time);
+			_set_playback_end(context_time);
 			return;
 		}
 		case RULER_LOOP_CLEAR: {
@@ -373,7 +400,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 				_set_playback_start(current_time);
 			}
 		} else if (code == Key::O && !command) {
-			set_loop_region(MIN(has_loop_region() ? loop_start : 0.0, current_time), current_time);
+			_set_playback_end(current_time);
 		} else {
 			return;
 		}
@@ -480,7 +507,9 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		if (mb->is_pressed()) {
 			grab_focus();
 			if (_in_ruler(pos.y)) {
-				if (!mb->is_shift_pressed() && _is_on_start_flag(pos)) {
+				if (!mb->is_shift_pressed() && _is_on_end_flag(pos)) {
+					drag_mode = DRAG_END;
+				} else if (!mb->is_shift_pressed() && _is_on_start_flag(pos)) {
 					drag_mode = DRAG_START;
 				} else if (pos.x >= _name_width()) {
 					if (mb->is_shift_pressed()) {
@@ -578,6 +607,11 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			accept_event();
 			return;
 		}
+		if (drag_mode == DRAG_END) {
+			_set_playback_end(_snap(MAX(0.0, time), mm->is_shift_pressed()));
+			accept_event();
+			return;
+		}
 		if (drag_mode == DRAG_START) {
 			_set_playback_start(_snap(MAX(0.0, time), mm->is_shift_pressed()));
 			accept_event();
@@ -614,7 +648,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			} else if (pos.x >= _time_to_x(start) && (active_end < 0.0 || pos.x <= _time_to_x(active_end))) {
 				shape = CURSOR_DRAG;
 			}
-		} else if (!mm->is_shift_pressed() && _is_on_start_flag(pos)) {
+		} else if (!mm->is_shift_pressed() && (_is_on_start_flag(pos) || _is_on_end_flag(pos))) {
 			shape = CURSOR_HSIZE;
 		} else if (_in_ruler(pos.y) && pos.x >= _name_width()) {
 			shape = mm->is_shift_pressed() ? CURSOR_HSPLIT : CURSOR_POINTING_HAND; // Scrub the playhead.
@@ -814,6 +848,22 @@ void FPSParticleTimeline::_notification(int p_what) {
 				draw_colored_polygon(flag, flag_color);
 				if (has_loop_region()) {
 					draw_line(Point2(x_flag, bottom), Point2(x_flag, size.y), Color(flag_color, 0.5), 1.0 * EDSCALE);
+				}
+			}
+			// Playback end flag, the start flag mirrored.
+			const real_t x_end_flag = _time_to_x(get_playback_end());
+			if (x_end_flag >= _name_width() - 1 && x_end_flag <= size.x + 1) {
+				const Color flag_color(0.4, 0.85, 0.45);
+				const real_t bottom = ruler_top + _ruler_height();
+				const real_t flag_h = _ruler_height() * 0.45;
+				draw_line(Point2(x_end_flag, bottom - flag_h), Point2(x_end_flag, bottom), flag_color, 2 * EDSCALE);
+				Vector<Point2> flag;
+				flag.push_back(Point2(x_end_flag, bottom - flag_h));
+				flag.push_back(Point2(x_end_flag - 9 * EDSCALE, bottom - flag_h * 0.72));
+				flag.push_back(Point2(x_end_flag, bottom - flag_h * 0.44));
+				draw_colored_polygon(flag, flag_color);
+				if (has_loop_region()) {
+					draw_line(Point2(x_end_flag, bottom), Point2(x_end_flag, size.y), Color(flag_color, 0.5), 1.0 * EDSCALE);
 				}
 			}
 

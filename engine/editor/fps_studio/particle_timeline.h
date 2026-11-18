@@ -45,9 +45,12 @@ private:
 		DRAG_PAN,
 		DRAG_LOOP,
 		DRAG_START, // The playback start flag on the ruler.
+		DRAG_END, // The playback end flag.
 	};
 	void _set_playback_start(double p_time);
 	bool _is_on_start_flag(const Point2 &p_pos) const;
+	void _set_playback_end(double p_time);
+	bool _is_on_end_flag(const Point2 &p_pos) const;
 	enum RulerAction {
 		RULER_LOOP_START = 100,
 		RULER_LOOP_END,
@@ -126,6 +129,8 @@ public:
 	bool has_loop_region() const { return loop_end > loop_start; }
 	// Where Play and Restart begin: the loop region start, else 0.
 	double get_playback_start() const { return has_loop_region() ? loop_start : 0.0; }
+	// Where playback ends (and loops back to the start): the loop region end, else the effect's end.
+	double get_playback_end() const { return has_loop_region() ? loop_end : content_length; }
 	double get_loop_start() const { return loop_start; }
 	double get_loop_end() const { return loop_end; }
 
