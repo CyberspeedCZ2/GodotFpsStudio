@@ -66,6 +66,9 @@ private:
 		StringName condition_property;
 		Vector<int> condition_values;
 		int module = 0;
+		// Set for rows that edit an object which is not one of the targets
+		// (an attractor node, a custom shader material).
+		ObjectID custom_object;
 	};
 
 	ObjectID emitter_id;
@@ -91,6 +94,8 @@ private:
 	Button *collision_fit_button = nullptr;
 	OptionButton *sub_emitter_picker = nullptr;
 	Label *sub_emitter_warning = nullptr;
+	Label *rotation_note = nullptr;
+	Label *sub_uv_note = nullptr;
 
 	bool updating = false;
 
@@ -106,6 +111,9 @@ private:
 	void _add_meta_row(int p_module, const String &p_key, const String &p_label, Variant::Type p_type, PropertyHint p_hint, const String &p_hint_string);
 	void _build_event();
 	void _add_row(int p_module, Target p_target, const StringName &p_gpu_property, const StringName &p_cpu_property, const String &p_label, const StringName &p_condition = StringName(), const Vector<int> &p_condition_values = Vector<int>());
+	void _add_object_row(int p_module, Object *p_object, const StringName &p_property, const String &p_label, Target p_target, bool p_custom, const StringName &p_condition = StringName(), const Vector<int> &p_condition_values = Vector<int>());
+	void _update_facing_notes();
+	void _on_create_distortion_material();
 	void _build();
 	void _clear();
 	void _update_visibility();

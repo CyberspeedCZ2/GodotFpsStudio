@@ -1030,6 +1030,11 @@ uniform int particles_anim_h_frames : hint_range(1, 128);
 uniform int particles_anim_v_frames : hint_range(1, 128);
 uniform bool particles_anim_loop;
 )";
+		if (flags[FLAG_PARTICLES_ANIM_BLEND]) {
+			code += R"(varying vec2 particles_anim_uv_next;
+varying float particles_anim_mix;
+)";
+		}
 	}
 
 	if (features[FEATURE_EMISSION]) {
@@ -1318,7 +1323,23 @@ void vertex() {)";
 		particle_frame = mod(particle_frame, particle_total_frames);
 	}
 	UV /= vec2(h_frames, v_frames);
-	UV += vec2(mod(particle_frame, h_frames) / h_frames, floor((particle_frame + 0.5) / h_frames) / v_frames);
+)";
+			if (flags[FLAG_PARTICLES_ANIM_BLEND]) {
+				// Sprite sheet frame blending: the fragment shader mixes this
+				// frame with the next one, so a slow flipbook does not step.
+				code += R"(
+	// Particles Anim Blend: Enabled
+	float particle_next_frame = particle_frame + 1.0;
+	if (!particles_anim_loop) {
+		particle_next_frame = min(particle_next_frame, particle_total_frames - 1.0);
+	} else {
+		particle_next_frame = mod(particle_next_frame, particle_total_frames);
+	}
+	particles_anim_mix = fract(max(INSTANCE_CUSTOM.z, 0.0) * particle_total_frames);
+	particles_anim_uv_next = UV + vec2(mod(particle_next_frame, h_frames) / h_frames, floor((particle_next_frame + 0.5) / h_frames) / v_frames);
+)";
+			}
+			code += R"(	UV += vec2(mod(particle_frame, h_frames) / h_frames, floor((particle_frame + 0.5) / h_frames) / v_frames);
 )";
 		} break;
 		case BILLBOARD_MAX:
@@ -1594,6 +1615,10 @@ void fragment() {)";
 			code += R"(
 	vec4 albedo_tex = texture(texture_albedo, base_uv);
 )";
+			if (billboard_mode == BILLBOARD_PARTICLES && flags[FLAG_PARTICLES_ANIM_BLEND]) {
+				code += R"(	albedo_tex = mix(albedo_tex, texture(texture_albedo, particles_anim_uv_next), particles_anim_mix);
+)";
+			}
 		}
 	}
 
@@ -3715,6 +3740,7 @@ void BaseMaterial3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "particles_anim_h_frames", PROPERTY_HINT_RANGE, "1,128,1"), "set_particles_anim_h_frames", "get_particles_anim_h_frames");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "particles_anim_v_frames", PROPERTY_HINT_RANGE, "1,128,1"), "set_particles_anim_v_frames", "get_particles_anim_v_frames");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "particles_anim_loop"), "set_particles_anim_loop", "get_particles_anim_loop");
+	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "particles_anim_blend"), "set_flag", "get_flag", FLAG_PARTICLES_ANIM_BLEND);
 
 	ADD_GROUP("Grow", "grow_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "grow", PROPERTY_HINT_GROUP_ENABLE), "set_grow_enabled", "is_grow_enabled");
@@ -3857,6 +3883,7 @@ void BaseMaterial3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(FLAG_DISABLE_SPECULAR_OCCLUSION);
 	BIND_ENUM_CONSTANT(FLAG_USE_Z_CLIP_SCALE);
 	BIND_ENUM_CONSTANT(FLAG_USE_FOV_OVERRIDE);
+	BIND_ENUM_CONSTANT(FLAG_PARTICLES_ANIM_BLEND);
 	BIND_ENUM_CONSTANT(FLAG_MAX);
 
 	BIND_ENUM_CONSTANT(DIFFUSE_BURLEY);

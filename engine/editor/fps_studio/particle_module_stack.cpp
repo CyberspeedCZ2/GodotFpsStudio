@@ -33,6 +33,7 @@
 #include "scene/resources/3d/primitive_meshes.h"
 #include "scene/resources/material.h"
 #include "scene/resources/particle_process_material.h"
+#include "scene/resources/shader.h"
 
 static const char *MODULE_META = "_fps_particle_modules";
 // Draw mesh the emitter had before the Trails module replaced it.
@@ -193,7 +194,7 @@ bool FPSParticleModuleStack::_is_module_active(int p_module) const {
 			return gpu && has_attractor_child(emitter);
 		case MODULE_ROTATION:
 			if (gpu) {
-				return vector2_nonzero(process->get("angle")) || vector2_nonzero(process->get("angular_velocity"));
+				return vector2_nonzero(process->get("angle")) || vector2_nonzero(process->get("angular_velocity")) || bool(process->get("use_rotation_3d")) || bool(process->get("use_rotation_velocity_3d"));
 			}
 			return vector2_nonzero(process->get("angle_min")) || vector2_nonzero(process->get("angle_max")) || vector2_nonzero(process->get("angular_velocity_min")) || vector2_nonzero(process->get("angular_velocity_max"));
 		case MODULE_SUB_UV: {
@@ -249,6 +250,8 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 			} else if (gpu) {
 				set_prop(process, "angle", Vector2());
 				set_prop(process, "angular_velocity", Vector2());
+				set_prop(process, "use_rotation_3d", false);
+				set_prop(process, "use_rotation_velocity_3d", false);
 			} else {
 				set_prop(process, "angle_min", 0.0);
 				set_prop(process, "angle_max", 0.0);
@@ -369,15 +372,19 @@ void FPSParticleModuleStack::_add_row(int p_module, Target p_target, const Strin
 	if (p_target == TARGET_NODE && !gpu && p_cpu_property == StringName()) {
 		return;
 	}
-	Object *object = _get_target(p_target);
-	if (!object) {
+	_add_object_row(p_module, _get_target(p_target), property, p_label, p_target, false, p_condition, p_condition_values);
+}
+
+void FPSParticleModuleStack::_add_object_row(int p_module, Object *p_object, const StringName &p_property, const String &p_label, Target p_target, bool p_custom, const StringName &p_condition, const Vector<int> &p_condition_values) {
+	Object *object = p_object;
+	if (!object || !module_contents[p_module]) {
 		return;
 	}
 	List<PropertyInfo> properties;
 	object->get_property_list(&properties);
 	const PropertyInfo *info = nullptr;
 	for (const PropertyInfo &candidate : properties) {
-		if (candidate.name == property) {
+		if (candidate.name == p_property) {
 			info = &candidate;
 			break;
 		}
@@ -406,6 +413,9 @@ void FPSParticleModuleStack::_add_row(int p_module, Target p_target, const Strin
 	row.condition_property = p_condition;
 	row.condition_values = p_condition_values;
 	row.module = p_module;
+	if (p_custom) {
+		row.custom_object = object->get_instance_id();
+	}
 	rows.push_back(row);
 }
 
@@ -464,6 +474,10 @@ void FPSParticleModuleStack::_build_event() {
 		case ParticleEffect3D::EVENT_DECAL:
 			title = TTR("Decal");
 			subtitle = TTR("Decal event: appears at its start and fades out.");
+			break;
+		case ParticleEffect3D::EVENT_SPAWN:
+			title = TTR("Spawn Effect");
+			subtitle = TTR("Plays another effect or creates a scene (gibs, burning debris, a second explosion) at this track's position when it fires.");
 			break;
 		default:
 			break;
@@ -531,6 +545,21 @@ void FPSParticleModuleStack::_build_event() {
 			_add_row(MODULE_EVENT, TARGET_NODE, "damage_method", "damage_method", TTR("Damage Method"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "target_group", "target_group", TTR("Only Group (optional)"));
 			break;
+		case ParticleEffect3D::EVENT_SPAWN: {
+			_add_row(MODULE_EVENT, TARGET_NODE, "scene", "scene", TTR("Effect or Scene"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "count", "count", TTR("Count"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "scatter_radius", "scatter_radius", TTR("Scatter Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "launch_speed", "launch_speed", TTR("Launch Speed (Scenes)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "launch_spread", "launch_spread", TTR("Launch Spread"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "inherit_look", "inherit_look", TTR("Use This Effect's Tint and Scale"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "position", "position", TTR("Position"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "rotation_degrees", "rotation_degrees", TTR("Rotation"));
+			Label *note = memnew(Label);
+			note->set_text(TTR("A particle effect is played from the effect pool and is also shown in this preview from the moment it fires (not when scrubbing past it). Any other scene (a RigidBody3D gib, a prop) is created only in the running game and thrown along this track's +Y at Launch Speed."));
+			note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+			note->set_modulate(Color(1, 1, 1, 0.7));
+			module_contents[MODULE_EVENT]->add_child(note);
+		} break;
 		case ParticleEffect3D::EVENT_DECAL:
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = stays)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,120,0.1,or_greater,suffix:s");
 			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_FADE, TTR("Fade Out Part"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0.01,1,0.01");
@@ -573,6 +602,8 @@ void FPSParticleModuleStack::_clear() {
 	collision_fit_button = nullptr;
 	sub_emitter_picker = nullptr;
 	sub_emitter_warning = nullptr;
+	rotation_note = nullptr;
+	sub_uv_note = nullptr;
 	for (int i = cards->get_child_count() - 1; i >= 0; i--) {
 		Node *child = cards->get_child(i);
 		cards->remove_child(child);
@@ -648,7 +679,20 @@ void FPSParticleModuleStack::_build() {
 	const Vector<int> shape_sphere = { ParticleProcessMaterial::EMISSION_SHAPE_SPHERE, ParticleProcessMaterial::EMISSION_SHAPE_SPHERE_SURFACE };
 	const Vector<int> shape_box = { ParticleProcessMaterial::EMISSION_SHAPE_BOX };
 	const Vector<int> shape_ring = { ParticleProcessMaterial::EMISSION_SHAPE_RING };
+	const Vector<int> shape_points = { ParticleProcessMaterial::EMISSION_SHAPE_POINTS, ParticleProcessMaterial::EMISSION_SHAPE_DIRECTED_POINTS };
+	const Vector<int> shape_directed = { ParticleProcessMaterial::EMISSION_SHAPE_DIRECTED_POINTS };
 	const Vector<int> enabled = { 1 };
+	auto add_note = [&](int p_module, const String &p_text) -> Label * {
+		if (!module_contents[p_module]) {
+			return nullptr;
+		}
+		Label *note = memnew(Label);
+		note->set_text(p_text);
+		note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+		note->add_theme_color_override(SceneStringName(font_color), Color(1.0, 0.72, 0.3));
+		module_contents[p_module]->add_child(note);
+		return note;
+	};
 	auto add_range = [&](int p_module, const StringName &p_base, const String &p_label) {
 		if (gpu) {
 			_add_row(p_module, TARGET_PROCESS, p_base, StringName(), p_label);
@@ -663,6 +707,7 @@ void FPSParticleModuleStack::_build() {
 	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DELAY, TTR("Start Delay"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,30,0.01,or_greater,suffix:s");
 	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_DURATION, TTR("Emission Length (0 = auto)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,60,0.01,or_greater,suffix:s");
 	_add_row(MODULE_EMITTER, TARGET_NODE, "amount", "amount", TTR("Max Particles"));
+	_add_row(MODULE_EMITTER, TARGET_NODE, "amount_ratio", StringName(), TTR("Amount Ratio"));
 	_add_row(MODULE_EMITTER, TARGET_NODE, "lifetime", "lifetime", TTR("Lifetime"));
 	_add_row(MODULE_EMITTER, TARGET_PROCESS, "lifetime_randomness", "lifetime_randomness", TTR("Lifetime Random"));
 	_add_row(MODULE_EMITTER, TARGET_NODE, "one_shot", "one_shot", TTR("One Shot"));
@@ -671,6 +716,9 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_EMITTER, TARGET_NODE, "preprocess", "preprocess", TTR("Prewarm"));
 	_add_row(MODULE_EMITTER, TARGET_NODE, "speed_scale", "speed_scale", TTR("Speed Scale"));
 	_add_row(MODULE_EMITTER, TARGET_NODE, "local_coords", "local_coords", TTR("Local Space"));
+	// For effects attached to a moving node (spawn_attached, Local Space on
+	// the effect): this emitter's particles stay behind in the world.
+	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_KEEP_WORLD, TTR("Stay in World when Attached"), Variant::BOOL, PROPERTY_HINT_NONE, String());
 	_add_row(MODULE_EMITTER, TARGET_NODE, "fixed_fps", "fixed_fps", TTR("Fixed FPS"));
 
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_shape", "emission_shape", TTR("Shape"));
@@ -680,6 +728,13 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_ring_inner_radius", "emission_ring_inner_radius", TTR("Inner Radius"), "emission_shape", shape_ring);
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_ring_height", "emission_ring_height", TTR("Ring Height"), "emission_shape", shape_ring);
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_ring_axis", "emission_ring_axis", TTR("Ring Axis"), "emission_shape", shape_ring);
+	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_ring_cone_angle", "emission_ring_cone_angle", TTR("Ring Cone Angle"), "emission_shape", shape_ring);
+	// Points / Directed Points read the spawn positions from a texture
+	// (GPUParticles3D > Create Emission Points From Node in the 3D editor).
+	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_point_texture", StringName(), TTR("Point Texture"), "emission_shape", shape_points);
+	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_point_count", StringName(), TTR("Point Count"), "emission_shape", shape_points);
+	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_normal_texture", StringName(), TTR("Normal Texture"), "emission_shape", shape_directed);
+	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_color_texture", StringName(), TTR("Color Texture"), "emission_shape", shape_points);
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_shape_offset", StringName(), TTR("Offset"));
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_shape_scale", StringName(), TTR("Scale"));
 
@@ -691,6 +746,12 @@ void FPSParticleModuleStack::_build() {
 	add_range(MODULE_VELOCITY, "radial_velocity", TTR("Radial Speed"));
 	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "radial_velocity_curve", StringName(), TTR("Radial Speed over Life"));
 	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "velocity_limit_curve", StringName(), TTR("Speed Limit over Life"));
+	// Circling around the emitter (vortex, energy ball), in turns per second.
+	add_range(MODULE_VELOCITY, "orbit_velocity", TTR("Orbit Speed"));
+	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "orbit_velocity_curve", "orbit_velocity_curve", TTR("Orbit over Life"));
+	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "velocity_pivot", StringName(), TTR("Orbit Center"));
+	// Streaks: the particle's Y axis follows its flight (sparks, rain, tracers).
+	_add_row(MODULE_VELOCITY, TARGET_PROCESS, "particle_flag_align_y", "particle_flag_align_y", TTR("Align to Flight Direction"));
 
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "gravity", "gravity", TTR("Gravity"));
 	add_range(MODULE_FORCES, "linear_accel", TTR("Linear Accel"));
@@ -701,6 +762,7 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "radial_accel_curve", "radial_accel_curve", TTR("Radial Accel over Life"));
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "tangential_accel_curve", "tangential_accel_curve", TTR("Tangential over Life"));
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "damping_curve", "damping_curve", TTR("Drag over Life"));
+	_add_row(MODULE_FORCES, TARGET_PROCESS, "particle_flag_damping_as_friction", StringName(), TTR("Drag as Friction"));
 
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color", "color", TTR("Base Color"));
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color_ramp", "color_ramp", TTR("Color over Life"));
@@ -718,13 +780,28 @@ void FPSParticleModuleStack::_build() {
 	add_range(MODULE_ROTATION, "angular_velocity", TTR("Spin Speed"));
 	_add_row(MODULE_ROTATION, TARGET_PROCESS, "angle_curve", "angle_curve", TTR("Angle over Life"));
 	_add_row(MODULE_ROTATION, TARGET_PROCESS, "angular_velocity_curve", "angular_velocity_curve", TTR("Spin over Life"));
+	rotation_note = add_note(MODULE_ROTATION, TTR("Start Angle and Spin Speed turn sprites only with Facing = Particle Billboard (Render module). This emitter draws a mesh or faces another way: use 3D Rotation and 3D Spin below (GPU emitters), or Rotate around Y."));
+	// Mesh particles (debris, casings, shards): tumble around all three axes.
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "use_rotation_3d", StringName(), TTR("3D Rotation"));
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "rotation_3d_min", StringName(), TTR("Start Rotation Min"), "use_rotation_3d", enabled);
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "rotation_3d_max", StringName(), TTR("Start Rotation Max"), "use_rotation_3d", enabled);
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "use_rotation_velocity_3d", StringName(), TTR("3D Spin"));
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "rotation_velocity_3d_min", StringName(), TTR("Spin Min"), "use_rotation_velocity_3d", enabled);
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "rotation_velocity_3d_max", StringName(), TTR("Spin Max"), "use_rotation_velocity_3d", enabled);
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "rotation_velocity_3d_curve", StringName(), TTR("3D Spin over Life"), "use_rotation_velocity_3d", enabled);
+	_add_row(MODULE_ROTATION, TARGET_PROCESS, "particle_flag_rotate_y", "particle_flag_rotate_y", TTR("Rotate around Y (flat particles)"));
 
-	add_range(MODULE_SUB_UV, "anim_speed", TTR("Frames per Life"));
-	add_range(MODULE_SUB_UV, "anim_offset", TTR("Start Frame"));
+	sub_uv_note = add_note(MODULE_SUB_UV, TTR("Sprite sheet animation needs Facing = Particle Billboard in the Render module. With another facing or a mesh, every particle shows the whole sheet."));
+	// anim_speed 1 plays the whole sheet once over the particle's life;
+	// anim_offset is where in the sheet it starts (0 = first frame, 1 = last).
+	add_range(MODULE_SUB_UV, "anim_speed", TTR("Sheet Plays per Life"));
+	add_range(MODULE_SUB_UV, "anim_offset", TTR("Start Position (0-1)"));
 	_add_row(MODULE_SUB_UV, TARGET_PROCESS, "anim_speed_curve", "anim_speed_curve", TTR("Speed over Life"));
+	_add_row(MODULE_SUB_UV, TARGET_PROCESS, "anim_offset_curve", "anim_offset_curve", TTR("Position over Life"));
 	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_h_frames", "particles_anim_h_frames", TTR("Columns"));
 	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_v_frames", "particles_anim_v_frames", TTR("Rows"));
 	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_loop", "particles_anim_loop", TTR("Loop"));
+	_add_row(MODULE_SUB_UV, TARGET_MATERIAL, "particles_anim_blend", "particles_anim_blend", TTR("Blend Frames (smooth)"));
 
 	_add_row(MODULE_TURBULENCE, TARGET_PROCESS, "turbulence_noise_strength", StringName(), TTR("Strength"));
 	_add_row(MODULE_TURBULENCE, TARGET_PROCESS, "turbulence_noise_scale", StringName(), TTR("Noise Scale"));
@@ -732,6 +809,7 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_TURBULENCE, TARGET_PROCESS, "turbulence_noise_speed_random", StringName(), TTR("Speed Random"));
 	_add_row(MODULE_TURBULENCE, TARGET_PROCESS, "turbulence_influence", StringName(), TTR("Influence"));
 	_add_row(MODULE_TURBULENCE, TARGET_PROCESS, "turbulence_initial_displacement", StringName(), TTR("Displacement"));
+	_add_row(MODULE_TURBULENCE, TARGET_PROCESS, "turbulence_influence_over_life", StringName(), TTR("Influence over Life"));
 
 	_add_row(MODULE_COLLISION, TARGET_PROCESS, "collision_mode", StringName(), TTR("Mode"));
 	_add_row(MODULE_COLLISION, TARGET_PROCESS, "collision_friction", StringName(), TTR("Friction"));
@@ -804,7 +882,7 @@ void FPSParticleModuleStack::_build() {
 
 	if (module_contents[MODULE_ATTRACTORS]) {
 		Label *info = memnew(Label);
-		info->set_text(TTR("Attractors pull or push particles. Move them in the Level or preview hierarchy; each one is a GPUParticlesAttractor node."));
+		info->set_text(TTR("Attractors pull or push particles. An attractor acts on every GPU emitter in its range that has React to Attractors on (the default), so also on the other emitters of this effect and on effects nearby: turn React to Attractors off on emitters that should ignore it."));
 		info->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 		info->set_modulate(Color(1, 1, 1, 0.7));
 		module_contents[MODULE_ATTRACTORS]->add_child(info);
@@ -814,6 +892,26 @@ void FPSParticleModuleStack::_build() {
 		module_contents[MODULE_ATTRACTORS]->add_child(add_attractor);
 	}
 	_add_row(MODULE_ATTRACTORS, TARGET_PROCESS, "attractor_interaction_enabled", StringName(), TTR("React to Attractors"));
+	if (module_contents[MODULE_ATTRACTORS]) {
+		int attractor_index = 0;
+		for (int i = 0; i < emitter->get_child_count(); i++) {
+			GPUParticlesAttractor3D *attractor = Object::cast_to<GPUParticlesAttractor3D>(emitter->get_child(i));
+			if (!attractor) {
+				continue;
+			}
+			attractor_index++;
+			Label *attractor_title = memnew(Label);
+			attractor_title->set_text(vformat("%d. %s", attractor_index, attractor->get_name()));
+			attractor_title->set_theme_type_variation("HeaderSmall");
+			module_contents[MODULE_ATTRACTORS]->add_child(attractor_title);
+			_add_object_row(MODULE_ATTRACTORS, attractor, "strength", TTR("Strength (negative pushes)"), TARGET_NODE, true);
+			_add_object_row(MODULE_ATTRACTORS, attractor, "attenuation", TTR("Falloff"), TARGET_NODE, true);
+			_add_object_row(MODULE_ATTRACTORS, attractor, "directionality", TTR("Directionality"), TARGET_NODE, true);
+			_add_object_row(MODULE_ATTRACTORS, attractor, "radius", TTR("Radius"), TARGET_NODE, true);
+			_add_object_row(MODULE_ATTRACTORS, attractor, "size", TTR("Size"), TARGET_NODE, true);
+			_add_object_row(MODULE_ATTRACTORS, attractor, "position", TTR("Position"), TARGET_NODE, true);
+		}
+	}
 
 	// Render: texture first, then how it is blended and oriented.
 	{
@@ -855,12 +953,40 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_RENDER, TARGET_MESH, "size", "size", TTR("Quad Size"));
 	_add_row(MODULE_RENDER, TARGET_NODE, "draw_order", "draw_order", TTR("Sorting"));
 	_add_row(MODULE_RENDER, TARGET_NODE, "transform_align", StringName(), TTR("Align"));
+	// A custom shader material (distortion, the water clip of the presets...):
+	// its parameters are the rows.
+	if (Ref<ShaderMaterial> shader_material = get_draw_material(emitter); shader_material.is_valid()) {
+		List<PropertyInfo> shader_properties;
+		shader_material->get_property_list(&shader_properties);
+		for (const PropertyInfo &property : shader_properties) {
+			if (property.name.begins_with("shader_parameter/")) {
+				_add_object_row(MODULE_RENDER, shader_material.ptr(), property.name, property.name.trim_prefix("shader_parameter/").capitalize(), TARGET_MATERIAL, true);
+			}
+		}
+		_add_object_row(MODULE_RENDER, shader_material.ptr(), "render_priority", TTR("Render Priority"), TARGET_MATERIAL, true);
+	}
 
 	_update_render_card();
+	_update_facing_notes();
 	_update_collision_hint();
 	_update_sub_emitter_card();
 	_update_visibility();
 	_update_add_menu();
+}
+
+// Rotation (2D angle) and Sprite Sheet work only on particle billboards: say
+// so instead of silently doing nothing.
+void FPSParticleModuleStack::_update_facing_notes() {
+	const BaseMaterial3D *material = Object::cast_to<BaseMaterial3D>(_get_target(TARGET_MATERIAL));
+	const bool other_facing = material && material->get_billboard_mode() != BaseMaterial3D::BILLBOARD_PARTICLES;
+	if (rotation_note) {
+		// Rotate around Y applies the angle to any particle, also a mesh.
+		Object *process = _get_target(TARGET_PROCESS);
+		rotation_note->set_visible(other_facing && !(process && bool(process->get("particle_flag_rotate_y"))));
+	}
+	if (sub_uv_note) {
+		sub_uv_note->set_visible(other_facing);
+	}
 }
 
 void FPSParticleModuleStack::_get_targets(Object *r_targets[TARGET_COUNT]) const {
@@ -880,7 +1006,7 @@ void FPSParticleModuleStack::_update_visibility() {
 	for (const PropertyRow &row : rows) {
 		bool visible = true;
 		if (row.condition_property != StringName()) {
-			Object *object = targets[row.target];
+			Object *object = row.custom_object.is_valid() ? ObjectDB::get_instance(row.custom_object) : targets[row.target];
 			visible = object && row.condition_values.has(int(object->get(row.condition_property)));
 		}
 		row.editor->set_visible(visible);
@@ -926,11 +1052,19 @@ void FPSParticleModuleStack::_update_render_card() {
 		return;
 	}
 	BaseMaterial3D *material = Object::cast_to<BaseMaterial3D>(_get_target(TARGET_MATERIAL));
-	create_material_button->set_visible(material == nullptr);
+	// A custom shader material is a material too: offering to create one
+	// would replace it (the water clip shader of the water presets).
+	const Ref<ShaderMaterial> shader_material = get_edited_emitter() ? get_draw_material(get_edited_emitter()) : Ref<Material>();
+	create_material_button->set_visible(material == nullptr && shader_material.is_null());
 	generate_texture_button->set_disabled(get_edited_emitter() == nullptr);
 	Ref<Texture2D> texture = material ? material->get_texture(BaseMaterial3D::TEXTURE_ALBEDO) : Ref<Texture2D>();
+	if (shader_material.is_valid()) {
+		texture = shader_material->get_shader_parameter("albedo_texture");
+	}
 	texture_preview->set_texture(texture);
-	if (!material) {
+	if (shader_material.is_valid()) {
+		texture_label->set_text(TTR("Custom shader material (parameters below)"));
+	} else if (!material) {
 		texture_label->set_text(TTR("No particle material"));
 	} else if (texture.is_null()) {
 		texture_label->set_text(TTR("No texture (soft color quad)"));
@@ -977,8 +1111,8 @@ void FPSParticleModuleStack::_on_remove_module_pressed(int p_module) {
 
 void FPSParticleModuleStack::_on_create_material_pressed() {
 	Node *emitter = get_edited_emitter();
-	if (!emitter) {
-		return;
+	if (!emitter || get_draw_material(emitter).is_valid()) {
+		return; // Never over an existing material.
 	}
 	Ref<StandardMaterial3D> material;
 	material.instantiate();
@@ -1017,10 +1151,101 @@ void FPSParticleModuleStack::_on_create_material_pressed() {
 	undo_redo->commit_action();
 }
 
+// Heat haze and blast waves: a billboard that bends the picture behind it.
+static Ref<Shader> distortion_shader;
+
+static Ref<Shader> get_distortion_shader() {
+	if (distortion_shader.is_null()) {
+		distortion_shader.instantiate();
+		distortion_shader->set_code(R"(shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
+// Bends the picture behind the particle (hot air, a blast wave). The
+// particle's alpha (Color over Life, Alpha over Life) scales the bend, so the
+// distortion fades in and out with the particle.
+uniform float strength : hint_range(0.0, 0.2, 0.001) = 0.03;
+// 0 = a soft lens over the whole sprite (heat), 1 = a thin ring near its
+// edge (shock wave; grow the particle with Scale over Life).
+uniform float ring : hint_range(0.0, 1.0, 0.01) = 0.0;
+// Rippling of the bend over time (hot air); 0 = a still lens.
+uniform float shimmer : hint_range(0.0, 1.0, 0.01) = 0.6;
+uniform float shimmer_speed : hint_range(0.0, 20.0, 0.1) = 6.0;
+uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear;
+uniform sampler2D depth_texture : hint_depth_texture, filter_nearest;
+varying float phase;
+void vertex() {
+	// Facing the camera, keeping the particle's scale.
+	mat4 facing = mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
+	facing[0] *= length(MODEL_MATRIX[0].xyz);
+	facing[1] *= length(MODEL_MATRIX[1].xyz);
+	facing[2] *= length(MODEL_MATRIX[2].xyz);
+	MODELVIEW_MATRIX = VIEW_MATRIX * facing;
+	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
+	phase = float(INSTANCE_ID) * 1.7;
+}
+void fragment() {
+	vec2 p = UV * 2.0 - 1.0;
+	float r = length(p);
+	vec2 dir = r > 0.0001 ? p / r : vec2(0.0);
+	float lens = smoothstep(1.0, 0.0, r);
+	float band = smoothstep(0.55, 0.8, r) * smoothstep(1.0, 0.85, r);
+	float amount = mix(lens, band, ring) * COLOR.a;
+	vec2 wave = vec2(sin(p.y * 9.0 + TIME * shimmer_speed + phase), cos(p.x * 8.0 + TIME * shimmer_speed * 1.3 + phase));
+	vec2 uv = SCREEN_UV + mix(dir, wave, shimmer * (1.0 - ring)) * amount * strength;
+	// Do not pull in things that stand in front of the particle.
+	float d = texture(depth_texture, uv).x;
+	vec4 sv = INV_PROJECTION_MATRIX * vec4(uv * 2.0 - 1.0, d, 1.0);
+	if (-sv.z / sv.w < -VERTEX.z) {
+		uv = SCREEN_UV;
+	}
+	ALBEDO = texture(screen_texture, uv).rgb;
+	ALPHA = clamp(amount * 4.0, 0.0, 1.0);
+}
+)");
+	}
+	return distortion_shader;
+}
+
+void FPSParticleModuleStack::_on_create_distortion_material() {
+	Node *emitter = get_edited_emitter();
+	if (!emitter || !ParticleEffect3D::is_emitter(emitter)) {
+		return;
+	}
+	Ref<ShaderMaterial> material;
+	material.instantiate();
+	material->set_shader(get_distortion_shader());
+	// Its own mesh, so emitters that share a quad keep their material.
+	Ref<Mesh> mesh = get_draw_mesh(emitter);
+	Ref<Mesh> new_mesh;
+	if (mesh.is_valid() && Object::cast_to<PrimitiveMesh>(mesh.ptr())) {
+		new_mesh = mesh->duplicate();
+	} else {
+		Ref<QuadMesh> quad;
+		quad.instantiate();
+		quad->set_size(Vector2(1.0, 1.0));
+		new_mesh = quad;
+	}
+	Object::cast_to<PrimitiveMesh>(new_mesh.ptr())->set_material(material);
+	const StringName mesh_property = _is_gpu() ? StringName("draw_pass_1") : StringName("mesh");
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action_for_history(TTR("Create Distortion Material"), EditorUndoRedoManager::GLOBAL_HISTORY, UndoRedo::MERGE_DISABLE);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_property(emitter, mesh_property, new_mesh);
+	undo_redo->add_undo_property(emitter, mesh_property, emitter->get(mesh_property));
+	if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(emitter); geometry && geometry->get_material_override().is_valid()) {
+		// The override would hide the new material.
+		undo_redo->add_do_property(emitter, "material_override", Ref<Material>());
+		undo_redo->add_undo_property(emitter, "material_override", geometry->get_material_override());
+	}
+	undo_redo->add_do_method(this, "_history_changed", StringName("material"));
+	undo_redo->add_undo_method(this, "_history_changed", StringName("material"));
+	undo_redo->commit_action();
+}
+
 void FPSParticleModuleStack::_notification(int p_what) {
 	if (p_what != NOTIFICATION_PREDELETE) {
 		return;
 	}
+	distortion_shader.unref();
 	// The clipboard is static; release its resources before engine shutdown.
 	module_clipboard.clear();
 	module_clipboard_module = -1;
@@ -1072,7 +1297,9 @@ void FPSParticleModuleStack::refresh_values() {
 	Object *targets[TARGET_COUNT];
 	_get_targets(targets);
 	for (const PropertyRow &row : rows) {
-		if (row.editor->get_edited_object() != targets[row.target]) {
+		// Custom rows edit their own object: rebuild when it is gone or (a
+		// shader material) no longer the emitter's draw material.
+		if (row.custom_object.is_valid() ? (!ObjectDB::get_instance(row.custom_object) || (row.target == TARGET_MATERIAL && get_draw_material(emitter).ptr() != ObjectDB::get_instance(row.custom_object))) : row.editor->get_edited_object() != targets[row.target]) {
 			_build();
 			return;
 		}
@@ -1082,6 +1309,7 @@ void FPSParticleModuleStack::refresh_values() {
 	}
 	header_title->set_text(emitter->get_name());
 	_update_render_card();
+	_update_facing_notes();
 	_update_collision_hint();
 	_update_sub_emitter_card();
 	_update_visibility();
@@ -1367,6 +1595,11 @@ void FPSParticleModuleStack::_on_module_menu_id(int p_id, int p_module) {
 		popup->add_item(TTR("Paste Module"), 1001);
 		popup->set_item_disabled(-1, module_clipboard_module != p_module);
 		popup->add_item(TTR("Reset to Defaults"), 1002);
+		if (p_module == MODULE_RENDER) {
+			popup->add_separator();
+			popup->add_item(TTR("Distortion Material (Heat Haze / Shock Wave)"), 1003);
+			popup->set_item_tooltip(-1, TTR("Replaces this emitter's material with one that bends the picture behind the particle. Strength follows the particle's alpha."));
+		}
 		return;
 	}
 	if (p_id == 1000) {
@@ -1375,6 +1608,8 @@ void FPSParticleModuleStack::_on_module_menu_id(int p_id, int p_module) {
 		_paste_module(p_module);
 	} else if (p_id == 1002) {
 		_reset_module(p_module);
+	} else if (p_id == 1003) {
+		_on_create_distortion_material();
 	} else {
 		_apply_module_preset(p_module, p_id);
 	}
@@ -1682,7 +1917,11 @@ void FPSParticleModuleStack::_on_level_collision_pressed() {
 }
 
 void FPSParticleModuleStack::_history_changed(const StringName &p_property) {
-	refresh_values();
+	if (p_property == SNAME("attractor") || p_property == SNAME("modules") || p_property == SNAME("material")) {
+		_build(); // Child nodes or the draw material changed: different rows.
+	} else {
+		refresh_values();
+	}
 	emit_signal(SNAME("property_edited"), String(p_property));
 }
 

@@ -315,6 +315,9 @@
 		<member name="orm_texture" type="Texture2D" setter="set_texture" getter="get_texture">
 			The Occlusion/Roughness/Metallic texture to use. This is a more efficient replacement of [member ao_texture], [member roughness_texture] and [member metallic_texture] in [ORMMaterial3D]. Ambient occlusion is stored in the red channel. Roughness map is stored in the green channel. Metallic map is stored in the blue channel. The alpha channel is ignored.
 		</member>
+		<member name="particles_anim_blend" type="bool" setter="set_flag" getter="get_flag" default="false">
+			If [code]true[/code], the albedo texture cross-fades between neighbouring frames of the particle sprite sheet, so a flipbook with few frames (smoke, fire) plays smoothly instead of stepping. Costs a second texture read. Only enabled when using [constant BILLBOARD_PARTICLES]. See [member billboard_mode].
+		</member>
 		<member name="particles_anim_h_frames" type="int" setter="set_particles_anim_h_frames" getter="get_particles_anim_h_frames">
 			The number of horizontal frames in the particle sprite sheet. Only enabled when using [constant BILLBOARD_PARTICLES]. See [member billboard_mode].
 		</member>
@@ -775,7 +778,10 @@
 		<constant name="FLAG_USE_FOV_OVERRIDE" value="24" enum="Flags">
 			Enables using [member fov_override].
 		</constant>
-		<constant name="FLAG_MAX" value="25" enum="Flags">
+		<constant name="FLAG_PARTICLES_ANIM_BLEND" value="25" enum="Flags">
+			Enables [member particles_anim_blend].
+		</constant>
+		<constant name="FLAG_MAX" value="26" enum="Flags">
 			Represents the size of the [enum Flags] enum.
 		</constant>
 		<constant name="DIFFUSE_BURLEY" value="0" enum="DiffuseMode">

@@ -73,10 +73,10 @@ Každý emitor se upravuje jako svislý zásobník karet. Karty obsahují vybran
 
 | Modul | Obsah |
 | --- | --- |
-| Emitter | Emitting, Max Particles, Lifetime, náhodnost životnosti, One Shot, Burst (explosiveness), Randomness, Prewarm, Speed Scale, Local Space, Fixed FPS |
-| Spawn Shape | tvar emise; zobrazuje jen parametry zvoleného tvaru (poloměr, rozměr boxu, prstenec), offset a měřítko |
-| Initial Velocity | směr, rozptyl, plochost, rychlost min/max, dědění rychlosti |
-| Forces | gravitace, lineární, radiální a tangenciální zrychlení, odpor |
+| Emitter | Emitting, Max Particles, **Amount Ratio**, Lifetime, náhodnost životnosti, One Shot, Burst (explosiveness), Randomness, Prewarm, Speed Scale, Local Space, **Stay in World when Attached**, Fixed FPS |
+| Spawn Shape | tvar emise; zobrazuje jen parametry zvoleného tvaru (poloměr, rozměr boxu, prstenec včetně úhlu kužele, u Points a Directed Points textury bodů), offset a měřítko |
+| Initial Velocity | směr, rozptyl, plochost, rychlost min/max, dědění rychlosti, **Orbit Speed** (kroužení kolem emitoru, s křivkou a středem) a **Align to Flight Direction** (osa Y částice míří ve směru letu: jiskry, déšť) |
+| Forces | gravitace, lineární, radiální a tangenciální zrychlení, odpor, **Drag as Friction** |
 | Color over Life | základní barva, gradient přes život, náhodná barva, záře přes život, variace odstínu a karta Alpha over Life s presety |
 | Size over Life | velikost min/max a karta Scale over Life s presety |
 | Render | náhled textury, **Generate Texture...**, textura, tint, blend (Mix/Add…), shading, natočení (billboard), barva částic, soft particles, velikost quadu, řazení, zarovnání |
@@ -85,9 +85,11 @@ Karta Emitter obsahuje i **Start Delay** a **Emission Length** (stejné hodnoty 
 
 Menu **⋮** v záhlaví každé karty nabízí presety modulu (např. Fountain, Explosion (Radial), Gentle Rise, Forward Cone; Earth Gravity, Buoyant Smoke, Zero Gravity; barvy Fire, Smoke, Sparks, Magic; velikost Grow, Shrink, Pop In and Out; Additive Glow, Soft Alpha, Lit by Scene), **Copy Module**, **Paste Module** (do stejného modulu jiného emitoru) a **Reset to Defaults**. Vše jde vrátit přes Undo.
 
-Volitelné moduly přidá **+ Module** a odebere křížek v záhlaví karty: **Rotation**, **Sprite Sheet Animation** (rychlost, počáteční snímek, sloupce, řádky, smyčka), **Turbulence**, **Collision**, **Sub Emitter**, **Trails** (ribbon stopa, délka, šířka, segmenty, šířka podél stopy; materiál se přepne do trail módu) a **Attractors** (přidá `GPUParticlesAttractorSphere3D` k emitoru, tlačítkem Add Attractor další). Turbulence, Collision, Sub Emitter, Trails a Attractors jsou jen pro GPU emitory. Odebrání vrátí hodnoty modulu do vypnutého stavu. Pokud GPU emitor používá vlastní particle `VisualShader`, procesní moduly se skryjí a logika se upravuje v Particle Logic.
+Volitelné moduly přidá **+ Module** a odebere křížek v záhlaví karty: **Rotation** (úhel a rotace spritu, pro mesh částice **3D Rotation** a **3D Spin** kolem všech tří os a **Rotate around Y**), **Sprite Sheet Animation** (**Sheet Plays per Life** = kolikrát se celý list přehraje za život částice, **Start Position** 0–1, sloupce, řádky, smyčka a **Blend Frames**, které prolíná sousední snímky, takže flipbook s málo snímky neškube), **Turbulence**, **Collision**, **Sub Emitter**, **Trails** (ribbon stopa, délka, šířka, segmenty, šířka podél stopy; materiál se přepne do trail módu) a **Attractors** (přidá `GPUParticlesAttractorSphere3D` k emitoru, tlačítkem Add Attractor další). Karta Attractors má u každého attractoru sílu (záporná odpuzuje), útlum, směrovost, poloměr a polohu. Attractor působí na každý GPU emitor v dosahu, který má zapnuté **React to Attractors** (výchozí stav), tedy i na ostatní emitory efektu a efekty poblíž. Turbulence, Collision, Sub Emitter, Trails a Attractors jsou jen pro GPU emitory. Úhel a rotace spritu a animace sprite sheetu fungují jen s natočením **Particle Billboard**; s jiným natočením nebo s meshem na to karta upozorní. Odebrání vrátí hodnoty modulu do vypnutého stavu. Pokud GPU emitor používá vlastní particle `VisualShader`, procesní moduly se skryjí a logika se upravuje v Particle Logic.
 
-Emitor bez particle materiálu nabídne v modulu Render **Create Particle Material** (unshaded, billboard, barva z částic).
+Emitor bez particle materiálu nabídne v modulu Render **Create Particle Material** (unshaded, billboard, barva z částic). Emitor s vlastním shaderem (`ShaderMaterial`, např. ořez u hladiny ve vodních presetech) ukáže v kartě Render parametry shaderu jako řádky a tlačítko pro nový materiál nenabízí.
+
+**Distorze (tetelení vzduchu, rázová vlna):** menu **⋮** karty Render → **Distortion Material (Heat Haze / Shock Wave)** dá emitoru materiál, který ohýbá obraz za částicí. Síla ohybu sleduje průhlednost částice (Color/Alpha over Life), takže distorze s částicí nabíhá a mizí. Parametry: **Strength**, **Ring** (0 = čočka přes celý sprite pro horký vzduch, 1 = úzký prstenec u okraje pro rázovou vlnu, částici nech růst přes Scale over Life), **Shimmer** a **Shimmer Speed** (vlnění v čase). Materiál čte obraz scény, takže stojí jedno kopírování obrazu na snímek; průhledné věci za ním (kouř) v ohnutém obrazu nejsou. Krok jde vrátit přes Undo.
 
 ## Generátor textur v modulu Render
 
@@ -106,7 +108,7 @@ Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh
 - **Oko** stopu ztlumí (skryje; ukládá se a respektuje ji i hra), **S** ji sólově přehraje jen v náhledu.
 - **Pravé tlačítko:** Duplicate, Rename, Visible, Solo in Preview, Reset Timing, Delete.
 - **Zkratky** (s fokusem na časové ose): mezerník Play/Pause, Home Restart, F Fit, Delete smazat, Ctrl/Cmd+D duplikovat, H ztlumit, S solo. Mezerník, Home a F fungují i v 3D náhledu.
-- Duplikát emitoru dostane vlastní process material, mesh i materiál (textury zůstávají sdílené).
+- Duplikát emitoru dostane vlastní process material, mesh, materiál i křivky (křivky a přechody CPU emitoru, křivka intenzity světla); textury a zvuky ze souborů zůstávají sdílené.
 - Změny jdou přes Undo/Redo a náhled se řídí stejným načasováním jako hra. Délka smyčky náhledu je celá délka efektu.
 
 ## Události
@@ -120,6 +122,9 @@ Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh
 | Camera Shake | `CameraShake3D` | otřese aktuální kamerou: náklon/otočení/převrácení a jemný posun (síla, délka, frekvence, max. rotace, max. posun, poloměr plné síly a útlumu) |
 | Damage | `RadialDamage3D` | zraní vše, co má `take_damage()`: plné zranění do vnitřního poloměru, k vnějšímu klesá na nulu; krytí za překážkou zranění sníží nebo zastaví; fyzikální objekty odhodí |
 | Decal | `Decal` | objeví se ve svém čase a během **Fade Out Part** zmizí; délka 0 = zůstane |
+| Spawn Effect | `EffectSpawner3D` | ve svém čase přehraje jiný efekt nebo vytvoří scénu (gibs, hořící trosky, druhý výbuch) na místě stopy: počet, rozptyl v poloměru, u scén rychlost a rozptyl odhození ve směru +Y stopy |
+
+**Spawn Effect:** scéna s kořenem `ParticleEffect3D` se přehraje ze zásobníku efektů (`ParticleEffect3D.spawn`) vedle tohoto efektu a s volbou **Use This Effect's Tint and Scale** převezme jeho barvu a velikost. Jiná scéna (např. `RigidBody3D` úlomek) se vytvoří jen ve spuštěné hře. V náhledu se vnořený efekt ukáže od chvíle, kdy událost nastane; při skoku časem za ni se nepřehraje.
 
 **Zvuk exploze:** preset Explosion má prázdnou stopu **Sound**. Vyber ji a v kartě zvol audio soubor, nebo přetáhni audio soubor z FileSystemu přímo na stopu v seznamu emitorů. Přetažení mimo existující Sound stopu přidá novou Sound událost se jménem souboru.
 
@@ -170,7 +175,8 @@ Textury presetů vytvoří generátor do `res://vfx_textures/` a vedle nich ulo�
 Kořen efektu `ParticleEffect3D` je runtime uzel enginu:
 
 - `autoplay` přehraje efekt při vstupu do scény ve spuštěné hře, `looping` konečný efekt opakuje, `auto_free` ho po dokončení uvolní.
-- `play()`, `stop()` (nové částice přestanou vznikat, existující dožijí) a signál `finished`.
+- `play()`, `stop()` (nové částice přestanou vznikat, existující dožijí) a signál `finished`. Po `stop()` už nenastanou události, které ještě nezačaly (zvuk, otřes, zranění, spawn, světlo nebo decal); trvale svítící světlo a trvalý decal zhasnou spolu s posledními částicemi.
+- `paused = true` efekt zastaví na místě (časová osa, částice i zvuky), `false` pokračuje. `speed_scale` zrychluje nebo zpomaluje celý efekt včetně částic.
 - `ParticleEffect3D.spawn(scene, parent, transform)` vytvoří, umístí a přehraje jednorázový efekt a po dokončení ho uvolní:
 
 ```gdscript
@@ -208,8 +214,10 @@ Povrch se hledá v tomto pořadí: metadata `surface` na kolideru nebo na jednom
 
 ### Rozpočet a vzdálenost
 
-- **Project Settings → `rendering/particle_effects/max_active_effects`** (výchozí 96, 0 = bez limitu): kolik efektů hraje zároveň. Když je plno, nový efekt ukončí nejstarší hrající efekt s nejnižší prioritou, která není vyšší než jeho vlastní (`priority`). Mají-li všechny hrající efekty vyšší prioritu, nový se nepřehraje.
-- **`cull_distance`** na efektu (0 = vždy): dál od kamery se efekt nepřehraje. Nepřehraný efekt vyšle `finished` v dalším snímku a vrátí se do zásobníku. Smyčkový efekt kontroluje vzdálenost každou půl sekundu a rozjede se, až se kamera přiblíží.
+- **Project Settings → `rendering/particle_effects/max_active_effects`** (výchozí 96, 0 = bez limitu): kolik efektů hraje zároveň. Když je plno, nový efekt ukončí nejstarší hrající efekt s nejnižší prioritou, která není vyšší než jeho vlastní (`priority`). Mají-li všechny hrající efekty vyšší prioritu, nový se nepřehraje. Smyčkový nebo nepřetržitý efekt (oheň, pára), který takto přišel o místo, není ztracený: počká a rozjede se znovu, jakmile se místo uvolní.
+- **`cull_distance`** na efektu (0 = vždy): dál od kamery se efekt nepřehraje. Nepřehraný efekt vyšle `finished` v dalším snímku a vrátí se do zásobníku. Smyčkový nebo nepřetržitý efekt kontroluje vzdálenost každou půl sekundu a rozjede se, až se kamera přiblíží; `stop()` čekající efekt ukončí hned.
+- **`lod_distance`** a **`lod_amount`** na efektu: dál od kamery než `lod_distance` vypouští GPU emitory méně částic, ve dvojnásobné vzdálenosti jen podíl `lod_amount` (výchozí 0,35). U dlouhých efektů se přepočítává každou půl sekundu.
+- **Project Settings → `rendering/particle_effects/amount_scale`** (0,05–1, výchozí 1): podíl částic všech efektů, tedy volba kvality částic do nastavení hry (`ProjectSettings.set_setting(...)`, platí od dalšího přehrání). Emitory s méně než 8 částicemi (záblesk, jeden prstenec) se nekrátí.
 - Efekty s událostí poškození (`RadialDamage3D`) hrají vždy, protože jde o hratelnost.
 - `ParticleEffect3D.get_active_effect_count()` vrátí počet hrajících efektů.
 
@@ -219,7 +227,7 @@ Uzel, který se vloží do levelu. Při startu hry (ne v editoru) napeče kolizi
 
 ### Efekty připojené ke zbrani
 
-`ParticleEffect3D.spawn_attached(MUZZLE, $Muzzle, Transform3D())` přehraje efekt jako potomka uzlu (např. `Marker3D` na hlavni) s lokální transformací a zapne `local_space`, takže emitory simulují v prostoru efektu (`local_coords`) a záblesk i jiskry se při otáčení kamery neopožďují. `local_space` jde zapnout i ručně na kořeni efektu.
+`ParticleEffect3D.spawn_attached(MUZZLE, $Muzzle, Transform3D())` přehraje efekt jako potomka uzlu (např. `Marker3D` na hlavni) s lokální transformací a zapne `local_space`, takže emitory simulují v prostoru efektu (`local_coords`) a záblesk i jiskry se při otáčení kamery neopožďují. `local_space` jde zapnout i ručně na kořeni efektu. Emitor se zapnutým **Stay in World when Attached** (karta Emitter) si nechá vlastní nastavení prostoru, takže záblesk drží na hlavni a kouř téhož efektu zůstane ve světě.
 
 ### Barva a velikost při spuštění
 
@@ -253,7 +261,7 @@ GPU částice samy o sobě nenarážejí na fyzikální tělesa, jen na kolizní
 Jak to funguje:
 - **Sdílená kolize celého levelu.** První efekt s kolizí ve hře spustí na pozadí pečení celého levelu (všechna StaticBody3D a CSG s kolizí ve vrstvách `level_collision_mask`) do dlaždic 20 m (jádro 16 m + 2 m překryv, 128³, buňka ~0,16 m, takže i podlaha nebo stěna silná 0,2 m má uvnitř aspoň jednu buňku). Dlaždice jsou uzly `LevelParticleCollision/Tile` pod scénou levelu a platí pro všechny efekty najednou. Jakmile jsou hotové (testovací level ~230 ms na pozadí), další efekty, včetně zásahů kulek, žádnou vlastní kolizi nepočítají (~0,03 ms na efekt). Aby byla hotová už před první střelbou, zavolej při načtení levelu `ParticleEffect3D.prepare_level_collision(level_root)`.
 - **Dokud se level peče**, efekt si spočítá vlastní kolizi jen pro svou oblast (nejvýš 20 m kolem efektu, rozlišení podle velikosti, ~10–20 ms), takže platí i pro úplně první výbuch. Efekt přehraný znovu na stejném místě ji vezme z cache.
-- Hráč, postavy a RigidBody3D se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()` (další efekt level napeče znovu).
+- Hráč, postavy, RigidBody3D a pohyblivé plošiny (`AnimatableBody3D`: výtahy, dveře) se nepečou. Když se geometrie levelu změní za běhu, zavolej `ParticleEffect3D.clear_level_collision_cache()` (další efekt level napeče znovu).
 
 Kolize platí pro každý GPU emitor, který ji používá: modul Collision (`ParticleProcessMaterial.collision_mode`) i vlastní shader nebo Visual Shader, který čte `COLLIDED` (např. po Convert to Shader Code). CPUParticles3D kolize v Godotu neumí.
 

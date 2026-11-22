@@ -157,9 +157,15 @@ void FPSParticleTimeline::_update_content_length() {
 	// A start set without an end plays to the effect's end, also after the
 	// effect gets longer or shorter.
 	const double new_length = MAX(1.0, total);
-	if (has_loop_region() && Math::is_equal_approx(loop_end, content_length) && !Math::is_equal_approx(new_length, content_length)) {
+	if (has_loop_region() && !Math::is_equal_approx(new_length, content_length) && (Math::is_equal_approx(loop_end, content_length) || loop_end > new_length)) {
+		// The end flag sat on the effect's end (or is now past it): move it to
+		// the new end. A start that no longer fits clears the range.
 		content_length = new_length;
-		_set_playback_start(loop_start);
+		if (loop_start < new_length - TIMELINE_SNAP) {
+			set_loop_region(loop_start, new_length);
+		} else {
+			set_loop_region(0.0, -1.0);
+		}
 	}
 	content_length = new_length;
 	if (!user_zoomed) {
@@ -195,7 +201,7 @@ double FPSParticleTimeline::_snap(double p_value, bool p_shift) const {
 // Flags and the playhead catch the edges of the tracks (start, end of
 // emission, end of the last particle) within a few pixels, else the grid.
 // Shift moves them freely.
-double FPSParticleTimeline::_snap_to_edges(double p_time, bool p_free) const {
+double FPSParticleTimeline::_snap_to_edges(double p_time, bool p_free, bool p_grid_fallback) const {
 	if (p_free) {
 		return p_time;
 	}
@@ -214,7 +220,7 @@ double FPSParticleTimeline::_snap_to_edges(double p_time, bool p_free) const {
 	consider(0.0);
 	consider(content_length);
 	for (int i = 0; i < markers.size(); i++) {
-		if (i != drag_marker || drag_mode != DRAG_MARKER) { // Not onto itself.
+		if (drag_mode != DRAG_MARKER) { // A dragged marker never lands on itself or another one.
 			consider(markers[i].time);
 		}
 	}
@@ -233,7 +239,7 @@ double FPSParticleTimeline::_snap_to_edges(double p_time, bool p_free) const {
 		consider(active_end);
 		consider(visual_end);
 	}
-	return best != p_time ? best : _snap(p_time, false);
+	return best != p_time || !p_grid_fallback ? best : _snap(p_time, false);
 }
 
 void FPSParticleTimeline::zoom_in() {
@@ -251,9 +257,14 @@ void FPSParticleTimeline::fit_view() {
 		const double span = loop_end - loop_start;
 		const double length = MAX(TIMELINE_MIN_VIEW, span * 1.15);
 		const double start = loop_start - (length - span) * 0.5;
-		if (!(user_zoomed && Math::is_equal_approx(view_start, start) && Math::is_equal_approx(view_length, length))) {
-			view_length = length;
-			view_start = start;
+		// Compare what the view really becomes (a range near 0 is clamped),
+		// or the second F never gets to the whole effect.
+		const double old_start = view_start;
+		const double old_length = view_length;
+		view_length = length;
+		view_start = start;
+		_clamp_view();
+		if (!(user_zoomed && Math::is_equal_approx(old_start, view_start) && Math::is_equal_approx(old_length, view_length))) {
 			user_zoomed = true;
 			queue_redraw();
 			return;
@@ -823,7 +834,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 			return;
 		}
 		if (mb->get_button_index() == MouseButton::MIDDLE) {
-			if (mb->is_pressed()) {
+			if (mb->is_pressed() && drag_mode == DRAG_NONE) { // Not in the middle of a left drag: its release must still commit.
 				drag_mode = DRAG_PAN;
 				drag_pan_origin_x = pos.x;
 				drag_pan_origin_start = view_start;
@@ -1055,8 +1066,7 @@ void FPSParticleTimeline::gui_input(const Ref<InputEvent> &p_event) {
 		}
 		if (drag_mode == DRAG_SCRUB) {
 			// Edges only (no grid): scrubbing stays smooth between them.
-			const double edge = _snap_to_edges(time, mm->is_shift_pressed());
-			emit_signal(SNAME("scrub_requested"), CLAMP(Math::is_equal_approx(edge, _snap(time, false)) ? time : edge, 0.0, content_length));
+			emit_signal(SNAME("scrub_requested"), CLAMP(_snap_to_edges(time, mm->is_shift_pressed(), false), 0.0, content_length));
 			accept_event();
 			return;
 		}

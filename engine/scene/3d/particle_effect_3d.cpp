@@ -15,6 +15,8 @@
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/decal.h"
+#include "scene/3d/effect_spawner_3d.h"
+#include "scene/3d/physics/animatable_body_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "core/math/convex_hull.h"
 #include "core/os/os.h"
@@ -67,6 +69,9 @@ ParticleEffect3D::EventKind ParticleEffect3D::get_event_kind(const Node *p_node)
 	if (Object::cast_to<RadialDamage3D>(p_node)) {
 		return EVENT_DAMAGE;
 	}
+	if (Object::cast_to<EffectSpawner3D>(p_node)) {
+		return EVENT_SPAWN;
+	}
 	return EVENT_NONE;
 }
 
@@ -101,6 +106,7 @@ static double get_event_duration(const Node *p_node, ParticleEffect3D::EventKind
 		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
 			return Object::cast_to<CameraShake3D>(p_node)->get_duration();
 		case ParticleEffect3D::EVENT_DAMAGE:
+		case ParticleEffect3D::EVENT_SPAWN:
 			return 0.15; // Instant; a short bar keeps it visible in the timeline.
 		default:
 			return ParticleEffect3D::get_emitter_duration(p_node);
@@ -152,10 +158,18 @@ double ParticleEffect3D::get_emitter_duration(const Node *p_emitter) {
 	return MAX(0.0, double(p_emitter->get_meta(META_DURATION, 0.0)));
 }
 
+double ParticleEffect3D::get_emitter_speed(const Node *p_emitter) {
+	ERR_FAIL_NULL_V(p_emitter, 1.0);
+	const double speed = p_emitter->has_meta(META_AUTHORED_SPEED) ? double(p_emitter->get_meta(META_AUTHORED_SPEED)) : double(p_emitter->get("speed_scale"));
+	return speed > 0.001 ? speed : 1.0;
+}
+
 void ParticleEffect3D::get_emitter_window(const Node *p_emitter, double &r_start, double &r_emission_end, double &r_visual_end) {
 	r_start = get_emitter_delay(p_emitter);
 	const double duration = get_emitter_duration(p_emitter);
-	const double lifetime = MAX(0.001, double(p_emitter->get("lifetime")));
+	// An emitter with its own speed_scale lives that much shorter or longer
+	// on the effect's clock.
+	const double lifetime = MAX(0.001, double(p_emitter->get("lifetime"))) / get_emitter_speed(p_emitter);
 	const bool one_shot = bool(p_emitter->get("one_shot"));
 	if (duration > 0.0) {
 		r_emission_end = r_start + duration;
@@ -181,7 +195,7 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 		state.id = p_node->get_instance_id();
 		state.delay = get_emitter_delay(p_node);
 		state.duration = get_emitter_duration(p_node);
-		state.lifetime = MAX(0.001, double(p_node->get("lifetime")));
+		state.lifetime = MAX(0.001, double(p_node->get("lifetime"))) / get_emitter_speed(p_node);
 		state.one_shot = bool(p_node->get("one_shot"));
 		double start, emission_end;
 		get_emitter_window(p_node, start, emission_end, state.visual_end);
@@ -199,6 +213,9 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 			event.fade = CLAMP(double(p_node->get_meta(META_FADE, 0.5)), 0.01, 1.0);
 		} else if (event.kind == EVENT_SOUND) {
 			event.pitch_random = CLAMP(real_t(double(p_node->get_meta(META_PITCH_RANDOM, 0.0))), 0.0, 1.0);
+		} else if (event.kind == EVENT_SPAWN) {
+			// What an earlier editor preview spawned ends with that preview.
+			Object::cast_to<EffectSpawner3D>(p_node)->clear_editor_spawned();
 		}
 		events.push_back(event);
 		// Remember the authored values once; the effect animates them.
@@ -310,6 +327,15 @@ void ParticleEffect3D::play() {
 	emitters.clear();
 	events.clear();
 	_collect_emitters(this);
+	// Fire, steam, a looping alarm light: these wait when they cannot play
+	// (distance, budget) and start again later instead of ending for good.
+	resumable = looping;
+	for (const EmitterState &state : emitters) {
+		resumable = resumable || state.visual_end < 0.0;
+	}
+	for (const EventState &event : events) {
+		resumable = resumable || (event.duration <= 0.0 && (event.kind == EVENT_LIGHT || event.kind == EVENT_SOUND));
+	}
 	if (_should_skip_play()) {
 		_skip_play();
 		return;
@@ -321,7 +347,7 @@ void ParticleEffect3D::play() {
 			// Local space overrides the authored local_coords; the authored value
 			// comes back when the (pooled) effect is played without it.
 			static const StringName authored_meta = "_authored_local_coords";
-			if (local_space) {
+			if (local_space && !bool(emitter->get_meta(META_KEEP_WORLD, false))) {
 				if (!emitter->has_meta(authored_meta)) {
 					emitter->set_meta(authored_meta, emitter->get("local_coords"));
 				}
@@ -344,8 +370,13 @@ void ParticleEffect3D::play() {
 		}
 		_enforce_max_instances();
 	}
+	paused = false;
+	_apply_speed_scale();
+	lod_elapsed = 0.0;
+	_apply_amount_scale();
 	elapsed = 0.0;
 	stop_time = 0.0;
+	stop_end = 0.0;
 	stopping = false;
 	playing = true;
 	set_process_internal(true);
@@ -564,6 +595,9 @@ bool ParticleEffect3D::_should_skip_play() {
 	if (int(budget_effects.size()) < max_active) {
 		return false;
 	}
+	if (resuming) {
+		return true; // Still full: keep waiting rather than push another effect out.
+	}
 	ParticleEffect3D *victim = nullptr;
 	for (const ObjectID &id : budget_effects) {
 		ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(id));
@@ -577,7 +611,11 @@ bool ParticleEffect3D::_should_skip_play() {
 	if (!victim) {
 		return true;
 	}
-	victim->_force_finish();
+	if (victim->resumable) {
+		victim->_suspend(); // Fire or steam comes back once there is room.
+	} else {
+		victim->_force_finish();
+	}
 	return false;
 }
 
@@ -627,7 +665,7 @@ void ParticleEffect3D::_enforce_max_instances() {
 		int count = 0;
 		for (const ObjectID &id : budget_effects) {
 			ParticleEffect3D *effect = Object::cast_to<ParticleEffect3D>(ObjectDB::get_instance(id));
-			if (!effect || effect == this || !effect->playing || effect->get_scene_file_path() != path) {
+			if (!effect || effect == this || !effect->playing || effect->culled || effect->get_scene_file_path() != path || _has_pending_damage(effect->events)) {
 				continue;
 			}
 			count++;
@@ -653,6 +691,96 @@ void ParticleEffect3D::_force_finish() {
 	elapsed = -1.0;
 	_update_events();
 	_finish();
+}
+
+void ParticleEffect3D::_suspend() {
+	// Recycled by the budget, but continuous: clear it like _force_finish()
+	// and wait as a culled effect, which starts again when a slot is free.
+	for (const EmitterState &state : emitters) {
+		if (Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id))) {
+			emitter->call("restart", false);
+			emitter->set("emitting", false);
+		}
+	}
+	_stop_looping_sounds();
+	elapsed = -1.0;
+	_update_events();
+	_budget_remove();
+	emitters.clear();
+	events.clear();
+	culled = true;
+	playing = true;
+	stopping = false;
+	elapsed = 0.0;
+	set_process_internal(true);
+}
+
+// The effect's speed_scale and pause reach the emitters too (their particles
+// would otherwise keep their own pace while the timeline runs faster or
+// stands still). Game only: the Particle preview drives emitter speeds itself.
+void ParticleEffect3D::_apply_speed_scale() {
+	if (Engine::get_singleton()->is_editor_hint()) {
+		return;
+	}
+	const double scale = paused ? 0.0 : speed_scale;
+	const bool neutral = Math::is_equal_approx(scale, 1.0);
+	for (const EmitterState &state : emitters) {
+		Node *emitter = Object::cast_to<Node>(ObjectDB::get_instance(state.id));
+		if (!emitter) {
+			continue;
+		}
+		if (neutral) {
+			if (emitter->has_meta(META_AUTHORED_SPEED)) {
+				emitter->set("speed_scale", emitter->get_meta(META_AUTHORED_SPEED));
+				emitter->remove_meta(META_AUTHORED_SPEED);
+			}
+			continue;
+		}
+		if (!emitter->has_meta(META_AUTHORED_SPEED)) {
+			emitter->set_meta(META_AUTHORED_SPEED, emitter->get("speed_scale"));
+		}
+		emitter->set("speed_scale", double(emitter->get_meta(META_AUTHORED_SPEED)) * scale);
+	}
+}
+
+// Fewer particles for the quality setting and for effects far from the
+// camera. Tiny emitters (a flash, a single ring) always keep all of theirs.
+void ParticleEffect3D::_apply_amount_scale() {
+	if (Engine::get_singleton()->is_editor_hint()) {
+		return;
+	}
+	static const StringName authored_meta = "_authored_amount_ratio";
+	real_t ratio = CLAMP(real_t(GLOBAL_GET_CACHED(double, "rendering/particle_effects/amount_scale")), real_t(0.05), real_t(1.0));
+	if (lod_distance > 0.0) {
+		Viewport *viewport = get_viewport();
+		const Camera3D *camera = viewport ? viewport->get_camera_3d() : nullptr;
+		if (camera) {
+			const real_t distance = camera->get_global_position().distance_to(get_global_position());
+			const real_t far = CLAMP((distance - lod_distance) / lod_distance, real_t(0.0), real_t(1.0));
+			ratio *= Math::lerp(real_t(1.0), lod_amount, far);
+		}
+	}
+	const bool neutral = ratio > 0.999;
+	for (const EmitterState &state : emitters) {
+		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(state.id));
+		if (!gpu || gpu->get_amount() < 8) {
+			continue;
+		}
+		if (neutral) {
+			if (gpu->has_meta(authored_meta)) {
+				gpu->set_amount_ratio(float(double(gpu->get_meta(authored_meta))));
+				gpu->remove_meta(authored_meta);
+			}
+			continue;
+		}
+		if (!gpu->has_meta(authored_meta)) {
+			gpu->set_meta(authored_meta, gpu->get_amount_ratio());
+		}
+		const float target = float(double(gpu->get_meta(authored_meta))) * ratio;
+		if (!Math::is_equal_approx(gpu->get_amount_ratio(), target)) {
+			gpu->set_amount_ratio(target);
+		}
+	}
 }
 
 void ParticleEffect3D::_budget_remove() {
@@ -1182,7 +1310,9 @@ void collect_level_faces(Node *p_node, uint32_t p_mask, Vector<Face3> &r_faces) 
 	if (Object::cast_to<ParticleEffect3D>(p_node) || !p_node->is_inside_tree()) {
 		return;
 	}
-	if (StaticBody3D *body = Object::cast_to<StaticBody3D>(p_node)) {
+	// Lifts, doors and moving platforms (AnimatableBody3D is a StaticBody3D)
+	// would stay baked where they stood when the level loaded.
+	if (StaticBody3D *body = Object::cast_to<AnimatableBody3D>(p_node) ? nullptr : Object::cast_to<StaticBody3D>(p_node)) {
 		if (body->get_collision_layer() & p_mask) {
 			List<uint32_t> owners;
 			body->get_shape_owners(&owners);
@@ -1539,7 +1669,7 @@ void ParticleEffect3D::_update_level_collision() {
 		seen.insert(key);
 		// Only static level geometry: characters, props and rigid bodies move.
 		if (CollisionObject3D *body = Object::cast_to<CollisionObject3D>(collider)) {
-			if (!Object::cast_to<StaticBody3D>(body)) {
+			if (!Object::cast_to<StaticBody3D>(body) || Object::cast_to<AnimatableBody3D>(body)) {
 				continue;
 			}
 			const uint32_t owner = body->shape_find_owner(results[i].shape);
@@ -1644,6 +1774,12 @@ void ParticleEffect3D::stop() {
 	if (!playing) {
 		return;
 	}
+	if (culled) {
+		// Waiting for the camera or a free slot: nothing is playing, so it is
+		// over now (it would otherwise start when the player comes closer).
+		_finish();
+		return;
+	}
 	_stop_looping_sounds(); // One-shot sounds play out with the particles.
 	stopping = true;
 	stop_time = elapsed;
@@ -1655,6 +1791,25 @@ void ParticleEffect3D::stop() {
 		state.started = true;
 		state.ended = true;
 	}
+	// Events that have not fired yet never do (no damage or sound from an
+	// effect that was stopped). A light or decal that is on fades out with
+	// the last particles; one in its timed window plays that window out.
+	const double tail = _get_max_lifetime();
+	stop_end = elapsed + tail;
+	for (EventState &event : events) {
+		const double local = elapsed - event.delay;
+		if (event.kind != EVENT_LIGHT && event.kind != EVENT_DECAL) {
+			event.started = true;
+		} else if (local < 0.0) {
+			event.cancelled = true;
+		} else if (event.duration <= 0.0) {
+			event.fade_from = elapsed;
+			event.fade_length = MAX(0.2, tail);
+			stop_end = MAX(stop_end, elapsed + event.fade_length);
+		} else {
+			stop_end = MAX(stop_end, event.delay + event.duration);
+		}
+	}
 }
 
 void ParticleEffect3D::restart() {
@@ -1662,8 +1817,12 @@ void ParticleEffect3D::restart() {
 }
 
 void ParticleEffect3D::seek(double p_time) {
+	// play() fires the events due at time 0; when seeking past them they must
+	// stay silent (a seek in a game would deal the explosion's damage again).
+	suppress_instant_events = p_time > 0.0;
 	play();
-	if (p_time <= 0.0) {
+	suppress_instant_events = false;
+	if (p_time <= 0.0 || !playing || culled) {
 		return;
 	}
 	elapsed = p_time;
@@ -1712,17 +1871,29 @@ void ParticleEffect3D::_update(double p_delta) {
 		return;
 	}
 	if (culled) {
-		if (!looping) {
+		if (!resumable) {
 			_finish();
 			return;
 		}
 		elapsed += p_delta;
 		if (elapsed >= CULLED_LOOP_RECHECK) {
+			resuming = true;
 			play(); // Starts once the camera is close enough / there is room.
+			resuming = false;
 		}
 		return;
 	}
+	if (paused) {
+		return;
+	}
 	elapsed += p_delta * speed_scale;
+	if (lod_distance > 0.0 && p_delta > 0.0) {
+		lod_elapsed += p_delta;
+		if (lod_elapsed >= CULLED_LOOP_RECHECK) {
+			lod_elapsed = 0.0;
+			_apply_amount_scale(); // The camera moves; long effects follow it.
+		}
+	}
 	double total = 0.0;
 	bool infinite = false;
 	for (EmitterState &state : emitters) {
@@ -1758,7 +1929,7 @@ void ParticleEffect3D::_update(double p_delta) {
 		return;
 	}
 	if (stopping) {
-		if (elapsed >= stop_time + _get_max_lifetime()) {
+		if (elapsed >= stop_end) {
 			_finish();
 		}
 	} else if (!infinite && elapsed >= total) {
@@ -1796,7 +1967,10 @@ void ParticleEffect3D::_update_events() {
 		const EventBase base = base_ptr ? *base_ptr : EventBase();
 		const double local = elapsed - event.delay;
 		const bool continuous = event.duration <= 0.0;
-		const bool inside = local >= 0.0 && (continuous || local <= event.duration);
+		const bool inside = !event.cancelled && local >= 0.0 && (continuous || local <= event.duration);
+		// 1 while playing; a stopped continuous light / decal fades to 0.
+		const real_t stop_fade = event.fade_from < 0.0 ? real_t(1.0) : real_t(CLAMP(1.0 - (elapsed - event.fade_from) / MAX(0.001, event.fade_length), 0.0, 1.0));
+		const bool fire = !event.started && local >= 0.0 && !suppress_instant_events;
 		const double t = continuous ? 0.0 : CLAMP(local / event.duration, 0.0, 1.0);
 		switch (event.kind) {
 			case EVENT_LIGHT: {
@@ -1816,7 +1990,7 @@ void ParticleEffect3D::_update_events() {
 						factor *= 1.0 - event.flicker * event_noise(event.id, elapsed * 18.0);
 					}
 				}
-				const real_t energy = base.energy * MAX(real_t(0.0), factor);
+				const real_t energy = base.energy * MAX(real_t(0.0), factor) * stop_fade;
 				if (energy != event.last_value) {
 					// Lights outside their window stay dark without touching the server each frame.
 					event.last_value = energy;
@@ -1835,7 +2009,7 @@ void ParticleEffect3D::_update_events() {
 						}
 					}
 				}
-				const real_t value = base.alpha * alpha;
+				const real_t value = base.alpha * alpha * stop_fade;
 				if (value != event.last_value) {
 					event.last_value = value;
 					Color modulate = decal->get_modulate();
@@ -1844,7 +2018,7 @@ void ParticleEffect3D::_update_events() {
 				}
 			} break;
 			case EVENT_SOUND: {
-				if (!event.started && local >= 0.0) {
+				if (fire) {
 					event.started = true;
 					AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(node);
 					const real_t random = event.pitch_random;
@@ -1853,15 +2027,22 @@ void ParticleEffect3D::_update_events() {
 				}
 			} break;
 			case EVENT_CAMERA_SHAKE: {
-				if (!event.started && local >= 0.0) {
+				if (fire) {
 					event.started = true;
 					Object::cast_to<CameraShake3D>(node)->shake();
 				}
 			} break;
 			case EVENT_DAMAGE: {
-				if (!event.started && local >= 0.0) {
+				if (fire) {
 					event.started = true;
 					Object::cast_to<RadialDamage3D>(node)->apply_damage();
+				}
+			} break;
+			case EVENT_SPAWN: {
+				if (fire) {
+					event.started = true;
+					// Next to this effect (in the level), with this play's look.
+					Object::cast_to<EffectSpawner3D>(node)->spawn_from_effect(get_parent(), tint * spawn_tint, effect_scale * spawn_scale, editor_preview);
 				}
 			} break;
 			default:
@@ -1889,6 +2070,12 @@ void ParticleEffect3D::_restore_editor_preview() {
 			decal->set_modulate(modulate);
 		} else if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(node)) {
 			player->set_pitch_scale(base.value.pitch);
+			player->stop(); // Stop in the Level editor also silences the effect.
+		}
+	}
+	for (const EventState &event : events) {
+		if (EffectSpawner3D *spawner = Object::cast_to<EffectSpawner3D>(ObjectDB::get_instance(event.id))) {
+			spawner->clear_editor_spawned();
 		}
 	}
 	for (const EmitterState &state : emitters) {
@@ -1923,7 +2110,16 @@ bool ParticleEffect3D::is_editor_previewing() const {
 
 void ParticleEffect3D::_finish() {
 	_stop_looping_sounds();
+	if (!events.is_empty()) {
+		// Lights and decals end dark: one that is always on (stopped with
+		// stop()) would stay lit on an effect waiting in its pool.
+		const double finished_at = elapsed;
+		elapsed = -1.0;
+		_update_events();
+		elapsed = finished_at;
+	}
 	playing = false;
+	paused = false;
 	stopping = false;
 	culled = false;
 	_budget_remove();
@@ -2130,6 +2326,45 @@ bool ParticleEffect3D::is_auto_free() const {
 
 void ParticleEffect3D::set_speed_scale(double p_speed_scale) {
 	speed_scale = MAX(0.0, p_speed_scale);
+	if (playing && !culled) {
+		_apply_speed_scale();
+	}
+}
+
+void ParticleEffect3D::set_paused(bool p_paused) {
+	if (paused == p_paused || Engine::get_singleton()->is_editor_hint()) {
+		return;
+	}
+	paused = p_paused;
+	if (!playing || culled) {
+		return;
+	}
+	_apply_speed_scale();
+	for (const EventState &event : events) {
+		if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(ObjectDB::get_instance(event.id))) {
+			player->set_stream_paused(paused);
+		}
+	}
+}
+
+bool ParticleEffect3D::is_paused() const {
+	return paused;
+}
+
+void ParticleEffect3D::set_lod_distance(real_t p_distance) {
+	lod_distance = MAX(real_t(0.0), p_distance);
+}
+
+real_t ParticleEffect3D::get_lod_distance() const {
+	return lod_distance;
+}
+
+void ParticleEffect3D::set_lod_amount(real_t p_amount) {
+	lod_amount = CLAMP(p_amount, real_t(0.05), real_t(1.0));
+}
+
+real_t ParticleEffect3D::get_lod_amount() const {
+	return lod_amount;
 }
 
 double ParticleEffect3D::get_speed_scale() const {
@@ -2286,18 +2521,28 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_cull_distance"), &ParticleEffect3D::get_cull_distance);
 	ClassDB::bind_method(D_METHOD("set_local_space", "enable"), &ParticleEffect3D::set_local_space);
 	ClassDB::bind_method(D_METHOD("is_local_space"), &ParticleEffect3D::is_local_space);
+	ClassDB::bind_method(D_METHOD("set_paused", "paused"), &ParticleEffect3D::set_paused);
+	ClassDB::bind_method(D_METHOD("is_paused"), &ParticleEffect3D::is_paused);
+	ClassDB::bind_method(D_METHOD("set_lod_distance", "distance"), &ParticleEffect3D::set_lod_distance);
+	ClassDB::bind_method(D_METHOD("get_lod_distance"), &ParticleEffect3D::get_lod_distance);
+	ClassDB::bind_method(D_METHOD("set_lod_amount", "amount"), &ParticleEffect3D::set_lod_amount);
+	ClassDB::bind_method(D_METHOD("get_lod_amount"), &ParticleEffect3D::get_lod_amount);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_emitter_speed", "emitter"), &ParticleEffect3D::get_emitter_speed);
 
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "autoplay"), "set_autoplay", "is_autoplay");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "looping"), "set_looping", "is_looping");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_free"), "set_auto_free", "is_auto_free");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "speed_scale", PROPERTY_HINT_RANGE, "0,8,0.01,or_greater"), "set_speed_scale", "get_speed_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "local_space"), "set_local_space", "is_local_space");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "paused", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_paused", "is_paused");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "tint"), "set_tint", "get_tint");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "effect_scale", PROPERTY_HINT_RANGE, "0.05,10,0.01,or_greater"), "set_effect_scale", "get_effect_scale");
 	ADD_GROUP("Budget", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "priority", PROPERTY_HINT_RANGE, "-10,10,1,or_less,or_greater"), "set_priority", "get_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_instances", PROPERTY_HINT_RANGE, "0,256,1,or_greater"), "set_max_instances", "get_max_instances");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cull_distance", PROPERTY_HINT_RANGE, "0,500,0.1,or_greater,suffix:m"), "set_cull_distance", "get_cull_distance");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod_distance", PROPERTY_HINT_RANGE, "0,500,0.1,or_greater,suffix:m"), "set_lod_distance", "get_lod_distance");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod_amount", PROPERTY_HINT_RANGE, "0.05,1,0.01"), "set_lod_amount", "get_lod_amount");
 	ADD_GROUP("Level Collision", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "collide_with_level"), "set_collide_with_level", "is_colliding_with_level");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "level_collision_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_level_collision_mask", "get_level_collision_mask");

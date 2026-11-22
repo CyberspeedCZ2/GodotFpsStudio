@@ -244,6 +244,7 @@
 #include "scene/3d/particle_level_setup.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
+#include "scene/3d/effect_spawner_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
 #include "scene/3d/ik_modifier_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -683,8 +684,10 @@ void register_scene_types() {
 	GDREGISTER_CLASS(ParticleLevelSetup);
 	// Effects playing at once in a running game (0 = unlimited); see ParticleEffect3D.priority.
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/particle_effects/max_active_effects", PROPERTY_HINT_RANGE, "0,1024,1,or_greater"), 96);
+	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/particle_effects/amount_scale", PROPERTY_HINT_RANGE, "0.05,1,0.01"), 1.0);
 	GDREGISTER_CLASS(CameraShake3D);
 	GDREGISTER_CLASS(RadialDamage3D);
+	GDREGISTER_CLASS(EffectSpawner3D);
 	GDREGISTER_CLASS(Marker3D);
 	GDREGISTER_CLASS(RootMotionView);
 	GDREGISTER_VIRTUAL_CLASS(SkeletonModifier3D);

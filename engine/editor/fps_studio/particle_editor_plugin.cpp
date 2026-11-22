@@ -68,6 +68,7 @@
 #include "scene/3d/decal.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
+#include "scene/3d/effect_spawner_3d.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/resources/audio_stream_wav.h"
 #include "scene/3d/mesh_instance_3d.h"
@@ -134,6 +135,7 @@ enum ParticleTemplate {
 	PARTICLE_EVENT_SHAKE = 202,
 	PARTICLE_EVENT_DECAL = 203,
 	PARTICLE_EVENT_DAMAGE = 204,
+	PARTICLE_EVENT_SPAWN = 205,
 };
 
 enum ParticleLayoutPanel {
@@ -464,6 +466,8 @@ static Node3D *create_particle_emitter(int p_template, const Ref<QuadMesh> &p_me
 	return emitter;
 }
 
+static void duplicate_track_resources(Node *p_copy);
+
 static Node3D *create_event_node(int p_type) {
 	switch (p_type) {
 		case PARTICLE_EVENT_LIGHT: {
@@ -494,6 +498,11 @@ static Node3D *create_event_node(int p_type) {
 			damage->set_name("Damage");
 			return damage;
 		}
+		case PARTICLE_EVENT_SPAWN: {
+			EffectSpawner3D *spawner = memnew(EffectSpawner3D);
+			spawner->set_name("SpawnEffect");
+			return spawner;
+		}
 		case PARTICLE_EVENT_DECAL: {
 			Decal *decal = memnew(Decal);
 			decal->set_name("Decal");
@@ -516,7 +525,11 @@ static void clear_preview_scripts(Node *p_node) {
 	}
 }
 
-static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad) {
+// p_start_emitting: a fresh preview starts every emitter. During a sync of an
+// effect that is already playing, the ParticleEffect3D timeline owns the
+// emitting state: turning it on again fired finished one-shot bursts a second
+// time and started delayed emitters early after any material edit.
+static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad, bool p_start_emitting = true) {
 	if (!p_node) {
 		return;
 	}
@@ -541,7 +554,9 @@ static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad) {
 			gpu->set_use_fixed_seed(true);
 			gpu->set_meta(SNAME("_fps_preview_seed"), true);
 		}
-		gpu->set_emitting(true);
+		if (p_start_emitting) {
+			gpu->set_emitting(true);
+		}
 	} else if (CPUParticles3D *cpu = Object::cast_to<CPUParticles3D>(p_node)) {
 		if (cpu->get_mesh().is_null()) {
 			cpu->set_mesh(p_quad);
@@ -551,10 +566,12 @@ static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad) {
 			cpu->set_use_fixed_seed(true);
 			cpu->set_meta(SNAME("_fps_preview_seed"), true);
 		}
-		cpu->set_emitting(true);
+		if (p_start_emitting) {
+			cpu->set_emitting(true);
+		}
 	}
 	for (int i = 0; i < p_node->get_child_count(); i++) {
-		apply_preview_defaults(p_node->get_child(i), p_quad);
+		apply_preview_defaults(p_node->get_child(i), p_quad, p_start_emitting);
 	}
 }
 
@@ -593,7 +610,11 @@ static void set_preview_speed_recursive(Node *p_node, double p_speed) {
 		return;
 	}
 	if (is_particle_node(p_node)) {
-		p_node->call("set_speed_scale", p_speed);
+		// On top of the emitter's own Speed Scale (kept in a meta, as the game does).
+		if (!p_node->has_meta(ParticleEffect3D::META_AUTHORED_SPEED)) {
+			p_node->set_meta(ParticleEffect3D::META_AUTHORED_SPEED, p_node->get("speed_scale"));
+		}
+		p_node->call("set_speed_scale", double(p_node->get_meta(ParticleEffect3D::META_AUTHORED_SPEED)) * p_speed);
 	}
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		set_preview_speed_recursive(p_node->get_child(i), p_speed);
@@ -622,14 +643,31 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 	for (const PropertyInfo &property : properties) {
 		if (!(property.usage & PROPERTY_USAGE_STORAGE) || (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) || property.name == "name" || property.name == "owner" || property.name == "script" ||
 				property.name == "scene_file_path" || property.name == "emitting" || property.name == "visible" || property.name == "transform" ||
-				property.name == "speed_scale" || // The preview's play / pause.
 				property.name == "metadata/_fps_timeline_markers") { // Editor only; would restart the preview.
+			continue;
+		}
+		if (property.name == "speed_scale") {
+			// The preview's play / pause and Speed own the property; the
+			// emitter's authored speed is multiplied in from this meta.
+			if (is_particle_node(p_source)) {
+				const Variant speed = p_source->get("speed_scale");
+				if (p_preview->get_meta(ParticleEffect3D::META_AUTHORED_SPEED, Variant()) != speed) {
+					p_preview->set_meta(ParticleEffect3D::META_AUTHORED_SPEED, speed);
+					changed = true; // Life and windows on the effect clock changed.
+				}
+			}
 			continue;
 		}
 		// The preview keeps its own seed so a paused frame stays the same
 		// after an edit; an effect authored with a fixed seed uses that one.
 		if (property.name == "seed" || property.name == "use_fixed_seed") {
 			if (!bool(p_source->get("use_fixed_seed"))) {
+				// Fixed seed turned off again: back to a preview seed (given by
+				// apply_preview_defaults), or the old one would stay forever.
+				if (property.name == "use_fixed_seed" && !p_preview->has_meta(SNAME("_fps_preview_seed")) && bool(p_preview->get("use_fixed_seed"))) {
+					p_preview->set("use_fixed_seed", false);
+					changed = true;
+				}
 				continue;
 			}
 			p_preview->remove_meta(SNAME("_fps_preview_seed"));
@@ -638,6 +676,16 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 		Variant value = p_source->get(property.name, &valid);
 		if (valid && p_preview->get(property.name) != value) {
 			p_preview->set(property.name, value);
+			changed = true;
+		}
+	}
+	// Metadata removed from the source (Reset Module on an event, undo of its
+	// first edit) must go from the preview too. Names with "_" are internal.
+	List<StringName> preview_metas;
+	p_preview->get_meta_list(&preview_metas);
+	for (const StringName &meta : preview_metas) {
+		if (!String(meta).begins_with("_") && !p_source->has_meta(meta)) {
+			p_preview->remove_meta(meta);
 			changed = true;
 		}
 	}
@@ -869,6 +917,8 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 			detail = TTR("Decal");
 		} else if (RadialDamage3D *damage_track = Object::cast_to<RadialDamage3D>(emitter)) {
 			detail = vformat(TTR("Damage %d"), int(Math::round(damage_track->get_damage())));
+		} else if (Object::cast_to<EffectSpawner3D>(emitter)) {
+			detail = TTR("Spawn");
 		} else if (emitter->is_class("AudioStreamPlayer3D")) {
 			detail = TTR("Sound");
 		} else {
@@ -1049,8 +1099,8 @@ void FPSStudioParticleEditorPlugin::_apply_compact_layout() {
 }
 
 void FPSStudioParticleEditorPlugin::_mark_document_dirty() {
-	if (!_get_effect_root()) {
-		return;
+	if (!_get_effect_root() || saving_document) {
+		return; // Reloading the saved file touches the document's own resources.
 	}
 	effect_dirty = true;
 	// Edits arrive per slider step; refresh the header and emitter list once
@@ -1285,30 +1335,35 @@ void FPSStudioParticleEditorPlugin::_update_preview_duration() {
 	Vector<Node *> emitters;
 	collect_tracks(source, emitters);
 	double duration = 0.1;
-	double max_start = 0.0;
-	double max_lifetime = 0.1;
-	bool infinite = false;
 	int counted = 0;
-	for (Node *emitter : emitters) {
-		Node3D *track_3d = Object::cast_to<Node3D>(emitter);
-		if (track_3d && !track_3d->is_visible()) {
-			continue;
+	// Muted tracks do not play, so they do not make the preview longer. With
+	// every track muted the length is that of all of them, as the timeline
+	// draws it: deleting the only audible track next to a muted one left the
+	// preview at 0.1 s under a 6 s timeline.
+	for (int pass = 0; pass < 2 && counted == 0; pass++) {
+		double max_start = 0.0;
+		double max_tail = 0.0;
+		bool infinite = false;
+		for (Node *emitter : emitters) {
+			Node3D *track_3d = Object::cast_to<Node3D>(emitter);
+			if (pass == 0 && track_3d && !track_3d->is_visible()) {
+				continue;
+			}
+			counted++;
+			double start, emission_end, visual_end;
+			ParticleEffect3D::get_track_window(emitter, start, emission_end, visual_end);
+			max_start = MAX(max_start, start);
+			if (visual_end < 0.0) {
+				infinite = true;
+				max_tail = MAX(max_tail, ParticleEffect3D::is_emitter(emitter) ? double(emitter->get("lifetime")) / ParticleEffect3D::get_emitter_speed(emitter) : 1.0);
+			} else {
+				duration = MAX(duration, visual_end);
+			}
 		}
-		counted++;
-		double start, emission_end, visual_end;
-		ParticleEffect3D::get_track_window(emitter, start, emission_end, visual_end);
-		max_start = MAX(max_start, start);
-		if (ParticleEffect3D::is_emitter(emitter)) {
-			max_lifetime = MAX(max_lifetime, double(emitter->get("lifetime")));
+		if (infinite) {
+			// The span the timeline shows for a continuous track.
+			duration = MAX(duration, max_start + max_tail * 2.0 + 1.0);
 		}
-		if (visual_end < 0.0) {
-			infinite = true;
-		} else {
-			duration = MAX(duration, visual_end);
-		}
-	}
-	if (infinite) {
-		duration = MAX(duration, max_start + max_lifetime);
 	}
 	duration = MAX(duration, 0.1);
 	if (duration <= 0.1 + 0.0001 && !emitters.is_empty()) {
@@ -1328,7 +1383,11 @@ void FPSStudioParticleEditorPlugin::_update_preview_duration() {
 	}
 	preview_duration = duration;
 	if (timeline) {
+		// A shorter effect clamps the slider value; without the block that
+		// arrived as a scrub, which paused the preview at the new end.
+		timeline->set_block_signals(true);
 		timeline->set_max(preview_duration);
+		timeline->set_block_signals(false);
 	}
 	if (!rebuilding_preview) {
 		preview_time = CLAMP(preview_time, 0.0, preview_duration);
@@ -1371,7 +1430,7 @@ void FPSStudioParticleEditorPlugin::_sync_preview_properties() {
 	if (copy_preview_properties(source, preview_effect)) {
 		preview_restart_queued = true;
 	}
-	_apply_preview_defaults(preview_effect);
+	apply_preview_defaults(preview_effect, preview_quad, Object::cast_to<ParticleEffect3D>(preview_effect) == nullptr);
 	_apply_preview_solo();
 	_apply_preview_event_toggles();
 	_update_preview_bounds();
@@ -1480,7 +1539,7 @@ void FPSStudioParticleEditorPlugin::_rewind_preview_if_finished() {
 		return;
 	}
 	const bool has_region = preview_loop_end > preview_loop_start;
-	const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_end)) : preview_duration;
+	const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_start + 0.05)) : preview_duration;
 	if (preview_time < loop_to - 0.001) {
 		return;
 	}
@@ -2854,7 +2913,7 @@ static void strip_thumbnail_nodes(Node *p_node) {
 	for (int i = p_node->get_child_count() - 1; i >= 0; i--) {
 		Node *child = p_node->get_child(i);
 		// No sound, camera shake or damage from a thumbnail.
-		if (child->is_class("CameraShake3D") || child->is_class("RadialDamage3D")) {
+		if (child->is_class("CameraShake3D") || child->is_class("RadialDamage3D") || child->is_class("EffectSpawner3D")) {
 			p_node->remove_child(child);
 			memdelete(child);
 			continue;
@@ -3367,7 +3426,7 @@ static void prepare_scene_for_preview(Node *p_node) {
 		Node *child = p_node->get_child(i);
 		if (Object::cast_to<Camera3D>(child) || Object::cast_to<WorldEnvironment>(child) || Object::cast_to<CanvasItem>(child) || Object::cast_to<CanvasLayer>(child) ||
 				Object::cast_to<Viewport>(child) || Object::cast_to<AudioStreamPlayer>(child) || Object::cast_to<AudioStreamPlayer3D>(child) ||
-				child->is_class("CameraShake3D") || child->is_class("RadialDamage3D")) {
+				child->is_class("CameraShake3D") || child->is_class("RadialDamage3D") || child->is_class("EffectSpawner3D")) {
 			p_node->remove_child(child);
 			memdelete(child);
 			continue;
@@ -3935,20 +3994,25 @@ void FPSStudioParticleEditorPlugin::_on_timeline_scrub(double p_time) {
 	}
 }
 
+// Remembered per effect file in the project's editor metadata (not in the
+// effect itself, so the game never sees it).
+void FPSStudioParticleEditorPlugin::_store_playback_range() {
+	if (restoring_playback_range || effect_path.is_empty()) {
+		return;
+	}
+	Dictionary ranges = EditorSettings::get_singleton()->get_project_metadata("fps_studio_particle", "playback_ranges", Dictionary());
+	if (preview_loop_end > preview_loop_start) {
+		ranges[effect_path] = Vector2(preview_loop_start, preview_loop_end);
+	} else {
+		ranges.erase(effect_path);
+	}
+	EditorSettings::get_singleton()->set_project_metadata("fps_studio_particle", "playback_ranges", ranges);
+}
+
 void FPSStudioParticleEditorPlugin::_on_timeline_loop_region_changed(double p_start, double p_end) {
 	preview_loop_start = p_start;
 	preview_loop_end = p_end;
-	// Remembered per effect file in the project's editor metadata (not in the
-	// effect itself, so the game never sees it).
-	if (!restoring_playback_range && !effect_path.is_empty()) {
-		Dictionary ranges = EditorSettings::get_singleton()->get_project_metadata("fps_studio_particle", "playback_ranges", Dictionary());
-		if (p_end > p_start) {
-			ranges[effect_path] = Vector2(p_start, p_end);
-		} else {
-			ranges.erase(effect_path);
-		}
-		EditorSettings::get_singleton()->set_project_metadata("fps_studio_particle", "playback_ranges", ranges);
-	}
+	_store_playback_range();
 	if (p_end > p_start && preview_effect && (preview_time < p_start || preview_time > p_end)) {
 		// Jump into the region so the change is visible right away.
 		preview_time = p_start;
@@ -3971,8 +4035,8 @@ void FPSStudioParticleEditorPlugin::_on_timeline_emitter_selected(Object *p_emit
 	}
 }
 
-void FPSStudioParticleEditorPlugin::_apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration) {
-	Node *emitter = Object::cast_to<Node>(p_emitter);
+void FPSStudioParticleEditorPlugin::_apply_emitter_timing(const Variant &p_emitter, double p_delay, double p_duration) {
+	Node *emitter = _get_document_node(p_emitter);
 	if (!emitter) {
 		return;
 	}
@@ -4454,12 +4518,20 @@ void FPSStudioParticleEditorPlugin::_bake_level_particle_collision() {
 void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
 	Node *effect = _get_effect_root();
 	Node *emitter = _get_edited_emitter();
-	if (!effect || !emitter || emitter == effect || emitter->get_parent() != effect) {
+	Node *parent = emitter ? emitter->get_parent() : nullptr;
+	if (!effect || !emitter || emitter == effect || !parent || !effect->is_ancestor_of(emitter)) {
 		return;
 	}
+	// Tracks nested under the removed one go with it: count what stays.
 	Vector<Node *> particle_emitters;
 	_collect_emitters(effect, particle_emitters);
-	if (ParticleEffect3D::is_emitter(emitter) && particle_emitters.size() <= 1) {
+	int remaining = 0;
+	for (Node *candidate : particle_emitters) {
+		if (candidate != emitter && !emitter->is_ancestor_of(candidate)) {
+			remaining++;
+		}
+	}
+	if (remaining == 0 && !particle_emitters.is_empty()) {
 		EditorNode::get_singleton()->show_warning(TTR("A particle effect must keep at least one emitter. Add another emitter before removing this one."));
 		return;
 	}
@@ -4467,7 +4539,7 @@ void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
 	collect_tracks(effect, emitters);
 	Node *next_emitter = nullptr;
 	for (Node *candidate : emitters) {
-		if (candidate != emitter) {
+		if (candidate != emitter && !emitter->is_ancestor_of(candidate)) {
 			next_emitter = candidate;
 			break;
 		}
@@ -4476,16 +4548,29 @@ void FPSStudioParticleEditorPlugin::_remove_selected_emitter() {
 	undo_redo->create_action_for_history(TTR("Remove Particle Emitter"), EditorUndoRedoManager::GLOBAL_HISTORY);
 	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(emitter, "set_owner", (Object *)nullptr);
-	undo_redo->add_do_method(effect, "remove_child", emitter);
+	undo_redo->add_do_method(parent, "remove_child", emitter);
 	undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", next_emitter, effect_document_serial);
-	undo_redo->add_undo_method(effect, "add_child", emitter, true);
+	undo_redo->add_undo_method(parent, "add_child", emitter, true);
+	undo_redo->add_undo_method(parent, "move_child", emitter, emitter->get_index()); // Back in its place in the list.
 	undo_redo->add_undo_method(emitter, "set_owner", effect);
 	undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
 	undo_redo->add_undo_reference(emitter);
 	undo_redo->commit_action();
 }
 
-void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *p_preferred_emitter, int64_t p_document_serial) {
+// Undo steps outlive the effect they were recorded for (Close, New, Open
+// free it), so their node arguments arrive as Variants and are looked up:
+// a raw pointer would be dangling.
+Node *FPSStudioParticleEditorPlugin::_get_document_node(const Variant &p_node) const {
+	Node *node = Object::cast_to<Node>(p_node.get_validated_object());
+	Node *effect = _get_effect_root();
+	if (!node || !effect || (node != effect && !effect->is_ancestor_of(node))) {
+		return nullptr;
+	}
+	return node;
+}
+
+void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(const Variant &p_preferred_emitter, int64_t p_document_serial) {
 	if (p_document_serial != effect_document_serial) {
 		return; // A step recorded for an earlier document; its nodes are gone.
 	}
@@ -4497,7 +4582,7 @@ void FPSStudioParticleEditorPlugin::_on_emitter_hierarchy_history_changed(Node *
 	}
 	Vector<Node *> emitters;
 	collect_tracks(effect, emitters);
-	Node *selected_emitter = p_preferred_emitter;
+	Node *selected_emitter = Object::cast_to<Node>(p_preferred_emitter.get_validated_object());
 	if (!selected_emitter || (selected_emitter != effect && !effect->is_ancestor_of(selected_emitter))) {
 		selected_emitter = emitters.is_empty() ? nullptr : emitters[0];
 	}
@@ -4699,6 +4784,23 @@ void FPSStudioParticleEditorPlugin::_on_emitter_renamed() {
 	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(emitter, "set_name", new_name);
 	undo_redo->add_undo_method(emitter, "set_name", old_name);
+	// Sub Emitter links are node paths: keep the ones that point at this track.
+	Vector<Node *> all_emitters;
+	_collect_emitters(effect, all_emitters);
+	for (Node *other : all_emitters) {
+		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(other);
+		if (!gpu || gpu->get_sub_emitter().is_empty() || gpu->get_node_or_null(gpu->get_sub_emitter()) != emitter) {
+			continue;
+		}
+		const NodePath old_path = gpu->get_sub_emitter();
+		Vector<StringName> names = old_path.get_names();
+		if (names.is_empty()) {
+			continue;
+		}
+		names.write[names.size() - 1] = new_name;
+		undo_redo->add_do_property(gpu, "sub_emitter", NodePath(names, old_path.is_absolute()));
+		undo_redo->add_undo_property(gpu, "sub_emitter", old_path);
+	}
 	undo_redo->add_do_method(this, "_on_emitter_name_changed");
 	undo_redo->add_undo_method(this, "_on_emitter_name_changed");
 	undo_redo->commit_action();
@@ -4798,6 +4900,7 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	packed_scene.instantiate();
 	const Error pack_error = packed_scene->pack(effect);
 	if (pack_error != OK) {
+		close_after_save = false; // A later save must not close the effect.
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not pack the particle effect (error %d)."), pack_error));
 		return;
 	}
@@ -4809,13 +4912,14 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	packed_scene->set_path(save_path, true);
 	const Error save_error = ResourceSaver::save(packed_scene, save_path);
 	if (save_error != OK) {
+		close_after_save = false;
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not save particle effect to %s (error %d)."), save_path, save_error));
 		return;
 	}
 	effect_path = save_path;
 	effect->set_scene_file_path(save_path);
 	effect_dirty = false;
-	_on_timeline_loop_region_changed(preview_loop_start, preview_loop_end); // The range goes with a Save As.
+	_store_playback_range(); // The range goes with a Save As (the playhead stays).
 
 	_remember_effect(save_path);
 	_update_document_ui();
@@ -4827,8 +4931,12 @@ void FPSStudioParticleEditorPlugin::_save_emitter_scene(const String &p_path) {
 	// Levels that already instance this effect pick up the new version.
 	List<String> saved_paths;
 	saved_paths.push_back(save_path);
+	// The reload rewrites the cached materials and curves this document also
+	// uses; their "changed" signals must not mark the fresh save as edited.
+	saving_document = true;
 	EditorNode::get_singleton()->preload_reimporting_with_path_in_edited_scenes(saved_paths);
 	EditorNode::get_singleton()->reload_instances_with_path_in_edited_scenes();
+	saving_document = false;
 	if (close_after_save) {
 		callable_mp(this, &FPSStudioParticleEditorPlugin::_close_effect_document).call_deferred();
 	}
@@ -4849,7 +4957,13 @@ void FPSStudioParticleEditorPlugin::_request_load_particle_scene(const String &p
 }
 
 void FPSStudioParticleEditorPlugin::_load_particle_scene(const String &p_path) {
-	Ref<PackedScene> packed_scene = ResourceLoader::load(p_path, "PackedScene");
+	// From the file, with its own materials and curves (textures and other
+	// files still come from the cache). Edited and then discarded ones (Close
+	// Without Saving) stay cached under this scene's path while the undo
+	// history holds them, and a cached load brought them back as if saved.
+	// CACHE_MODE_REPLACE is no help: it leaves values that the file does not
+	// store (defaults) as they were edited.
+	Ref<PackedScene> packed_scene = ResourceLoader::load(p_path, "PackedScene", ResourceFormatLoader::CACHE_MODE_IGNORE);
 	if (packed_scene.is_null()) {
 		EditorNode::get_singleton()->show_warning(vformat(TTR("Could not load particle effect from %s."), p_path));
 		return;
@@ -4891,6 +5005,9 @@ void FPSStudioParticleEditorPlugin::_add_effect_to_level() {
 	if (!instance) {
 		instance = effect->duplicate(Node::DUPLICATE_SIGNALS | Node::DUPLICATE_SCRIPTS);
 		if (instance) {
+			// Its own materials and curves: later edits here must not change
+			// the copy that now lives in the Level.
+			duplicate_track_resources(instance);
 			set_scene_subtree_owners(instance, instance);
 		}
 	}
@@ -4942,7 +5059,8 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 	_mark_document_dirty();
 	_refresh_curve_editors();
 	_update_particle_graph_controls();
-	if (p_property == "lifetime" || p_property == "one_shot") {
+	if (p_property == "lifetime" || p_property == "one_shot" || p_property == "speed_scale" || p_property == "modules" || p_property == "attractor" || p_property == "material") {
+		// Also when child nodes (attractors) or the draw material were replaced.
 		_rebuild_preview();
 	} else {
 		// ParticleEffect3D reads timing and event settings (light curve,
@@ -6395,8 +6513,8 @@ void FPSStudioParticleEditorPlugin::_on_timeline_markers_committed(const Array &
 	undo_redo->commit_action();
 }
 
-void FPSStudioParticleEditorPlugin::_apply_timeline_markers(Object *p_effect, const Array &p_markers) {
-	Node *effect = Object::cast_to<Node>(p_effect);
+void FPSStudioParticleEditorPlugin::_apply_timeline_markers(const Variant &p_effect, const Array &p_markers) {
+	Node *effect = _get_document_node(p_effect);
 	if (!effect) {
 		return;
 	}
@@ -6742,8 +6860,8 @@ void FPSStudioParticleEditorPlugin::_apply_preview_event_toggles() {
 	apply_preview_event_toggles(preview_effect, preview_play_sound, preview_play_shake);
 }
 
-void FPSStudioParticleEditorPlugin::_set_emitter_visible(Object *p_emitter, bool p_visible) {
-	Node3D *emitter = Object::cast_to<Node3D>(p_emitter);
+void FPSStudioParticleEditorPlugin::_set_emitter_visible(const Variant &p_emitter, bool p_visible) {
+	Node3D *emitter = Object::cast_to<Node3D>(_get_document_node(p_emitter));
 	if (!emitter) {
 		return;
 	}
@@ -6778,6 +6896,21 @@ static void duplicate_track_resources(Node *p_copy) {
 	if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(copy)) {
 		if (geometry->get_material_override().is_valid()) {
 			geometry->set_material_override(geometry->get_material_override()->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
+		}
+	}
+	// Everything else built into the effect: the curves and color ramps of a
+	// CPU emitter, a light's Intensity over Time curve, the mesh kept for
+	// removing Trails. Files (textures, sounds) stay shared.
+	List<PropertyInfo> properties;
+	copy->get_property_list(&properties);
+	for (const PropertyInfo &property : properties) {
+		if (property.type != Variant::OBJECT || !(property.usage & PROPERTY_USAGE_STORAGE) || property.name == "script" || property.name == "process_material" ||
+				property.name == "mesh" || property.name == "material_override" || property.name.begins_with("draw_pass_")) {
+			continue;
+		}
+		Ref<Resource> resource = copy->get(property.name);
+		if (resource.is_valid() && (resource->get_path().is_empty() || resource->is_built_in())) {
+			copy->set(property.name, resource->duplicate_deep(RESOURCE_DEEP_DUPLICATE_INTERNAL));
 		}
 	}
 	for (int i = 0; i < copy->get_child_count(); i++) {
@@ -7062,7 +7195,7 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		// decides whether the whole effect repeats.
 		const bool has_region = preview_loop_end > preview_loop_start;
 		const double loop_from = has_region ? preview_loop_start : 0.0;
-		const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_end)) : preview_duration;
+		const double loop_to = has_region ? MIN(preview_loop_end, MAX(preview_duration, preview_loop_start + 0.05)) : preview_duration;
 		if (preview_time >= loop_to) {
 			if (preview_loop) {
 				const double span = MAX(0.01, loop_to - loop_from);
@@ -7840,6 +7973,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_menu->get_popup()->add_item(TTR("Camera Shake"), PARTICLE_EVENT_SHAKE);
 	add_emitter_menu->get_popup()->add_item(TTR("Decal"), PARTICLE_EVENT_DECAL);
 	add_emitter_menu->get_popup()->add_item(TTR("Damage"), PARTICLE_EVENT_DAMAGE);
+	add_emitter_menu->get_popup()->add_item(TTR("Spawn Effect"), PARTICLE_EVENT_SPAWN);
 	add_emitter_menu->get_popup()->set_item_tooltip(-1, TTR("Area damage with falloff and cover checks; calls take_damage() on what it hits."));
 	add_emitter_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_menu_pressed));
 	emitter_header->add_child(add_emitter_menu);

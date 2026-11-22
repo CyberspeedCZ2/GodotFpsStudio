@@ -440,11 +440,11 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _paste_tracks(Node *p_after);
 	bool _handle_track_clipboard_key(const Ref<InputEventKey> &p_key);
 	void _on_emitter_tree_gui_input(const Ref<InputEvent> &p_event);
-	void _set_emitter_visible(Object *p_emitter, bool p_visible);
+	void _set_emitter_visible(const Variant &p_emitter, bool p_visible);
 	void _on_timeline_timing_committed(Object *p_emitter, double p_old_delay, double p_old_duration);
-	void _apply_emitter_timing(Object *p_emitter, double p_delay, double p_duration);
+	void _apply_emitter_timing(const Variant &p_emitter, double p_delay, double p_duration);
 	void _on_timeline_markers_committed(const Array &p_old, const Array &p_new);
-	void _apply_timeline_markers(Object *p_effect, const Array &p_markers);
+	void _apply_timeline_markers(const Variant &p_effect, const Array &p_markers);
 	void _on_lock_seed_toggled(bool p_locked);
 	void _on_new_seed_pressed();
 	void _reseed_preview_for_next_run();
@@ -571,7 +571,10 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _on_rename_effect_confirmed();
 	void _on_effect_name_changed();
 	void _on_emitter_selected();
-	void _on_emitter_hierarchy_history_changed(Node *p_preferred_emitter, int64_t p_document_serial);
+	void _on_emitter_hierarchy_history_changed(const Variant &p_preferred_emitter, int64_t p_document_serial);
+	Node *_get_document_node(const Variant &p_node) const;
+	void _store_playback_range();
+	bool saving_document = false;
 	void _on_save_scene_pressed();
 	void _save_emitter_scene(const String &p_path);
 	void _load_particle_scene(const String &p_path);

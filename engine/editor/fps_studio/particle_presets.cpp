@@ -735,7 +735,8 @@ void build_shell_eject(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_tex
 	casing.node->set_use_local_coordinates(false);
 	casing.set("direction", Vector3(1, 0.8, 0.15)).set("spread", 12.0).set("initial_velocity", Vector2(1.8, 2.6)).set("gravity", Vector3(0, -9.8, 0));
 	casing.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-900, 900));
-	casing.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.85, 1), Vector2(1, 0) }));
+	// An opaque mesh has no alpha to fade: it shrinks away at the end of its life.
+	casing.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 1), Vector2(0.85, 1), Vector2(1, 0) }));
 	enable_collision(casing, 0.45, 0.35);
 	// Clink when it lands; drop a casing sound on the Sound track.
 	AudioStreamPlayer3D *clink = add_sound_slot(p_effect, 1.0, 12.0, 0.35);
@@ -784,7 +785,7 @@ void build_gibs(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	chunks.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.25);
 	chunks.set("direction", Vector3(0, 1, 0)).set("spread", 70.0).set("initial_velocity", Vector2(2.5, 6.0)).set("gravity", Vector3(0, -9.8, 0));
 	chunks.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-360, 360)).set("scale", Vector2(0.6, 1.6));
-	chunks.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.9, 1), Vector2(1, 0) }));
+	chunks.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 1), Vector2(0.9, 1), Vector2(1, 0) }));
 	enable_collision(chunks, 0.15, 0.8);
 
 	EmitterBuilder bones = add_emitter(p_effect, "Bones", 5, 3.0, true, 1.0, 0.1, BLEND_ALPHA);
@@ -798,7 +799,7 @@ void build_gibs(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) 
 	bones.set("emission_shape", int(ParticleProcessMaterial::EMISSION_SHAPE_SPHERE)).set("emission_sphere_radius", 0.2);
 	bones.set("direction", Vector3(0, 1, 0)).set("spread", 60.0).set("initial_velocity", Vector2(3.0, 6.5)).set("gravity", Vector3(0, -9.8, 0));
 	bones.set("angle", RANDOM_ANGLE).set("angular_velocity", Vector2(-540, 540));
-	bones.process->set_alpha_curve(make_curve({ Vector2(0, 1), Vector2(0.9, 1), Vector2(1, 0) }));
+	bones.process->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, make_curve({ Vector2(0, 1), Vector2(0.9, 1), Vector2(1, 0) }));
 	enable_collision(bones, 0.3, 0.6);
 
 	EmitterBuilder mist = add_emitter(p_effect, "Mist", 8, 0.9, true, 0.95, 0.9, BLEND_ALPHA);
@@ -1112,7 +1113,7 @@ void build_water_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r
 }
 
 // Explosion under water (origin at the blast): a bright flash and light, a
-// gas bubble that swells and collapses, a cloud of bubbles rising and murk.
+// gas bubble that swells and collapses, a cloud of bubbles rising.
 void build_underwater_explosion(ParticleEffect3D *p_effect, Vector<TextureRequest> &r_textures) {
 	// Under water everything here is drawn after the player's underwater haze
 	// (render priority, see clip_at_water_surface): the haze reads the depth of
@@ -1345,7 +1346,7 @@ String get_preset_description(int p_preset) {
 		case PRESET_WATER_EXPLOSION:
 			return "Explosion breaking the water (+Y up, origin on the surface): a column of white water that grows and falls back, spray, lingering mist, foam spreading on the water, a ring wave and camera shake.";
 		case PRESET_UNDERWATER_EXPLOSION:
-			return "Explosion under water: flash and light, a gas bubble that swells and collapses, a cloud of rising bubbles, murk and camera shake.";
+			return "Explosion under water: flash and light, a gas bubble that swells and collapses, a cloud of rising bubbles and camera shake.";
 	}
 	return String();
 }

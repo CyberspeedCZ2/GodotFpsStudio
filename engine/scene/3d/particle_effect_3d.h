@@ -34,6 +34,10 @@ public:
 	static constexpr const char *META_FLICKER = "particle_effect_flicker"; // 0..1 random light flicker.
 	static constexpr const char *META_FADE = "particle_effect_fade"; // 0..1 part of a decal's duration used to fade out.
 	static constexpr const char *META_PITCH_RANDOM = "particle_effect_pitch_random"; // 0..1 random sound pitch.
+	static constexpr const char *META_KEEP_WORLD = "particle_effect_keep_world"; // bool: the emitter stays in world space when the effect plays in local space (smoke of a muzzle flash).
+	// Speed the emitter was authored with, kept while the effect (or the
+	// Particle preview) drives its speed_scale.
+	static constexpr const char *META_AUTHORED_SPEED = "_authored_speed_scale";
 
 	enum EventKind {
 		EVENT_NONE,
@@ -42,6 +46,7 @@ public:
 		EVENT_CAMERA_SHAKE,
 		EVENT_DECAL,
 		EVENT_DAMAGE,
+		EVENT_SPAWN, // EffectSpawner3D: plays another effect or instantiates a scene.
 	};
 
 private:
@@ -68,6 +73,9 @@ private:
 		double fade = 0.5;
 		real_t pitch_random = 0.0;
 		real_t last_value = -1.0; // Last light energy / decal alpha written (skip unchanged).
+		bool cancelled = false; // stop() came before its start: a light / decal that never shows.
+		double fade_from = -1.0; // stop() fades a continuous light / decal out from this time...
+		double fade_length = 0.0; // ...over this many seconds.
 	};
 	struct EventBase {
 		real_t energy = 1.0;
@@ -100,6 +108,13 @@ private:
 	real_t spawn_scale = 1.0;
 	bool budget_active = false; // In the list of effects counted by the budget.
 	bool culled = false; // Skipped by distance or budget; finishes next frame.
+	bool resumable = false; // Looping or continuous: a skipped / recycled one waits and starts again.
+	bool resuming = false; // play() from the wait: takes a free slot only, recycles nobody.
+	bool suppress_instant_events = false; // seek(): sounds, shakes, damage and spawns before the seek time stay silent.
+	bool paused = false;
+	real_t lod_distance = 0.0;
+	real_t lod_amount = 0.35;
+	double lod_elapsed = 0.0;
 	uint64_t play_serial = 0; // Play order, oldest effects are recycled first.
 
 	bool playing = false;
@@ -107,6 +122,7 @@ private:
 	bool play_pending = false;
 	double elapsed = 0.0;
 	double stop_time = 0.0;
+	double stop_end = 0.0; // When a stopped effect is done (live particles and running events).
 	LocalVector<EmitterState> emitters;
 	LocalVector<EventState> events;
 	HashMap<ObjectID, EventBase> event_bases;
@@ -125,6 +141,9 @@ private:
 	void _budget_remove();
 	void _enforce_max_instances();
 	void _force_finish();
+	void _suspend();
+	void _apply_speed_scale();
+	void _apply_amount_scale();
 	static bool _has_pending_damage(const LocalVector<EventState> &p_events);
 	void _play_pending();
 	void _apply_overrides();
@@ -170,6 +189,17 @@ public:
 	// attached to a moving node (a weapon muzzle) moves its particles with it.
 	void set_local_space(bool p_enable);
 	bool is_local_space() const;
+	// Freezes the effect in place (timeline, particles, sounds). Game only.
+	void set_paused(bool p_paused);
+	bool is_paused() const;
+	// Farther from the camera than this, GPU emitters release fewer particles,
+	// down to lod_amount of them at twice the distance. 0 = off.
+	void set_lod_distance(real_t p_distance);
+	real_t get_lod_distance() const;
+	void set_lod_amount(real_t p_amount);
+	real_t get_lod_amount() const;
+	// Authored speed of an emitter (not what the effect or the preview set on top).
+	static double get_emitter_speed(const Node *p_emitter);
 	static int get_active_effect_count();
 	// Per-play look: tint multiplies emitter, light and decal colors, scale
 	// multiplies sizes, speeds, emission shapes and event radii. Applied at

@@ -89,6 +89,13 @@
 				Returns the time in seconds since the effect started playing, scaled by [member speed_scale].
 			</description>
 		</method>
+		<method name="get_emitter_speed" qualifiers="static">
+			<return type="float" />
+			<param index="0" name="emitter" type="Node" />
+			<description>
+				Returns the [code]speed_scale[/code] the emitter was authored with. While an effect plays with its own [member speed_scale] or is paused, the emitter's property holds the combined value.
+			</description>
+		</method>
 		<method name="get_emitter_delay" qualifiers="static">
 			<return type="float" />
 			<param index="0" name="emitter" type="Node" />
@@ -198,7 +205,7 @@
 		<method name="stop">
 			<return type="void" />
 			<description>
-				Stops emitting new particles. Living particles finish their lifetime, then [signal finished] is emitted.
+				Stops emitting new particles. Living particles finish their lifetime, then [signal finished] is emitted. Events that have not fired yet (sound, camera shake, damage, spawn, a light or decal that has not appeared) never do; a light or decal that is always on fades out with the last particles. An effect that is waiting for the camera or for the effect budget ends at once.
 			</description>
 		</method>
 	</methods>
@@ -213,7 +220,7 @@
 			If [code]true[/code], emitters whose process material has collision enabled bounce off static level geometry while the game runs. GPU particles only collide with [GPUParticlesCollision3D] nodes, so when the effect plays it bakes the [StaticBody3D] (and CSG) collision shapes inside its emitters' [member GPUParticles3D.visibility_aabb] into a transient [GPUParticlesCollisionSDF3D]. The bake is limited to a narrow band around the faces and runs immediately (on a worker thread for very large geometry); it is shared by effects replayed at the same place. Characters and rigid bodies are left out. Emitters with collision also get a higher [member GPUParticles3D.fixed_fps] so fast particles do not pass through thin walls (see [method apply_collision_substeps]).
 		</member>
 		<member name="cull_distance" type="float" setter="set_cull_distance" getter="get_cull_distance" default="0.0">
-			If greater than [code]0[/code], [method play] skips the effect when the current [Camera3D] is farther away: it emits [signal finished] on the next frame (and returns to its pool). A looping effect keeps checking every 0.5 seconds and starts once the camera comes closer. Effects with a [RadialDamage3D] event always play.
+			If greater than [code]0[/code], [method play] skips the effect when the current [Camera3D] is farther away: it emits [signal finished] on the next frame (and returns to its pool). A looping effect, or one with an emitter, light or looping sound that never ends, keeps checking every 0.5 seconds and starts once the camera comes closer. Effects with a [RadialDamage3D] event always play.
 		</member>
 		<member name="effect_scale" type="float" setter="set_effect_scale" getter="get_effect_scale" default="1.0">
 			Multiplies the size of the effect when it plays in a running game: particle scale, initial velocity, gravity and accelerations, emission shape extents, [member GPUParticles3D.visibility_aabb] and collision size, light range, decal size and the radii of [CameraShake3D] and [RadialDamage3D] events. Lifetimes and timing stay unchanged. See [member tint].
@@ -222,7 +229,13 @@
 			The physics layers baked for [member collide_with_level].
 		</member>
 		<member name="local_space" type="bool" setter="set_local_space" getter="is_local_space" default="false">
-			If [code]true[/code], [method play] sets [code]local_coords[/code] on every emitter, so particles move with the effect. Use it for effects attached to moving nodes, such as muzzle flashes. See [method spawn_attached].
+			If [code]true[/code], [method play] sets [code]local_coords[/code] on every emitter, so particles move with the effect. An emitter with the metadata [code]particle_effect_keep_world[/code] set to [code]true[/code] (Stay in World when Attached in the Particle workspace) keeps its own setting, e.g. the smoke of a muzzle flash that stays behind in the world. Use it for effects attached to moving nodes, such as muzzle flashes. See [method spawn_attached].
+		</member>
+		<member name="lod_amount" type="float" setter="set_lod_amount" getter="get_lod_amount" default="0.35">
+			Share of the particles that GPU emitters still release at twice [member lod_distance] from the camera.
+		</member>
+		<member name="lod_distance" type="float" setter="set_lod_distance" getter="get_lod_distance" default="0.0">
+			Farther from the camera than this, GPU emitters with at least 8 particles release fewer of them, down to [member lod_amount] at twice the distance. [code]0[/code] turns it off. The project setting [code]rendering/particle_effects/amount_scale[/code] scales the amount of every effect on top of it (a quality option). Applied in the running game only.
 		</member>
 		<member name="looping" type="bool" setter="set_looping" getter="is_looping" default="false">
 			If [code]true[/code], a finite effect starts again when it finishes.
@@ -230,14 +243,17 @@
 		<member name="max_instances" type="int" setter="set_max_instances" getter="get_max_instances" default="0">
 			At most this many copies of the same effect scene play at once: when another copy starts, the oldest playing one ends at once (its particles, lights and decals go away) and returns to the pool. Use it for effects that come fast and stay long, like bullet impacts with a decal, to keep their count and cost bounded. [code]0[/code] means no limit.
 		</member>
+		<member name="paused" type="bool" setter="set_paused" getter="is_paused" default="false">
+			If [code]true[/code], the effect stands still: its timeline, its particles and its sounds. Has no effect in the editor.
+		</member>
 		<member name="priority" type="int" setter="set_priority" getter="get_priority" default="0">
-			When [member ProjectSettings.rendering/particle_effects/max_active_effects] effects are already playing, [method play] cuts off the oldest playing effect with the lowest priority not above this one. If every playing effect has a higher priority, this effect is skipped like with [member cull_distance]. Effects with a pending [RadialDamage3D] event are never cut off or skipped.
+			When [member ProjectSettings.rendering/particle_effects/max_active_effects] effects are already playing, [method play] cuts off the oldest playing effect with the lowest priority not above this one. A cut off effect that is looping or continuous (fire, steam) is not lost: it waits and plays again once a slot is free. If every playing effect has a higher priority, this effect is skipped like with [member cull_distance]. Effects with a pending [RadialDamage3D] event are never cut off or skipped.
 		</member>
 		<member name="tint" type="Color" setter="set_tint" getter="get_tint" default="Color(1, 1, 1, 1)">
 			Multiplies the color of the emitters (the process material or CPU [code]color[/code], which also tints color ramps), the [code]light_color[/code] of lights and the color of decals when the effect plays in a running game. The values are applied in [method play] on local copies of the process materials, so shared resources are not changed; the authored values are remembered on the nodes, and a play with white tint and [member effect_scale] [code]1.0[/code] restores them. The editor always shows the authored effect.
 		</member>
 		<member name="speed_scale" type="float" setter="set_speed_scale" getter="get_speed_scale" default="1.0">
-			Scales the effect timeline (delays and durations). It does not change the emitters' own simulation speed.
+			Scales the whole effect: the timeline (delays and durations) and, in a running game, the simulation speed of its emitters on top of their own [code]speed_scale[/code]. See [member paused].
 		</member>
 	</members>
 	<signals>

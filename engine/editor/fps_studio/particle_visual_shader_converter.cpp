@@ -376,9 +376,16 @@ int add_accelerator(GraphBuilder &g, PM *p_material, PM::Parameter p_param, Visu
 	node->set_mode(p_mode);
 	const float min_value = p_material->get_param_min(p_param);
 	const float max_value = p_material->get_param_max(p_param);
-	// amount * mix(1, rand, randomness) spans [max * (1 - randomness), max].
-	const float randomness = Math::is_zero_approx(max_value) ? 0.0f : CLAMP(1.0f - min_value / max_value, 0.0f, 1.0f);
-	node->set_input_port_default_value(0, Vector3(max_value, max_value, max_value));
+	// amount * mix(1, rand, randomness) spans [amount * (1 - randomness), amount],
+	// so amount is the end of the range farther from zero (-5..0 is amount -5).
+	// A range across zero (-2..2) has no such form: it becomes 0..amount.
+	const float amount = Math::abs(max_value) >= Math::abs(min_value) ? max_value : min_value;
+	const float other = Math::abs(max_value) >= Math::abs(min_value) ? min_value : max_value;
+	const float randomness = Math::is_zero_approx(amount) ? 0.0f : CLAMP(1.0f - other / amount, 0.0f, 1.0f);
+	if (!Math::is_zero_approx(amount) && other / amount < 0.0f && g.warnings) {
+		*g.warnings += vformat(TTR("An acceleration range across zero (%s to %s) was converted to 0 to %s.") + "\n", String::num(min_value, 2), String::num(max_value, 2), String::num(amount, 2));
+	}
+	node->set_input_port_default_value(0, Vector3(amount, amount, amount));
 	node->set_input_port_default_value(1, randomness);
 	node->set_input_port_default_value(2, p_material->get_gravity().is_zero_approx() ? Vector3(0, -1, 0) : p_material->get_gravity());
 	return g.add(node, p_column, p_row);
@@ -451,7 +458,9 @@ void build_process(const Ref<VisualShader> &p_shader, PM *p_material, String &r_
 			code += "	TRANSFORM[3].xyz += COLLISION_NORMAL * COLLISION_DEPTH;\n";
 			code += "	float response = dot(COLLISION_NORMAL, velocity_in);\n";
 			code += "	if (response < 0.0) {\n";
-			code += "		vec3 v = velocity_in - COLLISION_NORMAL * response * (1.0 + bounce);\n";
+			code += "		// Slow contacts slide instead of bouncing (as ParticleProcessMaterial), so particles settle.\n";
+			code += "		float bounce_trigger = step(2.0 / clamp(bounce + 1.0, 1.0, 2.0), abs(response));\n";
+			code += "		vec3 v = velocity_in - COLLISION_NORMAL * response * (1.0 + bounce * bounce_trigger);\n";
 			code += "		vec3 slide = v - COLLISION_NORMAL * dot(COLLISION_NORMAL, v);\n";
 			code += "		velocity_out = v - slide * clamp(friction, 0.0, 1.0);\n";
 			code += "	}\n";
@@ -537,7 +546,7 @@ void build_process_custom(const Ref<VisualShader> &p_shader, PM *p_material, Str
 					{ PT::PORT_TYPE_SCALAR, "frames_per_life", 0.0f } },
 			{ { PT::PORT_TYPE_VECTOR_3D, "custom_out", Variant() }, { PT::PORT_TYPE_SCALAR, "angle", Variant() } },
 			"float life_step = dt / max(total_life, 0.0001);\n"
-			"custom_out = vec3(custom_in.x + radians(spin_degrees) * dt, custom_in.y + life_step, custom_in.z + frames_per_life * life_step);\n"
+			"custom_out = vec3(custom_in.x + radians(spin_degrees) * dt, custom_in.y + life_step, custom_in.z + frames_per_life * life_step / max(custom_in.w, 0.0001));\n"
 			"angle = custom_out.x;",
 			3, 3);
 	g.link(custom, 0, age, 0);

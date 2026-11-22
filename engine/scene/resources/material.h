@@ -278,6 +278,7 @@ public:
 		FLAG_DISABLE_SPECULAR_OCCLUSION,
 		FLAG_USE_Z_CLIP_SCALE,
 		FLAG_USE_FOV_OVERRIDE,
+		FLAG_PARTICLES_ANIM_BLEND, // FPS Studio: cross-fades neighbouring sprite sheet frames.
 		FLAG_MAX
 	};
 

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="EffectSpawner3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Plays another particle effect or creates a scene at its position, for example gibs or a secondary explosion.
+	</brief_description>
+	<description>
+		When [method spawn] is called, [member scene] is created [member count] times at this node's global transform, each one moved by a random offset within [member scatter_radius].
+		A scene whose root is a [ParticleEffect3D] is played through [method ParticleEffect3D.spawn], so it comes from the effect pool and counts against the effect budget. With [member inherit_look] it takes the tint and scale its parent effect plays with.
+		Any other scene is instantiated under the parent of the effect. With [member launch_speed] above zero, a [RigidBody3D] root (or a root with a [code]velocity[/code] property) is thrown along this node's +Y axis inside a cone of [member launch_spread] degrees.
+		As a child of a [ParticleEffect3D], it fires automatically at its start time (see [method ParticleEffect3D.set_emitter_delay]). In the editor only particle effects are shown, from the moment the event fires; other scenes need the running game.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="spawn">
+			<return type="void" />
+			<description>
+				Spawns [member scene] now. Inside a [ParticleEffect3D] the new nodes are added next to that effect, otherwise next to this node.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="count" type="int" setter="set_count" getter="get_count" default="1">
+			How many copies of [member scene] one [method spawn] creates.
+		</member>
+		<member name="inherit_look" type="bool" setter="set_inherit_look" getter="is_inheriting_look" default="true">
+			If [code]true[/code], a spawned particle effect is played with the tint and scale of the effect this node belongs to.
+		</member>
+		<member name="launch_speed" type="float" setter="set_launch_speed" getter="get_launch_speed" default="0.0">
+			Speed in meters per second at which a spawned scene (not a particle effect) is thrown along this node's +Y axis. [code]0[/code] leaves it at rest.
+		</member>
+		<member name="launch_spread" type="float" setter="set_launch_spread" getter="get_launch_spread" default="30.0">
+			Half angle in degrees of the cone the launch direction is picked from.
+		</member>
+		<member name="scatter_radius" type="float" setter="set_scatter_radius" getter="get_scatter_radius" default="0.0">
+			Each copy is placed at a random point within this distance of the node.
+		</member>
+		<member name="scene" type="PackedScene" setter="set_scene" getter="get_scene">
+			The particle effect or scene to spawn.
+		</member>
+	</members>
+</class>
