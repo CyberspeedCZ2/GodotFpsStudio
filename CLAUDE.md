@@ -34,7 +34,7 @@ Uživatel chtěl analýzu Particle a pak „vše uprav“. Čtyři revizní agen
   - Převodník na Node Graph: rozsah zrychlení se záporným koncem, flipbook s náhodnou životností, odraz jen od určité rychlosti (jako engine).
   - Presety: nábojnice, kusy a kosti se na konci života zmenší (neprůhledný mesh alfu ignoruje).
 - **Neuděláno z revize** (malé nebo nejisté): emise z povrchu meshe, přepečení kolize po zničení statického tělesa (zůstává `clear_level_collision_cache()`), moduly Trails/Collision/Sub Emitter u emitoru s vlastním particle shaderem, výchozí hodnota u chybějících metadat události, `MAX_SHAPE_RESULTS` v `RadialDamage3D`, pořadí `enable_collision` u Smoke Grenade, AABB kouře Rocket Trail.
-- **Starší chyba, neřešená**: hra při ukončení hlásí „1 shaders of type ParticlesShaderRD were never freed“ i s holým `GPUParticles3D` + `ParticleProcessMaterial`; je to už na commitu `9069575e`, ne z této revize.
+- **Únik shaderu částic (opraveno 2026-11-23, `particle_process_material.h`)**: `ParticleProcessMaterial::MaterialKey` měl 18 nevyužitých bitů, které optimalizovaný build nechával nedefinované. Klíč se hashuje a porovnává po bajtech, takže klíč v `shader_map` a kopie v materiálu se lišily, materiál svůj shader nenašel a neuvolnil („ParticlesShaderRD were never freed“ při ukončení, v dev buildu ne). Teď je zbytek 64 bitů pole `unused` a velikost hlídá `static_assert`; při přidání bitu do klíče zmenšit `unused` (číslo 23 v jeho šířce).
 - Testy jsou ve scratchpadu sezení `1aa2ca76` (`rt` runtime, `ed` editor s doplňkem `addons/lt`, `sh` snímek shaderů); při ztrátě napsat znovu.
 
 ## Kde jsme skončili

@@ -133,6 +133,15 @@ private:
 		uint64_t use_rotation_3d : 1;
 		uint64_t use_rotation_velocity_3d : 1;
 		uint64_t use_rotation_velocity_3d_curve : 1;
+		// FPS Studio: the rest of the 64 bits as a real field (23 = the bits of
+		// the fields above other than texture_mask and particle_flags). The key
+		// is hashed and compared as raw bytes; left as padding, these bits were
+		// undefined in optimized builds, so the key stored in the shader map
+		// and the copy kept by the material differed. A material then never
+		// found (and never freed) its shader: "ParticlesShaderRD were never
+		// freed" at exit, and one more leaked shader for every material that
+		// changed its key.
+		uint64_t unused : 64 - PARAM_MAX - PARTICLE_FLAG_MAX - 23;
 
 		MaterialKey() {
 			memset(this, 0, sizeof(MaterialKey));
@@ -148,6 +157,8 @@ private:
 			return memcmp(this, &p_key, sizeof(MaterialKey)) < 0;
 		}
 	};
+
+	static_assert(sizeof(MaterialKey) == sizeof(uint64_t), "ParticleProcessMaterial::MaterialKey must fill exactly 64 bits; update the size of its 'unused' field.");
 
 	struct ShaderData {
 		RID shader;
