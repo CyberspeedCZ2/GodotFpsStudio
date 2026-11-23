@@ -22,7 +22,7 @@ UniBuilder is bundled with the editor as a built-in resource pack. It does not n
 
 See [PostProcessVolume3D](docs/post_process_volume_3d.md) for setup and limitations.
 
-See [Particle workspace](docs/particle_editor.md) for its workflow and current scope.
+See [Particle workspace](docs/particle_editor.md) for its workflow and current scope. The review, fixes and features of 23 November 2026 are recorded in [particle_changes_2026-11-23.md](docs/particle_changes_2026-11-23.md).
 
 ## Build on macOS Apple Silicon
 
