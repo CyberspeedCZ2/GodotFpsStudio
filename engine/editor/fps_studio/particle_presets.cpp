@@ -982,7 +982,11 @@ void fragment() {
 	// when it falls back into the water.
 	float below = 1.0 - smoothstep(water_surface_y - 0.25, water_surface_y - 0.02, particle_y);
 	float above = smoothstep(water_surface_y - 0.05, water_surface_y + 0.1, particle_y);
-	float vertical = clip_vertical ? (keep_above_surface ? above : below) : 1.0;
+	// No surface set (the default, e.g. in the editor or away from water):
+	// nothing is clipped. Without this the spray, which shows only above the
+	// surface, was invisible wherever no pool set water_surface_y.
+	bool has_surface = water_surface_y < 50000.0;
+	float vertical = (clip_vertical && has_surface) ? (keep_above_surface ? above : below) : 1.0;
 	float area = 1.0;
 	if (clip_to_water_area) {
 		vec2 inside = min(world_vertex.xz - water_bounds.xy, water_bounds.zw - world_vertex.xz);

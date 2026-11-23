@@ -595,6 +595,17 @@ static void apply_preview_defaults(Node *p_node, const Ref<QuadMesh> &p_quad, bo
 			cpu->set_emitting(true);
 		}
 	}
+	// Water effects made before the shader treated "no surface" as "show
+	// everything" keep their own copy of it: spray (shown only above the
+	// surface) is invisible until something sets water_surface_y, which only
+	// a pool in the game does. The preview puts the surface at the effect's
+	// origin, where these effects are authored to sit.
+	if (GeometryInstance3D *geometry = Object::cast_to<GeometryInstance3D>(p_node)) {
+		const Ref<ShaderMaterial> shader_material = FPSParticleModuleStack::get_draw_material(p_node);
+		if (shader_material.is_valid() && bool(shader_material->get_shader_parameter("keep_above_surface")) && geometry->get_instance_shader_parameter(SNAME("water_surface_y")).get_type() == Variant::NIL) {
+			geometry->set_instance_shader_parameter(SNAME("water_surface_y"), 0.0);
+		}
+	}
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		apply_preview_defaults(p_node->get_child(i), p_quad, p_start_emitting);
 	}
@@ -672,7 +683,8 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 	for (const PropertyInfo &property : properties) {
 		if (!(property.usage & PROPERTY_USAGE_STORAGE) || (property.usage & PROPERTY_USAGE_SCRIPT_VARIABLE) || property.name == "name" || property.name == "owner" || property.name == "script" ||
 				property.name == "scene_file_path" || property.name == "emitting" || property.name == "visible" || property.name == "transform" ||
-				property.name == "metadata/_fps_timeline_markers") { // Editor only; would restart the preview.
+				property.name == "metadata/_fps_timeline_markers" || // Editor only; would restart the preview.
+				property.name == "instance_shader_parameters/water_surface_y") { // Set by the preview (see apply_preview_defaults).
 			continue;
 		}
 		if (property.name == "speed_scale") {

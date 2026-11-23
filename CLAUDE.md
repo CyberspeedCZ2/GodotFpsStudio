@@ -48,6 +48,11 @@ Inspirace UE5 a Source. Ověřeno headless (runtime 45 kontrol, editor 38 kontro
 - `--doctool` přepíše i nesouvisející XML (ProjectSettings, EditorSettings, importéry); po něm vrátit vše kromě tříd, kterých se změna týká.
 - Neuděláno: skutečné „six-way“ světelné mapy z generátoru (místo nich normálová mapa + Backlight), náhled větru a parametrů v editoru, UI pro výchozí `parameters` kořene (jde jen v Inspectoru), emise z povrchu meshe.
 
+## Sprška vodního výbuchu nebyla vidět v editoru (2026-11-23)
+- Uživatel psal „spark“, šlo o emitor **Spray** v `water_explosion.tscn`. Shader `clip_at_water_surface` s `keep_above_surface = true` ukazuje částice jen nad `water_surface_y`; výchozí hodnota 100000 („žádná hladina“) tedy skryla vše, dokud ji nenastavil bazén ve hře. V editoru ji nenastavil nikdo.
+- Oprava: shader v presetech bez nastavené hladiny neořezává (`has_surface`), a náhled (`apply_preview_defaults`) dá emitorům s `keep_above_surface` hladinu do počátku efektu (instance parametr jen na náhledové kopii; `copy_preview_properties` ho přeskakuje). Stávající scény mají vlastní kopii starého shaderu, opravuje je ten náhled; v Level editoru bez bazénu sprška starých scén vidět není.
+- Poučení z hledání: snímky pořizovat podle `get_elapsed_time()` efektu, ne podle času od spuštění (první snímek byl moc brzy, jiskry kryla záře a vypadalo to jako regrese z opravy klíče shaderu; nebyla). Testovací okna pouštět přes `perl -e 'alarm N; exec @ARGV'`, jinak po chybě ve skriptu zůstanou viset.
+
 ## Kde jsme skončili
 Particle editor je pro FPS hru na motivy HL2 funkčně kompletní a je napojený v herním projektu (zásahy pistole podle povrchu, příprava levelu). Uživatel na otázku „chybí ještě něco“ dostal odpověď, že podstatné nic: další krok je ověření v GUI a ve hře a jeho zpětná vazba (screenshoty). Kouř ladí uživatel sám v GUI („hodně bude záležet, jak to nastavím“), do kouře (`make_soft_smoke`) nesahat bez žádosti. Procedurální zvuky jsou záměrně jen dočasné, uživatel je nahradí lepšími (soubor se stejným jménem v `res://vfx_sounds/`); okno Sound Generator nechtěl.
 
