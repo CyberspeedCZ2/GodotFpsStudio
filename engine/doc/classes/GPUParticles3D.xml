@@ -46,6 +46,12 @@
 				Returns the [Mesh] that is drawn at index [param pass].
 			</description>
 		</method>
+		<method name="get_extra_emitter_velocity" qualifiers="const">
+			<return type="Vector3" />
+			<description>
+				Returns the velocity set with [method set_extra_emitter_velocity].
+			</description>
+		</method>
 		<method name="request_particles_process">
 			<return type="void" />
 			<param index="0" name="process_time" type="float" />
@@ -70,6 +76,13 @@
 			<param index="1" name="mesh" type="Mesh" />
 			<description>
 				Sets the [Mesh] that is drawn at index [param pass].
+			</description>
+		</method>
+		<method name="set_extra_emitter_velocity">
+			<return type="void" />
+			<param index="0" name="velocity" type="Vector3" />
+			<description>
+				Sets a velocity the emitter is treated as moving with, on top of its real movement. Particles take their share of it through [member ParticleProcessMaterial.inherit_velocity_ratio]. Not saved. Used by [member ParticleEffect3D.inherited_velocity].
 			</description>
 		</method>
 	</methods>

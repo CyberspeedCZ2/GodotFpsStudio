@@ -68,7 +68,10 @@
 #include "scene/3d/decal.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
+#include "scene/3d/effect_beam_3d.h"
 #include "scene/3d/effect_spawner_3d.h"
+#include "scene/3d/screen_flash_3d.h"
+#include "scene/3d/splatter_decals_3d.h"
 #include "scene/3d/audio_stream_player_3d.h"
 #include "scene/resources/audio_stream_wav.h"
 #include "scene/3d/mesh_instance_3d.h"
@@ -136,6 +139,9 @@ enum ParticleTemplate {
 	PARTICLE_EVENT_DECAL = 203,
 	PARTICLE_EVENT_DAMAGE = 204,
 	PARTICLE_EVENT_SPAWN = 205,
+	PARTICLE_EVENT_BEAM = 206,
+	PARTICLE_EVENT_SPLATTER = 207,
+	PARTICLE_EVENT_SCREEN_FLASH = 208,
 };
 
 enum ParticleLayoutPanel {
@@ -503,6 +509,25 @@ static Node3D *create_event_node(int p_type) {
 			spawner->set_name("SpawnEffect");
 			return spawner;
 		}
+		case PARTICLE_EVENT_BEAM: {
+			// An electric arc by default: jagged, flickering, short.
+			EffectBeam3D *beam = memnew(EffectBeam3D);
+			beam->set_name("Beam");
+			beam->set_end_position(Vector3(0, 0, -3));
+			beam->set_noise_amplitude(0.12);
+			ParticleEffect3D::set_emitter_duration(beam, 0.25);
+			return beam;
+		}
+		case PARTICLE_EVENT_SPLATTER: {
+			SplatterDecals3D *splatter = memnew(SplatterDecals3D);
+			splatter->set_name("SplatterDecals");
+			return splatter;
+		}
+		case PARTICLE_EVENT_SCREEN_FLASH: {
+			ScreenFlash3D *flash = memnew(ScreenFlash3D);
+			flash->set_name("ScreenFlash");
+			return flash;
+		}
 		case PARTICLE_EVENT_DECAL: {
 			Decal *decal = memnew(Decal);
 			decal->set_name("Decal");
@@ -633,6 +658,10 @@ static void clear_preview_transform_origin(Node *p_node) {
 // particle node property restarts the emitter even to the same value (amount,
 // lifetime, ...), so copying everything on every edit dropped the paused
 // preview back to time 0: the effect looked smaller after any change.
+// View > Move Effect carries the preview root around; its position is then
+// not the source's and must not count as an edit.
+static bool preview_motion_active = false;
+
 static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_root = true) {
 	if (!p_source || !p_preview) {
 		return false;
@@ -651,7 +680,7 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 			// emitter's authored speed is multiplied in from this meta.
 			if (is_particle_node(p_source)) {
 				const Variant speed = p_source->get("speed_scale");
-				if (p_preview->get_meta(ParticleEffect3D::META_AUTHORED_SPEED, Variant()) != speed) {
+				if (!p_preview->has_meta(ParticleEffect3D::META_AUTHORED_SPEED) || p_preview->get_meta(ParticleEffect3D::META_AUTHORED_SPEED) != speed) {
 					p_preview->set_meta(ParticleEffect3D::META_AUTHORED_SPEED, speed);
 					changed = true; // Life and windows on the effect clock changed.
 				}
@@ -696,7 +725,7 @@ static bool copy_preview_properties(Node *p_source, Node *p_preview, bool p_is_r
 			// track dropped them to 0 after any edit, until the next rebuild.
 			Transform3D transform = source_3d->get_transform();
 			if (p_is_root) {
-				transform.origin = Vector3();
+				transform.origin = preview_motion_active ? preview_3d->get_transform().origin : Vector3();
 			}
 			if (preview_3d->get_transform() != transform) {
 				preview_3d->set_transform(transform);
@@ -919,6 +948,12 @@ void FPSStudioParticleEditorPlugin::_update_emitter_tree() {
 			detail = vformat(TTR("Damage %d"), int(Math::round(damage_track->get_damage())));
 		} else if (Object::cast_to<EffectSpawner3D>(emitter)) {
 			detail = TTR("Spawn");
+		} else if (Object::cast_to<EffectBeam3D>(emitter)) {
+			detail = TTR("Beam");
+		} else if (Object::cast_to<SplatterDecals3D>(emitter)) {
+			detail = TTR("Splatter");
+		} else if (Object::cast_to<ScreenFlash3D>(emitter)) {
+			detail = TTR("Flash");
 		} else if (emitter->is_class("AudioStreamPlayer3D")) {
 			detail = TTR("Sound");
 		} else {
@@ -2242,10 +2277,6 @@ bool FPSStudioParticleEditorPlugin::_export_generated_texture(const String &p_pa
 }
 
 void FPSStudioParticleEditorPlugin::_on_texture_generator_apply_pressed() {
-	if (texture_generator_normal_map->is_pressed() && !Object::cast_to<Decal>(_get_edited_emitter())) {
-		EditorNode::get_singleton()->show_warning(TTR("Normal maps are exported as project textures and cannot be applied as an unlit particle color texture."));
-		return;
-	}
 	if (!_get_edited_emitter()) {
 		EditorNode::get_singleton()->show_warning(TTR("Select a particle emitter before applying a texture."));
 		return;
@@ -2307,7 +2338,7 @@ void FPSStudioParticleEditorPlugin::_on_texture_save_path_selected(const String 
 		return;
 	}
 	if (texture_generator_apply_button) {
-		texture_generator_apply_button->set_disabled((texture_generator_normal_map->is_pressed() && !Object::cast_to<Decal>(_get_edited_emitter())) || _get_edited_emitter() == nullptr);
+		texture_generator_apply_button->set_disabled(_get_edited_emitter() == nullptr);
 	}
 	if (texture_generator_status) {
 		const String message = texture_generator_normal_map->is_pressed() ? TTR("Exported normal map: %s") : TTR("Exported: %s");
@@ -2576,6 +2607,24 @@ void FPSStudioParticleEditorPlugin::_apply_generated_texture() {
 	// particle settings survive; create one only when there is none.
 	Ref<Material> existing = FPSParticleModuleStack::get_draw_material(emitter);
 	BaseMaterial3D *material = Object::cast_to<BaseMaterial3D>(existing.ptr());
+	if (texture_generator_normal_map->is_pressed()) {
+		// A normal map for the texture the emitter already has: lights then
+		// shade the sprite from their side (smoke lit by a muzzle flash).
+		if (!material) {
+			undo_redo->commit_action();
+			EditorNode::get_singleton()->show_warning(TTR("Apply the color texture first; the normal map is added to the emitter's particle material."));
+			return;
+		}
+		set_prop(material, "normal_enabled", true);
+		set_prop(material, "normal_texture", generated_texture);
+		if (material->get_shading_mode() == BaseMaterial3D::SHADING_MODE_UNSHADED) {
+			set_prop(material, "shading_mode", int(BaseMaterial3D::SHADING_MODE_PER_PIXEL)); // Unshaded ignores normals.
+		}
+		undo_redo->add_do_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+		undo_redo->add_undo_method(this, "_on_emitter_hierarchy_history_changed", emitter, effect_document_serial);
+		undo_redo->commit_action();
+		return;
+	}
 	if (material) {
 		set_prop(material, "albedo_texture", generated_texture);
 		set_prop(material, "billboard_mode", int(BaseMaterial3D::BILLBOARD_PARTICLES));
@@ -2913,7 +2962,7 @@ static void strip_thumbnail_nodes(Node *p_node) {
 	for (int i = p_node->get_child_count() - 1; i >= 0; i--) {
 		Node *child = p_node->get_child(i);
 		// No sound, camera shake or damage from a thumbnail.
-		if (child->is_class("CameraShake3D") || child->is_class("RadialDamage3D") || child->is_class("EffectSpawner3D")) {
+		if (child->is_class("CameraShake3D") || child->is_class("RadialDamage3D") || child->is_class("EffectSpawner3D") || child->is_class("SplatterDecals3D") || child->is_class("ScreenFlash3D")) {
 			p_node->remove_child(child);
 			memdelete(child);
 			continue;
@@ -3426,7 +3475,7 @@ static void prepare_scene_for_preview(Node *p_node) {
 		Node *child = p_node->get_child(i);
 		if (Object::cast_to<Camera3D>(child) || Object::cast_to<WorldEnvironment>(child) || Object::cast_to<CanvasItem>(child) || Object::cast_to<CanvasLayer>(child) ||
 				Object::cast_to<Viewport>(child) || Object::cast_to<AudioStreamPlayer>(child) || Object::cast_to<AudioStreamPlayer3D>(child) ||
-				child->is_class("CameraShake3D") || child->is_class("RadialDamage3D") || child->is_class("EffectSpawner3D")) {
+				child->is_class("CameraShake3D") || child->is_class("RadialDamage3D") || child->is_class("EffectSpawner3D") || child->is_class("SplatterDecals3D") || child->is_class("ScreenFlash3D")) {
 			p_node->remove_child(child);
 			memdelete(child);
 			continue;
@@ -5868,7 +5917,7 @@ void FPSStudioParticleEditorPlugin::_frame_preview() {
 }
 
 // View menu check items that are remembered in the editor layout.
-static const int PREVIEW_VIEW_OPTIONS[] = { 10, 11, 12, 13, 14, 15, 16, 17, 18 };
+static const int PREVIEW_VIEW_OPTIONS[] = { 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 };
 
 void FPSStudioParticleEditorPlugin::_on_preview_view_menu_id(int p_id) {
 	PopupMenu *popup = preview_view_menu->get_popup();
@@ -5939,6 +5988,22 @@ void FPSStudioParticleEditorPlugin::_set_preview_view_option(int p_id, bool p_ch
 		case 18:
 			preview_show_perf = checked;
 			_update_preview_stats();
+			break;
+		case 19:
+			// Brighter where more transparent surfaces lie over each other.
+			if (preview_viewport) {
+				preview_viewport->set_debug_draw(checked ? Viewport::DEBUG_DRAW_OVERDRAW : Viewport::DEBUG_DRAW_DISABLED);
+			}
+			break;
+		case 20:
+			preview_move_effect = checked;
+			preview_motion_active = checked;
+			preview_move_phase = 0.0;
+			if (!checked) {
+				if (Node3D *effect_3d = Object::cast_to<Node3D>(preview_effect)) {
+					effect_3d->set_position(Vector3());
+				}
+			}
 			break;
 	}
 }
@@ -7191,6 +7256,13 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_PROCESS && screen && screen->is_visible_in_tree() && preview_playing && preview_effect) {
 		const double delta = get_process_delta_time();
 		preview_time += delta * preview_speed;
+		if (preview_move_effect) {
+			// One round in three seconds (about 3 m/s), facing along the path.
+			preview_move_phase = Math::fmod(preview_move_phase + delta * preview_speed * Math::TAU / 3.0, Math::TAU);
+			if (Node3D *effect_3d = Object::cast_to<Node3D>(preview_effect)) {
+				effect_3d->set_position(Vector3(Math::cos(preview_move_phase), 0.0, Math::sin(preview_move_phase)) * 1.5);
+			}
+		}
 		// A loop region on the timeline always loops; otherwise the Loop toggle
 		// decides whether the whole effect repeats.
 		const bool has_region = preview_loop_end > preview_loop_start;
@@ -7974,6 +8046,9 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	add_emitter_menu->get_popup()->add_item(TTR("Decal"), PARTICLE_EVENT_DECAL);
 	add_emitter_menu->get_popup()->add_item(TTR("Damage"), PARTICLE_EVENT_DAMAGE);
 	add_emitter_menu->get_popup()->add_item(TTR("Spawn Effect"), PARTICLE_EVENT_SPAWN);
+	add_emitter_menu->get_popup()->add_item(TTR("Beam"), PARTICLE_EVENT_BEAM);
+	add_emitter_menu->get_popup()->add_item(TTR("Splatter Decals"), PARTICLE_EVENT_SPLATTER);
+	add_emitter_menu->get_popup()->add_item(TTR("Screen Flash"), PARTICLE_EVENT_SCREEN_FLASH);
 	add_emitter_menu->get_popup()->set_item_tooltip(-1, TTR("Area damage with falloff and cover checks; calls take_damage() on what it hits."));
 	add_emitter_menu->get_popup()->connect(SceneStringName(id_pressed), callable_mp(this, &FPSStudioParticleEditorPlugin::_on_add_emitter_menu_pressed));
 	emitter_header->add_child(add_emitter_menu);
@@ -8090,6 +8165,10 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 		view_popup->add_check_item(TTR("Emitter Bounds"), 12);
 		view_popup->add_check_item(TTR("Floor"), 15);
 		view_popup->set_item_tooltip(view_popup->get_item_index(15), TTR("Show a ground plane to judge height, lighting and decals."));
+		view_popup->add_check_item(TTR("Overdraw"), 19);
+		view_popup->set_item_tooltip(view_popup->get_item_index(19), TTR("Show how many transparent surfaces lie over each other (brighter = more): where the effect costs fill rate."));
+		view_popup->add_check_item(TTR("Move Effect (Circle)"), 20);
+		view_popup->set_item_tooltip(view_popup->get_item_index(20), TTR("Carry the effect around a 1.5 m circle while it plays, to check trails, Local Space, Stay in World and inherited velocity on a moving source."));
 		view_popup->add_check_item(TTR("Performance Info"), 18);
 		view_popup->set_item_checked(view_popup->get_item_index(18), preview_show_perf);
 		view_popup->set_item_tooltip(view_popup->get_item_index(18), TTR("Estimated GPU and CPU cost of the effect over the preview, with what makes it expensive (red = heavy)."));

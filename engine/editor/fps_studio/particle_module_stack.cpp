@@ -271,7 +271,7 @@ void FPSParticleModuleStack::_set_module_active(int p_module, bool p_active) {
 			}
 			Ref<Mesh> old_mesh = get_draw_mesh(emitter);
 			const bool had_saved = emitter->has_meta(PRE_TRAIL_MESH_META);
-			const Variant saved = emitter->get_meta(PRE_TRAIL_MESH_META, Variant());
+			const Variant saved = had_saved ? emitter->get_meta(PRE_TRAIL_MESH_META) : Variant(); // get_meta() with a nil default reports a missing key as an error.
 			Ref<Mesh> new_mesh;
 			if (p_active) {
 				Ref<RibbonTrailMesh> ribbon;
@@ -475,6 +475,18 @@ void FPSParticleModuleStack::_build_event() {
 			title = TTR("Decal");
 			subtitle = TTR("Decal event: appears at its start and fades out.");
 			break;
+		case ParticleEffect3D::EVENT_BEAM:
+			title = TTR("Beam");
+			subtitle = TTR("A camera-facing strip from this track to its end point: electric arc, laser, tracer. Fades over its duration; the game aims it with ParticleEffect3D.set_target_position().");
+			break;
+		case ParticleEffect3D::EVENT_SPLATTER:
+			title = TTR("Splatter Decals");
+			subtitle = TTR("Leaves decals where flying drops land (blood behind a hit): rays in a cone, a decal on what each one hits.");
+			break;
+		case ParticleEffect3D::EVENT_SCREEN_FLASH:
+			title = TTR("Screen Flash");
+			subtitle = TTR("Flashes the whole view with a color, weaker with the distance from the camera.");
+			break;
 		case ParticleEffect3D::EVENT_SPAWN:
 			title = TTR("Spawn Effect");
 			subtitle = TTR("Plays another effect or creates a scene (gibs, burning debris, a second explosion) at this track's position when it fires.");
@@ -544,6 +556,53 @@ void FPSParticleModuleStack::_build_event() {
 			_add_row(MODULE_EVENT, TARGET_NODE, "obstacle_mask", "obstacle_mask", TTR("Cover Layers"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "damage_method", "damage_method", TTR("Damage Method"));
 			_add_row(MODULE_EVENT, TARGET_NODE, "target_group", "target_group", TTR("Only Group (optional)"));
+			break;
+		case ParticleEffect3D::EVENT_BEAM: {
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_DURATION, TTR("Duration (0 = always on)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,10,0.01,or_greater,suffix:s");
+			_add_row(MODULE_EVENT, TARGET_NODE, "position", "position", TTR("Start"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "end_position", "end_position", TTR("End (from Start)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "width", "width", TTR("Width"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "taper", "taper", TTR("Taper to End"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "color", "color", TTR("Color"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "brightness", "brightness", TTR("Brightness"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "additive", "additive", TTR("Additive (Glow)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "texture", "texture", TTR("Texture (along the beam)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "texture_tiling", "texture_tiling", TTR("Texture Repeats per Meter"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "texture_scroll", "texture_scroll", TTR("Texture Scroll"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "noise_amplitude", "noise_amplitude", TTR("Wobble"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "noise_frequency", "noise_frequency", TTR("Wobble Waves per Meter"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "noise_speed", "noise_speed", TTR("Wobble Speed"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "segments", "segments", TTR("Segments"));
+			// No curve = on at once, fading out over the duration.
+			_add_meta_row(MODULE_EVENT, ParticleEffect3D::META_CURVE, TTR("Intensity over Time"), Variant::OBJECT, PROPERTY_HINT_RESOURCE_TYPE, "Curve");
+		} break;
+		case ParticleEffect3D::EVENT_SPLATTER: {
+			_add_row(MODULE_EVENT, TARGET_NODE, "texture", "texture", TTR("Decal Texture"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "normal_texture", "normal_texture", TTR("Normal Map"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "modulate", "modulate", TTR("Tint"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "count", "count", TTR("Drops (Rays)"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "direction", "direction", TTR("Direction"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "spread", "spread", TTR("Spread"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "max_distance", "max_distance", TTR("Reach"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "size", "size", TTR("Size Min / Max"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "drop_speed", "drop_speed", TTR("Drop Speed"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "lifetime", "lifetime", TTR("Stays"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "fade_time", "fade_time", TTR("Fade Out"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "collision_mask", "collision_mask", TTR("Surface Layers"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "position", "position", TTR("Position"));
+			Label *note = memnew(Label);
+			note->set_text(TTR("Works in the running game only (the rays need the level's physics). Each decal appears when a drop flying at Drop Speed would arrive. At most 64 splatter decals exist at once; older ones make room."));
+			note->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+			note->set_modulate(Color(1, 1, 1, 0.7));
+			module_contents[MODULE_EVENT]->add_child(note);
+		} break;
+		case ParticleEffect3D::EVENT_SCREEN_FLASH:
+			_add_row(MODULE_EVENT, TARGET_NODE, "color", "color", TTR("Color"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "strength", "strength", TTR("Strength"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "duration", "duration", TTR("Duration"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "inner_radius", "inner_radius", TTR("Full Strength Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "radius", "radius", TTR("Fade Out Radius"));
+			_add_row(MODULE_EVENT, TARGET_NODE, "position", "position", TTR("Position"));
 			break;
 		case ParticleEffect3D::EVENT_SPAWN: {
 			_add_row(MODULE_EVENT, TARGET_NODE, "scene", "scene", TTR("Effect or Scene"));
@@ -719,6 +778,9 @@ void FPSParticleModuleStack::_build() {
 	// For effects attached to a moving node (spawn_attached, Local Space on
 	// the effect): this emitter's particles stay behind in the world.
 	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_KEEP_WORLD, TTR("Stay in World when Attached"), Variant::BOOL, PROPERTY_HINT_NONE, String());
+	// Effect parameters the game sets per play (effect.set_parameter("power",
+	// 0.5)): property -> parameter name, the property is multiplied by it.
+	_add_meta_row(MODULE_EMITTER, ParticleEffect3D::META_PARAMETER_LINKS, TTR("Parameter Links"), Variant::DICTIONARY, PROPERTY_HINT_DICTIONARY_TYPE, "String;String");
 	_add_row(MODULE_EMITTER, TARGET_NODE, "fixed_fps", "fixed_fps", TTR("Fixed FPS"));
 
 	_add_row(MODULE_SHAPE, TARGET_PROCESS, "emission_shape", "emission_shape", TTR("Shape"));
@@ -763,6 +825,9 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "tangential_accel_curve", "tangential_accel_curve", TTR("Tangential over Life"));
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "damping_curve", "damping_curve", TTR("Drag over Life"));
 	_add_row(MODULE_FORCES, TARGET_PROCESS, "particle_flag_damping_as_friction", StringName(), TTR("Drag as Friction"));
+	// Share of the level's wind (ParticleLevelSetup > Wind) that pushes this
+	// emitter in the game: smoke 1, sparks 0.2, heavy debris 0.
+	_add_meta_row(MODULE_FORCES, ParticleEffect3D::META_WIND, TTR("Wind Influence (game)"), Variant::FLOAT, PROPERTY_HINT_RANGE, "0,3,0.01,or_greater");
 
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color", "color", TTR("Base Color"));
 	_add_row(MODULE_COLOR, TARGET_PROCESS, "color_ramp", "color_ramp", TTR("Color over Life"));
@@ -949,6 +1014,20 @@ void FPSParticleModuleStack::_build() {
 	_add_row(MODULE_RENDER, TARGET_MATERIAL, "vertex_color_use_as_albedo", "vertex_color_use_as_albedo", TTR("Use Particle Color"));
 	_add_row(MODULE_RENDER, TARGET_MATERIAL, "proximity_fade_enabled", "proximity_fade_enabled", TTR("Soft Particles"));
 	_add_row(MODULE_RENDER, TARGET_MATERIAL, "proximity_fade_distance", "proximity_fade_distance", TTR("Soft Distance"), "proximity_fade_enabled", enabled);
+	// Fade by distance from the camera: with Min below Max, particles vanish
+	// as they come close (no screen-filling smoke, far less overdraw).
+	const Vector<int> distance_fade_on = { BaseMaterial3D::DISTANCE_FADE_PIXEL_ALPHA, BaseMaterial3D::DISTANCE_FADE_PIXEL_DITHER, BaseMaterial3D::DISTANCE_FADE_OBJECT_DITHER };
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "distance_fade_mode", "distance_fade_mode", TTR("Camera Fade"));
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "distance_fade_min_distance", "distance_fade_min_distance", TTR("Invisible at"), "distance_fade_mode", distance_fade_on);
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "distance_fade_max_distance", "distance_fade_max_distance", TTR("Fully Visible from"), "distance_fade_mode", distance_fade_on);
+	// Lit sprites: a normal map (Generate Texture > Export as Normal Map >
+	// Apply) lets lights shade them from their side, Backlight lets light
+	// shine through from behind (smoke, steam, water spray).
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "normal_enabled", "normal_enabled", TTR("Normal Map"));
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "normal_texture", "normal_texture", TTR("Normal Texture"), "normal_enabled", enabled);
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "normal_scale", "normal_scale", TTR("Normal Strength"), "normal_enabled", enabled);
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "backlight_enabled", "backlight_enabled", TTR("Backlight"));
+	_add_row(MODULE_RENDER, TARGET_MATERIAL, "backlight", "backlight", TTR("Backlight Color"), "backlight_enabled", enabled);
 	_add_row(MODULE_RENDER, TARGET_NODE, "draw_pass_1", "mesh", TTR("Mesh"));
 	_add_row(MODULE_RENDER, TARGET_MESH, "size", "size", TTR("Quad Size"));
 	_add_row(MODULE_RENDER, TARGET_NODE, "draw_order", "draw_order", TTR("Sorting"));
@@ -1492,6 +1571,10 @@ Vector<ModulePreset> get_module_presets(int p_module) {
 			smoke.values.push_back(pv(T::TARGET_MATERIAL, "blend_mode", "blend_mode", int(BaseMaterial3D::BLEND_MODE_MIX)));
 			smoke.values.push_back(pv(T::TARGET_MATERIAL, "proximity_fade_enabled", "proximity_fade_enabled", true));
 			smoke.values.push_back(pv(T::TARGET_MATERIAL, "proximity_fade_distance", "proximity_fade_distance", 0.35));
+			ModulePreset &near_fade = add(TTR("Fade near Camera"));
+			near_fade.values.push_back(pv(T::TARGET_MATERIAL, "distance_fade_mode", "distance_fade_mode", int(BaseMaterial3D::DISTANCE_FADE_PIXEL_ALPHA)));
+			near_fade.values.push_back(pv(T::TARGET_MATERIAL, "distance_fade_min_distance", "distance_fade_min_distance", 0.25));
+			near_fade.values.push_back(pv(T::TARGET_MATERIAL, "distance_fade_max_distance", "distance_fade_max_distance", 1.2));
 			ModulePreset &lit = add(TTR("Lit by Scene"));
 			lit.values.push_back(pv(T::TARGET_MATERIAL, "blend_mode", "blend_mode", int(BaseMaterial3D::BLEND_MODE_MIX)));
 			lit.values.push_back(pv(T::TARGET_MATERIAL, "shading_mode", "shading_mode", int(BaseMaterial3D::SHADING_MODE_PER_PIXEL)));

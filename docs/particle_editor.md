@@ -89,6 +89,10 @@ Volitelné moduly přidá **+ Module** a odebere křížek v záhlaví karty: **
 
 Emitor bez particle materiálu nabídne v modulu Render **Create Particle Material** (unshaded, billboard, barva z částic). Emitor s vlastním shaderem (`ShaderMaterial`, např. ořez u hladiny ve vodních presetech) ukáže v kartě Render parametry shaderu jako řádky a tlačítko pro nový materiál nenabízí.
 
+**Mizení u kamery:** řádek **Camera Fade** (režim Pixel Alpha) s hodnotami **Invisible at** a **Fully Visible from** nechá částice zmizet, když se přiblíží ke kameře. Kouř pak nezakryje celý obraz a ubude překreslování, které je u blízkých částic hlavní cenou. Preset karty Render **Fade near Camera** nastaví 0,25 m a 1,2 m.
+
+**Osvětlení ze směru:** v generátoru zapni **Export as Normal Map**, exportuj a dej **Apply to Emitter**. Normálová mapa se přidá k materiálu emitoru (barevná textura zůstává) a stínování se přepne na Per-Pixel, takže světla stínují sprite ze své strany, například kouř osvětlený zábleskem výstřelu. Řádky **Normal Map**, **Normal Strength** a **Backlight** (světlo prosvítající zezadu: kouř, pára, vodní tříšť) jsou v kartě Render. Per-pixel osvětlení průhledných částic je dražší než per-vertex.
+
 **Distorze (tetelení vzduchu, rázová vlna):** menu **⋮** karty Render → **Distortion Material (Heat Haze / Shock Wave)** dá emitoru materiál, který ohýbá obraz za částicí. Síla ohybu sleduje průhlednost částice (Color/Alpha over Life), takže distorze s částicí nabíhá a mizí. Parametry: **Strength**, **Ring** (0 = čočka přes celý sprite pro horký vzduch, 1 = úzký prstenec u okraje pro rázovou vlnu, částici nech růst přes Scale over Life), **Shimmer** a **Shimmer Speed** (vlnění v čase). Materiál čte obraz scény, takže stojí jedno kopírování obrazu na snímek; průhledné věci za ním (kouř) v ohnutém obrazu nejsou. Krok jde vrátit přes Undo.
 
 ## Generátor textur v modulu Render
@@ -123,6 +127,21 @@ Záložka **Timeline** zobrazuje stopu pro každý emitor a událost: plný pruh
 | Damage | `RadialDamage3D` | zraní vše, co má `take_damage()`: plné zranění do vnitřního poloměru, k vnějšímu klesá na nulu; krytí za překážkou zranění sníží nebo zastaví; fyzikální objekty odhodí |
 | Decal | `Decal` | objeví se ve svém čase a během **Fade Out Part** zmizí; délka 0 = zůstane |
 | Spawn Effect | `EffectSpawner3D` | ve svém čase přehraje jiný efekt nebo vytvoří scénu (gibs, hořící trosky, druhý výbuch) na místě stopy: počet, rozptyl v poloměru, u scén rychlost a rozptyl odhození ve směru +Y stopy |
+
+| Beam | `EffectBeam3D` | pás mezi stopou a koncovým bodem, který se vždy natáčí ke kameře: elektrický oblouk, laser, stopa střely; během délky slábne (nebo podle křivky), délka 0 = svítí pořád |
+| Splatter Decals | `SplatterDecals3D` | decaly tam, kam dopadnou kapky (krev za zásahem): paprsky v kuželu a decal na každém zasaženém povrchu |
+| Screen Flash | `ScreenFlash3D` | krátký záblesk barvy přes celý obraz, slabší se vzdáleností od kamery |
+
+**Beam:** karta má začátek a konec, šířku, zúžení ke konci, barvu, jas, přepínač Additive, texturu podél paprsku (opakování na metr, rolování) a **Wobble** (vlnění do stran, vln na metr a rychlost; vysoká rychlost bliká jako elektřina). Ze hry se paprsek míří přes `effect.set_target_position(bod)`:
+
+```gdscript
+var fx := ParticleEffect3D.spawn(ZAP, level, Transform3D(Basis(), muzzle_position))
+fx.set_target_position(hit_position)
+```
+
+**Splatter Decals:** nastav stejný směr a rozptyl jako emitoru kapek. Každý decal se objeví, až by tam kapka rychlostí **Drop Speed** doletěla, zůstane **Stays** sekund a zmizí. Funguje jen ve spuštěné hře (paprsky potřebují fyziku levelu). Najednou existuje nejvýš 64 takových decalů, starší uvolní místo.
+
+**Screen Flash:** plná síla do **Full Strength Radius** od kamery, k **Fade Out Radius** slábne na nulu. V náhledu Particle se ukáže, při náhledu v Level editoru ne.
 
 **Spawn Effect:** scéna s kořenem `ParticleEffect3D` se přehraje ze zásobníku efektů (`ParticleEffect3D.spawn`) vedle tohoto efektu a s volbou **Use This Effect's Tint and Scale** převezme jeho barvu a velikost. Jiná scéna (např. `RigidBody3D` úlomek) se vytvoří jen ve spuštěné hře. V náhledu se vnořený efekt ukáže od chvíle, kdy událost nastane; při skoku časem za ni se nepřehraje.
 
@@ -229,6 +248,28 @@ Uzel, který se vloží do levelu. Při startu hry (ne v editoru) napeče kolizi
 
 `ParticleEffect3D.spawn_attached(MUZZLE, $Muzzle, Transform3D())` přehraje efekt jako potomka uzlu (např. `Marker3D` na hlavni) s lokální transformací a zapne `local_space`, takže emitory simulují v prostoru efektu (`local_coords`) a záblesk i jiskry se při otáčení kamery neopožďují. `local_space` jde zapnout i ručně na kořeni efektu. Emitor se zapnutým **Stay in World when Attached** (karta Emitter) si nechá vlastní nastavení prostoru, takže záblesk drží na hlavni a kouř téhož efektu zůstane ve světě.
 
+### Směr dopadu, varianty a rychlost zdroje
+
+- **Směr střely:** `impacts.spawn(parent, position, normal, collider, Color.WHITE, 1.0, shot_direction)` (a stejně `spawn_from_hit(..., shot_direction)`) nakloní emitory efektu od normály k odrazu střely podle **`reflect_amount`** tabulky (0 = kolmo ze zdi, 1 = zrcadlově, výchozí 0,5). Efekt sám a jeho decal zůstávají na normále, úlomky nikdy neletí plošeji než asi 25° nad povrchem. Totéž dělá `effect.set_emission_direction(směr)` u jakéhokoli efektu.
+- **Varianty:** slovník **`variants`** tabulky (povrch → pole scén) přidá povrchu další podoby; vybírá se náhodně mezi efektem z `effects` a variantami. Předehřátí přes `ParticleLevelSetup` počítá i s nimi.
+- **Rychlost zdroje:** `effect.set_inherited_velocity(rychlost)` po `spawn()` předá efektu rychlost toho, z čeho vznikl (letící předmět, běžící postava). GPU emitory s **Inherit Velocity** nad nulou (karta Initial Velocity) přidají svůj díl částicím.
+
+### Parametry efektu
+
+Jeden efekt pro slabý i silný výbuch: `effect.set_parameter("power", 0.4)` hned po `spawn()` nebo `play()`. Stopa si v kartě Emitter v řádku **Parameter Links** napojí vlastnosti na parametr (vlastnost → jméno parametru) a vlastnost se hodnotou parametru násobí. Vlastnost procesního materiálu se píše s `process/` na začátku:
+
+| Klíč | Hodnota | Význam |
+| --- | --- | --- |
+| `amount_ratio` | `power` | podíl vypuštěných částic |
+| `process/initial_velocity_max` | `power` | nejvyšší počáteční rychlost |
+| `process/scale_max` | `size` | největší velikost částice |
+
+Parametr, který hra nenastaví, má hodnotu z vlastnosti `parameters` kořene efektu, jinak 1. Efekt ze zásobníku začíná znovu s výchozími hodnotami. Jas světel řídí události efektu, ten parametrem měnit nejde. Náhled v editoru hraje vždy s hodnotou 1.
+
+### Vítr
+
+`ParticleLevelSetup` má vlastnost **`wind`** (zrychlení ve světě, např. `(1.5, 0, 0)`); totéž nastaví `ParticleEffect3D.set_wind(vektor)`. Vítr působí jen na emitory, které mají v kartě Forces **Wind Influence** nad nulou (kouř 1, jiskry 0,2, těžké úlomky 0), a to ve spuštěné hře od dalšího přehrání efektu. Náhled v editoru je bez větru.
+
 ### Barva a velikost při spuštění
 
 Jeden efekt může posloužit pro víc situací: `ParticleEffect3D.spawn(scene, parent, transform, tint, scale)` (a stejně `spawn_attached`) přehraje efekt s barvou a velikostí jen pro toto přehrání.
@@ -280,6 +321,7 @@ Volitelně: tlačítko **Add Collision to Level** v kartě Collision přidá do 
 Náhled simuluje izolovanou kopii celé hierarchie efektu ve vlastním `SubViewport` s vlastním prostředím, světly, kamerou a mřížkou. Chybějící draw mesh nebo process material doplní pouze náhledová kopie.
 
 - Levé nebo pravé tažení myší otáčí kameru, prostřední tažení posouvá a kolečko přibližuje. **Reset View** (nebo klávesa F) efekt znovu orámuje. Rámuje se podle toho, kde částice opravdu jsou (oblast emise, kužel Direction/Spread, dolet průměrnou rychlostí za ~0,3 s, gravitace a velikost částice), ne podle Visibility AABB, který je kvůli ořezávání mnohem větší. Zásah kulky je tak ~2 m od kamery místo ~13 m.
+- **View → Overdraw** ukáže, kde se průhledné plochy vrství přes sebe (světlejší = víc vrstev), tedy kde efekt stojí nejvíc výkonu. **View → Move Effect (Circle)** vozí efekt při přehrávání po kružnici o poloměru 1,5 m (jedno kolo za 3 s), aby šly ladit stopy, Local Space, Stay in World a zděděná rychlost u pohyblivého zdroje.
 - Menu **View**: prostředí **Studio**, **Daylight**, **Night**, **Interior** (pozadí a světla pro kontrolu efektu v různých podmínkách) a přepínače **Grid**, **Glow (Bloom)**, **Emitter Bounds** (žlutý obrys `visibility_aabb` vybraného emitoru), **Floor** (viditelná podlaha, výchozí vypnuto), **Damage & Shake Radius** (kruhy dosahu, výchozí zapnuto), **Sound** a **Camera Shake** (přehrávání zvuku a otřes kamery v náhledu, výchozí zapnuto; vypnutí platí jen pro náhled, efekt se nemění) a **Collision Test Walls** (kolizní podlaha a tři průhledné stěny pro ladění modulu Collision).
 - Statistiky v transportu: viditelné stopy, maximum částic, draw cally a trojúhelníky náhledu.
 - **Play/Pause**, **Restart**, časový posuvník, **Speed** a **Loop** ovládají simulaci. Posun na jiný čas restartuje efekt a přehraje ho dopředu (`ParticleEffect3D.seek`); jde o přiblížení, ne přesnou rekonstrukci stavu.

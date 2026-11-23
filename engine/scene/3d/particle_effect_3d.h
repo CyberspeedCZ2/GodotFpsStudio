@@ -38,6 +38,10 @@ public:
 	// Speed the emitter was authored with, kept while the effect (or the
 	// Particle preview) drives its speed_scale.
 	static constexpr const char *META_AUTHORED_SPEED = "_authored_speed_scale";
+	static constexpr const char *META_WIND = "particle_effect_wind"; // float: how much of the level's wind pushes this emitter (0 = none).
+	// Dictionary property -> parameter name: at play the property is multiplied
+	// by that effect parameter ("amount_ratio", "process/initial_velocity_max"...).
+	static constexpr const char *META_PARAMETER_LINKS = "particle_effect_parameter_links";
 
 	enum EventKind {
 		EVENT_NONE,
@@ -47,6 +51,9 @@ public:
 		EVENT_DECAL,
 		EVENT_DAMAGE,
 		EVENT_SPAWN, // EffectSpawner3D: plays another effect or instantiates a scene.
+		EVENT_BEAM, // EffectBeam3D: fades in and out over its duration, like a light.
+		EVENT_SPLATTER, // SplatterDecals3D: decals where drops land.
+		EVENT_SCREEN_FLASH, // ScreenFlash3D.
 	};
 
 private:
@@ -113,6 +120,10 @@ private:
 	bool suppress_instant_events = false; // seek(): sounds, shakes, damage and spawns before the seek time stay silent.
 	bool paused = false;
 	real_t lod_distance = 0.0;
+	Dictionary parameters; // Authored defaults, name -> number.
+	Dictionary play_parameters; // Values set for this play (set_parameter()).
+	Vector3 emission_direction; // World direction the emitters' +Y is turned to; zero = authored.
+	Vector3 inherited_velocity;
 	real_t lod_amount = 0.35;
 	double lod_elapsed = 0.0;
 	uint64_t play_serial = 0; // Play order, oldest effects are recycled first.
@@ -144,6 +155,8 @@ private:
 	void _suspend();
 	void _apply_speed_scale();
 	void _apply_amount_scale();
+	void _apply_emission_direction();
+	void _apply_inherited_velocity();
 	static bool _has_pending_damage(const LocalVector<EventState> &p_events);
 	void _play_pending();
 	void _apply_overrides();
@@ -198,6 +211,26 @@ public:
 	real_t get_lod_distance() const;
 	void set_lod_amount(real_t p_amount);
 	real_t get_lod_amount() const;
+	// Named numbers the game can set per play; tracks link their properties
+	// to them (META_PARAMETER_LINKS), which multiplies the authored value.
+	void set_parameters(const Dictionary &p_parameters);
+	Dictionary get_parameters() const;
+	void set_parameter(const StringName &p_name, double p_value);
+	double get_parameter(const StringName &p_name) const;
+	// Aims every beam of the effect at a point in world space.
+	void set_target_position(const Vector3 &p_position);
+	// Turns the emitters so their +Y points along this world direction (the
+	// way debris flies off a surface hit at an angle); lights and decals stay.
+	// Zero gives the authored directions back. For this play only.
+	void set_emission_direction(const Vector3 &p_direction);
+	Vector3 get_emission_direction() const;
+	// Velocity of what the effect comes from; emitters with Inherit Velocity
+	// add their share of it to their particles. For this play only.
+	void set_inherited_velocity(const Vector3 &p_velocity);
+	Vector3 get_inherited_velocity() const;
+	// Wind of the level, in m/s^2 on emitters that take it (META_WIND).
+	static void set_wind(const Vector3 &p_wind);
+	static Vector3 get_wind();
 	// Authored speed of an emitter (not what the effect or the preview set on top).
 	static double get_emitter_speed(const Node *p_emitter);
 	static int get_active_effect_count();

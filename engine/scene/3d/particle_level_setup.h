@@ -25,6 +25,7 @@ class ParticleLevelSetup : public Node {
 	int prewarm_count = 8;
 	Ref<ParticleImpactTable> impact_table;
 	int effects_per_frame = 2;
+	Vector3 wind;
 
 	LocalVector<Ref<PackedScene>> queue;
 	ObjectID parent_id;
@@ -47,6 +48,9 @@ public:
 	uint32_t get_collision_mask() const;
 	void set_prewarm_effects(const TypedArray<PackedScene> &p_effects);
 	TypedArray<PackedScene> get_prewarm_effects() const;
+	// Wind of this level for emitters with Wind Influence (ParticleEffect3D.set_wind()).
+	void set_wind(const Vector3 &p_wind);
+	Vector3 get_wind() const;
 	void set_prewarm_count(int p_count);
 	int get_prewarm_count() const;
 	void set_impact_table(const Ref<ParticleImpactTable> &p_table);

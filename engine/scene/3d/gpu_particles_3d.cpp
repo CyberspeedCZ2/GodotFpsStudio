@@ -525,6 +525,17 @@ void GPUParticles3D::set_sub_emitter(const NodePath &p_path) {
 	update_configuration_warnings();
 }
 
+void GPUParticles3D::set_extra_emitter_velocity(const Vector3 &p_velocity) {
+	extra_emitter_velocity = p_velocity;
+	// Right away: a burst is emitted before the next velocity update.
+	RS::get_singleton()->particles_set_emitter_velocity(particles, p_velocity);
+	previous_velocity = p_velocity;
+}
+
+Vector3 GPUParticles3D::get_extra_emitter_velocity() const {
+	return extra_emitter_velocity;
+}
+
 NodePath GPUParticles3D::get_sub_emitter() const {
 	return sub_emitter;
 }
@@ -534,7 +545,7 @@ void GPUParticles3D::_notification(int p_what) {
 		// Use internal process when emitting and one_shot is on so that when
 		// the shot ends the editor can properly update.
 		case NOTIFICATION_INTERNAL_PROCESS: {
-			const Vector3 velocity = (get_global_position() - previous_position) / get_process_delta_time();
+			const Vector3 velocity = (get_global_position() - previous_position) / get_process_delta_time() + extra_emitter_velocity;
 
 			if (velocity != previous_velocity) {
 				RS::get_singleton()->particles_set_emitter_velocity(particles, velocity);
@@ -565,7 +576,7 @@ void GPUParticles3D::_notification(int p_what) {
 		case NOTIFICATION_INTERNAL_PHYSICS_PROCESS: {
 			// Update velocity in physics process, so that velocity calculations remain correct
 			// if the physics tick rate is lower than the rendered framerate (especially without physics interpolation).
-			const Vector3 velocity = (get_global_position() - previous_position) / get_physics_process_delta_time();
+			const Vector3 velocity = (get_global_position() - previous_position) / get_physics_process_delta_time() + extra_emitter_velocity;
 
 			if (velocity != previous_velocity) {
 				RS::get_singleton()->particles_set_emitter_velocity(particles, velocity);
@@ -860,6 +871,8 @@ void GPUParticles3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("convert_from_particles", "particles"), &GPUParticles3D::convert_from_particles);
 
 	ClassDB::bind_method(D_METHOD("set_amount_ratio", "ratio"), &GPUParticles3D::set_amount_ratio);
+	ClassDB::bind_method(D_METHOD("set_extra_emitter_velocity", "velocity"), &GPUParticles3D::set_extra_emitter_velocity);
+	ClassDB::bind_method(D_METHOD("get_extra_emitter_velocity"), &GPUParticles3D::get_extra_emitter_velocity);
 	ClassDB::bind_method(D_METHOD("get_amount_ratio"), &GPUParticles3D::get_amount_ratio);
 
 	ClassDB::bind_method(D_METHOD("request_particles_process", "process_time", "process_time_residual"), &GPUParticles3D::request_particles_process, DEFVAL(0.0));

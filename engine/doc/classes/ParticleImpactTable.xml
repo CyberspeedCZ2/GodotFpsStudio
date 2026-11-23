@@ -66,8 +66,10 @@
 			<param index="3" name="collider" type="Object" default="null" />
 			<param index="4" name="tint" type="Color" default="Color(1, 1, 1, 1)" />
 			<param index="5" name="scale" type="float" default="1.0" />
+			<param index="6" name="direction" type="Vector3" default="Vector3(0, 0, 0)" />
 			<description>
 				Plays the effect for the surface of [param collider] under [param parent] at [param position], with +Y along [param normal] and moved [member surface_offset] off the surface. The effect is played with the surface's entry in [member tints] and [member scales] multiplied by [param tint] and [param scale] (see [method ParticleEffect3D.spawn]). Returns the effect, or [code]null[/code] if the table has no effect for it.
+				With [param direction] (the direction the shot was flying in), the effect's emitters lean from the normal towards the bounce of the shot by [member reflect_amount], so a hit at an angle throws its debris onwards instead of straight out of the wall.
 			</description>
 		</method>
 		<method name="spawn_from_hit" qualifiers="const">
@@ -76,6 +78,7 @@
 			<param index="1" name="hit" type="Dictionary" />
 			<param index="2" name="tint" type="Color" default="Color(1, 1, 1, 1)" />
 			<param index="3" name="scale" type="float" default="1.0" />
+			<param index="4" name="direction" type="Vector3" default="Vector3(0, 0, 0)" />
 			<description>
 				Like [method spawn], using the [code]position[/code], [code]normal[/code] and [code]collider[/code] of a [method PhysicsDirectSpaceState3D.intersect_ray] result.
 			</description>
@@ -91,6 +94,9 @@
 		<member name="random_roll" type="bool" setter="set_random_roll" getter="is_random_roll" default="true">
 			If [code]true[/code], every impact is rotated randomly around the normal, so repeated bullet holes and debris do not look identical.
 		</member>
+		<member name="reflect_amount" type="float" setter="set_reflect_amount" getter="get_reflect_amount" default="0.5">
+			How far the debris of an effect leans from the surface normal towards the bounce of the shot when [method spawn] gets its direction: [code]0[/code] straight out of the surface, [code]1[/code] like a mirror. The effect and its decal stay on the normal.
+		</member>
 		<member name="scales" type="Dictionary" setter="set_scales" getter="get_scales" default="{}">
 			Optional surface name to [float]: the [member ParticleEffect3D.effect_scale] multiplier used for that surface's effect.
 		</member>
@@ -99,6 +105,9 @@
 		</member>
 		<member name="tints" type="Dictionary" setter="set_tints" getter="get_tints" default="{}">
 			Optional surface name to [Color]: the [member ParticleEffect3D.tint] multiplier used for that surface's effect, for example one blood effect tinted yellow for an [code]"insect"[/code] surface.
+		</member>
+		<member name="variants" type="Dictionary" setter="set_variants" getter="get_variants" default="{}">
+			More effects for a surface, as an [Array] of [PackedScene] by surface name. [method get_effect] picks at random between the surface's effect in [member effects] and these, so repeated hits do not look the same.
 		</member>
 	</members>
 </class>

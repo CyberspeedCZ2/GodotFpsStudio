@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="EffectBeam3D" inherits="GeometryInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		A camera-facing strip between two points: electric arcs, lasers, tracers, energy beams.
+	</brief_description>
+	<description>
+		Draws a strip from this node to [member end_position] that always turns its face to the camera. [member noise_amplitude] makes it wobble like an electric arc, [member texture] is laid along it and can scroll, [member taper] narrows it towards the end.
+		As a child of a [ParticleEffect3D] it is a timed track: it is shown from its start time (see [method ParticleEffect3D.set_emitter_delay]) for its duration and fades out over it, or follows an intensity curve; with no duration it stays on. [method ParticleEffect3D.set_target_position] aims every beam of an effect at a point in the world.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="set_global_end_position">
+			<return type="void" />
+			<param index="0" name="position" type="Vector3" />
+			<description>
+				Sets [member end_position] from a point in world space.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="additive" type="bool" setter="set_additive" getter="is_additive" default="true">
+			If [code]true[/code], the beam is added to what is behind it (glowing energy). If [code]false[/code], it is alpha blended (smoke trails, ropes of water).
+		</member>
+		<member name="brightness" type="float" setter="set_brightness" getter="get_brightness" default="2.0">
+			Multiplies the color. Values above [code]1[/code] glow with the environment's glow enabled.
+		</member>
+		<member name="cast_shadow" type="int" setter="set_cast_shadows_setting" getter="get_cast_shadows_setting" overrides="GeometryInstance3D" enum="GeometryInstance3D.ShadowCastingSetting" default="0" />
+		<member name="color" type="Color" setter="set_color" getter="get_color" default="Color(0.55, 0.8, 1, 1)">
+			Color of the beam; its alpha is the opacity.
+		</member>
+		<member name="end_position" type="Vector3" setter="set_end_position" getter="get_end_position" default="Vector3(0, 0, -5)">
+			Where the beam ends, relative to this node.
+		</member>
+		<member name="intensity" type="float" setter="set_intensity" getter="get_intensity">
+			Fades the whole beam between [code]0[/code] (invisible) and [code]1[/code]. Animated by [ParticleEffect3D]; not saved.
+		</member>
+		<member name="noise_amplitude" type="float" setter="set_noise_amplitude" getter="get_noise_amplitude" default="0.0">
+			How far the beam wobbles sideways, in meters. Both ends stay in place. [code]0[/code] gives a straight beam.
+		</member>
+		<member name="noise_frequency" type="float" setter="set_noise_frequency" getter="get_noise_frequency" default="3.0">
+			Number of wobble waves per meter of the beam.
+		</member>
+		<member name="noise_speed" type="float" setter="set_noise_speed" getter="get_noise_speed" default="12.0">
+			How fast the wobble changes. High values flicker like electricity.
+		</member>
+		<member name="segments" type="int" setter="set_segments" getter="get_segments" default="24">
+			Number of pieces the strip is made of. A wobbling beam needs more than a straight one.
+		</member>
+		<member name="taper" type="float" setter="set_taper" getter="get_taper" default="0.0">
+			Narrows the beam towards its end: [code]0[/code] keeps the width, [code]1[/code] ends in a point.
+		</member>
+		<member name="texture" type="Texture2D" setter="set_texture" getter="get_texture">
+			Texture laid along the beam (U runs from start to end, V across it). Without one the beam is a soft bright line.
+		</member>
+		<member name="texture_scroll" type="float" setter="set_texture_scroll" getter="get_texture_scroll" default="0.0">
+			How fast [member texture] moves along the beam, in repeats per second.
+		</member>
+		<member name="texture_tiling" type="float" setter="set_texture_tiling" getter="get_texture_tiling" default="1.0">
+			Repeats of [member texture] per meter of the beam.
+		</member>
+		<member name="width" type="float" setter="set_width" getter="get_width" default="0.08">
+			Width of the beam in meters.
+		</member>
+	</members>
+</class>

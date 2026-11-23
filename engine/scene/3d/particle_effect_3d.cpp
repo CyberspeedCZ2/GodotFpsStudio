@@ -15,7 +15,10 @@
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
 #include "scene/3d/decal.h"
+#include "scene/3d/effect_beam_3d.h"
 #include "scene/3d/effect_spawner_3d.h"
+#include "scene/3d/screen_flash_3d.h"
+#include "scene/3d/splatter_decals_3d.h"
 #include "scene/3d/physics/animatable_body_3d.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "core/math/convex_hull.h"
@@ -72,6 +75,15 @@ ParticleEffect3D::EventKind ParticleEffect3D::get_event_kind(const Node *p_node)
 	if (Object::cast_to<EffectSpawner3D>(p_node)) {
 		return EVENT_SPAWN;
 	}
+	if (Object::cast_to<EffectBeam3D>(p_node)) {
+		return EVENT_BEAM;
+	}
+	if (Object::cast_to<SplatterDecals3D>(p_node)) {
+		return EVENT_SPLATTER;
+	}
+	if (Object::cast_to<ScreenFlash3D>(p_node)) {
+		return EVENT_SCREEN_FLASH;
+	}
 	return EVENT_NONE;
 }
 
@@ -105,8 +117,11 @@ static double get_event_duration(const Node *p_node, ParticleEffect3D::EventKind
 		}
 		case ParticleEffect3D::EVENT_CAMERA_SHAKE:
 			return Object::cast_to<CameraShake3D>(p_node)->get_duration();
+		case ParticleEffect3D::EVENT_SCREEN_FLASH:
+			return Object::cast_to<ScreenFlash3D>(p_node)->get_duration();
 		case ParticleEffect3D::EVENT_DAMAGE:
 		case ParticleEffect3D::EVENT_SPAWN:
+		case ParticleEffect3D::EVENT_SPLATTER:
 			return 0.15; // Instant; a short bar keeps it visible in the timeline.
 		default:
 			return ParticleEffect3D::get_emitter_duration(p_node);
@@ -206,7 +221,7 @@ void ParticleEffect3D::_collect_emitters(Node *p_node) {
 		event.kind = get_event_kind(p_node);
 		event.delay = get_emitter_delay(p_node);
 		event.duration = get_event_duration(p_node, event.kind);
-		if (event.kind == EVENT_LIGHT) {
+		if (event.kind == EVENT_LIGHT || event.kind == EVENT_BEAM) {
 			event.curve = p_node->get_meta(META_CURVE, Ref<Curve>());
 			event.flicker = CLAMP(real_t(double(p_node->get_meta(META_FLICKER, 0.0))), 0.0, 1.0);
 		} else if (event.kind == EVENT_DECAL) {
@@ -334,7 +349,7 @@ void ParticleEffect3D::play() {
 		resumable = resumable || state.visual_end < 0.0;
 	}
 	for (const EventState &event : events) {
-		resumable = resumable || (event.duration <= 0.0 && (event.kind == EVENT_LIGHT || event.kind == EVENT_SOUND));
+		resumable = resumable || (event.duration <= 0.0 && (event.kind == EVENT_LIGHT || event.kind == EVENT_SOUND || event.kind == EVENT_BEAM));
 	}
 	if (_should_skip_play()) {
 		_skip_play();
@@ -371,6 +386,8 @@ void ParticleEffect3D::play() {
 		_enforce_max_instances();
 	}
 	paused = false;
+	_apply_emission_direction();
+	_apply_inherited_velocity();
 	_apply_speed_scale();
 	lod_elapsed = 0.0;
 	_apply_amount_scale();
@@ -397,8 +414,16 @@ Variant fx_scaled(const Variant &p_value, real_t p_scale) {
 	switch (p_value.get_type()) {
 		case Variant::FLOAT:
 			return double(p_value) * p_scale;
+		case Variant::INT:
+			return int64_t(Math::round(double(p_value) * p_scale));
+		case Variant::VECTOR2:
+			return Vector2(p_value) * p_scale;
 		case Variant::VECTOR3:
 			return Vector3(p_value) * p_scale;
+		case Variant::COLOR: {
+			const Color color = p_value;
+			return Color(color.r, color.g, color.b, color.a * p_scale); // A parameter on a color is its strength.
+		}
 		case Variant::AABB: {
 			const AABB box = p_value;
 			return AABB(box.position * p_scale, box.size * p_scale);
@@ -437,6 +462,8 @@ const char *FX_PROCESS_SCALE_PROPERTIES[] = {
 	"emission_sphere_radius", "emission_box_extents", "emission_ring_radius",
 	"emission_ring_inner_radius", "emission_ring_height", "emission_shape_offset",
 };
+Vector3 effect_wind;
+
 const char *FX_CPU_SCALE_PROPERTIES[] = {
 	"scale_amount_min", "scale_amount_max", "initial_velocity_min", "initial_velocity_max", "gravity",
 	"linear_accel_min", "linear_accel_max", "radial_accel_min", "radial_accel_max",
@@ -464,11 +491,17 @@ void ParticleEffect3D::_apply_overrides() {
 		for (int i = 0; i < node->get_child_count(); i++) {
 			stack.push_back(node->get_child(i));
 		}
-		const bool is_target = Object::cast_to<GPUParticles3D>(node) || Object::cast_to<CPUParticles3D>(node) || Object::cast_to<Light3D>(node) || Object::cast_to<Decal>(node) || Object::cast_to<CameraShake3D>(node) || Object::cast_to<RadialDamage3D>(node);
+		// Wind and parameter links are per track: a track without them plays
+		// (or goes back to) its authored values when the look is neutral.
+		const real_t wind_influence = (Object::cast_to<GPUParticles3D>(node) || Object::cast_to<CPUParticles3D>(node)) ? real_t(double(node->get_meta(META_WIND, 0.0))) : real_t(0.0);
+		const bool windy = wind_influence > 0.0 && !effect_wind.is_zero_approx();
+		const Variant links_meta = node->has_meta(META_PARAMETER_LINKS) ? node->get_meta(META_PARAMETER_LINKS) : Variant();
+		const Dictionary links = links_meta.get_type() == Variant::DICTIONARY ? Dictionary(links_meta) : Dictionary();
+		const bool is_target = !links.is_empty() || Object::cast_to<GPUParticles3D>(node) || Object::cast_to<CPUParticles3D>(node) || Object::cast_to<Light3D>(node) || Object::cast_to<Decal>(node) || Object::cast_to<CameraShake3D>(node) || Object::cast_to<RadialDamage3D>(node) || Object::cast_to<ScreenFlash3D>(node) || Object::cast_to<EffectBeam3D>(node);
 		if (!is_target) {
 			continue;
 		}
-		if (neutral) {
+		if (neutral && !windy && links.is_empty()) {
 			if (!node->has_meta(FX_AUTHORED_META)) {
 				continue;
 			}
@@ -481,7 +514,12 @@ void ParticleEffect3D::_apply_overrides() {
 			}
 			for (const KeyValue<Variant, Variant> &kv : authored) {
 				const String key = kv.key;
-				if (!key.begins_with("@") && !key.begins_with("pm/")) {
+				if (key.begins_with("link/")) {
+					// Values on the process material went with its copy.
+					if (!key.begins_with("link/process/")) {
+						node->set(StringName(key.substr(5)), kv.value);
+					}
+				} else if (!key.begins_with("@") && !key.begins_with("pm/")) {
 					node->set(StringName(key), kv.value);
 				}
 			}
@@ -527,11 +565,158 @@ void ParticleEffect3D::_apply_overrides() {
 				decal->set_modulate(Color(base.r * play_tint.r, base.g * play_tint.g, base.b * play_tint.b, current.a));
 			}
 			fx_override(decal, authored, "size", "size", play_scale, nullptr);
-		} else if (Object::cast_to<CameraShake3D>(node) || Object::cast_to<RadialDamage3D>(node)) {
+		} else if (Object::cast_to<CameraShake3D>(node) || Object::cast_to<RadialDamage3D>(node) || Object::cast_to<ScreenFlash3D>(node)) {
 			fx_override(node, authored, "inner_radius", "inner_radius", play_scale, nullptr);
 			fx_override(node, authored, "radius", "radius", play_scale, nullptr);
+		} else if (Object::cast_to<EffectBeam3D>(node)) {
+			fx_override(node, authored, "color", "color", 1.0, &play_tint);
+			fx_override(node, authored, "width", "width", play_scale, nullptr);
+			fx_override(node, authored, "noise_amplitude", "noise_amplitude", play_scale, nullptr);
+		}
+		if (wind_influence > 0.0) {
+			// The wind as a steady push on top of the (scaled) gravity.
+			GPUParticles3D *wind_gpu = Object::cast_to<GPUParticles3D>(node);
+			Ref<ParticleProcessMaterial> wind_material = wind_gpu ? Ref<ParticleProcessMaterial>(wind_gpu->get_process_material()) : Ref<ParticleProcessMaterial>();
+			if (wind_material.is_valid() && authored.has("pm/gravity")) {
+				wind_material->set_gravity(Vector3(authored["pm/gravity"]) * play_scale + effect_wind * wind_influence);
+			} else if (!wind_gpu && authored.has("gravity")) {
+				node->set("gravity", Vector3(authored["gravity"]) * play_scale + effect_wind * wind_influence);
+			}
+		}
+		for (const KeyValue<Variant, Variant> &link : links) {
+			// "property" on the track, "process/property" on its process material.
+			const String path = link.key;
+			const bool on_process = path.begins_with("process/");
+			const StringName property = on_process ? path.substr(8) : path;
+			Object *target = node;
+			if (on_process) {
+				GPUParticles3D *link_gpu = Object::cast_to<GPUParticles3D>(node);
+				Ref<Material> link_material = link_gpu ? link_gpu->get_process_material() : Ref<Material>();
+				target = link_material.ptr();
+			}
+			bool valid = false;
+			const Variant current = target ? target->get(property, &valid) : Variant();
+			if (!valid) {
+				continue;
+			}
+			// What tint / scale already set this play is the base; otherwise
+			// the value the track was authored with.
+			Variant base = current;
+			if (!authored.has((on_process ? String("pm/") : String()) + String(property))) {
+				const String key = "link/" + path;
+				if (!authored.has(key)) {
+					authored[key] = current;
+				}
+				base = authored[key];
+			}
+			target->set(property, fx_scaled(base, real_t(get_parameter(String(link.value)))));
 		}
 		node->set_meta(FX_AUTHORED_META, authored);
+	}
+}
+
+void ParticleEffect3D::set_parameters(const Dictionary &p_parameters) {
+	parameters = p_parameters;
+}
+
+Dictionary ParticleEffect3D::get_parameters() const {
+	return parameters;
+}
+
+void ParticleEffect3D::set_parameter(const StringName &p_name, double p_value) {
+	play_parameters[p_name] = p_value;
+	if (playing && !culled) {
+		_apply_overrides(); // Also for the play that has just started (spawn()).
+	}
+}
+
+double ParticleEffect3D::get_parameter(const StringName &p_name) const {
+	for (const Dictionary *source : { &play_parameters, &parameters }) {
+		for (const KeyValue<Variant, Variant> &entry : *source) {
+			if (String(entry.key) == String(p_name)) {
+				return double(entry.value);
+			}
+		}
+	}
+	return 1.0;
+}
+
+void ParticleEffect3D::set_wind(const Vector3 &p_wind) {
+	effect_wind = p_wind;
+}
+
+Vector3 ParticleEffect3D::get_wind() {
+	return effect_wind;
+}
+
+static void aim_beams(Node *p_node, const Vector3 &p_position) {
+	if (EffectBeam3D *beam = Object::cast_to<EffectBeam3D>(p_node)) {
+		beam->set_global_end_position(p_position);
+	}
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		aim_beams(p_node->get_child(i), p_position);
+	}
+}
+
+void ParticleEffect3D::set_target_position(const Vector3 &p_position) {
+	aim_beams(this, p_position);
+}
+
+void ParticleEffect3D::set_emission_direction(const Vector3 &p_direction) {
+	emission_direction = p_direction;
+	if (playing && !culled) {
+		_apply_emission_direction();
+	}
+}
+
+Vector3 ParticleEffect3D::get_emission_direction() const {
+	return emission_direction;
+}
+
+void ParticleEffect3D::_apply_emission_direction() {
+	static const StringName authored_meta = "_authored_basis";
+	const bool tilted = !emission_direction.is_zero_approx() && is_inside_tree();
+	Basis tilt;
+	if (tilted) {
+		const Vector3 local = get_global_transform().basis.orthonormalized().xform_inv(emission_direction.normalized());
+		tilt = Basis(Quaternion(Vector3(0, 1, 0), local));
+	}
+	for (const EmitterState &state : emitters) {
+		Node3D *emitter = Object::cast_to<Node3D>(ObjectDB::get_instance(state.id));
+		if (!emitter) {
+			continue;
+		}
+		if (!tilted) {
+			if (emitter->has_meta(authored_meta)) {
+				emitter->set_basis(emitter->get_meta(authored_meta));
+				emitter->remove_meta(authored_meta);
+			}
+			continue;
+		}
+		if (!emitter->has_meta(authored_meta)) {
+			emitter->set_meta(authored_meta, emitter->get_basis());
+		}
+		emitter->set_basis(tilt * Basis(emitter->get_meta(authored_meta)));
+	}
+}
+
+void ParticleEffect3D::set_inherited_velocity(const Vector3 &p_velocity) {
+	inherited_velocity = p_velocity;
+	if (playing && !culled) {
+		_apply_inherited_velocity();
+	}
+}
+
+Vector3 ParticleEffect3D::get_inherited_velocity() const {
+	return inherited_velocity;
+}
+
+void ParticleEffect3D::_apply_inherited_velocity() {
+	for (const EmitterState &state : emitters) {
+		GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(ObjectDB::get_instance(state.id));
+		if (gpu && gpu->get_extra_emitter_velocity() != inherited_velocity) {
+			gpu->set_extra_emitter_velocity(inherited_velocity);
+		}
 	}
 }
 
@@ -1798,7 +1983,7 @@ void ParticleEffect3D::stop() {
 	stop_end = elapsed + tail;
 	for (EventState &event : events) {
 		const double local = elapsed - event.delay;
-		if (event.kind != EVENT_LIGHT && event.kind != EVENT_DECAL) {
+		if (event.kind != EVENT_LIGHT && event.kind != EVENT_DECAL && event.kind != EVENT_BEAM) {
 			event.started = true;
 		} else if (local < 0.0) {
 			event.cancelled = true;
@@ -2038,6 +2223,36 @@ void ParticleEffect3D::_update_events() {
 					Object::cast_to<RadialDamage3D>(node)->apply_damage();
 				}
 			} break;
+			case EVENT_BEAM: {
+				real_t factor = 0.0;
+				if (inside) {
+					factor = 1.0;
+					if (!continuous) {
+						// Default: on at once, fading out over its duration.
+						factor = event.curve.is_valid() ? event.curve->sample_baked(t) : real_t(1.0 - t * t);
+					}
+				}
+				const real_t value = CLAMP(factor, real_t(0.0), real_t(1.0)) * stop_fade;
+				if (value != event.last_value) {
+					event.last_value = value;
+					Object::cast_to<EffectBeam3D>(node)->set_intensity(value);
+				}
+			} break;
+			case EVENT_SPLATTER: {
+				if (fire) {
+					event.started = true;
+					Object::cast_to<SplatterDecals3D>(node)->splatter_under(get_parent(), tint * spawn_tint, effect_scale * spawn_scale);
+				}
+			} break;
+			case EVENT_SCREEN_FLASH: {
+				if (fire) {
+					event.started = true;
+					// Not over the Level editor's viewport; the Particle preview shows it.
+					if (!editor_preview) {
+						Object::cast_to<ScreenFlash3D>(node)->flash();
+					}
+				}
+			} break;
 			case EVENT_SPAWN: {
 				if (fire) {
 					event.started = true;
@@ -2071,6 +2286,11 @@ void ParticleEffect3D::_restore_editor_preview() {
 		} else if (AudioStreamPlayer3D *player = Object::cast_to<AudioStreamPlayer3D>(node)) {
 			player->set_pitch_scale(base.value.pitch);
 			player->stop(); // Stop in the Level editor also silences the effect.
+		}
+	}
+	for (const EventState &event : events) {
+		if (EffectBeam3D *beam = Object::cast_to<EffectBeam3D>(ObjectDB::get_instance(event.id))) {
+			beam->set_intensity(1.0); // As authored: visible in the Level editor.
 		}
 	}
 	for (const EventState &event : events) {
@@ -2425,6 +2645,9 @@ ParticleEffect3D *ParticleEffect3D::spawn_attached(const Ref<PackedScene> &p_sce
 	effect->set_local_space(true);
 	effect->spawn_tint = p_tint;
 	effect->spawn_scale = MAX(real_t(0.001), p_scale);
+	effect->play_parameters.clear();
+	effect->emission_direction = Vector3();
+	effect->inherited_velocity = Vector3();
 	if (effect->is_inside_tree()) {
 		effect->set_global_transform(global);
 	} else {
@@ -2456,6 +2679,9 @@ ParticleEffect3D *ParticleEffect3D::spawn(const Ref<PackedScene> &p_scene, Node 
 	}
 	effect->spawn_tint = p_tint; // Always set: a reused instance drops the previous look.
 	effect->spawn_scale = MAX(real_t(0.001), p_scale);
+	effect->play_parameters.clear();
+	effect->emission_direction = Vector3();
+	effect->inherited_velocity = Vector3();
 	if (effect->is_inside_tree()) {
 		effect->set_global_transform(p_transform);
 	} else {
@@ -2521,6 +2747,17 @@ void ParticleEffect3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_cull_distance"), &ParticleEffect3D::get_cull_distance);
 	ClassDB::bind_method(D_METHOD("set_local_space", "enable"), &ParticleEffect3D::set_local_space);
 	ClassDB::bind_method(D_METHOD("is_local_space"), &ParticleEffect3D::is_local_space);
+	ClassDB::bind_method(D_METHOD("set_parameters", "parameters"), &ParticleEffect3D::set_parameters);
+	ClassDB::bind_method(D_METHOD("get_parameters"), &ParticleEffect3D::get_parameters);
+	ClassDB::bind_method(D_METHOD("set_parameter", "name", "value"), &ParticleEffect3D::set_parameter);
+	ClassDB::bind_method(D_METHOD("get_parameter", "name"), &ParticleEffect3D::get_parameter);
+	ClassDB::bind_method(D_METHOD("set_target_position", "position"), &ParticleEffect3D::set_target_position);
+	ClassDB::bind_method(D_METHOD("set_emission_direction", "direction"), &ParticleEffect3D::set_emission_direction);
+	ClassDB::bind_method(D_METHOD("get_emission_direction"), &ParticleEffect3D::get_emission_direction);
+	ClassDB::bind_method(D_METHOD("set_inherited_velocity", "velocity"), &ParticleEffect3D::set_inherited_velocity);
+	ClassDB::bind_method(D_METHOD("get_inherited_velocity"), &ParticleEffect3D::get_inherited_velocity);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("set_wind", "wind"), &ParticleEffect3D::set_wind);
+	ClassDB::bind_static_method("ParticleEffect3D", D_METHOD("get_wind"), &ParticleEffect3D::get_wind);
 	ClassDB::bind_method(D_METHOD("set_paused", "paused"), &ParticleEffect3D::set_paused);
 	ClassDB::bind_method(D_METHOD("is_paused"), &ParticleEffect3D::is_paused);
 	ClassDB::bind_method(D_METHOD("set_lod_distance", "distance"), &ParticleEffect3D::set_lod_distance);
@@ -2537,6 +2774,7 @@ void ParticleEffect3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "paused", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_paused", "is_paused");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "tint"), "set_tint", "get_tint");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "effect_scale", PROPERTY_HINT_RANGE, "0.05,10,0.01,or_greater"), "set_effect_scale", "get_effect_scale");
+	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "parameters", PROPERTY_HINT_DICTIONARY_TYPE, "StringName;float"), "set_parameters", "get_parameters");
 	ADD_GROUP("Budget", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "priority", PROPERTY_HINT_RANGE, "-10,10,1,or_less,or_greater"), "set_priority", "get_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_instances", PROPERTY_HINT_RANGE, "0,256,1,or_greater"), "set_max_instances", "get_max_instances");

@@ -103,6 +103,7 @@ private:
 	double active_time = 0.0;
 	float interp_to_end_factor = 0;
 	Vector3 previous_velocity;
+	Vector3 extra_emitter_velocity; // FPS Studio: added to the velocity particles inherit (see set_extra_emitter_velocity).
 	Vector3 previous_position;
 
 	void _attach_sub_emitter();
@@ -156,6 +157,11 @@ public:
 	double get_trail_lifetime() const;
 	float get_interp_to_end() const;
 
+	// FPS Studio: a velocity the emitter is treated as moving with, on top of
+	// its real movement (particles with inherit_velocity_ratio take it over):
+	// debris of something that was flying when it broke. Not saved.
+	void set_extra_emitter_velocity(const Vector3 &p_velocity);
+	Vector3 get_extra_emitter_velocity() const;
 	void set_amount_ratio(float p_ratio);
 	float get_amount_ratio() const;
 

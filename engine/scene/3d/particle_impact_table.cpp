@@ -115,7 +115,39 @@ real_t ParticleImpactTable::get_surface_scale(const StringName &p_surface) const
 
 Ref<PackedScene> ParticleImpactTable::get_effect(const StringName &p_surface) const {
 	const Ref<PackedScene> effect = _find_effect(p_surface);
-	return effect.is_valid() ? effect : default_effect;
+	if (effect.is_null()) {
+		return default_effect;
+	}
+	// One of the surface's looks at random: its effect or one of the variants.
+	const Variant extra = _find_entry(variants, p_surface);
+	if (extra.get_type() == Variant::ARRAY) {
+		const Array list = extra;
+		const int pick = Math::random(0, list.size());
+		if (pick < list.size()) {
+			const Ref<PackedScene> variant = list[pick];
+			if (variant.is_valid()) {
+				return variant;
+			}
+		}
+	}
+	return effect;
+}
+
+void ParticleImpactTable::set_variants(const Dictionary &p_variants) {
+	variants = p_variants;
+	emit_changed();
+}
+
+Dictionary ParticleImpactTable::get_variants() const {
+	return variants;
+}
+
+void ParticleImpactTable::set_reflect_amount(real_t p_amount) {
+	reflect_amount = CLAMP(p_amount, real_t(0.0), real_t(1.0));
+}
+
+real_t ParticleImpactTable::get_reflect_amount() const {
+	return reflect_amount;
 }
 
 StringName ParticleImpactTable::get_surface(Object *p_collider) const {
@@ -156,7 +188,7 @@ StringName ParticleImpactTable::get_surface(Object *p_collider) const {
 	return StringName();
 }
 
-ParticleEffect3D *ParticleImpactTable::spawn(Node *p_parent, const Vector3 &p_position, const Vector3 &p_normal, Object *p_collider, const Color &p_tint, real_t p_scale) const {
+ParticleEffect3D *ParticleImpactTable::spawn(Node *p_parent, const Vector3 &p_position, const Vector3 &p_normal, Object *p_collider, const Color &p_tint, real_t p_scale, const Vector3 &p_direction) const {
 	ERR_FAIL_NULL_V(p_parent, nullptr);
 	const StringName surface = get_surface(p_collider);
 	const Ref<PackedScene> scene = get_effect(surface);
@@ -172,15 +204,32 @@ ParticleEffect3D *ParticleImpactTable::spawn(Node *p_parent, const Vector3 &p_po
 	}
 	const Vector3 z_axis = x_axis.cross(up).normalized();
 	const Basis basis(x_axis, up, z_axis);
-	return ParticleEffect3D::spawn(scene, p_parent, Transform3D(basis, p_position + up * surface_offset), get_surface_tint(surface) * p_tint, get_surface_scale(surface) * p_scale);
+	ParticleEffect3D *effect = ParticleEffect3D::spawn(scene, p_parent, Transform3D(basis, p_position + up * surface_offset), get_surface_tint(surface) * p_tint, get_surface_scale(surface) * p_scale);
+	if (effect && reflect_amount > 0.0 && !p_direction.is_zero_approx()) {
+		// A shot at an angle throws its debris towards where it would bounce,
+		// not straight out of the wall. The effect itself (and its decal) stays
+		// on the normal; only the emitters lean, and never flatter than ~25
+		// degrees over the surface.
+		const Vector3 incoming = p_direction.normalized();
+		const Vector3 bounce = incoming - up * (2.0 * incoming.dot(up));
+		Vector3 lean = up.lerp(bounce, reflect_amount).normalized();
+		if (lean.dot(up) < 0.42) {
+			const Vector3 along = (lean - up * lean.dot(up)).normalized();
+			lean = (up * 0.42 + along * 0.9075).normalized();
+		}
+		if (incoming.dot(up) < 0.0) { // From the front of the surface only.
+			effect->set_emission_direction(lean);
+		}
+	}
+	return effect;
 }
 
-ParticleEffect3D *ParticleImpactTable::spawn_from_hit(Node *p_parent, const Dictionary &p_hit, const Color &p_tint, real_t p_scale) const {
+ParticleEffect3D *ParticleImpactTable::spawn_from_hit(Node *p_parent, const Dictionary &p_hit, const Color &p_tint, real_t p_scale, const Vector3 &p_direction) const {
 	if (p_hit.is_empty() || !p_hit.has("position")) {
 		return nullptr;
 	}
 	Object *collider = p_hit.get("collider", Variant());
-	return spawn(p_parent, p_hit["position"], p_hit.get("normal", Vector3(0, 1, 0)), collider, p_tint, p_scale);
+	return spawn(p_parent, p_hit["position"], p_hit.get("normal", Vector3(0, 1, 0)), collider, p_tint, p_scale, p_direction);
 }
 
 TypedArray<PackedScene> ParticleImpactTable::get_all_effects() const {
@@ -189,6 +238,18 @@ TypedArray<PackedScene> ParticleImpactTable::get_all_effects() const {
 		const Ref<PackedScene> scene = entry.value;
 		if (scene.is_valid() && !result.has(scene)) {
 			result.push_back(scene);
+		}
+	}
+	for (const KeyValue<Variant, Variant> &entry : variants) {
+		if (entry.value.get_type() != Variant::ARRAY) {
+			continue;
+		}
+		const Array list = entry.value;
+		for (int i = 0; i < list.size(); i++) {
+			const Ref<PackedScene> scene = list[i];
+			if (scene.is_valid() && !result.has(scene)) {
+				result.push_back(scene);
+			}
 		}
 	}
 	if (default_effect.is_valid() && !result.has(default_effect)) {
@@ -209,8 +270,12 @@ void ParticleImpactTable::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_effect", "surface", "effect"), &ParticleImpactTable::set_effect);
 	ClassDB::bind_method(D_METHOD("get_effect", "surface"), &ParticleImpactTable::get_effect);
 	ClassDB::bind_method(D_METHOD("get_surface", "collider"), &ParticleImpactTable::get_surface);
-	ClassDB::bind_method(D_METHOD("spawn", "parent", "position", "normal", "collider", "tint", "scale"), &ParticleImpactTable::spawn, DEFVAL(Variant()), DEFVAL(Color(1, 1, 1, 1)), DEFVAL(1.0));
-	ClassDB::bind_method(D_METHOD("spawn_from_hit", "parent", "hit", "tint", "scale"), &ParticleImpactTable::spawn_from_hit, DEFVAL(Color(1, 1, 1, 1)), DEFVAL(1.0));
+	ClassDB::bind_method(D_METHOD("spawn", "parent", "position", "normal", "collider", "tint", "scale", "direction"), &ParticleImpactTable::spawn, DEFVAL(Variant()), DEFVAL(Color(1, 1, 1, 1)), DEFVAL(1.0), DEFVAL(Vector3()));
+	ClassDB::bind_method(D_METHOD("spawn_from_hit", "parent", "hit", "tint", "scale", "direction"), &ParticleImpactTable::spawn_from_hit, DEFVAL(Color(1, 1, 1, 1)), DEFVAL(1.0), DEFVAL(Vector3()));
+	ClassDB::bind_method(D_METHOD("set_variants", "variants"), &ParticleImpactTable::set_variants);
+	ClassDB::bind_method(D_METHOD("get_variants"), &ParticleImpactTable::get_variants);
+	ClassDB::bind_method(D_METHOD("set_reflect_amount", "amount"), &ParticleImpactTable::set_reflect_amount);
+	ClassDB::bind_method(D_METHOD("get_reflect_amount"), &ParticleImpactTable::get_reflect_amount);
 	ClassDB::bind_method(D_METHOD("set_tints", "tints"), &ParticleImpactTable::set_tints);
 	ClassDB::bind_method(D_METHOD("get_tints"), &ParticleImpactTable::get_tints);
 	ClassDB::bind_method(D_METHOD("set_scales", "scales"), &ParticleImpactTable::set_scales);
@@ -220,9 +285,11 @@ void ParticleImpactTable::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_all_effects"), &ParticleImpactTable::get_all_effects);
 
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "effects", PROPERTY_HINT_DICTIONARY_TYPE, "StringName;PackedScene"), "set_effects", "get_effects");
+	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "variants", PROPERTY_HINT_DICTIONARY_TYPE, "StringName;Array"), "set_variants", "get_variants");
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "tints", PROPERTY_HINT_DICTIONARY_TYPE, "StringName;Color"), "set_tints", "get_tints");
 	ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "scales", PROPERTY_HINT_DICTIONARY_TYPE, "StringName;float"), "set_scales", "get_scales");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "default_effect", PROPERTY_HINT_RESOURCE_TYPE, "PackedScene"), "set_default_effect", "get_default_effect");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "random_roll"), "set_random_roll", "is_random_roll");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "reflect_amount", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_reflect_amount", "get_reflect_amount");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "surface_offset", PROPERTY_HINT_RANGE, "0,0.2,0.001,suffix:m"), "set_surface_offset", "get_surface_offset");
 }

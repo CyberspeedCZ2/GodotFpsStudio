@@ -26,16 +26,16 @@
 				Raises the emitter's [member GPUParticles3D.fixed_fps] (up to 240) so that one simulation step moves a particle less than half of [param shell] plus its collision size. The speed is estimated from the process material.
 			</description>
 		</method>
-		<method name="clear_pool" qualifiers="static">
-			<return type="void" />
-			<description>
-				Frees all pooled (finished, waiting) effects created by [method spawn] and [method prewarm].
-			</description>
-		</method>
 		<method name="clear_level_collision_cache" qualifiers="static">
 			<return type="void" />
 			<description>
 				Frees the level collision bakes shared between effects. Call it when the static level geometry changes while the game runs, so the next effects bake the new shapes.
+			</description>
+		</method>
+		<method name="clear_pool" qualifiers="static">
+			<return type="void" />
+			<description>
+				Frees all pooled (finished, waiting) effects created by [method spawn] and [method prewarm].
 			</description>
 		</method>
 		<method name="editor_preview_play">
@@ -57,26 +57,6 @@
 				Returns [code]true[/code] for a visible [GPUParticles3D] whose process material collides: [member ParticleProcessMaterial.collision_mode] is not disabled, or its shader reads [code]COLLIDED[/code].
 			</description>
 		</method>
-		<method name="get_pooled_count" qualifiers="static">
-			<return type="int" />
-			<param index="0" name="scene" type="PackedScene" />
-			<description>
-				Returns how many finished instances of [param scene] wait in the pool for [method spawn].
-			</description>
-		</method>
-		<method name="is_editor_previewing" qualifiers="const">
-			<return type="bool" />
-			<description>
-				Returns [code]true[/code] while an editor preview started with [method editor_preview_play] is playing.
-			</description>
-		</method>
-		<method name="is_level_collision_ready" qualifiers="static">
-			<return type="bool" />
-			<param index="0" name="node_in_world" type="Node" />
-			<description>
-				Returns [code]true[/code] when the shared level collision (see [method prepare_level_collision]) of the world containing [param node_in_world] has finished baking.
-			</description>
-		</method>
 		<method name="get_active_effect_count" qualifiers="static">
 			<return type="int" />
 			<description>
@@ -89,11 +69,10 @@
 				Returns the time in seconds since the effect started playing, scaled by [member speed_scale].
 			</description>
 		</method>
-		<method name="get_emitter_speed" qualifiers="static">
-			<return type="float" />
-			<param index="0" name="emitter" type="Node" />
+		<method name="get_emission_direction" qualifiers="const">
+			<return type="Vector3" />
 			<description>
-				Returns the [code]speed_scale[/code] the emitter was authored with. While an effect plays with its own [member speed_scale] or is paused, the emitter's property holds the combined value.
+				Returns the direction set with [method set_emission_direction].
 			</description>
 		</method>
 		<method name="get_emitter_delay" qualifiers="static">
@@ -110,10 +89,63 @@
 				Returns how long [param emitter] emits in seconds. [code]0[/code] means the emitter follows its own settings (one cycle for one-shot emitters, forever otherwise).
 			</description>
 		</method>
+		<method name="get_emitter_speed" qualifiers="static">
+			<return type="float" />
+			<param index="0" name="emitter" type="Node" />
+			<description>
+				Returns the [code]speed_scale[/code] the emitter was authored with. While an effect plays with its own [member speed_scale] or is paused, the emitter's property holds the combined value.
+			</description>
+		</method>
+		<method name="get_inherited_velocity" qualifiers="const">
+			<return type="Vector3" />
+			<description>
+				Returns the velocity set with [method set_inherited_velocity].
+			</description>
+		</method>
+		<method name="get_parameter" qualifiers="const">
+			<return type="float" />
+			<param index="0" name="name" type="StringName" />
+			<description>
+				Returns the value of an effect parameter for this play: the one given to [method set_parameter], else its default in [member parameters], else [code]1.0[/code].
+			</description>
+		</method>
+		<method name="get_pooled_count" qualifiers="static">
+			<return type="int" />
+			<param index="0" name="scene" type="PackedScene" />
+			<description>
+				Returns how many finished instances of [param scene] wait in the pool for [method spawn].
+			</description>
+		</method>
+		<method name="get_suggested_collision_size" qualifiers="static">
+			<return type="float" />
+			<param index="0" name="emitter" type="GPUParticles3D" />
+			<description>
+				Returns a [member GPUParticles3D.collision_base_size] (the collision radius) that matches the drawn particle of [param emitter]: a quarter of its mesh size times its average scale.
+			</description>
+		</method>
 		<method name="get_total_duration" qualifiers="const">
 			<return type="float" />
 			<description>
 				Returns the time until every particle of the effect has died, or [code]-1[/code] if an emitter emits forever.
+			</description>
+		</method>
+		<method name="get_wind" qualifiers="static">
+			<return type="Vector3" />
+			<description>
+				Returns the wind set with [method set_wind].
+			</description>
+		</method>
+		<method name="is_editor_previewing" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns [code]true[/code] while an editor preview started with [method editor_preview_play] is playing.
+			</description>
+		</method>
+		<method name="is_level_collision_ready" qualifiers="static">
+			<return type="bool" />
+			<param index="0" name="node_in_world" type="Node" />
+			<description>
+				Returns [code]true[/code] when the shared level collision (see [method prepare_level_collision]) of the world containing [param node_in_world] has finished baking.
 			</description>
 		</method>
 		<method name="is_playing" qualifiers="const">
@@ -128,10 +160,12 @@
 				Restarts every emitter and plays the effect from the beginning, honoring the emitter delays and durations.
 			</description>
 		</method>
-		<method name="restart">
-			<return type="void" />
+		<method name="prepare_level_collision" qualifiers="static">
+			<return type="bool" />
+			<param index="0" name="level_root" type="Node" />
+			<param index="1" name="mask" type="int" default="4294967295" />
 			<description>
-				Same as [method play].
+				Bakes the static collision ([StaticBody3D] shapes and CSG with collision in the [param mask] layers) of the whole level under [param level_root] into shared [GPUParticlesCollisionSDF3D] tiles on worker threads. The tiles are internal child nodes of [param level_root] (not saved) and serve every particle effect, so effects stop baking their own collision once [method is_level_collision_ready] is [code]true[/code]. The first effect with collision does this automatically while the game runs; call it when a level loads to have it ready before the first shot. Returns [code]false[/code] when no static collision was found.
 			</description>
 		</method>
 		<method name="prewarm" qualifiers="static">
@@ -143,12 +177,10 @@
 				Instantiates [param count] silent instances of [param scene] under [param parent] and puts them in the pool, so the next [method spawn] calls reuse them instead of instantiating (e.g. call it at level load for bullet impacts). Returns how many were created; at most 64 instances wait per scene.
 			</description>
 		</method>
-		<method name="prepare_level_collision" qualifiers="static">
-			<return type="bool" />
-			<param index="0" name="level_root" type="Node" />
-			<param index="1" name="mask" type="int" default="4294967295" />
+		<method name="restart">
+			<return type="void" />
 			<description>
-				Bakes the static collision ([StaticBody3D] shapes and CSG with collision in the [param mask] layers) of the whole level under [param level_root] into shared [GPUParticlesCollisionSDF3D] tiles on worker threads. The tiles are internal child nodes of [param level_root] (not saved) and serve every particle effect, so effects stop baking their own collision once [method is_level_collision_ready] is [code]true[/code]. The first effect with collision does this automatically while the game runs; call it when a level loads to have it ready before the first shot. Returns [code]false[/code] when no static collision was found.
+				Same as [method play].
 			</description>
 		</method>
 		<method name="seek">
@@ -156,6 +188,13 @@
 			<param index="0" name="time" type="float" />
 			<description>
 				Restarts the effect and fast-forwards it to [param time] seconds, honoring emitter delays. Intended for editor scrubbing; the result is an approximation of the simulated state.
+			</description>
+		</method>
+		<method name="set_emission_direction">
+			<return type="void" />
+			<param index="0" name="direction" type="Vector3" />
+			<description>
+				Turns the emitters so that their +Y axis points along [param direction] (world space) for this play, for example towards where a shot bounces off a surface; lights and decals keep their place. Zero plays the authored directions. [method spawn] resets it. Called by [method ParticleImpactTable.spawn] when it gets the direction of the shot.
 			</description>
 		</method>
 		<method name="set_emitter_delay" qualifiers="static">
@@ -172,6 +211,39 @@
 			<param index="1" name="duration" type="float" />
 			<description>
 				Sets how long [param emitter] emits in seconds; [code]0[/code] uses the emitter's own behavior. Stored as metadata on the emitter.
+			</description>
+		</method>
+		<method name="set_inherited_velocity">
+			<return type="void" />
+			<param index="0" name="velocity" type="Vector3" />
+			<description>
+				Sets the velocity of what the effect comes from, in world space, for this play. GPU emitters with [member ParticleProcessMaterial.inherit_velocity_ratio] above zero add their share of it to their particles: debris of something that was flying when it broke, blood of a running character. [method spawn] resets it.
+			</description>
+		</method>
+		<method name="set_parameter">
+			<return type="void" />
+			<param index="0" name="name" type="StringName" />
+			<param index="1" name="value" type="float" />
+			<description>
+				Sets an effect parameter for this play. Tracks multiply the properties linked to it (the [code]particle_effect_parameter_links[/code] metadata, Parameter Links in the Particle workspace: property to parameter name, [code]process/[/code] in front for a property of the process material) by the value. Call it right after [method spawn] or [method play]; an effect taken from the pool starts with the defaults again.
+				[codeblock]
+				var fx := ParticleEffect3D.spawn(SPARKS, level, xform)
+				fx.set_parameter("power", 0.4) # A weak short circuit.
+				[/codeblock]
+			</description>
+		</method>
+		<method name="set_target_position">
+			<return type="void" />
+			<param index="0" name="position" type="Vector3" />
+			<description>
+				Aims every [EffectBeam3D] of the effect at a point in world space.
+			</description>
+		</method>
+		<method name="set_wind" qualifiers="static">
+			<return type="void" />
+			<param index="0" name="wind" type="Vector3" />
+			<description>
+				Sets the wind of the level, as an acceleration in world space. In a running game it is added to the gravity of emitters by the share in their [code]particle_effect_wind[/code] metadata (Wind Influence in the Particle workspace) when they start playing. [ParticleLevelSetup] sets it from its [member ParticleLevelSetup.wind].
 			</description>
 		</method>
 		<method name="spawn" qualifiers="static">
@@ -196,16 +268,16 @@
 				Like [method spawn] (including [param tint] and [param scale]), but [param local_transform] is relative to [param parent] (for example a muzzle [Marker3D] on a weapon) and [member local_space] is enabled, so the effect and its particles follow the parent while it plays.
 			</description>
 		</method>
-		<method name="update_level_collision">
-			<return type="void" />
-			<description>
-				Bakes the level collision around the effect now (see [member collide_with_level]). [method play] does this automatically; call it after moving a playing effect.
-			</description>
-		</method>
 		<method name="stop">
 			<return type="void" />
 			<description>
 				Stops emitting new particles. Living particles finish their lifetime, then [signal finished] is emitted. Events that have not fired yet (sound, camera shake, damage, spawn, a light or decal that has not appeared) never do; a light or decal that is always on fades out with the last particles. An effect that is waiting for the camera or for the effect budget ends at once.
+			</description>
+		</method>
+		<method name="update_level_collision">
+			<return type="void" />
+			<description>
+				Bakes the level collision around the effect now (see [member collide_with_level]). [method play] does this automatically; call it after moving a playing effect.
 			</description>
 		</method>
 	</methods>
@@ -243,17 +315,20 @@
 		<member name="max_instances" type="int" setter="set_max_instances" getter="get_max_instances" default="0">
 			At most this many copies of the same effect scene play at once: when another copy starts, the oldest playing one ends at once (its particles, lights and decals go away) and returns to the pool. Use it for effects that come fast and stay long, like bullet impacts with a decal, to keep their count and cost bounded. [code]0[/code] means no limit.
 		</member>
-		<member name="paused" type="bool" setter="set_paused" getter="is_paused" default="false">
+		<member name="parameters" type="Dictionary" setter="set_parameters" getter="get_parameters" default="{}">
+			Default values of the effect's parameters, by name. See [method set_parameter].
+		</member>
+		<member name="paused" type="bool" setter="set_paused" getter="is_paused">
 			If [code]true[/code], the effect stands still: its timeline, its particles and its sounds. Has no effect in the editor.
 		</member>
 		<member name="priority" type="int" setter="set_priority" getter="get_priority" default="0">
 			When [member ProjectSettings.rendering/particle_effects/max_active_effects] effects are already playing, [method play] cuts off the oldest playing effect with the lowest priority not above this one. A cut off effect that is looping or continuous (fire, steam) is not lost: it waits and plays again once a slot is free. If every playing effect has a higher priority, this effect is skipped like with [member cull_distance]. Effects with a pending [RadialDamage3D] event are never cut off or skipped.
 		</member>
-		<member name="tint" type="Color" setter="set_tint" getter="get_tint" default="Color(1, 1, 1, 1)">
-			Multiplies the color of the emitters (the process material or CPU [code]color[/code], which also tints color ramps), the [code]light_color[/code] of lights and the color of decals when the effect plays in a running game. The values are applied in [method play] on local copies of the process materials, so shared resources are not changed; the authored values are remembered on the nodes, and a play with white tint and [member effect_scale] [code]1.0[/code] restores them. The editor always shows the authored effect.
-		</member>
 		<member name="speed_scale" type="float" setter="set_speed_scale" getter="get_speed_scale" default="1.0">
 			Scales the whole effect: the timeline (delays and durations) and, in a running game, the simulation speed of its emitters on top of their own [code]speed_scale[/code]. See [member paused].
+		</member>
+		<member name="tint" type="Color" setter="set_tint" getter="get_tint" default="Color(1, 1, 1, 1)">
+			Multiplies the color of the emitters (the process material or CPU [code]color[/code], which also tints color ramps), the [code]light_color[/code] of lights and the color of decals when the effect plays in a running game. The values are applied in [method play] on local copies of the process materials, so shared resources are not changed; the authored values are remembered on the nodes, and a play with white tint and [member effect_scale] [code]1.0[/code] restores them. The editor always shows the authored effect.
 		</member>
 	</members>
 	<signals>

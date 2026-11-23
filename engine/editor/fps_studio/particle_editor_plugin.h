@@ -254,6 +254,8 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	PanelContainer *preview_perf_panel = nullptr;
 	RichTextLabel *preview_perf_label = nullptr;
 	bool preview_show_perf = false; // Off by default; the View menu choice is remembered.
+	bool preview_move_effect = false; // View > Move Effect: the preview root circles.
+	double preview_move_phase = 0.0;
 	double preview_measured_gpu_ms = 0.0; // Smoothed render time of the preview viewport.
 	double preview_measured_cpu_ms = 0.0;
 	// Lock Seed: Restart and Loop keep the same random look.

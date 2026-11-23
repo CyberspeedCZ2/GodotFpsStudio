@@ -33,6 +33,7 @@ void ParticleLevelSetup::_start() {
 		emit_signal(SNAME("setup_finished"));
 		return;
 	}
+	ParticleEffect3D::set_wind(wind); // Also zero: the last level's wind ends here.
 	if (prepare_collision) {
 		ParticleEffect3D::prepare_level_collision(root, collision_mask);
 	}
@@ -118,6 +119,17 @@ TypedArray<PackedScene> ParticleLevelSetup::get_prewarm_effects() const {
 	return prewarm_effects;
 }
 
+void ParticleLevelSetup::set_wind(const Vector3 &p_wind) {
+	wind = p_wind;
+	if (is_inside_tree() && !Engine::get_singleton()->is_editor_hint()) {
+		ParticleEffect3D::set_wind(wind);
+	}
+}
+
+Vector3 ParticleLevelSetup::get_wind() const {
+	return wind;
+}
+
 void ParticleLevelSetup::set_prewarm_count(int p_count) {
 	prewarm_count = CLAMP(p_count, 0, 64);
 }
@@ -155,6 +167,8 @@ void ParticleLevelSetup::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_collision_mask"), &ParticleLevelSetup::get_collision_mask);
 	ClassDB::bind_method(D_METHOD("set_prewarm_effects", "effects"), &ParticleLevelSetup::set_prewarm_effects);
 	ClassDB::bind_method(D_METHOD("get_prewarm_effects"), &ParticleLevelSetup::get_prewarm_effects);
+	ClassDB::bind_method(D_METHOD("set_wind", "wind"), &ParticleLevelSetup::set_wind);
+	ClassDB::bind_method(D_METHOD("get_wind"), &ParticleLevelSetup::get_wind);
 	ClassDB::bind_method(D_METHOD("set_prewarm_count", "count"), &ParticleLevelSetup::set_prewarm_count);
 	ClassDB::bind_method(D_METHOD("get_prewarm_count"), &ParticleLevelSetup::get_prewarm_count);
 	ClassDB::bind_method(D_METHOD("set_impact_table", "table"), &ParticleLevelSetup::set_impact_table);
@@ -172,6 +186,7 @@ void ParticleLevelSetup::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "prewarm_count", PROPERTY_HINT_RANGE, "0,64,1"), "set_prewarm_count", "get_prewarm_count");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "impact_table", PROPERTY_HINT_RESOURCE_TYPE, "ParticleImpactTable"), "set_impact_table", "get_impact_table");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "effects_per_frame", PROPERTY_HINT_RANGE, "1,16,1"), "set_effects_per_frame", "get_effects_per_frame");
+	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "wind", PROPERTY_HINT_NONE, ""), "set_wind", "get_wind");
 
 	ADD_SIGNAL(MethodInfo("setup_finished"));
 }

@@ -244,7 +244,10 @@
 #include "scene/3d/particle_level_setup.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
+#include "scene/3d/effect_beam_3d.h"
 #include "scene/3d/effect_spawner_3d.h"
+#include "scene/3d/screen_flash_3d.h"
+#include "scene/3d/splatter_decals_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
 #include "scene/3d/ik_modifier_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
@@ -688,6 +691,9 @@ void register_scene_types() {
 	GDREGISTER_CLASS(CameraShake3D);
 	GDREGISTER_CLASS(RadialDamage3D);
 	GDREGISTER_CLASS(EffectSpawner3D);
+	GDREGISTER_CLASS(EffectBeam3D);
+	GDREGISTER_CLASS(SplatterDecals3D);
+	GDREGISTER_CLASS(ScreenFlash3D);
 	GDREGISTER_CLASS(Marker3D);
 	GDREGISTER_CLASS(RootMotionView);
 	GDREGISTER_VIRTUAL_CLASS(SkeletonModifier3D);
@@ -1358,6 +1364,7 @@ void unregister_scene_types() {
 	SceneDebugger::deinitialize();
 
 	ParticleEffect3D::clear_level_collision_cache();
+	EffectBeam3D::finish();
 
 	if constexpr (GD_IS_CLASS_ENABLED(TextureLayered)) {
 		ResourceLoader::remove_resource_format_loader(resource_loader_texture_layered);

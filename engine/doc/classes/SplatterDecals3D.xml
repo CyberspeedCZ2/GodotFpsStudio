@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SplatterDecals3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Leaves decals where flying drops would land, for example blood behind a hit.
+	</brief_description>
+	<description>
+		When [method splatter] is called, [member count] rays are cast from this node inside a cone of [member spread] degrees around [member direction], up to [member max_distance]. Each ray that hits a physics body in [member collision_mask] puts a [Decal] with [member texture] on that surface, turned to its normal and rolled at random. The decal appears after the time a drop flying at [member drop_speed] needs to get there, stays for [member lifetime] seconds and fades out over [member fade_time].
+		GPU particles cannot report where they land, so the rays stand in for them: give this node the same direction and spread as the emitter of the drops. At most 64 splatter decals exist at once; the oldest make room for new ones.
+		As a child of a [ParticleEffect3D] it fires automatically at its start time (see [method ParticleEffect3D.set_emitter_delay]) and takes the tint and scale the effect plays with. It only works in the running game, because the rays need the level's physics.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="splatter">
+			<return type="void" />
+			<description>
+				Casts the rays and places the decals now. Inside a [ParticleEffect3D] the decals are added next to that effect, otherwise next to this node.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="collision_mask" type="int" setter="set_collision_mask" getter="get_collision_mask" default="1">
+			The physics layers that can be splattered.
+		</member>
+		<member name="count" type="int" setter="set_count" getter="get_count" default="6">
+			Number of rays, and so the largest number of decals of one splatter.
+		</member>
+		<member name="direction" type="Vector3" setter="set_direction" getter="get_direction" default="Vector3(0, 1, 0)">
+			Middle of the cone the drops fly in, in this node's space.
+		</member>
+		<member name="drop_speed" type="float" setter="set_drop_speed" getter="get_drop_speed" default="8.0">
+			Speed of the drops in meters per second; a decal appears when a drop would arrive. [code]0[/code] shows all of them at once.
+		</member>
+		<member name="fade_time" type="float" setter="set_fade_time" getter="get_fade_time" default="3.0">
+			Seconds a decal takes to fade out at the end of its [member lifetime].
+		</member>
+		<member name="lifetime" type="float" setter="set_lifetime" getter="get_lifetime" default="15.0">
+			Seconds a decal stays before it fades out.
+		</member>
+		<member name="max_distance" type="float" setter="set_max_distance" getter="get_max_distance" default="3.0">
+			How far a drop flies; surfaces farther away stay clean.
+		</member>
+		<member name="modulate" type="Color" setter="set_modulate" getter="get_modulate" default="Color(1, 1, 1, 1)">
+			Color the decals are multiplied by.
+		</member>
+		<member name="normal_texture" type="Texture2D" setter="set_normal_texture" getter="get_normal_texture">
+			Optional normal map of the decals.
+		</member>
+		<member name="size" type="Vector2" setter="set_size" getter="get_size" default="Vector2(0.15, 0.45)">
+			Smallest and largest size of a decal in meters; each one gets a random size between them.
+		</member>
+		<member name="spread" type="float" setter="set_spread" getter="get_spread" default="35.0">
+			Half angle of the cone in degrees.
+		</member>
+		<member name="texture" type="Texture2D" setter="set_texture" getter="get_texture">
+			Texture of the decals. Nothing is placed without one.
+		</member>
+	</members>
+</class>

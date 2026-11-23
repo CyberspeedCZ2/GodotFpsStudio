@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="ScreenFlash3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		A short flash of color over the whole view, weaker with the distance from the camera.
+	</brief_description>
+	<description>
+		When [method flash] is called, the viewport this node is in is covered with [member color] at [member strength], which fades away over [member duration]. The camera gets the full strength within [member inner_radius] of this node; beyond it the flash weakens to nothing at [member radius]. Use it for a blast going off close to the player or a flashbang.
+		As a child of a [ParticleEffect3D] it fires automatically at its start time (see [method ParticleEffect3D.set_emitter_delay]). It is not shown by an effect previewed in the Level editor.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="flash">
+			<return type="void" />
+			<description>
+				Flashes the view now.
+			</description>
+		</method>
+		<method name="get_strength_at_camera" qualifiers="const">
+			<return type="float" />
+			<description>
+				Returns the strength the current camera would get, from [code]0[/code] to [member strength].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="color" type="Color" setter="set_color" getter="get_color" default="Color(1, 0.95, 0.85, 1)">
+			Color of the flash.
+		</member>
+		<member name="duration" type="float" setter="set_duration" getter="get_duration" default="0.35">
+			Seconds the flash takes to fade away.
+		</member>
+		<member name="inner_radius" type="float" setter="set_inner_radius" getter="get_inner_radius" default="3.0">
+			Distance from this node within which the camera gets the full [member strength].
+		</member>
+		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="12.0">
+			Distance at which the flash has faded to nothing.
+		</member>
+		<member name="strength" type="float" setter="set_strength" getter="get_strength" default="0.6">
+			Opacity of the flash at its start, from [code]0[/code] to [code]1[/code].
+		</member>
+	</members>
+</class>

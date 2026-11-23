@@ -38,6 +38,9 @@
 		<member name="prewarm_effects" type="PackedScene[]" setter="set_prewarm_effects" getter="get_prewarm_effects" default="[]">
 			Effect scenes to prewarm.
 		</member>
+		<member name="wind" type="Vector3" setter="set_wind" getter="get_wind" default="Vector3(0, 0, 0)">
+			The wind of this level, set with [method ParticleEffect3D.set_wind] when the game starts (also when zero, so the wind of the previous level ends).
+		</member>
 	</members>
 	<signals>
 		<signal name="setup_finished">
