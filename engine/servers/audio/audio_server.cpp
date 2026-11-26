@@ -1484,6 +1484,17 @@ void AudioServer::finish() {
 		AudioDriverManager::get_driver(i)->finish();
 	}
 
+	// FPS Studio: a playback stopped while the game quits (the players were just freed with the
+	// scene tree) waits for the mix thread to fade it out and delete it. The drivers are stopped
+	// now, so that never happens and the playback and its stream leaked at exit (seen with a
+	// looping ambient sound). Nothing mixes any more: delete what is left here.
+	{
+		for (AudioStreamPlaybackListNode *playback : playback_list) {
+			_delete_stream_playback_list_node(playback);
+		}
+	}
+	_cleanup_lists();
+
 	for (int i = 0; i < buses.size(); i++) {
 		memdelete(buses[i]);
 	}
