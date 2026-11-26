@@ -6489,14 +6489,22 @@ void FPSStudioParticleEditorPlugin::_update_preview_stats() {
 	const bool heavy = worst_gpu >= COST_EFFECT_GPU_HEAVY || peak_cpu >= COST_EFFECT_CPU_HEAVY;
 	const bool warn = worst_gpu >= COST_EFFECT_GPU_WARN || peak_cpu >= COST_EFFECT_CPU_WARN;
 	String text = vformat(TTR("%d tracks, ~%d / %d particles, GPU ~%s"), visible_tracks, int(Math::round(now_live)), max_particles, format_ms(now_gpu));
-	preview_stats_label->set_text(warn ? String::utf8("⚠ ") + text : text);
+	if (warn) {
+		// The label is often clipped: lead with what the warning is about, the cost at the busiest moment.
+		text = String::utf8("⚠ ") + vformat(TTR("GPU peak ~%s, %s"), format_ms(worst_gpu), text);
+	}
+	preview_stats_label->set_text(text);
 	preview_stats_label->set_modulate(Color(1, 1, 1, warn ? 1.0 : 0.6));
 	if (!warn) {
 		preview_stats_label->remove_theme_color_override(SceneStringName(font_color));
 	} else {
 		preview_stats_label->add_theme_color_override(SceneStringName(font_color), preview_stats_label->get_theme_color(heavy ? SNAME("error_color") : SNAME("warning_color"), EditorStringName(Editor)));
 	}
-	preview_stats_label->set_tooltip_text(TTR("Visible tracks, estimated live / maximum particles and estimated GPU time of the effect right now. Details in the Performance Info box over the preview (View menu)."));
+	String stats_tooltip = TTR("Visible tracks, estimated live / maximum particles and estimated GPU time of the effect right now. Details in the Performance Info box over the preview (View menu).");
+	if (warn) {
+		stats_tooltip = vformat(TTR("Performance warning: at its busiest moment the effect is estimated at %s GPU and %s CPU at 2560x1440 (yellow from %s ms GPU, red from %s ms).\n"), format_ms(worst_gpu), format_ms(peak_cpu), String::num(COST_EFFECT_GPU_WARN, 2), String::num(COST_EFFECT_GPU_HEAVY, 2)) + stats_tooltip;
+	}
+	preview_stats_label->set_tooltip_text(stats_tooltip);
 
 	// Measured render time of the preview viewport (includes the grid, floor
 	// and post effects, at the preview's own resolution).
