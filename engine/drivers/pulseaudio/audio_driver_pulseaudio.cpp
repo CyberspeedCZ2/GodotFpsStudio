@@ -261,7 +261,9 @@ Error AudioDriverPulseAudio::init_output_device() {
 	attr.maxlength = (uint32_t)-1;
 	attr.minreq = (uint32_t)-1;
 
-	const char *dev = output_device_name == "Default" ? nullptr : output_device_name.utf8().get_data();
+	CharString output_device_name_nondefault = output_device_name == "Default" ? CharString() : output_device_name.utf8();
+	const char *dev = output_device_name_nondefault.ptr(); // nullptr on CharString()
+
 	pa_stream_flags flags = pa_stream_flags(PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE);
 	int error_code = pa_stream_connect_playback(pa_str, dev, &attr, flags, nullptr, nullptr);
 	ERR_FAIL_COND_V(error_code < 0, ERR_CANT_OPEN);
@@ -738,7 +740,7 @@ Error AudioDriverPulseAudio::init_input_device() {
 	spec.channels = pa_rec_map.channels;
 	spec.rate = mix_rate;
 
-	int input_latency = 30;
+	int input_latency = 10;
 	int input_buffer_frames = Math::closest_power_of_2(input_latency * mix_rate / 1000);
 	int input_buffer_size = input_buffer_frames * spec.channels;
 
@@ -752,15 +754,18 @@ Error AudioDriverPulseAudio::init_input_device() {
 		ERR_FAIL_V(ERR_CANT_OPEN);
 	}
 
-	const char *dev = input_device_name == "Default" ? nullptr : input_device_name.utf8().get_data();
+	CharString output_device_name_nondefault = output_device_name == "Default" ? CharString() : output_device_name.utf8();
+	const char *dev = output_device_name_nondefault.ptr(); // nullptr on CharString()
+
 	pa_stream_flags flags = pa_stream_flags(PA_STREAM_INTERPOLATE_TIMING | PA_STREAM_ADJUST_LATENCY | PA_STREAM_AUTO_TIMING_UPDATE);
 	int error_code = pa_stream_connect_record(pa_rec_str, dev, &attr, flags);
 	if (error_code < 0) {
 		ERR_PRINT("PulseAudio: pa_stream_connect_record error: " + String(pa_strerror(error_code)));
+		finish_input_device();
 		ERR_FAIL_V(ERR_CANT_OPEN);
 	}
 
-	input_buffer_init(input_buffer_frames);
+	input_buffer_init(input_buffer_frames * 4);
 
 	print_verbose("PulseAudio: detected " + itos(pa_rec_map.channels) + " input channels");
 	print_verbose("PulseAudio: input buffer frames: " + itos(input_buffer_frames) + " calculated latency: " + itos(input_buffer_frames * 1000 / mix_rate) + "ms");

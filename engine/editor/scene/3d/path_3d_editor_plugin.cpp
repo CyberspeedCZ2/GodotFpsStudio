@@ -43,6 +43,7 @@
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/debugger/view_3d_controller.h"
@@ -136,6 +137,10 @@ static Ref<ArrayMesh> _get_route_action_quad_mesh() {
 	}
 	return mesh;
 }
+
+#ifndef PHYSICS_3D_DISABLED
+#include "servers/physics_3d/direct_states/physics_direct_space_state_3d.h"
+#endif // PHYSICS_3D_DISABLED
 
 String Path3DGizmo::get_handle_name(int p_id, bool p_secondary) const {
 	Ref<Curve3D> c = path->get_curve();
@@ -240,10 +245,10 @@ void Path3DGizmo::set_handle(int p_id, bool p_secondary, Camera3D *p_camera, con
 		if (Path3DEditorPlugin::singleton->snap_to_collider) {
 			PhysicsDirectSpaceState3D *ss = p_camera->get_world_3d()->get_direct_space_state();
 
-			PhysicsDirectSpaceState3D::RayParameters ray_params;
+			PS3DT::RayParameters ray_params;
 			ray_params.from = ray_from;
 			ray_params.to = ray_from + ray_dir * p_camera->get_far();
-			PhysicsDirectSpaceState3D::RayResult result;
+			PS3DT::RayResult result;
 			if (ss->intersect_ray(ray_params, result)) {
 				Vector3 world_position = result.position;
 				Vector3 navmesh_position;
@@ -1236,6 +1241,7 @@ void Path3DEditorPlugin::edit(Object *p_object) {
 	if (path) {
 		path->disconnect("curve_changed", callable_mp(this, &Path3DEditorPlugin::_route_curve_changed));
 		path_3d_gizmo_plugin->clear_route_reachability(path->get_instance_id());
+		_edit.gizmo.unref();
 	}
 	pending_route_waypoint_drag = false;
 	pending_route_waypoint_ids.clear();
@@ -1437,6 +1443,7 @@ void Path3DEditorPlugin::_clear_curve_points() {
 		return;
 	}
 	Ref<Curve3D> curve = path->get_curve();
+	Node3DEditor::get_singleton()->clear_subgizmo_selection(path);
 	if (_is_fps_npc_route()) {
 		if (curve->get_point_count() == 0) {
 			curve->add_point(Vector3());
@@ -1848,12 +1855,12 @@ bool Path3DEditorPlugin::_npc_route_segment_hits_static_collision(const Ref<Curv
 	const real_t control_length = start.distance_to(control_start) + control_start.distance_to(control_finish) + control_finish.distance_to(finish);
 	const int sample_count = CLAMP(int(Math::ceil(control_length / 0.2)), 1, 512);
 	Ref<CapsuleShape3D> clearance_shape = _get_npc_route_clearance_shape();
-	PhysicsDirectSpaceState3D::ShapeResult results[32];
+	PhysicsServer3DTypes::ShapeResult results[32];
 	for (int sample = 0; sample <= sample_count; sample++) {
 		const real_t t = real_t(sample) / real_t(sample_count);
 		const real_t inverse_t = 1.0 - t;
 		const Vector3 centerline = start * (inverse_t * inverse_t * inverse_t) + control_start * (3.0 * inverse_t * inverse_t * t) + control_finish * (3.0 * inverse_t * t * t) + finish * (t * t * t);
-		PhysicsDirectSpaceState3D::ShapeParameters parameters;
+		PhysicsServer3DTypes::ShapeParameters parameters;
 		parameters.shape_rid = clearance_shape->get_rid();
 		parameters.transform.origin = centerline + Vector3(0.0, 1.05, 0.0);
 		parameters.margin = 0.05;
@@ -2231,8 +2238,8 @@ void Path3DEditorPlugin::_notification(int p_what) {
 				EditorUndoRedoManager *ur = EditorUndoRedoManager::get_singleton();
 				PhysicsDirectSpaceState3D *ss = get_tree()->get_root()->get_world_3d()->get_direct_space_state();
 				if (ss) {
-					PhysicsDirectSpaceState3D::RayParameters ray_params;
-					PhysicsDirectSpaceState3D::RayResult result;
+					PS3DT::RayParameters ray_params;
+					PS3DT::RayResult result;
 					ray_params.from = _edit.click_ray_pos;
 					ray_params.to = ray_params.from + _edit.click_ray_dir;
 					bool hit_something = false;
@@ -2374,6 +2381,7 @@ Path3DEditorPlugin::Path3DEditorPlugin() {
 	toolbar->add_child(curve_clear_points);
 
 	clear_points_dialog = memnew(ConfirmationDialog);
+	clear_points_dialog->set_flag(Window::FLAG_RESIZE_DISABLED, true);
 	clear_points_dialog->set_title(TTR("Please Confirm..."));
 	clear_points_dialog->set_text(TTR("Remove all curve points?"));
 	clear_points_dialog->connect(SceneStringName(confirmed), callable_mp(this, &Path3DEditorPlugin::_clear_points));

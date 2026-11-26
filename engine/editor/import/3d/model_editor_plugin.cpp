@@ -33,6 +33,7 @@
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
+#include "editor/fps_studio/fps_studio_workspace.h"
 #include "editor/import/3d/scene_import_settings.h"
 #include "scene/gui/control.h"
 
@@ -51,7 +52,7 @@ void ModelEditorPlugin::make_visible(bool p_visible) {
 ModelEditorPlugin::ModelEditorPlugin() {
 	model_screen = memnew(SceneImportSettingsScreen);
 	model_screen->set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	EditorNode::get_singleton()->get_editor_main_screen()->get_control()->add_child(model_screen);
+	FPSStudioWorkspace::add_workspace_dock(this, model_screen, "Model", SNAME("MeshInstance3D"));
 	model_screen->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	model_screen->hide();
 }

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENGINE="$ROOT/engine"
-TAG="4.7.2-stable"
+TAG="4.8-beta5"
 fail() {
     printf 'Build stopped: %s\n' "$1" >&2
     exit 1
@@ -46,6 +46,8 @@ if [[ -z "${VULKAN_SDK:-}" || ! -d "${VULKAN_SDK:-/nonexistent}" ]]; then
 fi
 
 cd "$ENGINE"
+# Upstream snapshot the fork is based on (version.py only says "beta").
+export GODOT_VERSION_STATUS="${GODOT_VERSION_STATUS:-beta5}"
 export CLANG_MODULE_CACHE_PATH="$ENGINE/bin/clang-module-cache"
 mkdir -p "$CLANG_MODULE_CACHE_PATH"
 printf 'Building Godot %s editor for macOS arm64...\n' "$TAG"
@@ -74,12 +76,18 @@ APP="$APP_STAGE/Godot FPS Studio.app"
 APP_CONTENTS="$APP/Contents"
 APP_BINARY="$APP_CONTENTS/MacOS/Godot"
 ditto "$ENGINE/misc/dist/macos_tools.app" "$APP"
+# Since Godot 4.8 the template carries per-architecture plists; this build is arm64 only.
+if [[ -f "$APP_CONTENTS/Info_arm64.plist" ]]; then
+    mv -f "$APP_CONTENTS/Info_arm64.plist" "$APP_CONTENTS/Info.plist"
+fi
+rm -f "$APP_CONTENTS/Info_x86_64.plist"
 mkdir -p "$APP_CONTENTS/MacOS" "$APP_CONTENTS/Resources"
 cp "$DEV_BINARY" "$APP_BINARY"
 cp "$UNIBUILDER_PACK" "$APP_CONTENTS/Resources/FPSStudioUnibuilder.pck"
 chmod +x "$APP_BINARY"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleName "Godot FPS Studio"' "$APP_CONTENTS/Info.plist"
-/usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string "Godot FPS Studio"' "$APP_CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string "Godot FPS Studio"' "$APP_CONTENTS/Info.plist" 2>/dev/null ||
+    /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName "Godot FPS Studio"' "$APP_CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c 'Set :CFBundleIdentifier org.godotengine.godotfpsstudio' "$APP_CONTENTS/Info.plist"
 xattr -cr "$APP"
 codesign --force --sign - --entitlements "$ENGINE/misc/dist/macos/editor.entitlements" "$APP"

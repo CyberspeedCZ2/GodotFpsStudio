@@ -1,6 +1,6 @@
 # Godot FPS Studio
 
-Godot FPS Studio is a source fork of Godot 4.7.2 with a native editor workspace for FPS level and asset authoring. It is built from the complete Godot engine source and currently targets a macOS Apple Silicon editor build.
+Godot FPS Studio is a source fork of Godot 4.8 beta 5 with a native editor workspace for FPS level and asset authoring. It is built from the complete Godot engine source and currently targets a macOS Apple Silicon editor build.
 
 ## Repository contents
 

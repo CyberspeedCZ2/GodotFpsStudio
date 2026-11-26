@@ -323,7 +323,7 @@ void EditorRunBar::_run_scene(const String &p_scene_path, const Vector<String> &
 
 		if (write_movie_file.is_empty()) {
 			// TODO: Provide options to directly resolve the issue with a custom dialog.
-			EditorNode::get_singleton()->show_accept(TTR("Movie Maker mode is enabled, but no movie file path has been specified.\nA default movie file path can be specified in the project settings under the Editor > Movie Writer category.\nAlternatively, for running single scenes, a `movie_file` string metadata can be added to the root node,\nspecifying the path to a movie file that will be used when recording that scene."), TTR("OK"));
+			EditorNode::get_singleton()->show_warning(TTR("Movie Maker mode is enabled, but no movie file path has been specified.\nA default movie file path can be specified in the project settings under the Editor > Movie Writer category.\nAlternatively, for running single scenes, a `movie_file` string metadata can be added to the root node,\nspecifying the path to a movie file that will be used when recording that scene."));
 			return;
 		}
 	}
@@ -344,7 +344,7 @@ void EditorRunBar::_run_scene(const String &p_scene_path, const Vector<String> &
 
 			Node *scene_root = get_tree()->get_edited_scene_root();
 			if (!scene_root) {
-				EditorNode::get_singleton()->show_accept(TTR("There is no defined scene to run."), TTR("OK"));
+				EditorNode::get_singleton()->show_warning(TTR("There is no defined scene to run."));
 				return;
 			}
 
@@ -384,7 +384,7 @@ void EditorRunBar::_run_scene(const String &p_scene_path, const Vector<String> &
 	if (error != OK) {
 		EditorDebuggerNode::get_singleton()->stop();
 		emit_signal(SNAME("stop_pressed"));
-		EditorNode::get_singleton()->show_accept(TTR("Could not start subprocess(es)!"), TTR("OK"));
+		EditorNode::get_singleton()->show_warning(TTR("Could not start subprocess(es)!"));
 		return;
 	}
 
@@ -403,6 +403,8 @@ void EditorRunBar::_run_native(const Ref<EditorExportPreset> &p_preset) {
 		if (!EditorNode::get_singleton()->call_build()) {
 			return; // Build failed.
 		}
+
+		is_native = true;
 
 		EditorDebuggerNode::get_singleton()->start(p_preset->get_platform()->get_debug_protocol());
 		emit_signal(SNAME("play_pressed"));
@@ -484,6 +486,8 @@ void EditorRunBar::stop_playing() {
 		return;
 	}
 
+	is_native = false;
+
 	current_mode = RunMode::STOPPED;
 	editor_run.stop();
 	EditorDebuggerNode::get_singleton()->stop();
@@ -513,6 +517,10 @@ String EditorRunBar::get_playing_scene() const {
 
 Error EditorRunBar::start_native_device(int p_device_id) const {
 	return run_native->start_run_native(p_device_id);
+}
+
+bool EditorRunBar::is_running_natively() const {
+	return is_native && is_playing();
 }
 
 ProcessID EditorRunBar::has_child_process(ProcessID p_pid) const {
@@ -651,7 +659,6 @@ EditorRunBar::EditorRunBar() {
 	run_target_button->set_theme_type_variation("RunBarButton");
 	run_target_button->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
 	run_target_button->set_tooltip_text(TTRC("Choose where the game runs."));
-	run_target_button->set_button_icon(get_editor_theme_icon(SNAME("GuiTabMenuHl")));
 	PopupMenu *run_target_popup = run_target_button->get_popup();
 	run_target_popup->add_radio_check_item(TTRC("Run in Level View"), RUN_IN_LEVEL_VIEW);
 	run_target_popup->add_radio_check_item(TTRC("Run in Separate Window"), RUN_IN_SEPARATE_WINDOW);

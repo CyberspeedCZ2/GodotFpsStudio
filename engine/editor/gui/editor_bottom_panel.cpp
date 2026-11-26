@@ -43,6 +43,7 @@
 #include "editor/gui/editor_toaster.h"
 #include "editor/gui/editor_version_button.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/scene/editor_scene_tabs.h"
 #include "editor/settings/editor_command_palette.h"
 #include "editor/settings/editor_settings.h"
@@ -346,6 +347,8 @@ EditorBottomPanel::EditorBottomPanel() :
 	set_tabs_position(TabPosition::POSITION_BOTTOM);
 	set_deselect_enabled(true);
 	set_theme_type_variation("BottomPanel");
+
+	add_margin_valid_drop(SIDE_BOTTOM, EditorDock::DOCK_SLOT_BOTTOM_L);
 
 	bottom_hbox = memnew(HBoxContainer);
 	bottom_hbox->set_mouse_filter(MOUSE_FILTER_IGNORE);

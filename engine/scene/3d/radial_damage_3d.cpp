@@ -86,12 +86,12 @@ void RadialDamage3D::apply_damage() {
 	PhysicsServer3D *physics = PhysicsServer3D::get_singleton();
 	const RID sphere = physics->sphere_shape_create();
 	physics->shape_set_data(sphere, radius);
-	PhysicsDirectSpaceState3D::ShapeParameters shape_query;
+	PhysicsServer3DTypes::ShapeParameters shape_query;
 	shape_query.shape_rid = sphere;
 	shape_query.transform = Transform3D(Basis(), origin);
 	shape_query.collision_mask = collision_mask;
 	shape_query.collide_with_areas = hit_areas;
-	PhysicsDirectSpaceState3D::ShapeResult results[MAX_SHAPE_RESULTS];
+	PhysicsServer3DTypes::ShapeResult results[MAX_SHAPE_RESULTS];
 	const int count = space->intersect_shape(shape_query, results, MAX_SHAPE_RESULTS);
 	physics->free_rid(sphere);
 
@@ -153,7 +153,7 @@ void RadialDamage3D::apply_damage() {
 		// Fully hidden takes nothing, partly hidden takes the visible share.
 		real_t exposure = 1.0;
 		if (use_cover) {
-			PhysicsDirectSpaceState3D::RayParameters ray;
+			PhysicsServer3DTypes::RayParameters ray;
 			ray.from = origin;
 			ray.collision_mask = obstacle_mask;
 			for (CollisionObject3D *body : bodies) {
@@ -168,7 +168,7 @@ void RadialDamage3D::apply_damage() {
 					point = center + (bounds.get_endpoint(s - 1) - center) * 0.8;
 				}
 				ray.to = point;
-				PhysicsDirectSpaceState3D::RayResult hit;
+				PhysicsServer3DTypes::RayResult hit;
 				if (!space->intersect_ray(ray, hit)) {
 					visible++;
 				}

@@ -57,11 +57,11 @@ void SplatterDecals3D::splatter_under(Node *p_parent, const Color &p_tint, real_
 	const Vector3 axis = origin.basis.xform(direction.is_zero_approx() ? Vector3(0, 1, 0) : direction.normalized()).normalized();
 	const Color color = Color(modulate.r * p_tint.r, modulate.g * p_tint.g, modulate.b * p_tint.b, modulate.a);
 	for (int i = 0; i < count; i++) {
-		PhysicsDirectSpaceState3D::RayParameters ray;
+		PhysicsServer3DTypes::RayParameters ray;
 		ray.from = origin.origin;
 		ray.to = origin.origin + random_in_cone(axis, spread) * max_distance * p_scale;
 		ray.collision_mask = collision_mask;
-		PhysicsDirectSpaceState3D::RayResult hit;
+		PhysicsServer3DTypes::RayResult hit;
 		if (!space->intersect_ray(ray, hit)) {
 			continue;
 		}

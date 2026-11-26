@@ -107,7 +107,7 @@ static Color _material_color(const ufbx_material_map &p_map) {
 		float r = float(p_map.value_vec4.x);
 		float g = float(p_map.value_vec4.y);
 		float b = float(p_map.value_vec4.z);
-		float a = float(p_map.value_vec4.z);
+		float a = float(p_map.value_vec4.w);
 		return Color(r, g, b, a);
 	}
 }
@@ -758,8 +758,7 @@ Error FBXDocument::_parse_meshes(Ref<FBXState> p_state) {
 				mesh_surface_tool->set_skin_weight_count(num_skin_weights == 8 ? SurfaceTool::SKIN_8_WEIGHTS : SurfaceTool::SKIN_4_WEIGHTS);
 				mesh_surface_tool->index();
 				if (generate_tangents) {
-					//must generate mikktspace tangents.. ergh..
-					mesh_surface_tool->generate_tangents();
+					mesh_surface_tool->generate_tangents(/*split*/ !use_blend_shapes);
 				}
 				array = mesh_surface_tool->commit_to_arrays();
 
@@ -828,8 +827,7 @@ Error FBXDocument::_parse_meshes(Ref<FBXState> p_state) {
 							blend_surface_tool->create_from_triangle_arrays(array_copy);
 							blend_surface_tool->set_skin_weight_count(num_skin_weights == 8 ? SurfaceTool::SKIN_8_WEIGHTS : SurfaceTool::SKIN_4_WEIGHTS);
 							if (generate_tangents) {
-								//must generate mikktspace tangents.. ergh..
-								blend_surface_tool->generate_tangents();
+								blend_surface_tool->generate_tangents(/*split*/ false);
 							}
 							array_copy = blend_surface_tool->commit_to_arrays();
 
@@ -930,7 +928,7 @@ Ref<Image> FBXDocument::_parse_image_bytes_into_image(Ref<FBXState> p_state, con
 		r_image->load_jpg_from_buffer(p_bytes);
 	}
 	if (r_image->is_empty()) { // And then TGA.
-		r_image->load_jpg_from_buffer(p_bytes);
+		r_image->load_tga_from_buffer(p_bytes);
 	}
 	// If it still can't be loaded, give up and insert an empty image as placeholder.
 	if (r_image->is_empty()) {
@@ -1048,7 +1046,7 @@ GLTFImageIndex FBXDocument::_parse_image_save_image(Ref<FBXState> p_state, const
 	return p_state->images.size() - 1;
 }
 
-Error FBXDocument::_parse_images(Ref<FBXState> p_state, const String &p_base_path) {
+Error FBXDocument::_parse_images(Ref<FBXState> p_state) {
 	ERR_FAIL_COND_V(p_state.is_null(), ERR_INVALID_PARAMETER);
 	p_state->source_texture_paths.clear();
 	p_state->missing_texture_paths.clear();
@@ -1061,8 +1059,8 @@ Error FBXDocument::_parse_images(Ref<FBXState> p_state, const String &p_base_pat
 		if (path.is_absolute_path()) {
 			path = path.get_file();
 		}
-		if (!p_base_path.is_empty()) {
-			path = p_base_path.path_join(path);
+		if (!p_state->base_path.is_empty()) {
+			path = p_state->base_path.path_join(path);
 		}
 		path = path.simplify_path();
 		String resolved_texture_path = _get_texture_path(p_state->get_base_path(), path);
@@ -1166,7 +1164,6 @@ Error FBXDocument::_parse_materials(Ref<FBXState> p_state) {
 			material->set_name(vformat("material_%s", itos(material_i)));
 		}
 		material->set_flag(BaseMaterial3D::FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
-		Dictionary material_extensions;
 
 		if (fbx_material->pbr.base_color.has_value) {
 			Color albedo = _material_color(fbx_material->pbr.base_color, fbx_material->pbr.base_factor);
@@ -2043,7 +2040,7 @@ void FBXDocument::_process_mesh_instances(Ref<FBXState> p_state, Node *p_scene_r
 	}
 }
 
-Error FBXDocument::_parse(Ref<FBXState> p_state, const String &p_path, Ref<FileAccess> p_file) {
+Error FBXDocument::_parse(Ref<FBXState> p_state, Ref<FileAccess> p_file) {
 	p_state->scene.reset();
 
 	Error err = ERR_INVALID_DATA;
@@ -2134,7 +2131,7 @@ Error FBXDocument::_parse(Ref<FBXState> p_state, const String &p_path, Ref<FileA
 		}
 	}
 
-	err = _parse_fbx_state(p_state, p_path);
+	err = _parse_fbx_state(p_state);
 	ERR_FAIL_COND_V(err != OK, err);
 
 	return OK;
@@ -2198,7 +2195,7 @@ Error FBXDocument::append_from_buffer(const PackedByteArray &p_bytes, const Stri
 	file_access.instantiate();
 	file_access->open_custom(p_bytes.ptr(), p_bytes.size());
 	state->base_path = p_base_path.get_base_dir();
-	err = _parse(state, state->base_path, file_access);
+	err = _parse(state, file_access);
 	ERR_FAIL_COND_V(err != OK, err);
 	for (Ref<GLTFDocumentExtension> ext : document_extensions) {
 		ERR_CONTINUE(ext.is_null());
@@ -2208,7 +2205,7 @@ Error FBXDocument::append_from_buffer(const PackedByteArray &p_bytes, const Stri
 	return OK;
 }
 
-Error FBXDocument::_parse_fbx_state(Ref<FBXState> p_state, const String &p_search_path) {
+Error FBXDocument::_parse_fbx_state(Ref<FBXState> p_state) {
 	Error err;
 
 	// Abort parsing if the scene is not loaded.
@@ -2224,7 +2221,7 @@ Error FBXDocument::_parse_fbx_state(Ref<FBXState> p_state, const String &p_searc
 
 	if (!p_state->discard_meshes_and_materials) {
 		/* PARSE IMAGES */
-		err = _parse_images(p_state, p_search_path);
+		err = _parse_images(p_state);
 
 		ERR_FAIL_COND_V(err != OK, ERR_PARSE_ERROR);
 
@@ -2288,7 +2285,7 @@ Error FBXDocument::append_from_file(const String &p_path, Ref<GLTFState> p_state
 	if (p_state == Ref<FBXState>()) {
 		p_state.instantiate();
 	}
-	state->filename = p_path.get_file().get_basename();
+	state->filename = p_path.get_file();
 	state->use_named_skin_binds = p_flags & GLTFDocument::ImportFlags::IMPORT_FLAG_USE_NAMED_SKIN_BINDS;
 	state->discard_meshes_and_materials = p_flags & GLTFDocument::ImportFlags::IMPORT_FLAG_DISCARD_MESHES_AND_MATERIALS;
 	Error err;
@@ -2300,7 +2297,7 @@ Error FBXDocument::append_from_file(const String &p_path, Ref<GLTFState> p_state
 		base_path = p_path.get_base_dir();
 	}
 	state->base_path = base_path;
-	err = _parse(p_state, base_path, file);
+	err = _parse(p_state, file);
 	ERR_FAIL_COND_V(err != OK, err);
 	for (Ref<GLTFDocumentExtension> ext : document_extensions) {
 		ERR_CONTINUE(ext.is_null());

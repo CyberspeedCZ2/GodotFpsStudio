@@ -10,7 +10,7 @@
 #include "core/config/engine.h"
 #include "core/object/class_db.h"
 #include "scene/3d/audio_stream_player_3d.h"
-#include "servers/audio/audio_stream.h"
+#include "scene/resources/audio/audio_stream.h"
 #include "scene/3d/camera_shake_3d.h"
 #include "scene/3d/radial_damage_3d.h"
 #include "scene/3d/cpu_particles_3d.h"
@@ -1828,13 +1828,13 @@ void ParticleEffect3D::_update_level_collision() {
 	PhysicsServer3D *physics = PhysicsServer3D::get_singleton();
 	const RID box = physics->box_shape_create();
 	physics->shape_set_data(box, region.size * 0.5);
-	PhysicsDirectSpaceState3D::ShapeParameters query;
+	PhysicsServer3DTypes::ShapeParameters query;
 	query.shape_rid = box;
 	query.transform = Transform3D(Basis(), region.get_center());
 	query.collision_mask = level_collision_mask;
 	query.collide_with_areas = false;
 	static const int MAX_RESULTS = 256;
-	PhysicsDirectSpaceState3D::ShapeResult results[MAX_RESULTS];
+	PhysicsServer3DTypes::ShapeResult results[MAX_RESULTS];
 	const int count = space->intersect_shape(query, results, MAX_RESULTS);
 	physics->free_rid(box);
 

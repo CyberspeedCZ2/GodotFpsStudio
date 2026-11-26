@@ -780,6 +780,12 @@ msgstr "Nhóm công nhân"
 msgid "Low Priority Thread Ratio"
 msgstr "Tỷ lệ luồng ưu tiên thấp"
 
+msgid "Target"
+msgstr "Mục tiêu"
+
+msgid "Subject"
+msgstr "Chủ đề"
+
 msgid "Locale"
 msgstr "Vùng vị trí"
 
@@ -863,12 +869,6 @@ msgstr "Tiện ích"
 
 msgid "Increased Memory Limit"
 msgstr "Tăng giới hạn bộ nhớ"
-
-msgid "Performance Gaming Tier"
-msgstr "Hiệu suất chơi game Cấp độ"
-
-msgid "Performance A 12"
-msgstr "Hiệu suất A 12"
 
 msgid "Enabled"
 msgstr "Bật"
@@ -1050,14 +1050,14 @@ msgstr "Giới hạn"
 msgid "Layout"
 msgstr "Bố cục"
 
-msgid "Fix Alpha Border"
-msgstr "Sửa đường viền Alpha"
-
 msgid "Normal Map"
 msgstr "Bản đồ chuẩn"
 
 msgid "Roughness"
 msgstr "Độ nhám"
+
+msgid "Fix Alpha Border"
+msgstr "Sửa đường viền Alpha"
 
 msgid "HDR as sRGB"
 msgstr "HDR dưới dạng sRGB"
@@ -1118,15 +1118,6 @@ msgstr "Xuất ra"
 
 msgid "Version Control"
 msgstr "Theo dõi phiên bản"
-
-msgid "ID"
-msgstr "ID"
-
-msgid "Alternative ID"
-msgstr "ID thay thế"
-
-msgid "Speed"
-msgstr "Tốc độ"
 
 msgid "Editors"
 msgstr "Trình chỉnh sửa"
@@ -1215,11 +1206,11 @@ msgstr "Nhập tài nguyên khi không tập trung"
 msgid "Update Continuously"
 msgstr "Cập nhật Liên tục"
 
-msgid "Derive Script Globals by Name"
-msgstr "Dẫn xuất toàn cục tập lệnh theo tên"
-
 msgid "Scene Tree"
 msgstr "Cây chứa cảnh"
+
+msgid "Derive Script Globals by Name"
+msgstr "Dẫn xuất toàn cục tập lệnh theo tên"
 
 msgid "Inspector"
 msgstr "Quan Sát Viên"
@@ -2121,8 +2112,53 @@ msgstr "Độ mạnh va chạm"
 msgid "Next"
 msgstr "Tiếp theo"
 
-msgid "Subject"
-msgstr "Chủ đề"
+msgid "ID"
+msgstr "ID"
+
+msgid "Alternative ID"
+msgstr "ID thay thế"
+
+msgid "Speed"
+msgstr "Tốc độ"
+
+msgid "X Draw Order Reversed"
+msgstr "Thứ tự vẽ X bị đảo ngược"
+
+msgid "Use Kinematic Bodies"
+msgstr "Sử dụng Vật thể động học"
+
+msgid "Terrains"
+msgstr "Địa hình"
+
+msgid "UV Clipping"
+msgstr "Cắt UV"
+
+msgid "Points"
+msgstr "Các Điểm"
+
+msgid "One Way"
+msgstr "Một chiều"
+
+msgid "Flip H"
+msgstr "Hiện tại"
+
+msgid "Flip V"
+msgstr "Âm lượng dB"
+
+msgid "Transpose"
+msgstr "Chuyển vị"
+
+msgid "Z Index"
+msgstr "Chỉ số Z"
+
+msgid "Terrain"
+msgstr "Địa hình"
+
+msgid "Miscellaneous"
+msgstr "Khác"
+
+msgid "Probability"
+msgstr "Xác suất"
 
 msgid "Discover Multicast If"
 msgstr "Khám phá đa hướng nếu"
@@ -2243,6 +2279,12 @@ msgstr "Họ thiết bị mục tiêu"
 
 msgid "Storyboard"
 msgstr "Storyboard"
+
+msgid "Performance Gaming Tier"
+msgstr "Hiệu suất chơi game Cấp độ"
+
+msgid "Performance A 12"
+msgstr "Hiệu suất A 12"
 
 msgid "Spotlight 80 X 80"
 msgstr "Spotlight 80 X 80"
@@ -2388,12 +2430,6 @@ msgstr "D3D12 Agility SDK Multiarch"
 msgid "D3D12 Agility SDK Multiarch"
 msgstr "Khung"
 
-msgid "Flip H"
-msgstr "Hiện tại"
-
-msgid "Flip V"
-msgstr "Âm lượng dB"
-
 msgid "Stream Paused"
 msgstr "Độ suy giảm"
 
@@ -2441,9 +2477,6 @@ msgstr "Hình dạng"
 
 msgid "Rect Extents"
 msgstr "Căn chỉnh Y"
-
-msgid "Points"
-msgstr "Các Điểm"
 
 msgid "Colors"
 msgstr "Màu"
@@ -2657,12 +2690,6 @@ msgstr "Hframes"
 
 msgid "Vframes"
 msgstr "Vframes"
-
-msgid "X Draw Order Reversed"
-msgstr "Thứ tự vẽ X bị đảo ngược"
-
-msgid "Use Kinematic Bodies"
-msgstr "Sử dụng Vật thể động học"
 
 msgid "Unit Size"
 msgstr "Kích thước đơn vị"
@@ -2886,9 +2913,6 @@ msgstr "Mạng lưới Ngưỡng LOD"
 msgid "Deprecated"
 msgstr "Đã lỗi thời"
 
-msgid "Target"
-msgstr "Mục tiêu"
-
 msgid "Use Magnet"
 msgstr "Sử dụng Nam châm"
 
@@ -2897,6 +2921,9 @@ msgstr "Nam châm"
 
 msgid "Influence"
 msgstr "Ảnh hưởng"
+
+msgid "Max Length"
+msgstr "Độ dài tối đa"
 
 msgid "Custom AABB"
 msgstr "AABB tùy chỉnh"
@@ -3057,9 +3084,6 @@ msgstr "Số dòng tối đa có thể nhìn thấy"
 msgid "Placeholder Text"
 msgstr "Văn bản giữ chỗ"
 
-msgid "Max Length"
-msgstr "Độ dài tối đa"
-
 msgid "Context Menu Enabled"
 msgstr "Menu ngữ cảnh được bật"
 
@@ -3132,6 +3156,9 @@ msgstr "Vùng chết cuộn mặc định"
 msgid "Scrollable"
 msgstr "Có thể cuộn"
 
+msgid "Format"
+msgstr "Định dạng"
+
 msgid "Dragger Visibility"
 msgstr "Khả năng hiển thị của trình kéo"
 
@@ -3194,9 +3221,6 @@ msgstr "Tạm dừng"
 
 msgid "Show Behind Parent"
 msgstr "Hiển thị phía sau phần cha"
-
-msgid "Z Index"
-msgstr "Chỉ số Z"
 
 msgid "Use Parent Material"
 msgstr "Sử dụng vật liệu phần cha"
@@ -3327,27 +3351,6 @@ msgstr "Độ dài chuỗi dữ liệu FABRIK"
 msgid "Jiggle Data Chain Length"
 msgstr "Độ dài chuỗi dữ liệu Jiggle"
 
-msgid "Terrains"
-msgstr "Địa hình"
-
-msgid "UV Clipping"
-msgstr "Cắt UV"
-
-msgid "One Way"
-msgstr "Một chiều"
-
-msgid "Transpose"
-msgstr "Chuyển vị"
-
-msgid "Terrain"
-msgstr "Địa hình"
-
-msgid "Miscellaneous"
-msgstr "Khác"
-
-msgid "Probability"
-msgstr "Xác suất"
-
 msgid "Density"
 msgstr "Mật độ"
 
@@ -3356,9 +3359,6 @@ msgstr "Mờ dần cạnh"
 
 msgid "Map Width"
 msgstr "Chiều rộng bản đồ"
-
-msgid "Item"
-msgstr "Mục"
 
 msgid "Subdivide Width"
 msgstr "Chiều rộng chia nhỏ"
@@ -3402,8 +3402,11 @@ msgstr "Độ đục"
 msgid "Fallback Environment"
 msgstr "Môi trường dự phòng"
 
-msgid "Format"
-msgstr "Định dạng"
+msgid "Buffer Length"
+msgstr "Độ dài bộ đệm"
+
+msgid "Random Volume Offset dB"
+msgstr "Độ lệch âm lượng ngẫu nhiên dB"
 
 msgid "Stereo"
 msgstr "Âm thanh nổi"
@@ -3819,12 +3822,6 @@ msgstr "Kênh Disable Threshold dB"
 msgid "Video Delay Compensation (ms)"
 msgstr "Video Delay Compensation (ms)"
 
-msgid "Random Volume Offset dB"
-msgstr "Độ lệch âm lượng ngẫu nhiên dB"
-
-msgid "Buffer Length"
-msgstr "Độ dài bộ đệm"
-
 msgid "Voice Count"
 msgstr "Số lượng giọng nói"
 
@@ -3936,9 +3933,6 @@ msgstr "Khối lượng nghịch đảo"
 msgid "Total Angular Damp"
 msgstr "Độ ẩm góc tổng"
 
-msgid "Shape RID"
-msgstr "RID hình dạng"
-
 msgid "Sleep Threshold Linear"
 msgstr "Ngưỡng ngủ tuyến tính"
 
@@ -3950,6 +3944,9 @@ msgstr "Thời gian trước khi ngủ"
 
 msgid "Contact Max Allowed Penetration"
 msgstr "Độ xuyên thấu được phép tối đa tiếp xúc"
+
+msgid "Shape RID"
+msgstr "RID hình dạng"
 
 msgid "Principal Inertia Axes"
 msgstr "Trục quán tính chính"

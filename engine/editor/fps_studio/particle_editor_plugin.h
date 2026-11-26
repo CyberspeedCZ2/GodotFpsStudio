@@ -69,7 +69,7 @@ class TextureRect;
 class VisualShader;
 class VisualShaderEditor;
 class WindowWrapper;
-class TextShaderEditor;
+class ShaderTextEditor;
 class Shader;
 class VBoxContainer;
 class Image;
@@ -229,7 +229,7 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	Label *particle_logic_status = nullptr;
 	Label *particle_logic_hint = nullptr;
 	VisualShaderEditor *particle_graph_editor = nullptr;
-	TextShaderEditor *particle_code_editor = nullptr;
+	ShaderTextEditor *particle_code_editor = nullptr;
 	Button *play_button = nullptr;
 	Button *restart_button = nullptr;
 	HSlider *timeline = nullptr;

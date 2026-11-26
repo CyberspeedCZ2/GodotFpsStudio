@@ -36,6 +36,7 @@
 #include "scene/gui/box_container.h"
 
 class EditorMainScreen;
+class EditorPlugin;
 class EditorBottomPanel;
 class ConfigFile;
 class EditorData;
@@ -72,8 +73,13 @@ private:
 protected:
 	static void _bind_methods();
 	static void _apply_tooltip_setting();
+	static void _workspace_dock_visibility_changed(ObjectID p_dock, ObjectID p_plugin);
 
 public:
+	// Since Godot 4.8 a workspace (main screen) is a dock in the main screen slot.
+	// Wraps the screen of a main screen plugin in such a dock; the plugin keeps
+	// getting EditorPlugin::make_visible() when its tab is shown or hidden.
+	static EditorDock *add_workspace_dock(EditorPlugin *p_plugin, Control *p_screen, const String &p_title, const StringName &p_icon_name);
 	void configure_dock_manager(EditorDockManager *p_dock_manager);
 	void build_central_editor_area();
 	EditorBottomPanel *create_bottom_panel(EditorDockManager *p_dock_manager);

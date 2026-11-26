@@ -566,6 +566,9 @@ msgstr "কালার পিকার: প্রিসেট ডিলিট �
 msgid "Accessibility: Keyboard Drag and Drop"
 msgstr "অ্যাক্সেসিবিলিটি: কীবোর্ড ড্র্যাগ আর ড্রপ"
 
+msgid "Toggle Fullscreen"
+msgstr "পূর্ণ-পর্দা অদলবদল/টগল করুন"
+
 msgid "Invalid input %d (not passed) in expression"
 msgstr "অবৈধ ইনপুট %d(পাস করেনি) expression এ"
 
@@ -763,8 +766,8 @@ msgstr "সাইক্লিক লেন্থ"
 msgid "Blend"
 msgstr "ব্লেন্ড"
 
-msgid "Open Editor"
-msgstr "এডিটার খুলুন"
+msgid "Open"
+msgstr "খুলুন"
 
 msgid "Index"
 msgstr "ইনডেক্স"
@@ -781,9 +784,6 @@ msgstr ""
 
 msgid "Position"
 msgstr "অবস্থান"
-
-msgid "Blend Value"
-msgstr "ব্লেন্ড ভ্যালু"
 
 msgid "Min"
 msgstr "সর্বনিম্ন"
@@ -1205,12 +1205,6 @@ msgstr "\"Start\"-এ ট্রানজিশন করা সম্ভব ন�
 
 msgid "Cannot transition from \"End\"!"
 msgstr "\"End\"-এ ট্রানজিশন করা সম্ভব নয়!"
-
-msgid "Play/Travel to %s"
-msgstr "%s-এ প্লে/ট্রাভেল যান"
-
-msgid "Edit %s"
-msgstr "সম্পাদন করুন (Edit) %s"
 
 msgid "Immediate"
 msgstr "তাৎক্ষণিক"
@@ -1636,19 +1630,6 @@ msgstr "সরলরৈখিকভাবে অ্যানিমেশনে�
 msgid "Create Node"
 msgstr "নোড তৈরি করুন"
 
-msgid ""
-"Some AnimationPlayerEditor's options are disabled since this is the dummy "
-"AnimationPlayer for preview.\n"
-"\n"
-"The dummy player is forced active, non-deterministic and doesn't have the "
-"root motion track. Furthermore, the original node is inactive temporary."
-msgstr ""
-"AnimationPlayerEditor-এর কিছু বিকল্প নিষ্ক্রিয় করা আছে, কারণ এটি প্রিভিউয়ের জন্য "
-"একটি ডামি AnimationPlayer।\n"
-"\n"
-"ডামি প্লেয়ারটিকে জোর করে সক্রিয় করা হয়, এটি অনির্দিষ্ট এবং এর কোনো রুট মোশন ট্র্যাক "
-"নেই। উপরন্তু, মূল নোডটি সাময়িকভাবে নিষ্ক্রিয় আছে।"
-
 msgid "AnimationPlayer is inactive. The playback will not be processed."
 msgstr "AnimationPlayer নিষ্ক্রিয়। প্লেব্যাক প্রক্রিয়া সম্পন্ন হবে না।"
 
@@ -1977,6 +1958,9 @@ msgstr "\"%s\"-এর জন্য কোনো ফলাফল নেই।"
 msgid "No results compatible with %s %s."
 msgstr "%s %s-এর সাথে সামঞ্জস্যপূর্ণ কোনো ফলাফল নেই।"
 
+msgid "Asset Store"
+msgstr "অ্যাসেট স্টোর"
+
 msgid "Search templates. Use tags by including \"#tagname\"."
 msgstr "টেমপ্লেট খুঁজুন। \"#tagname\" লিখে ট্যাগ ব্যবহার করুন।"
 
@@ -1997,9 +1981,6 @@ msgstr "লাইসেন্স"
 
 msgid "Assets ZIP File"
 msgstr "প্রয়োজনীয় উপকরণসমূহের ZIP ফাইল"
-
-msgid "Asset Store"
-msgstr "অ্যাসেট স্টোর"
 
 msgid "Error opening asset file for \"%s\" (not in ZIP format)."
 msgstr "অ্যাসেট ফাইল \"%s\" এর জন্য খোলা সম্ভব হয় নি (ZIP ফরম্যাটে নেই)।"
@@ -2154,26 +2135,11 @@ msgstr "ফাইল সংরক্ষণে সমস্যা: %s"
 msgid "Layout:"
 msgstr "লেআউট/নকশা সংরক্ষণ করুন:"
 
+msgid "Save As..."
+msgstr "এইরূপে সংরক্ষণ করুন..."
+
 msgid "Add Bus"
 msgstr "বাস যোগ করুন"
-
-msgid "Load"
-msgstr "লোড"
-
-msgid "Load an existing Bus Layout."
-msgstr "বাস লেআউট লোড করুন।"
-
-msgid "Save this Bus Layout to a file."
-msgstr "বাস লেআউট ফাইল হিসেবে সেভ করুন।"
-
-msgid "Load Default"
-msgstr "লোড ডিফল্ট"
-
-msgid "Load the default Bus Layout."
-msgstr "ডিফল্ট বাস লেআউট লোড করুন।"
-
-msgid "Create a new Bus Layout."
-msgstr "নতুন বাস লেআউট তৈরি করুন।"
 
 msgid "Step Into"
 msgstr "পদার্পণ করুন"
@@ -2189,19 +2155,6 @@ msgstr "সচল"
 
 msgid "Deploy with Remote Debug"
 msgstr "দূরবর্তী ডিবাগের সহিত ডিপ্লয় করুন"
-
-msgid ""
-"When this option is enabled, using one-click deploy will make the executable "
-"attempt to connect to this computer's IP so the running project can be "
-"debugged.\n"
-"This option is intended to be used for remote debugging (typically with a "
-"mobile device).\n"
-"You don't need to enable it to use the GDScript debugger locally."
-msgstr ""
-"এই বিকল্পটি চালু করা থাকলে, ওয়ান-ক্লিক ডিপ্লয় ব্যবহার করলে এক্সিকিউটেবলটি এই "
-"কম্পিউটারের IP-তে সংযোগ করার চেষ্টা করবে, যাতে চলমান প্রজেক্টটি ডিবাগ করা যাবে।\n"
-"এই অপশনটি রিমোট ডিবাগিং (সাধারণত মোবাইল ডিভাইসের মাধ্যমে) এর উদ্দেশ্যে তৈরি।\n"
-"স্থানীয়ভাবে GDScript ডিবাগার ব্যবহার করার জন্য এটি চালু করার প্রয়োজন নেই।"
 
 msgid "Visible Collision Shapes"
 msgstr "দৃশ্যমান সাংঘর্ষিক আকারসমূহ (Collision Shapes)"
@@ -2470,9 +2423,6 @@ msgstr ""
 msgid "No description available."
 msgstr "বর্ণনা নেই।"
 
-msgid "Open"
-msgstr "খুলুন"
-
 msgid "Class"
 msgstr "ক্লাস"
 
@@ -2602,18 +2552,6 @@ msgstr "চালান"
 msgid "Edit Dependencies..."
 msgstr "নির্ভরতাসমূহ সম্পাদন করুন..."
 
-msgid "Folder..."
-msgstr "ফোল্ডার…"
-
-msgid "Scene..."
-msgstr "দৃশ্য…"
-
-msgid "Script..."
-msgstr "স্ক্রিপ্ট…"
-
-msgid "TextFile..."
-msgstr "টেক্সটফাইল…"
-
 msgid "Set Folder Color..."
 msgstr "ফোল্ডারের রঙ সেট করুন..।"
 
@@ -2626,14 +2564,26 @@ msgstr "ফেভারিটে যোগ করুন"
 msgid "New Folder..."
 msgstr "নতুন ফোল্ডার…"
 
+msgid "Folder..."
+msgstr "ফোল্ডার…"
+
 msgid "New Scene..."
 msgstr "নতুন দৃশ্য…"
+
+msgid "Scene..."
+msgstr "দৃশ্য…"
 
 msgid "New Script..."
 msgstr "নতুন স্ক্রিপ্ট…"
 
+msgid "Script..."
+msgstr "স্ক্রিপ্ট…"
+
 msgid "New TextFile..."
 msgstr "নতুন টেক্সটফাইল…"
+
+msgid "TextFile..."
+msgstr "টেক্সটফাইল…"
 
 msgid "Copy Path"
 msgstr "পথ প্রতিলিপি/কপি করুন"
@@ -2702,6 +2652,9 @@ msgstr "সাধারণ/ডিফল্ট"
 msgid "Set as Default for '%s'"
 msgstr "'%s' এর জন্য ডিফল্ট হিসাবে সেট করুন"
 
+msgid "Load Default"
+msgstr "লোড ডিফল্ট"
+
 msgid "Clear Default for '%s'"
 msgstr "'%s' এর জন্য ডিফল্ট ক্লিয়ার করুন"
 
@@ -2741,17 +2694,14 @@ msgstr "বৈশিষ্ট্যগুলি পেস্ট করুন"
 msgid "Inspector"
 msgstr "পরিদর্শক/পরীক্ষক"
 
-msgid "Create a new resource in memory and edit it."
-msgstr "মেমোরিতে নতুন একটি রিসোর্স তৈরি করুন এবং সম্পাদন করুন।"
-
-msgid "Load an existing resource from disk and edit it."
-msgstr "ডিস্ক হতে একটি বিদ্যমান রিসোর্স লোড করুন এবং সম্পাদন করুন।"
-
 msgid "Save the currently edited resource."
 msgstr "এই-মুহূর্তে সম্পাদিত রিসোর্সটি সংরক্ষণ করুন।"
 
-msgid "Save As..."
-msgstr "এইরূপে সংরক্ষণ করুন..."
+msgid "Create a new resource in memory and edit it."
+msgstr "মেমোরিতে নতুন একটি রিসোর্স তৈরি করুন এবং সম্পাদন করুন।"
+
+msgid "Save Resource As..."
+msgstr "রিসোর্স এইরূপে সংরক্ষণ করুন..."
 
 msgid "Edit Resource from Clipboard"
 msgstr "ক্লিপবোর্ড থেকে সম্পদ সম্পাদনা করুন"
@@ -2759,24 +2709,11 @@ msgstr "ক্লিপবোর্ড থেকে সম্পদ সম্প
 msgid "Copy Resource"
 msgstr "রিসোর্স প্রতিলিপি/কপি করুন"
 
-msgid "History of recently edited objects."
-msgstr "সাম্প্রতিক সময়ে সম্পাদিত বস্তুর স্মৃতি।"
-
 msgid "Open Documentation"
 msgstr "ডকুমেন্টেশন খুলুন"
 
 msgid "Error loading scene from %s"
 msgstr "%s হতে দৃশ্য লোড করতে সমস্যা হয়েছে"
-
-msgid "Instantiate Scene"
-msgid_plural "Instantiate Scenes"
-msgstr[0] "দৃশ্য ইন্সট্যান্স করুন"
-msgstr[1] "দৃশ্যসমূহ ইন্সট্যান্স করুন"
-
-msgid "Create AudioStreamPlayer"
-msgid_plural "Create AudioStreamPlayers"
-msgstr[0] "অডিওস্ট্রিমপ্লেয়ার তৈরী করুন"
-msgstr[1] "অডিওস্ট্রিমপ্লেয়ারগুলি তৈরী করুন"
 
 msgid "This operation can't be done on the tree root."
 msgstr "শাখার মূলে এটি করা সম্ভব হবে না।"
@@ -2798,9 +2735,6 @@ msgstr "রুট নোড \"%s\" মুছবেন?"
 
 msgid "Delete node \"%s\"?"
 msgstr "নোড \"%s\" মুছবেন?"
-
-msgid "Save New Scene As..."
-msgstr "নতুন দৃশ্য এইরূপে সংরক্ষণ করুন..."
 
 msgid "Make Local"
 msgstr "স্থানীয় করুন"
@@ -2935,6 +2869,9 @@ msgstr "একটি নতুন নোড যোগ/তৈরি করুন�
 msgid "Delete Related Animation Tracks"
 msgstr "সম্পর্কিত অ্যানিমেশন ট্র্যাক মুছুন"
 
+msgid "Save New Scene As..."
+msgstr "নতুন দৃশ্য এইরূপে সংরক্ষণ করুন..."
+
 msgid "Clear Inheritance? (No Undo!)"
 msgstr "উত্তরাধিকারত্ব পরিস্কার করবেন? (ফেরৎ পাবেন না!)"
 
@@ -2979,9 +2916,6 @@ msgstr "নামহীন প্রকল্প"
 
 msgid "Spins when the editor window redraws."
 msgstr "এডিটরের পুন-অঙ্কনে এটি ঘূর্ণন করে।"
-
-msgid "Save Resource As..."
-msgstr "রিসোর্স এইরূপে সংরক্ষণ করুন..."
 
 msgid "Error while saving."
 msgstr "সংরক্ষণে সময় সমস্যা হয়েছে।"
@@ -3215,9 +3149,6 @@ msgstr "কমান্ড প্যালেট…"
 msgid "Take Screenshot"
 msgstr "স্ক্রিনশট নিন"
 
-msgid "Toggle Fullscreen"
-msgstr "পূর্ণ-পর্দা অদলবদল/টগল করুন"
-
 msgid "Search Help..."
 msgstr "সাহায্য অনুসন্ধান করুন…"
 
@@ -3331,6 +3262,9 @@ msgstr "\"%s\" থেকে \"%s\" পাথে একটি ফাইল কপ
 
 msgid "Failed to create a file at path \"%s\" with code %d."
 msgstr "\"%s\" পাথে একটি ফাইল তৈরি করতে ব্যর্থ হয়েছে %d কোড সহ।"
+
+msgid "Could not open a directory at path \"%s\"."
+msgstr "\"%s\" পাথে একটি ডিরেক্টরি খোলা যায়নি।"
 
 msgid "Select device from the list"
 msgstr "লিস্ট থেকে ডিভাইস সিলেক্ট করুন"
@@ -3628,6 +3562,9 @@ msgstr "টার্গেট ডিরেক্টরি নির্বাচ�
 msgid "Move"
 msgstr "সরান"
 
+msgid "Type: %s"
+msgstr "প্রকার: %s"
+
 msgid "No notifications."
 msgstr "কোনো নোটিফিকেশন নেই।"
 
@@ -3691,9 +3628,6 @@ msgstr "অডিও স্ট্রিম আমদানিকারক: %s"
 msgid "Enable"
 msgstr "সক্রিয় করুন"
 
-msgid "Enable looping."
-msgstr "লুপিং সক্ষম করুন।"
-
 msgid "Offset:"
 msgstr "অফসেট/ভারসাম্য:"
 
@@ -3702,9 +3636,6 @@ msgstr "লুপ:"
 
 msgid "Beat Count:"
 msgstr "বিট সংখ্যা:"
-
-msgid "Music Playback:"
-msgstr "সঙ্গীত প্লেব্যাক:"
 
 msgid "Preview:"
 msgstr "প্রিভিউ:"
@@ -3809,9 +3740,6 @@ msgstr "নতুন শেডার…"
 
 msgid "Size: %s"
 msgstr "আকার: %s"
-
-msgid "Type: %s"
-msgstr "প্রকার: %s"
 
 msgid "Set %s on %d nodes"
 msgstr "%s সেট করুন %d নোডে"
@@ -4118,99 +4046,6 @@ msgstr "সরলীকরণ:"
 msgid "Settings:"
 msgstr "সেটিংস:"
 
-msgid "Grid Snap"
-msgstr "গ্রিড স্ন্যাপ"
-
-msgid "Painting Tiles Property"
-msgstr "পেন্টিং টাইলস সম্পত্তি"
-
-msgid "Painting:"
-msgstr "পেইন্টিং:"
-
-msgid "Polygon %d"
-msgstr "পলিগন %d"
-
-msgid "Shift: Draw line."
-msgstr "Shift: লাইন আঁকুন।"
-
-msgid "Index: %d"
-msgstr "সূচক: %d"
-
-msgid "Place Random Tile"
-msgstr "দৈব টাইল বসান"
-
-msgid "Invalid source selected."
-msgstr "অকার্যকর উৎস নির্বাচিত।"
-
-msgid "Matches Corners Only"
-msgstr "শুধুমাত্র কোণে মেলান"
-
-msgid "Matches Sides Only"
-msgstr "শুধুমাত্র সাইড মেলান"
-
-msgid "Toggle grid visibility."
-msgstr "গ্রিড দৃশ্যমানতা টগল করুন।"
-
-msgid "From Source"
-msgstr "উৎস থেকে"
-
-msgid "From Coords"
-msgstr "Coords থেকে"
-
-msgid "To Source"
-msgstr "উৎসতে"
-
-msgid "Global actions:"
-msgstr "গ্লোবাল একশন:"
-
-msgid "Atlas"
-msgstr "এটলাস"
-
-msgid "Occlusion Layer %d"
-msgstr "অক্লুশন লেয়ার %d"
-
-msgid "Physics"
-msgstr "পদার্থবিজ্ঞান"
-
-msgid "Physics Layer %d"
-msgstr "পদার্থবিদ্যা স্তর %d"
-
-msgid "No physics layers"
-msgstr "কোন পদার্থবিদ্যা স্তর"
-
-msgid "Navigation Layer %d"
-msgstr "নেভিগেশন স্তর %d"
-
-msgid "Custom Data %d"
-msgstr "কাস্টম ডেটা %d"
-
-msgid "Hold Ctrl to create multiple tiles."
-msgstr "একাধিক টাইলস তৈরি করতে Ctrl ধরে রাখুন।"
-
-msgid "Hold Shift to create big tiles."
-msgstr "বড় টাইলস তৈরি করতে Shift ধরে রাখুন।"
-
-msgid "Select tiles."
-msgstr "টাইলস নির্বাচন করুন।"
-
-msgid "Yes"
-msgstr "হ্যাঁ"
-
-msgid "Invalid texture selected."
-msgstr "অবৈধ টেক্সচার নির্বাচন করা হয়েছে।"
-
-msgid "Add a new atlas source"
-msgstr "একটি নতুন অ্যাটলাস উৎস যোগ করুন"
-
-msgid "Add a Scene Tile"
-msgstr "একটি দৃশ্য টাইল যোগ করুন"
-
-msgid "Scenes collection properties:"
-msgstr "দৃশ্য সংগ্রহ বৈশিষ্ট্য:"
-
-msgid "Tile properties:"
-msgstr "টাইল বৈশিষ্ট্য:"
-
 msgid "Preview"
 msgstr "প্রিভিউ"
 
@@ -4395,6 +4230,153 @@ msgstr "পরিমাণ:"
 msgid "Populate"
 msgstr "পপুলেট"
 
+msgid "XForm Dialog"
+msgstr "XForm এর সংলাপ"
+
+msgid "Snap Nodes to Floor"
+msgstr "ফ্লোর স্ন্যাপ নোড"
+
+msgid "Preview disabled."
+msgstr "প্রিভিউ ডিসেবল করা।"
+
+msgid "Move Mode"
+msgstr "মোড (Mode) সরান"
+
+msgid "Rotate Mode"
+msgstr "ঘূর্ণায়ন মোড"
+
+msgid "Select Mode"
+msgstr "মোড (Mode) বাছাই করুন"
+
+msgid "Ruler Mode"
+msgstr "রুলার মোড"
+
+msgid "Use Snap"
+msgstr "স্ন্যাপ ব্যবহার করুন"
+
+msgid "Bottom View"
+msgstr "নিম্ন দর্শন"
+
+msgid "Top View"
+msgstr "শীর্ষ দর্শন"
+
+msgid "Rear View"
+msgstr "পশ্চাৎ দর্শন"
+
+msgid "Front View"
+msgstr "সন্মুখ দর্শন"
+
+msgid "Left View"
+msgstr "বাম দর্শন"
+
+msgid "Right View"
+msgstr "ডান দর্শন"
+
+msgid "Insert Animation Key"
+msgstr "অ্যানিমেশনের চাবি সন্নিবেশ করুন"
+
+msgid "Focus Origin"
+msgstr "অরিজিনে ফোকাস করুন"
+
+msgid "Focus Selection"
+msgstr "নির্বাচনে ফোকাস করুন"
+
+msgid "Transform"
+msgstr "রুপান্তর"
+
+msgid "Snap Object to Floor"
+msgstr "ফ্লোর স্ন্যাপ অবজেক্ট"
+
+msgid "Transform Dialog..."
+msgstr "রুপান্তরের এর সংলাপ..."
+
+msgid "View"
+msgstr "দৃশ্য/পরিদর্শন"
+
+msgid "1 Viewport"
+msgstr "১ টি Viewport"
+
+msgid "2 Viewports"
+msgstr "২ টি Viewports"
+
+msgid "2 Viewports (Alt)"
+msgstr "২ টি Viewports (অল্টার)"
+
+msgid "3 Viewports"
+msgstr "৩ টি Viewports"
+
+msgid "3 Viewports (Alt)"
+msgstr "৩ টি Viewports (অল্টার)"
+
+msgid "4 Viewports"
+msgstr "৪ টি Viewports"
+
+msgid "View Origin"
+msgstr "অরিজিন দেখুন"
+
+msgid "View Grid"
+msgstr "গ্রিড দেখুন"
+
+msgid "Settings..."
+msgstr "সেটিংস…"
+
+msgid "Snap Settings"
+msgstr "স্ন্যাপ সেটিংস"
+
+msgid "Translate Snap:"
+msgstr "স্ন্যাপ-এর স্থানান্তর:"
+
+msgid "Viewport Settings"
+msgstr "Viewport সেটিংস"
+
+msgid "View Z-Near:"
+msgstr "Z-Near দেখুন:"
+
+msgid "View Z-Far:"
+msgstr "Z-Far দেখুন:"
+
+msgid "Transform Change"
+msgstr "রুপান্তরের পরিবর্তন"
+
+msgid "Translate:"
+msgstr "স্থানান্তর (Translate):"
+
+msgid "Rotate (deg.):"
+msgstr "ঘূর্ণন (ডিগ্রি):"
+
+msgid "Scale (ratio):"
+msgstr "মাপন (অনুপাত):"
+
+msgid "Transform Type"
+msgstr "রুপান্তরের ধরণ"
+
+msgid "Pre"
+msgstr "পূর্ব (Pre)"
+
+msgid "Post"
+msgstr "পরবর্তী (Post)"
+
+msgid "Sun Direction"
+msgstr "সূর্যের দিক"
+
+msgid "Angular Altitude"
+msgstr "কৌণিক উচ্চতা"
+
+msgid "Sun Color"
+msgstr "সূর্যের রঙ"
+
+msgid "Shadow Max Distance"
+msgstr "ছায়া সর্বোচ্চ দূরত্ব"
+
+msgid "Sky Color"
+msgstr "আকাশের রং"
+
+msgid "Ground Color"
+msgstr "ভূমি রং"
+
+msgid "Post Process"
+msgstr "পোষ্ট প্রসেস"
+
 msgid "Transform Aborted."
 msgstr "রুপান্তর নিষ্ফলা করা হয়েছে।"
 
@@ -4473,9 +4455,6 @@ msgstr "ফ্রিলুক ডাউন"
 msgid "Freelook Speed Modifier"
 msgstr "ফ্রি লুক স্পিড মডিফায়ার"
 
-msgid "View"
-msgstr "দৃশ্য/পরিদর্শন"
-
 msgid "Perspective"
 msgstr "পরিপ্রেক্ষিত (Perspective)"
 
@@ -4518,158 +4497,11 @@ msgstr "ইন্টারনাল বাফার"
 msgid "Display Advanced..."
 msgstr "এডভান্সেড দেখুন…"
 
-msgid "View Grid"
-msgstr "গ্রিড দেখুন"
-
 msgid "View Information"
 msgstr "তথ্য দেখুন"
 
 msgid "Audio Listener"
 msgstr "অডিও শ্রোতা"
-
-msgid "XForm Dialog"
-msgstr "XForm এর সংলাপ"
-
-msgid "Snap Nodes to Floor"
-msgstr "ফ্লোর স্ন্যাপ নোড"
-
-msgid "Alt+RMB: Show list of all nodes at position clicked, including locked."
-msgstr "Alt+RMB: লক করা সহ ক্লিক করা অবস্থানে সমস্ত নোডের তালিকা দেখান।"
-
-msgid "Preview disabled."
-msgstr "প্রিভিউ ডিসেবল করা।"
-
-msgid "Move Mode"
-msgstr "মোড (Mode) সরান"
-
-msgid "Rotate Mode"
-msgstr "ঘূর্ণায়ন মোড"
-
-msgid "Select Mode"
-msgstr "মোড (Mode) বাছাই করুন"
-
-msgid "Ruler Mode"
-msgstr "রুলার মোড"
-
-msgid "Use Snap"
-msgstr "স্ন্যাপ ব্যবহার করুন"
-
-msgid "Bottom View"
-msgstr "নিম্ন দর্শন"
-
-msgid "Top View"
-msgstr "শীর্ষ দর্শন"
-
-msgid "Rear View"
-msgstr "পশ্চাৎ দর্শন"
-
-msgid "Front View"
-msgstr "সন্মুখ দর্শন"
-
-msgid "Left View"
-msgstr "বাম দর্শন"
-
-msgid "Right View"
-msgstr "ডান দর্শন"
-
-msgid "Insert Animation Key"
-msgstr "অ্যানিমেশনের চাবি সন্নিবেশ করুন"
-
-msgid "Focus Origin"
-msgstr "অরিজিনে ফোকাস করুন"
-
-msgid "Focus Selection"
-msgstr "নির্বাচনে ফোকাস করুন"
-
-msgid "Transform"
-msgstr "রুপান্তর"
-
-msgid "Snap Object to Floor"
-msgstr "ফ্লোর স্ন্যাপ অবজেক্ট"
-
-msgid "Transform Dialog..."
-msgstr "রুপান্তরের এর সংলাপ..."
-
-msgid "1 Viewport"
-msgstr "১ টি Viewport"
-
-msgid "2 Viewports"
-msgstr "২ টি Viewports"
-
-msgid "2 Viewports (Alt)"
-msgstr "২ টি Viewports (অল্টার)"
-
-msgid "3 Viewports"
-msgstr "৩ টি Viewports"
-
-msgid "3 Viewports (Alt)"
-msgstr "৩ টি Viewports (অল্টার)"
-
-msgid "4 Viewports"
-msgstr "৪ টি Viewports"
-
-msgid "View Origin"
-msgstr "অরিজিন দেখুন"
-
-msgid "Settings..."
-msgstr "সেটিংস…"
-
-msgid "Snap Settings"
-msgstr "স্ন্যাপ সেটিংস"
-
-msgid "Translate Snap:"
-msgstr "স্ন্যাপ-এর স্থানান্তর:"
-
-msgid "Viewport Settings"
-msgstr "Viewport সেটিংস"
-
-msgid "View Z-Near:"
-msgstr "Z-Near দেখুন:"
-
-msgid "View Z-Far:"
-msgstr "Z-Far দেখুন:"
-
-msgid "Transform Change"
-msgstr "রুপান্তরের পরিবর্তন"
-
-msgid "Translate:"
-msgstr "স্থানান্তর (Translate):"
-
-msgid "Rotate (deg.):"
-msgstr "ঘূর্ণন (ডিগ্রি):"
-
-msgid "Scale (ratio):"
-msgstr "মাপন (অনুপাত):"
-
-msgid "Transform Type"
-msgstr "রুপান্তরের ধরণ"
-
-msgid "Pre"
-msgstr "পূর্ব (Pre)"
-
-msgid "Post"
-msgstr "পরবর্তী (Post)"
-
-msgid "Sun Direction"
-msgstr "সূর্যের দিক"
-
-msgid "Angular Altitude"
-msgstr "কৌণিক উচ্চতা"
-
-msgid "Sun Color"
-msgstr "সূর্যের রঙ"
-
-msgid "Shadow Max Distance"
-msgstr "ছায়া সর্বোচ্চ দূরত্ব"
-
-msgid "Sky Color"
-msgstr "আকাশের রং"
-
-msgid "Ground Color"
-msgstr "ভূমি রং"
-
-msgid "Post Process"
-msgstr "পোষ্ট প্রসেস"
 
 msgid "Could not save the new occluder at the specified path:"
 msgstr "নির্দিষ্ট পাথে নতুন অক্লুডার সংরক্ষণ করা যায়নি:"
@@ -4754,27 +4586,6 @@ msgstr "ঘূর্ণায়নের পদক্ষেপ:"
 
 msgid "Instantiate Scene Here..."
 msgstr "এখানে দৃশ্য ইন্সট্যান্স করুন…"
-
-msgid "Rotate %d CanvasItems"
-msgstr "%d ক্যানভাস আইটেম ঘোরান"
-
-msgid "Rotate CanvasItem \"%s\" to %d degrees"
-msgstr "ক্যানভাস আইটেম \"%s\" থেকে %d ডিগ্রি ঘোরান"
-
-msgid "Move CanvasItem \"%s\" Anchor"
-msgstr "ক্যানভাস আইটেম \"%s\" অ্যাঙ্কর সরান"
-
-msgid "Scale %d CanvasItems"
-msgstr "স্কেল %d ক্যানভাস আইটেম"
-
-msgid "Scale CanvasItem \"%s\" to (%s, %s)"
-msgstr "ক্যানভাস আইটেম \"%s\" থেকে (%s, %s) স্কেল করুন"
-
-msgid "Move %d CanvasItems"
-msgstr "%d ক্যানভাস আইটেম সরান"
-
-msgid "Move CanvasItem \"%s\" to (%d, %d)"
-msgstr "ক্যানভাস আইটেম \"%s\" এ সরান (%d, %d)"
 
 msgid "Moving:"
 msgstr "সরানো হচ্ছে:"
@@ -4968,37 +4779,17 @@ msgstr "ভেরিএশন স্থানাঙ্ক (%d)"
 msgid "Numeral Alignment"
 msgstr "সংখ্যাগত প্রান্তিককরণ"
 
-msgid "1 color"
-msgid_plural "{num} colors"
-msgstr[0] "একটি রং"
-msgstr[1] "{num} গুলি রং"
-
-msgid "1 constant"
-msgid_plural "{num} constants"
-msgstr[0] "১টি ধ্রুবক"
-msgstr[1] "{num} গুলি ধ্রুবক"
-
 msgid "No constants found."
 msgstr "কোনো ধ্রুবক পাওয়া যায়নি।"
 
 msgid "No fonts found."
 msgstr "কোনো ফন্ট পাওয়া যায়নি।"
 
-msgid "1 font size"
-msgid_plural "{num} font sizes"
-msgstr[0] "১ ফন্ট সাইজ"
-msgstr[1] "{num} ফন্ট সাইজ"
-
 msgid "No font sizes found."
 msgstr "ফন্ট সাইজ খুঁজে পাওয়া যায়নি।"
 
 msgid "No icons found."
 msgstr "কোনো আইকন খুঁজে পাওয়া যায়নি।"
-
-msgid "1 stylebox"
-msgid_plural "{num} styleboxes"
-msgstr[0] "১টি স্টাইলবক্স"
-msgstr[1] "{num} গুলি ষ্টাইলবক্স"
 
 msgid "Updating the editor"
 msgstr "সম্পাদক আপডেট করা হচ্ছে"
@@ -5221,11 +5012,6 @@ msgid_plural "Node has {num} connections."
 msgstr[0] "নোডের একটি সংযোগ আছে।"
 msgstr[1] "নোডের {num} সংযোগ আছে।"
 
-msgid "Node is in this group:"
-msgid_plural "Node is in the following groups:"
-msgstr[0] "নোড এই গ্রুপে আছে:"
-msgstr[1] "নোড নিম্নলিখিত গ্রুপে রয়েছে:"
-
 msgid "Click to show signals dock."
 msgstr "সংকেত ডক দেখাতে ক্লিক করুন।"
 
@@ -5297,6 +5083,9 @@ msgstr "Delete অ্যানিমেশন"
 msgid "Animation Frames:"
 msgstr "অ্যানিমেশনের ফ্রেমসমূহ:"
 
+msgid "Load"
+msgstr "লোড"
+
 msgid "Frame Duration:"
 msgstr "ফ্রেমের সময়কাল:"
 
@@ -5321,6 +5110,9 @@ msgstr "স্ন্যাপ মোড:"
 msgid "Pixel Snap"
 msgstr "পিক্সেল স্ন্যাপ"
 
+msgid "Grid Snap"
+msgstr "গ্রিড স্ন্যাপ"
+
 msgid "Step:"
 msgstr "পদক্ষেপ:"
 
@@ -5330,21 +5122,6 @@ msgstr "বিচ্ছেদ:"
 msgid "Write your logic in the _run() method."
 msgstr "আপনার লজিক/যুক্তি-সমূহ _run() মেথডে লিখুন।"
 
-msgid "Find:"
-msgstr "সন্ধান করুন:"
-
-msgid "Folder:"
-msgstr "ফোল্ডার:"
-
-msgid "Filters:"
-msgstr "ফিল্টারসমূহ:"
-
-msgid "Find..."
-msgstr "খুঁজুন..."
-
-msgid "Replace..."
-msgstr "প্রতিস্থাপন..."
-
 msgid "%d match in %d file"
 msgstr "%d ফাইলে %d মিল"
 
@@ -5353,6 +5130,9 @@ msgstr "%d ফাইলে %d মিল"
 
 msgid "%d matches in %d files"
 msgstr "%d ফাইলে %d মিল"
+
+msgid "Find:"
+msgstr "সন্ধান করুন:"
 
 msgid "Path is empty."
 msgstr "পথটি খালি।"
@@ -5420,6 +5200,9 @@ msgstr "নোড স্ক্রিপ্ট সংযুক্ত করুন
 msgid "Line"
 msgstr "লাইন"
 
+msgid "%s Class Reference"
+msgstr "%s ক্লাস রেফারেন্স"
+
 msgid "Close and save changes?"
 msgstr "বন্ধ এবং পরিবর্তন সংরক্ষণ করবেন?"
 
@@ -5438,8 +5221,8 @@ msgstr "থিম এইরূপে সংরক্ষণ করুন..."
 msgid "Open '%s' in Godot online documentation."
 msgstr "Godot অনলাইন ডকুমেন্টেশনে '%s' খুলুন।"
 
-msgid "%s Class Reference"
-msgstr "%s ক্লাস রেফারেন্স"
+msgid "Find..."
+msgstr "খুঁজুন..."
 
 msgid "Find Next"
 msgstr "পরবর্তী খুঁজুন"
@@ -5447,17 +5230,17 @@ msgstr "পরবর্তী খুঁজুন"
 msgid "Find Previous"
 msgstr "পূর্বে খুঁজুন"
 
-msgid "Sort"
-msgstr "সাজান"
-
-msgid "Open..."
-msgstr "খুলুন…"
-
 msgid "Save All"
 msgstr "সকল্গুলি সংরক্ষণ করুন"
 
 msgid "History Next"
 msgstr "পরের ইতিহাস"
+
+msgid "Close All"
+msgstr "সবগুলি বন্ধ করুন"
+
+msgid "Close Docs"
+msgstr "ডকুমেন্টসমূহ বন্ধ করুন"
 
 msgid "Import Theme..."
 msgstr "থিম ইম্পোর্ট করুন…"
@@ -5465,11 +5248,17 @@ msgstr "থিম ইম্পোর্ট করুন…"
 msgid "Reload Theme"
 msgstr "থিম রিলোড করুন"
 
-msgid "Close All"
-msgstr "সবগুলি বন্ধ করুন"
+msgid "Open..."
+msgstr "খুলুন…"
 
-msgid "Close Docs"
-msgstr "ডকুমেন্টসমূহ বন্ধ করুন"
+msgid "New Shader Include..."
+msgstr "নতুন শেডর include…"
+
+msgid "Load Shader File..."
+msgstr "শেডার ফাইল লোড করুন..।"
+
+msgid "Load Shader Include File..."
+msgstr "শেডর include ফাইল লোড করুন…"
 
 msgid "Search the reference documentation."
 msgstr "রেফারেন্সের ডকুমেন্টেশনে খুঁজুন।"
@@ -5532,6 +5321,9 @@ msgstr "স্পেসগুলি ইন্ডেন্টে রূপান�
 
 msgid "Auto Indent"
 msgstr "স্বয়ংক্রিয়ভাবে মাত্রা দিন"
+
+msgid "Replace..."
+msgstr "প্রতিস্থাপন..."
 
 msgid "Contextual Help"
 msgstr "প্রাসঙ্গিক সাহায্য"
@@ -5623,9 +5415,6 @@ msgstr "ইডিটকৃত প্রোফাইল রিসেট?"
 
 msgid "File saving failed."
 msgstr "ফাইল সংরক্ষণ করা যায়নি।"
-
-msgid "Create a new profile?"
-msgstr "নতুন প্রোফাইল তৈরী করুন?"
 
 msgid "Error saving profile to path: '%s'."
 msgstr "পথে প্রোফাইল সংরক্ষণ সম্ভব হয়নি:'%s'।"
@@ -5757,9 +5546,6 @@ msgstr "প্লাগইন-সমূহ"
 msgid "N/A"
 msgstr "না/আ"
 
-msgid "Invalid base path."
-msgstr "বেস পথ অগ্রহণযোগ্য।"
-
 msgid "Built-in shader (into scene file)."
 msgstr "বিল্ট ইন স্ক্রিপ্ট (সিন ফাইলে)।"
 
@@ -5781,26 +5567,11 @@ msgstr "মোড:"
 msgid "Built-in Shader:"
 msgstr "পূর্বনির্মিত শেডার:"
 
-msgid "There are unsaved changes in the following built-in shaders(s):"
-msgstr "নিম্নলিখিত অন্তর্নির্মিত শেডারগুলিতে অসংরক্ষিত পরিবর্তন রয়েছে:"
-
-msgid "New Shader Include..."
-msgstr "নতুন শেডর include…"
-
-msgid "Load Shader File..."
-msgstr "শেডার ফাইল লোড করুন..।"
-
-msgid "Load Shader Include File..."
-msgstr "শেডর include ফাইল লোড করুন…"
-
 msgid "Name must be a valid identifier."
 msgstr "নাম অবশ্যই একটি বৈধ শনাক্তকারী হতে হবে।"
 
 msgid "Global shader parameter '%s' already exists."
 msgstr "গ্লোবাল শেডার প্যারামিটার '%s' ইতিমধ্যেই বিদ্যমান।"
-
-msgid "Resave"
-msgstr "পুনঃসংরক্ষণ"
 
 msgctxt "Locale"
 msgid "Script:"
@@ -5880,15 +5651,6 @@ msgstr "ফোর্স পুশ"
 
 msgid "View:"
 msgstr "দেখুন:"
-
-msgid "Invalid type argument to convert(), use TYPE_* constants."
-msgstr "কনভার্ট করার জন্য অবৈধ টাইপ আর্গুমেন্ট, TYPE_* ধ্রুবক ব্যবহার করুন।"
-
-msgid "Cannot resize array."
-msgstr "অ্যারের আকার পরিবর্তন করা যায়নি।"
-
-msgid "Cannot instantiate GDScript class."
-msgstr "GDScript ক্লাস ইনস্ট্যান্ট করা যাচ্ছে না।"
 
 msgid "glTF 2.0 Scene..."
 msgstr "glTF ২.০ দৃশ্য…"
@@ -5970,6 +5732,9 @@ msgstr ""
 "এই নোডটি সফল্ভাবে কাজ করার জন্য একটি NavigationMesh রিসোর্স নির্ধারন বা তৈরি করতে "
 "হবে।"
 
+msgid "Yes"
+msgstr "হ্যাঁ"
+
 msgid "Error loading %s: %s."
 msgstr "লোড করার সময় ত্রুটি %s: %s।"
 
@@ -5993,6 +5758,87 @@ msgstr "ইন্টারেকশন প্রোফাইল নির্ব�
 
 msgid "Choose an XR runtime."
 msgstr "একটি XR রানটাইম চয়ন করুন।"
+
+msgid "Painting Tiles Property"
+msgstr "পেন্টিং টাইলস সম্পত্তি"
+
+msgid "Painting:"
+msgstr "পেইন্টিং:"
+
+msgid "Polygon %d"
+msgstr "পলিগন %d"
+
+msgid "Shift: Draw line."
+msgstr "Shift: লাইন আঁকুন।"
+
+msgid "Index: %d"
+msgstr "সূচক: %d"
+
+msgid "Place Random Tile"
+msgstr "দৈব টাইল বসান"
+
+msgid "Invalid source selected."
+msgstr "অকার্যকর উৎস নির্বাচিত।"
+
+msgid "Matches Corners Only"
+msgstr "শুধুমাত্র কোণে মেলান"
+
+msgid "Matches Sides Only"
+msgstr "শুধুমাত্র সাইড মেলান"
+
+msgid "Toggle grid visibility."
+msgstr "গ্রিড দৃশ্যমানতা টগল করুন।"
+
+msgid "From Source"
+msgstr "উৎস থেকে"
+
+msgid "From Coords"
+msgstr "Coords থেকে"
+
+msgid "To Source"
+msgstr "উৎসতে"
+
+msgid "Global actions:"
+msgstr "গ্লোবাল একশন:"
+
+msgid "Atlas"
+msgstr "এটলাস"
+
+msgid "Occlusion Layer %d"
+msgstr "অক্লুশন লেয়ার %d"
+
+msgid "Physics"
+msgstr "পদার্থবিজ্ঞান"
+
+msgid "Physics Layer %d"
+msgstr "পদার্থবিদ্যা স্তর %d"
+
+msgid "No physics layers"
+msgstr "কোন পদার্থবিদ্যা স্তর"
+
+msgid "Navigation Layer %d"
+msgstr "নেভিগেশন স্তর %d"
+
+msgid "Custom Data %d"
+msgstr "কাস্টম ডেটা %d"
+
+msgid "Select tiles."
+msgstr "টাইলস নির্বাচন করুন।"
+
+msgid "Invalid texture selected."
+msgstr "অবৈধ টেক্সচার নির্বাচন করা হয়েছে।"
+
+msgid "Add a new atlas source"
+msgstr "একটি নতুন অ্যাটলাস উৎস যোগ করুন"
+
+msgid "Add a Scene Tile"
+msgstr "একটি দৃশ্য টাইল যোগ করুন"
+
+msgid "Scenes collection properties:"
+msgstr "দৃশ্য সংগ্রহ বৈশিষ্ট্য:"
+
+msgid "Tile properties:"
+msgstr "টাইল বৈশিষ্ট্য:"
 
 msgid "Add Input"
 msgstr "ইনপুট যোগ করুন"
@@ -6159,9 +6005,6 @@ msgstr "সারফেস ইনডেক্স"
 msgid "The character '%s' is not allowed in Android application package names."
 msgstr "অ্যান্ড্রয়েড অ্যাপ্লিকেশন প্যাকেজ নামগুলিতে '%s' অক্ষরটি অনুমোদিত নয়।"
 
-msgid "Error creating keystores directory:"
-msgstr "কীস্টোর ডিরেক্টরি তৈরিতে ত্রুটি:"
-
 msgid "Invalid package name:"
 msgstr "অগ্রহণযোগ্য প্যাকেজ নাম:"
 
@@ -6173,9 +6016,6 @@ msgstr "আনইনস্টল হচ্ছে..।"
 
 msgid "Could not install to device: %s"
 msgstr "ডিভাইসে ইনস্টল করা যায়নি: %s"
-
-msgid "Missing 'bin' directory!"
-msgstr "অনুপস্থিত 'বিন' ডিরেক্টরি!"
 
 msgid "Could not start apksigner executable."
 msgstr "apksigner এক্সিকিউটেবল শুরু করা যায়নি।"
@@ -6201,9 +6041,6 @@ msgstr "ফাইল যোগ করা হচ্ছে..।"
 
 msgid "Could not export project files."
 msgstr "প্রকল্প ফাইল রপ্তানি করা যায়নি।"
-
-msgid "Could not open a directory at path \"%s\"."
-msgstr "\"%s\" পাথে একটি ডিরেক্টরি খোলা যায়নি।"
 
 msgid "Debug Script Export"
 msgstr "ডিবাগ স্ক্রিপ্ট এক্সপোর্ট"
@@ -6238,6 +6075,9 @@ msgstr "ডিরেক্টরি %s সাইন করা যাবে ন�
 msgid "Cannot sign file %s."
 msgstr "ফাইল %s সাইন করা যাবে না।"
 
+msgid "Could not open \"%s\"."
+msgstr "\"%s\" খুলতে পারেনি।"
+
 msgid "Could not start productbuild executable."
 msgstr "এক্সিকিউটেবল productbuild শুরু করা যায়নি।"
 
@@ -6246,6 +6086,12 @@ msgstr "DMG তৈরি"
 
 msgid "Could not start hdiutil executable."
 msgstr "hdiutil এক্সিকিউটেবল শুরু করা যায়নি।"
+
+msgid "Could not create directory \"%s\"."
+msgstr "\"%s\" ডিরেক্টরি তৈরি করা যায়নি।"
+
+msgid "Could not create directory: \"%s\"."
+msgstr "ডিরেক্টরি তৈরি করা যায়নি: \"%s\"।"
 
 msgid "Exporting for macOS"
 msgstr "macOS এর জন্য রপ্তানি করা হচ্ছে"
@@ -6256,17 +6102,8 @@ msgstr "এক্সপোর্ট করার জন্য টেমপ্ল
 msgid "Invalid export format."
 msgstr "অবৈধ রপ্তানি বিন্যাস।"
 
-msgid "Could not create directory: \"%s\"."
-msgstr "ডিরেক্টরি তৈরি করা যায়নি: \"%s\"।"
-
-msgid "Could not create directory \"%s\"."
-msgstr "\"%s\" ডিরেক্টরি তৈরি করা যায়নি।"
-
 msgid "Could not created symlink \"%s\" -> \"%s\"."
 msgstr "সিমলিঙ্ক \"%s\" -> \"%s\" তৈরি করা যায়নি।"
-
-msgid "Could not open \"%s\"."
-msgstr "\"%s\" খুলতে পারেনি।"
 
 msgid "Could not create helper entitlements file."
 msgstr "সহায়ক এনটাইটেলমেন্ট ফাইল তৈরি করা যায়নি।"
@@ -6375,6 +6212,27 @@ msgstr "কোনো পোজ সেট করা নেই।"
 
 msgid "No playback resource set at path: %s."
 msgstr "পাথে কোন প্লেব্যাক রিসোর্স সেট করা নেই: %s।"
+
+msgid "Rotate %d CanvasItems"
+msgstr "%d ক্যানভাস আইটেম ঘোরান"
+
+msgid "Rotate CanvasItem \"%s\" to %d degrees"
+msgstr "ক্যানভাস আইটেম \"%s\" থেকে %d ডিগ্রি ঘোরান"
+
+msgid "Move CanvasItem \"%s\" Anchor"
+msgstr "ক্যানভাস আইটেম \"%s\" অ্যাঙ্কর সরান"
+
+msgid "Scale %d CanvasItems"
+msgstr "স্কেল %d ক্যানভাস আইটেম"
+
+msgid "Scale CanvasItem \"%s\" to (%s, %s)"
+msgstr "ক্যানভাস আইটেম \"%s\" থেকে (%s, %s) স্কেল করুন"
+
+msgid "Move %d CanvasItems"
+msgstr "%d ক্যানভাস আইটেম সরান"
+
+msgid "Move CanvasItem \"%s\" to (%d, %d)"
+msgstr "ক্যানভাস আইটেম \"%s\" এ সরান (%d, %d)"
 
 msgid "Invalid arguments for the built-in function: \"%s(%s)\"."
 msgstr "অন্তর্নির্মিত ফাংশনের জন্য অবৈধ আর্গুমেন্ট: \"%s(%s)\"।"

@@ -34,6 +34,7 @@
 #include "lang_table.h"
 #include "windows_terminal_logger.h"
 #include "windows_utils.h"
+#include "winrt_utils.h"
 
 #include "core/config/engine.h"
 #include "core/debugger/engine_debugger.h"
@@ -48,7 +49,6 @@
 #include "drivers/windows/net_socket_winsock.h"
 #include "drivers/windows/thread_windows.h"
 #include "main/main.h"
-#include "servers/audio/audio_server.h"
 #include "servers/rendering/rendering_server.h"
 #include "servers/text/text_server.h"
 
@@ -98,8 +98,10 @@ extern "C" {
 #endif
 
 extern "C" {
+#ifdef ENABLE_PREFER_HIGH_PERFORMANCE_GPU
 __declspec(dllexport) DWORD NvOptimusEnablement = 1;
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+#endif // ENABLE_PREFER_HIGH_PERFORMANCE_GPU
 __declspec(dllexport) void NoHotPatch() {} // Disable Nahimic code injection.
 }
 
@@ -344,9 +346,7 @@ void OS_Windows::initialize() {
 }
 
 void OS_Windows::delete_main_loop() {
-	if (main_loop) {
-		memdelete(main_loop);
-	}
+	memdelete(main_loop);
 	main_loop = nullptr;
 }
 
@@ -375,9 +375,7 @@ void OS_Windows::finalize() {
 	driver_midi.close();
 #endif
 
-	if (main_loop) {
-		memdelete(main_loop);
-	}
+	memdelete(main_loop);
 
 	main_loop = nullptr;
 }
@@ -1376,6 +1374,15 @@ Dictionary OS_Windows::execute_with_pipe(const String &p_path, const List<String
 	}
 
 	DWORD creation_flags = NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT;
+#ifndef WINDOWS_SUBSYSTEM_CONSOLE
+	if (is_using_con_wrapper()) {
+		Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+		ERR_FAIL_COND_V(da.is_null(), ret);
+		if (!da->is_equivalent(p_path, get_executable_path())) {
+			creation_flags |= CREATE_BREAKAWAY_FROM_JOB;
+		}
+	}
+#endif
 
 	Char16String current_dir_name;
 	size_t str_len = GetCurrentDirectoryW(0, nullptr);
@@ -1474,6 +1481,16 @@ Error OS_Windows::execute(const String &p_path, const List<String> &p_arguments,
 		inherit_handles = true;
 	}
 	DWORD creation_flags = NORMAL_PRIORITY_CLASS;
+#ifndef WINDOWS_SUBSYSTEM_CONSOLE
+	if (is_using_con_wrapper()) {
+		Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+		ERR_FAIL_COND_V(da.is_null(), ERR_CANT_FORK);
+		if (!da->is_equivalent(p_path, get_executable_path())) {
+			creation_flags |= CREATE_BREAKAWAY_FROM_JOB;
+		}
+	}
+#endif
+
 	if (inherit_handles) {
 		creation_flags |= EXTENDED_STARTUPINFO_PRESENT;
 	}
@@ -1576,6 +1593,16 @@ Error OS_Windows::create_process(const String &p_path, const List<String> &p_arg
 	LPSTARTUPINFOW si_w = (LPSTARTUPINFOW)&pi.si.StartupInfo;
 
 	DWORD creation_flags = NORMAL_PRIORITY_CLASS;
+#ifndef WINDOWS_SUBSYSTEM_CONSOLE
+	if (is_using_con_wrapper()) {
+		Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+		ERR_FAIL_COND_V(da.is_null(), ERR_CANT_FORK);
+		if (!da->is_equivalent(p_path, get_executable_path())) {
+			creation_flags |= CREATE_BREAKAWAY_FROM_JOB;
+		}
+	}
+#endif
+
 	if (p_open_console) {
 		creation_flags |= CREATE_NEW_CONSOLE;
 	} else {
@@ -1953,7 +1980,7 @@ Vector<String> OS_Windows::get_system_font_path_for_text(const String &p_font_na
 
 	Vector<String> ret;
 	for (UINT32 i = 0; i < number_of_files; i++) {
-		void const *reference_key = nullptr;
+		const void *reference_key = nullptr;
 		UINT32 reference_key_size = 0;
 		ComAutoreleaseRef<IDWriteLocalFontFileLoader> loader;
 
@@ -2032,7 +2059,7 @@ String OS_Windows::get_system_font_path(const String &p_font_name, int p_weight,
 	}
 
 	for (UINT32 i = 0; i < number_of_files; i++) {
-		void const *reference_key = nullptr;
+		const void *reference_key = nullptr;
 		UINT32 reference_key_size = 0;
 		ComAutoreleaseRef<IDWriteLocalFontFileLoader> loader;
 
@@ -2300,6 +2327,14 @@ String OS_Windows::get_locale() const {
 	return "en";
 }
 
+Vector<String> OS_Windows::get_preferred_locales() const {
+	Vector<String> out = WinRTUtils::get_preferred_locales();
+	if (out.is_empty()) {
+		out.push_back(get_locale());
+	}
+	return out;
+}
+
 String OS_Windows::get_model_name() const {
 	HKEY hkey;
 	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Hardware\\Description\\System\\BIOS", 0, KEY_QUERY_VALUE, &hkey) != ERROR_SUCCESS) {
@@ -2525,6 +2560,36 @@ String OS_Windows::expand_path(const String &p_path) const {
 		String home = get_environment("USERPROFILE");
 		if (!home.is_empty()) {
 			path = home + path.substr(1);
+		}
+	}
+
+	int pos = 0;
+
+	while (true) {
+		int left = path.find_char('%', pos);
+		if (left == -1) {
+			break;
+		}
+
+		int right = path.find_char('%', left + 1);
+		if (right == -1) {
+			break;
+		}
+
+		String var = path.substr(left + 1, right - left - 1);
+
+		if (var.is_empty()) {
+			pos = right + 1;
+			continue;
+		}
+
+		String value = get_environment(var);
+
+		if (!value.is_empty()) {
+			path = path.substr(0, left) + value + path.substr(right + 1);
+			pos = left + value.length();
+		} else {
+			pos = right + 1;
 		}
 	}
 
@@ -2768,9 +2833,7 @@ bool OS_Windows::_test_create_rendering_device_and_gl(const String &p_display_dr
 	}
 
 #ifdef GLES3_ENABLED
-	if (test_gl_manager_native) {
-		memdelete(test_gl_manager_native);
-	}
+	memdelete(test_gl_manager_native);
 #endif
 
 	DestroyWindow(hWnd);
@@ -2911,6 +2974,8 @@ OS_Windows::OS_Windows(HINSTANCE _hInstance) {
 
 	CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
+	WinRTUtils::init();
+
 #ifdef WASAPI_ENABLED
 	AudioDriverManager::add_driver(&driver_wasapi);
 #endif
@@ -2940,5 +3005,6 @@ OS_Windows::OS_Windows(HINSTANCE _hInstance) {
 }
 
 OS_Windows::~OS_Windows() {
+	WinRTUtils::cleanup();
 	CoUninitialize();
 }

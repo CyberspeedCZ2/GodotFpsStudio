@@ -47,7 +47,6 @@
 #include "core/os/os.h"
 #include "core/version.h"
 #include "editor/debugger/editor_debugger_node.h"
-#include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/export/lipo.h"
 #include "editor/file_system/editor_paths.h"
@@ -55,6 +54,7 @@
 #include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
+#include "editor/translations/editor_translation_parser.h"
 #include "main/main.h"
 
 #ifdef GD_MONO_HOT_RELOAD
@@ -106,6 +106,10 @@ bool godot_icall_EditorProgress_Step(const godot_string *p_task, const godot_str
 	return EditorNode::progress_task_step(task, state, p_step, (bool)p_force_refresh);
 }
 
+void godot_icall_EditorTranslationParser_AddParser(EditorTranslationParserPlugin *p_translation_parser_plugin) {
+	EditorTranslationParser::get_singleton()->add_parser(p_translation_parser_plugin, EditorTranslationParser::STANDARD);
+}
+
 void godot_icall_Internal_FullExportTemplatesDir(godot_string *r_dest) {
 	String full_templates_dir = EditorPaths::get_singleton()->get_export_templates_dir().path_join(GODOT_VERSION_FULL_CONFIG);
 	memnew_placement(r_dest, String(full_templates_dir));
@@ -124,8 +128,7 @@ bool godot_icall_Internal_IsMacOSAppBundleInstalled(const godot_string *p_bundle
 bool godot_icall_Internal_LipOCreateFile(const godot_string *p_output_path, const godot_packed_array *p_files) {
 	String output_path = *reinterpret_cast<const String *>(p_output_path);
 	PackedStringArray files = *reinterpret_cast<const PackedStringArray *>(p_files);
-	LipO lip;
-	return lip.create_file(output_path, files);
+	return LipO::create_file(output_path, files);
 }
 
 bool godot_icall_Internal_GodotIs32Bits() {
@@ -152,9 +155,9 @@ bool godot_icall_Internal_IsAssembliesReloadingNeeded() {
 #endif
 }
 
-void godot_icall_Internal_ReloadAssemblies(bool p_soft_reload) {
+void godot_icall_Internal_ReloadAssemblies() {
 #ifdef GD_MONO_HOT_RELOAD
-	callable_mp(MonoBind::GodotSharp::get_singleton(), &MonoBind::GodotSharp::reload_assemblies).call_deferred(p_soft_reload);
+	callable_mp(MonoBind::GodotSharp::get_singleton(), &MonoBind::GodotSharp::reload_assemblies).call_deferred();
 #endif
 }
 
@@ -168,7 +171,7 @@ bool godot_icall_Internal_ScriptEditorEdit(Resource *p_resource, int32_t p_line,
 }
 
 void godot_icall_Internal_EditorNodeShowScriptScreen() {
-	EditorNode::get_editor_main_screen()->select(EditorMainScreen::EDITOR_SCRIPT);
+	ScriptEditor::get_singleton()->focus_editor();
 }
 
 void godot_icall_Internal_EditorRunPlay() {
@@ -267,6 +270,7 @@ static const void *unmanaged_callbacks[]{
 	(void *)godot_icall_EditorProgress_Create,
 	(void *)godot_icall_EditorProgress_Dispose,
 	(void *)godot_icall_EditorProgress_Step,
+	(void *)godot_icall_EditorTranslationParser_AddParser,
 	(void *)godot_icall_Internal_FullExportTemplatesDir,
 	(void *)godot_icall_Internal_IsMacOSAppBundleInstalled,
 	(void *)godot_icall_Internal_LipOCreateFile,

@@ -2,7 +2,7 @@
 
 ## Hranice projektu
 
-- `engine/` je kompletní fork Godotu 4.7.2. Obsahuje engine, editorové funkce FPS Studio i upstream moduly, testy a knihovny třetích stran.
+- `engine/` je kompletní fork Godotu 4.8 beta 5. Obsahuje engine, editorové funkce FPS Studio i upstream moduly, testy a knihovny třetích stran.
 - `engine/editor/fps_studio/` obsahuje vlastní pracovní prostředí FPS Studio a zdroj UniBuilderu.
 - Základní editorové služby, například správa scén, import, Undo/Redo a ukládání rozložení, zůstávají součástí Godot editoru.
 - `tools/build_macos.sh` sestavuje aplikaci pro macOS arm64. `tools/pack_fps_studio_unibuilder.gd` připravuje UniBuilder jako vestavěný PCK balíček.

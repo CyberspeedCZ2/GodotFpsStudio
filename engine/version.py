@@ -1,9 +1,9 @@
 short_name = "godot"
 name = "Godot FPS Studio"
 major = 4
-minor = 7
-patch = 2
-status = "stable"
+minor = 8
+patch = 0
+status = "beta"
 module_config = ""
 website = "https://godotengine.org"
-docs = "4.7"
+docs = "latest"

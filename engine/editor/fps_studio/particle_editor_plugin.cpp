@@ -35,6 +35,7 @@
 #include "core/string/print_string.h"
 #include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
+#include "editor/fps_studio/fps_studio_workspace.h"
 #include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/editor_string_names.h"
@@ -51,7 +52,7 @@
 #include "editor/inspector/editor_preview_plugins.h"
 #include "editor/inspector/editor_resource_preview.h"
 #include "editor/settings/editor_settings.h"
-#include "editor/shader/text_shader_editor.h"
+#include "editor/shader/shader_text_editor.h"
 #include "editor/themes/editor_scale.h"
 #include "modules/visual_shader/editor/visual_shader_editor_plugin.h"
 #include "modules/visual_shader/visual_shader.h"
@@ -62,7 +63,7 @@
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
 #include "scene/3d/physics/character_body_3d.h"
-#include "servers/audio/audio_stream.h"
+#include "scene/resources/audio/audio_stream.h"
 #include "scene/3d/physics/rigid_body_3d.h"
 #include "scene/3d/light_3d.h"
 #include "scene/3d/decal.h"
@@ -73,7 +74,7 @@
 #include "scene/3d/screen_flash_3d.h"
 #include "scene/3d/splatter_decals_3d.h"
 #include "scene/3d/audio_stream_player_3d.h"
-#include "scene/resources/audio_stream_wav.h"
+#include "scene/resources/audio/audio_stream_wav.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/particle_effect_3d.h"
 #include "scene/3d/world_environment.h"
@@ -864,7 +865,7 @@ void FPSStudioParticleEditorPlugin::_update_effects_tree() {
 		if (category != current_category || !category_item) {
 			current_category = category;
 			category_item = effects_tree->create_item(presets);
-			category_item->set_text(0, TTRGET(category));
+			category_item->set_text(0, TTR(category));
 			category_item->set_selectable(0, false);
 			category_item->set_custom_color(0, header_color);
 		}
@@ -1182,7 +1183,7 @@ void FPSStudioParticleEditorPlugin::_set_effect_document(Node *p_root, const Str
 			renderer_inspector->edit(nullptr);
 		}
 		if (particle_graph_editor) {
-			particle_graph_editor->edit_shader(Ref<Shader>());
+			particle_graph_editor->set_edited_resource(Ref<Resource>());
 		}
 		particle_graph_shader_id = ObjectID();
 		particle_code_shader_id = ObjectID();
@@ -4695,7 +4696,7 @@ void FPSStudioParticleEditorPlugin::_update_library_menu() {
 		const String category = FPSParticlePresets::get_preset_category(preset);
 		if (category != current_category) {
 			current_category = category;
-			popup->add_separator(TTRGET(category));
+			popup->add_separator(TTR(category));
 		}
 		popup->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_LIBRARY_PRESET_BASE + preset);
 		if (!library_hover_preview_enabled()) { // The hover preview shows the description.
@@ -5226,7 +5227,6 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 	if (visual_shader.is_valid()) {
 		if (!particle_graph_editor && particle_logic_content) {
 			particle_graph_editor = memnew(VisualShaderEditor);
-			particle_graph_editor->set_toggle_list_control(nullptr);
 			particle_graph_editor->set_shader_preview_visible(false);
 			particle_graph_editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 			particle_graph_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -5237,37 +5237,30 @@ void FPSStudioParticleEditorPlugin::_update_particle_graph_controls() {
 			// Re-editing the same shader resets the graph's view state.
 			if (particle_graph_shader_id != visual_shader->get_instance_id()) {
 				particle_graph_shader_id = visual_shader->get_instance_id();
-				particle_graph_editor->edit_shader(visual_shader);
+				particle_graph_editor->set_edited_resource(visual_shader);
 			}
 			particle_graph_editor->show();
 		}
 	} else if (particle_graph_editor) {
 		if (particle_graph_shader_id.is_valid()) {
 			particle_graph_shader_id = ObjectID();
-			particle_graph_editor->edit_shader(Ref<Shader>());
+			particle_graph_editor->set_edited_resource(Ref<Resource>());
 		}
 		particle_graph_editor->hide();
 	}
 	if (code_shader.is_valid()) {
 		if (!particle_code_editor && particle_logic_content) {
-			particle_code_editor = memnew(TextShaderEditor);
-			// The editor expects the Shader Editor's file list; give it a hidden
-			// stand-in and hide the then meaningless "Toggle Files Panel" button.
-			Control *files_stand_in = memnew(Control);
-			files_stand_in->hide();
-			particle_code_editor->add_child(files_stand_in);
-			particle_code_editor->set_toggle_list_control(files_stand_in);
+			particle_code_editor = memnew(ShaderTextEditor);
 			particle_code_editor->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 			particle_code_editor->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 			// Size it only inside the tree: a resize starts its preview timer.
 			particle_logic_content->add_child(particle_code_editor);
 			particle_code_editor->set_custom_minimum_size(Size2(0, 120) * EDSCALE);
-			callable_mp(this, &FPSStudioParticleEditorPlugin::_hide_code_editor_files_toggle).call_deferred();
 		}
 		if (particle_code_editor) {
 			if (particle_code_shader_id != code_shader->get_instance_id()) {
 				particle_code_shader_id = code_shader->get_instance_id();
-				particle_code_editor->edit_shader(code_shader);
+				particle_code_editor->set_edited_resource(code_shader);
 			}
 			particle_code_editor->show();
 		}
@@ -7898,7 +7891,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 	workspace_background->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	workspace_background->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	screen = workspace_background;
-	EditorNode::get_singleton()->get_editor_main_screen()->get_control()->add_child(workspace_background);
+	FPSStudioWorkspace::add_workspace_dock(this, workspace_background, "Particle", SNAME("GPUParticles3D"));
 	workspace_background->hide();
 	workspace_background->connect(SceneStringName(theme_changed), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_toolbar_icons));
 	workspace_background->connect(SceneStringName(resized), callable_mp(this, &FPSStudioParticleEditorPlugin::_update_document_toolbar_layout));
@@ -7948,7 +7941,7 @@ FPSStudioParticleEditorPlugin::FPSStudioParticleEditorPlugin() {
 			const String category = FPSParticlePresets::get_preset_category(preset);
 			if (category != current_category) {
 				current_category = category;
-				presets_menu->add_separator(TTRGET(category));
+				presets_menu->add_separator(TTR(category));
 			}
 			presets_menu->add_item(FPSParticlePresets::get_preset_name(preset), PARTICLE_TEMPLATE_PRESET_BASE + preset);
 			presets_menu->set_item_tooltip(-1, FPSParticlePresets::get_preset_description(preset));

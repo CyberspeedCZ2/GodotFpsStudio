@@ -39,12 +39,15 @@
 #include "core/io/resource_saver.h"
 #include "core/math/projection.h"
 #include "core/object/callable_mp.h"
+#include "editor/docks/editor_dock.h"
+#include "editor/docks/editor_dock_manager.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/inspector/editor_inspector.h"
+#include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/scene/3d/skeleton_3d_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -1453,9 +1456,9 @@ void SceneImportSettingsScreen::open_settings(const String &p_path, const String
 
 	// Instead of popping up a modal dialog, open this as the "Model" workspace
 	// screen so the preview gets the full editor area.
-	EditorMainScreen *main_screen = EditorNode::get_singleton()->get_editor_main_screen();
-	if (main_screen->get_selected_index() != EditorMainScreen::EDITOR_MODEL) {
-		main_screen->select_by_name(TTRC("Model"));
+	EditorDock *model_dock = EditorDockManager::get_singleton()->get_dock_by_name("Model");
+	if (model_dock && !model_dock->is_visible_in_tree()) {
+		EditorDockManager::get_singleton()->force_focus_dock(model_dock);
 	}
 }
 
@@ -2350,9 +2353,9 @@ void SceneImportSettingsScreen::_close_screen() {
 	_update_empty_state();
 
 	// Return to the Level workspace when closing from the Model screen.
-	EditorMainScreen *main_screen = EditorNode::get_singleton()->get_editor_main_screen();
-	if (main_screen->get_selected_index() == EditorMainScreen::EDITOR_MODEL) {
-		main_screen->select(EditorMainScreen::EDITOR_3D);
+	EditorDock *model_dock = EditorDockManager::get_singleton()->get_dock_by_name("Model");
+	if (model_dock && model_dock->is_visible_in_tree() && Node3DEditor::get_singleton()) {
+		EditorDockManager::get_singleton()->force_focus_dock(Node3DEditor::get_singleton());
 	}
 }
 

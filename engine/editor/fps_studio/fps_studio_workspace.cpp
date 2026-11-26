@@ -44,6 +44,8 @@
 #include "editor/editor_data.h"
 #include "editor/editor_main_screen.h"
 #include "editor/gui/editor_bottom_panel.h"
+#include "editor/plugins/editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/scene/editor_scene_tabs.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
@@ -94,11 +96,10 @@ void FPSStudioWorkspace::build_central_editor_area() {
 	scene_tabs->connect("tab_changed", callable_mp(this, &FPSStudioWorkspace::_on_scene_tab_changed));
 	scene_tabs->connect("tab_closed", callable_mp(this, &FPSStudioWorkspace::_on_scene_tab_closed));
 
+	// Since Godot 4.8 the main screen is a dock slot: the workspaces (Level, Model, Code...)
+	// are docks and its tab bar is shown in the title bar by EditorNode.
 	editor_main_screen = memnew(EditorMainScreen);
-	editor_main_screen->set_custom_minimum_size(Size2(0, 80) * EDSCALE);
-	editor_main_screen->set_draw_behind_parent(true);
 	screen_container->add_child(editor_main_screen);
-	editor_main_screen->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 }
 
 EditorBottomPanel *FPSStudioWorkspace::create_bottom_panel(EditorDockManager *p_dock_manager) {
@@ -127,6 +128,27 @@ void FPSStudioWorkspace::_on_center_split_drag_ended() {
 // Editor Settings > Interface > Editor > Show Tooltips.
 void FPSStudioWorkspace::_apply_tooltip_setting() {
 	Viewport::set_gui_tooltips_enabled(bool(EDITOR_GET("interface/editor/show_tooltips")));
+}
+
+void FPSStudioWorkspace::_workspace_dock_visibility_changed(ObjectID p_dock, ObjectID p_plugin) {
+	EditorDock *dock = ObjectDB::get_instance<EditorDock>(p_dock);
+	EditorPlugin *plugin = ObjectDB::get_instance<EditorPlugin>(p_plugin);
+	if (dock && plugin) {
+		plugin->make_visible(dock->is_visible_in_tree());
+	}
+}
+
+EditorDock *FPSStudioWorkspace::add_workspace_dock(EditorPlugin *p_plugin, Control *p_screen, const String &p_title, const StringName &p_icon_name) {
+	EditorDock *dock = memnew(EditorDock);
+	dock->set_name(p_title);
+	dock->set_title(p_title);
+	dock->set_icon_name(p_icon_name);
+	dock->set_default_slot(EditorDock::DOCK_SLOT_MAIN_SCREEN);
+	dock->set_available_layouts(EditorDock::DOCK_LAYOUT_MAIN_SCREEN);
+	dock->add_child(p_screen);
+	EditorDockManager::get_singleton()->add_dock(dock);
+	dock->connect(SceneStringName(visibility_changed), callable_mp_static(&FPSStudioWorkspace::_workspace_dock_visibility_changed).bind(dock->get_instance_id(), p_plugin->get_instance_id()));
+	return dock;
 }
 
 HistoryDock *FPSStudioWorkspace::create_builtin_docks(
@@ -238,9 +260,6 @@ void FPSStudioWorkspace::save_layout_to_config(
 	if (bottom_panel) {
 		bottom_panel->save_layout_to_config(p_config_file, p_editor_section);
 	}
-	if (editor_main_screen) {
-		editor_main_screen->save_layout_to_config(p_config_file, p_editor_section);
-	}
 	EditorDebuggerNode *debugger_node = EditorDebuggerNode::get_singleton();
 	if (debugger_node && debugger_node->get_default_debugger()) {
 		p_config_file->set_value(p_editor_section, "selected_default_debugger_tab_idx",
@@ -274,8 +293,8 @@ void FPSStudioWorkspace::load_project_central_layout(
 
 	// Always open the Level workspace when the editor starts. The selected
 	// workspace from the previous session is intentionally not restored.
-	if (editor_main_screen) {
-		callable_mp(editor_main_screen, &EditorMainScreen::select).call_deferred(EditorMainScreen::EDITOR_3D);
+	if (Node3DEditor::get_singleton()) {
+		callable_mp((EditorDock *)Node3DEditor::get_singleton(), &EditorDock::make_visible).call_deferred();
 	}
 
 	if (p_migrate_legacy_layout) {

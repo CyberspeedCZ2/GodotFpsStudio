@@ -10,7 +10,7 @@
 #include "core/io/file_access.h"
 #include "core/math/math_funcs.h"
 #include "core/templates/local_vector.h"
-#include "scene/resources/audio_stream_wav.h"
+#include "scene/resources/audio/audio_stream_wav.h"
 
 namespace {
 

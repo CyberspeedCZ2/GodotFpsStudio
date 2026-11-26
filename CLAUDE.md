@@ -150,3 +150,17 @@ Particle editor je pro FPS hru na motivy HL2 funkčně kompletní a je napojený
 ## Další na řadě
 1. Zpětná vazba uživatele z GUI a ze hry (screenshoty), kouř ladí sám.
 2. Pokud požádá: okno Sound Generator, granát na nové efekty (bez dvojího poškození), záblesk u hlavně přes `spawn_attached`, další povrchy v tabulce zásahů (sklo, voda), Visual Shader převod dalších vlastností (turbulence, orbit).
+
+## Přechod na Godot 4.8 beta 5 (2026-11-26, větev `godot-4.8-beta5`)
+Uživatel chtěl engine aktualizovat ze 4.7.2 na 4.8 beta. Sloučeno třícestně (upstream `ed1daf0bf` = 4.7.2 → `a661dfdbc` = 4.8 beta 5, 4725 souborů, 26 konfliktů). Ověřeno jen headless (build, hra 600 snímků, editor s doplňkem: záložky, přepínání, otevření efektu, scéna levelu, ukončení bez úniků); **v GUI neověřeno**, proto zatím není v `main`.
+- **Hlavní obrazovky jsou ve 4.8 doky** (`EditorMainScreen` je `DockTabContainer`, slot `DOCK_SLOT_MAIN_SCREEN`; `select()`, `EDITOR_3D`, `set_button_enabled` už nejsou). Přepnutí: `EditorDockManager::force_focus_dock(dock)`, Level je `Node3DEditor::get_singleton()` (sám je `EditorDock`), ostatní přes `get_dock_by_name("Model")`.
+- Pracovní plochy Model a Particle vznikají přes `FPSStudioWorkspace::add_workspace_dock(plugin, screen, title, icon)`; ten zároveň volá `EditorPlugin::make_visible()` při zobrazení a skrytí záložky (4.8 ho pro pluginy v C++ sám nevolá a `get_control()->add_child()` v konstruktoru dock nevytvoří).
+- Popisky záložek Level, Code, Play a Assets dělá `_fps_get_tab_title` v `editor_dock.cpp` (názvy doků zůstávají „3D“, „Script“…, spoléhají na ně pluginy a rozložení).
+- Hra v Levelu: `GameView::_get_game_host_dock()`, dock Game se v `setup()` vypne (`set_dock_enabled(false)`).
+- Kód 3D viewportu je v `node_3d_editor_viewport.*` (přichytávání vrcholů, kontextové menu FPS, vložená hra), konstanty v `node_3d_editor_constants.h`. Lišta Levelu: `main_menu_hbox` je nový box na konci `main_flow`.
+- Editory shaderů: `TextShaderEditor` → `ShaderTextEditor`, `edit_shader()` → `set_edited_resource()`, panel souborů zmizel. Vložení do záložky Logic se zkompiluje, v GUI neověřeno.
+- Další přejmenování: `PhysicsDirectSpaceState3D::RayParameters` apod. → `PhysicsServer3DTypes::…`, zvukové hlavičky v `scene/resources/audio/`, `TTRGET` → `TTR`, `show_accept` → `show_warning`.
+- Build: šablona `.app` je v `.gitignore`, po aktualizaci upstreamu ji obnovit z upstreamu (`git archive <commit> misc/dist/macos_tools.app | tar -x -C engine`); skript bere `Info_arm64.plist`. Minimum macOS 13 (arm64). `GODOT_VERSION_STATUS=beta5` nastavuje skript.
+- Headless ve 4.8 má okno 0×0 (viewport 2×2): HUD hry pak hlásí `p_size <= 0` (dělení nulou ve stretchi), v okně se to netýká.
+- 4.8 při prvním otevření přepíše `.import` soubory projektu (nové klíče). Zpět do 4.7.2 projekt pak už čistě nejde; herní repo je v Gitu.
+- Původní aplikace je v `Godot FPS Studio 4.7.2.app` (mimo Git). Remote `upstream` míří na godotengine/godot; další aktualizace stejným postupem (dva umělé commity se stromem `engine/` a `cherry-pick`).

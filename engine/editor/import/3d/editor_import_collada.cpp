@@ -142,10 +142,7 @@ Error ColladaImport::_populate_skeleton(Skeleton3D *p_skeleton, Collada::Node *p
 
 	int id = r_bone++;
 	for (int i = 0; i < p_node->children.size(); i++) {
-		Error err = _populate_skeleton(p_skeleton, p_node->children[i], r_bone, id, global_xform);
-		if (err) {
-			return err;
-		}
+		RETURN_IF_ERROR(_populate_skeleton(p_skeleton, p_node->children[i], r_bone, id, global_xform));
 	}
 
 	return OK;
@@ -183,10 +180,7 @@ Error ColladaImport::_create_scene_skeletons(Collada::Node *p_node) {
 	}
 
 	for (int i = 0; i < p_node->children.size(); i++) {
-		Error err = _create_scene_skeletons(p_node->children[i]);
-		if (err) {
-			return err;
-		}
+		RETURN_IF_ERROR(_create_scene_skeletons(p_node->children[i]));
 	}
 	return OK;
 }
@@ -326,10 +320,7 @@ Error ColladaImport::_create_scene(Collada::Node *p_node, Node3D *p_parent) {
 	}
 
 	for (int i = 0; i < p_node->children.size(); i++) {
-		Error err = _create_scene(p_node->children[i], node);
-		if (err) {
-			return err;
-		}
+		RETURN_IF_ERROR(_create_scene(p_node->children[i], node));
 	}
 	return OK;
 }
@@ -1338,10 +1329,7 @@ Error ColladaImport::_create_resources(Collada::Node *p_node, bool p_use_compres
 	}
 
 	for (int i = 0; i < p_node->children.size(); i++) {
-		Error err = _create_resources(p_node->children[i], p_use_compression);
-		if (err) {
-			return err;
-		}
+		RETURN_IF_ERROR(_create_resources(p_node->children[i], p_use_compression));
 	}
 	return OK;
 }

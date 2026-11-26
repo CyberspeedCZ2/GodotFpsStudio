@@ -4,12 +4,13 @@
 # This file is distributed under the same license as the Godot source code.
 #
 # BoneNI <bounkirdni@gmail.com>, 2026.
+# Bone NI <bounkirdni@gmail.com>, 2026.
 msgid ""
 msgstr ""
 "Project-Id-Version: Godot Engine editor interface\n"
 "Report-Msgid-Bugs-To: https://github.com/godotengine/godot\n"
-"PO-Revision-Date: 2026-08-06 05:29+0000\n"
-"Last-Translator: BoneNI <bounkirdni@gmail.com>\n"
+"PO-Revision-Date: 2026-08-10 14:28+0000\n"
+"Last-Translator: Bone NI <bounkirdni@gmail.com>\n"
 "Language-Team: Lao <https://hosted.weblate.org/projects/godot-engine/godot/lo/"
 ">\n"
 "Language: lo\n"
@@ -17,7 +18,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8-bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 2026.8.1.dev0\n"
+"X-Generator: Weblate 2026.9.dev0\n"
 
 msgid "OK"
 msgstr "ຕົກລົງ"
@@ -290,7 +291,7 @@ msgid "D-pad Right"
 msgstr "ປຸ່ມທິດທາງ ຂວາ"
 
 msgid "Xbox Share, PS5 Microphone, Nintendo Capture"
-msgstr "Xbox Share, PS5 Microphone, Nintendo Capture"
+msgstr "ແບ່ງປັນ Xbox, ໄມໂຄຣໂຟນ PS5, ຈັບພາບ Nintendo"
 
 msgid "Xbox Paddle 1"
 msgstr "Xbox Paddle 1"
@@ -551,6 +552,9 @@ msgstr "ColorPicker: ລຶບຄ່າທີ່ຕັ້ງໄວ້"
 msgid "Accessibility: Keyboard Drag and Drop"
 msgstr "ການເຂົ້າເຖິງ: ລາກ ແລະ ວາງ ດ້ວຍຄີບອດ"
 
+msgid "Toggle Fullscreen"
+msgstr "ເປີດ/ປິດ ເຕັມຈໍ"
+
 msgid "Invalid input %d (not passed) in expression"
 msgstr "ຂໍ້ມູນເຂົ້າ %d ບໍ່ຖືກຕ້ອງ (ບໍ່ໄດ້ສົ່ງຜ່ານ) ໃນນິພົດ"
 
@@ -779,8 +783,8 @@ msgstr ""
 msgid "Blend"
 msgstr "ເບລນ (Blend)"
 
-msgid "Open Editor"
-msgstr "ເປີດຕົວແກ້ໄຂ"
+msgid "Open"
+msgstr "ເປີດ"
 
 msgid "Index"
 msgstr "ດັດຊະນີ"
@@ -797,9 +801,6 @@ msgstr ""
 
 msgid "Position"
 msgstr "ຕຳແໜ່ງ"
-
-msgid "Blend Value"
-msgstr "ຄ່າການເບລນ"
 
 msgid "Min"
 msgstr "ຕ່ຳສຸດ"
@@ -857,12 +858,6 @@ msgstr "ໄລຍະຫ່າງຕາຕະລາງແກນ X"
 
 msgid "Grid Y Step"
 msgstr "ໄລຍະຫ່າງຕາຕະລາງແກນ Y"
-
-msgid "Blend X Value"
-msgstr "ຄ່າການເບລນແກນ X"
-
-msgid "Blend Y Value"
-msgstr "ຄ່າການເບລນແກນ Y"
 
 msgid "Max Y"
 msgstr "Y ສູງສຸດ"
@@ -1388,12 +1383,6 @@ msgstr "ບໍ່ສາມາດປ່ຽນສາກອອກຈາກ \"End\" 
 
 msgid "Transition from \"%s\" to \"%s\" already exists!"
 msgstr "ການປ່ຽນສາກຈາກ \"%s\" ໄປຫາ \"%s\" ມີຢູ່ແລ້ວ!"
-
-msgid "Play/Travel to %s"
-msgstr "ຫຼິ້ນ/ເຄື່ອນທີ່ໄປຫາ %s"
-
-msgid "Edit %s"
-msgstr "ແກ້ໄຂ %s"
 
 msgid "Add Node and Transition"
 msgstr "ເພີ່ມໂນດ ແລະ ການປ່ຽນສາກ"
@@ -1959,19 +1948,6 @@ msgstr ""
 "File\" ແລະ\n"
 "\"Keep Custom Tracks\"."
 
-msgid ""
-"Some AnimationPlayerEditor's options are disabled since this is the dummy "
-"AnimationPlayer for preview.\n"
-"\n"
-"The dummy player is forced active, non-deterministic and doesn't have the "
-"root motion track. Furthermore, the original node is inactive temporary."
-msgstr ""
-"ບາງຕົວເລືອກຂອງ AnimationPlayerEditor ຖືກປິດໃຊ້ງານ ເນື່ອງຈາກນີ້ແມ່ນ AnimationPlayer "
-"ຈຳລອງສຳລັບການເບິ່ງຕົວຢ່າງ.\n"
-"\n"
-"Player ຈຳລອງຖືກບັງຄັບໃຫ້ເຮັດວຽກ, ບໍ່ສາມາດກຳນົດຜົນໄດ້ແນ່ນອນ ແລະ ບໍ່ມີແທຣັກການເຄື່ອນໄຫວຮາກ. "
-"ນອກຈາກນັ້ນ, ໂນດຕົ້ນສະບັບຈະບໍ່ເຮັດວຽກຊົ່ວຄາວ."
-
 msgid "AnimationPlayer is inactive. The playback will not be processed."
 msgstr "AnimationPlayer ບໍ່ເຮັດວຽກ. ການຫຼິ້ນຈະບໍ່ຖືກປະມວນຜົນ."
 
@@ -2531,9 +2507,6 @@ msgstr "ເຂົ້າສູ່ລະບົບອອນລາຍ"
 msgid "Failed to verify repository."
 msgstr "ກວດສອບຄັງເກັບ (repository) ບໍ່ສຳເລັດ."
 
-msgid "Template"
-msgstr "ແມ່ແບບ (Template)"
-
 msgid "All"
 msgstr "ທັງໝົດ"
 
@@ -2548,6 +2521,9 @@ msgstr "ບໍ່ພົບຜົນລັບທີ່ຮອງຮັບກັບ
 
 msgid "Unstable"
 msgstr "ບໍ່ຄົງທີ່"
+
+msgid "Asset Store"
+msgstr "ຄັງຊັບພະຍາກອນ (Asset Store)"
 
 msgid "Search templates. Use tags by including \"#tagname\"."
 msgstr "ຄົ້ນຫາແມ່ແບບ. ໃຊ້ແທັກໂດຍການໃສ່ \"#ຊື່ແທັກ\"."
@@ -2575,9 +2551,6 @@ msgstr "ໃບອະນຸຍາດ"
 
 msgid "Assets ZIP File"
 msgstr "ໄຟລ໌ ZIP ຂອງແອັດເຊັດ"
-
-msgid "Asset Store"
-msgstr "ຄັງຊັບພະຍາກອນ (Asset Store)"
 
 msgid "Error opening asset file for \"%s\" (not in ZIP format)."
 msgstr "ເກີດຂໍ້ຜິດພາດໃນການເປີດໄຟລ໌ແອັດເຊັດສຳລັບ \"%s\" (ບໍ່ແມ່ນຮູບແບບ ZIP)."
@@ -2776,29 +2749,14 @@ msgstr "ສະລັບແຖບສຽງ"
 msgid "Layout:"
 msgstr "ຮູບແບບ (Layout):"
 
+msgid "Save As..."
+msgstr "ບັນທຶກເປັນ..."
+
 msgid "Add Bus"
 msgstr "ເພີ່ມບັສ"
 
 msgid "Add a new Audio Bus to this layout."
 msgstr "ເພີ່ມບັສສຽງໃໝ່ເຂົ້າໃນຮູບແບບນີ້."
-
-msgid "Load"
-msgstr "ໂຫຼດ"
-
-msgid "Load an existing Bus Layout."
-msgstr "ໂຫຼດຮູບແບບບັສທີ່ມີຢູ່ແລ້ວ."
-
-msgid "Save this Bus Layout to a file."
-msgstr "ບັນທຶກຮູບແບບບັສນີ້ລົງໃນໄຟລ໌."
-
-msgid "Load Default"
-msgstr "ໂຫຼດຄ່າເລີ່ມຕົ້ນ"
-
-msgid "Load the default Bus Layout."
-msgstr "ໂຫຼດຮູບແບບບັສເລີ່ມຕົ້ນ."
-
-msgid "Create a new Bus Layout."
-msgstr "ສ້າງຮູບແບບບັສໃໝ່."
 
 msgid "Audio Bus Layout"
 msgstr "ຮູບແບບບັສສຽງ"
@@ -2824,35 +2782,8 @@ msgstr "ດີບັກດ້ວຍຕົວແກ້ໄຂພາຍນອກ"
 msgid "Deploy with Remote Debug"
 msgstr "ຕິດຕັ້ງດ້ວຍການດີບັກທາງໄກ"
 
-msgid ""
-"When this option is enabled, using one-click deploy will make the executable "
-"attempt to connect to this computer's IP so the running project can be "
-"debugged.\n"
-"This option is intended to be used for remote debugging (typically with a "
-"mobile device).\n"
-"You don't need to enable it to use the GDScript debugger locally."
-msgstr ""
-"ເມື່ອເປີດຕົວເລືອກນີ້, ການຕິດຕັ້ງແບບຄລິກດຽວຈະເຮັດໃຫ້ໄຟລ໌ທີ່ເຮັດວຽກໄດ້ພະຍາຍາມເຊື່ອມຕໍ່ຫາ IP "
-"ຂອງຄອມພິວເຕີເຄື່ອງນີ້ ເພື່ອໃຫ້ສາມາດດີບັກໂປຣເຈັກທີ່ກຳລັງເຮັດວຽກຢູ່ໄດ້.\n"
-"ຕົວເລືອກນີ້ມີໄວ້ສຳລັບການດີບັກທາງໄກ (ໂດຍປົກກະຕິແມ່ນໃຊ້ມືຖື).\n"
-"ທ່ານບໍ່ຈຳເປັນຕ້ອງເປີດມັນຫາກຕ້ອງການດີບັກ GDScript ຢູ່ໃນເຄື່ອງໂດຍກົງ."
-
 msgid "Small Deploy with Network Filesystem"
 msgstr "ຕິດຕັ້ງແບບຂະໜາດນ້ອຍດ້ວຍລະບົບໄຟລ໌ເຄືອຂ່າຍ"
-
-msgid ""
-"When this option is enabled, using one-click deploy for Android will only "
-"export an executable without the project data.\n"
-"The filesystem will be provided from the project by the editor over the "
-"network.\n"
-"On Android, deploying will use the USB cable for faster performance. This "
-"option speeds up testing for projects with large assets."
-msgstr ""
-"ເມື່ອເປີດຕົວເລືອກນີ້, ການຕິດຕັ້ງແບບຄລິກດຽວສຳລັບ Android "
-"ຈະສົ່ງອອກສະເພາະໄຟລ໌ທີ່ເຮັດວຽກໄດ້ໂດຍບໍ່ມີຂໍ້ມູນໂປຣເຈັກ.\n"
-"ລະບົບໄຟລ໌ຈະຖືກສົ່ງຈາກຕົວແກ້ໄຂຜ່ານເຄືອຂ່າຍ.\n"
-"ໃນ Android, ການຕິດຕັ້ງຈະໃຊ້ສາຍ USB ເພື່ອຄວາມໄວ. "
-"ຕົວເລືອກນີ້ຊ່ວຍໃຫ້ການທົດສອບໂປຣເຈັກທີ່ມີແອັດເຊັດຂະໜາດໃຫຍ່ໄວຂຶ້ນ."
 
 msgid "Visible Collision Shapes"
 msgstr "ສະແດງຮູບຊົງການຕຳ"
@@ -3530,20 +3461,11 @@ msgstr "ຄລິກເພື່ອຄັດລອກ."
 msgid "Click to open in browser."
 msgstr "ຄລິກເພື່ອເປີດໃນບຣາວເຊີ."
 
-msgid "Toggle Files Panel"
-msgstr "ເປີດ/ປິດ ແຖບໄຟລ໌"
-
-msgid "Scripts"
-msgstr "ສະຄຣິບ"
-
 msgid "No description available."
 msgstr "ບໍ່ມີລາຍລະອຽດ."
 
 msgid "This annotation may be changed or removed in future versions."
 msgstr "ແອນໂນເທຊັນນີ້ອາດຈະຖືກປ່ຽນແປງ ຫຼື ລຶບອອກໃນເວີຊັນຕໍ່ໆໄປ."
-
-msgid "Open"
-msgstr "ເປີດ"
 
 msgid "Open in File Manager"
 msgstr "ເປີດໃນຕົວຈັດການໄຟລ໌"
@@ -3883,21 +3805,6 @@ msgstr "ແກ້ໄຂໄຟລ໌ທີ່ກ່ຽວຂ້ອງ..."
 msgid "Create New"
 msgstr "ສ້າງໃໝ່"
 
-msgid "Folder..."
-msgstr "ໂຟນເດີ..."
-
-msgid "Scene..."
-msgstr "ສາກ..."
-
-msgid "Script..."
-msgstr "ສະຄຣິບ..."
-
-msgid "Resource..."
-msgstr "ຊັບພະຍາກອນ..."
-
-msgid "TextFile..."
-msgstr "ໄຟລ໌ຂໍ້ຄວາມ..."
-
 msgid "Expand Folder"
 msgstr "ຂະຫຍາຍໂຟນເດີ"
 
@@ -3937,17 +3844,32 @@ msgstr "ເປີດໂຟນເດີໃນເທີມິນໍ"
 msgid "New Folder..."
 msgstr "ໂຟນເດີໃໝ່..."
 
+msgid "Folder..."
+msgstr "ໂຟນເດີ..."
+
 msgid "New Scene..."
 msgstr "ສາກໃໝ່..."
+
+msgid "Scene..."
+msgstr "ສາກ..."
 
 msgid "New Script..."
 msgstr "ສະຄຣິບໃໝ່..."
 
+msgid "Script..."
+msgstr "ສະຄຣິບ..."
+
 msgid "New Resource..."
 msgstr "ຊັບພະຍາກອນໃໝ່..."
 
+msgid "Resource..."
+msgstr "ຊັບພະຍາກອນ..."
+
 msgid "New TextFile..."
 msgstr "ໄຟລ໌ຂໍ້ຄວາມໃໝ່..."
+
+msgid "TextFile..."
+msgstr "ໄຟລ໌ຂໍ້ຄວາມ..."
 
 msgid "Sort Files"
 msgstr "ຈັດລຽງໄຟລ໌"
@@ -4030,11 +3952,11 @@ msgstr "ກັ່ນຕອງໄຟລ໌"
 msgid "Directories"
 msgstr "ໄດເຣັກທໍຣີ"
 
-msgid "Display Mode"
-msgstr "ໂໝດການສະແດງຜົນ"
-
 msgid "Files"
 msgstr "ໄຟລ໌"
+
+msgid "Display Mode"
+msgstr "ໂໝດການສະແດງຜົນ"
 
 msgid ""
 "Scanning Files,\n"
@@ -4190,6 +4112,9 @@ msgstr "ຄ່າເລີ່ມຕົ້ນ"
 msgid "Set as Default for '%s'"
 msgstr "ຕັ້ງເປັນຄ່າເລີ່ມຕົ້ນສຳລັບ '%s'"
 
+msgid "Load Default"
+msgstr "ໂຫຼດຄ່າເລີ່ມຕົ້ນ"
+
 msgid "Clear Default for '%s'"
 msgstr "ລ້າງຄ່າເລີ່ມຕົ້ນສຳລັບ '%s'"
 
@@ -4235,11 +4160,6 @@ msgid ""
 "settings."
 msgstr "ເລືອກໄຟລ໌ຊັບພະຍາກອນໃນລະບົບໄຟລ໌ ຫຼື ໃນອິນສະເປັກເຕີເພື່ອປັບແຕ່ງການຕັ້ງຄ່ານຳເຂົ້າ."
 
-msgid ""
-"The following resources will be duplicated and embedded within this resource/"
-"object."
-msgstr "ຊັບພະຍາກອນຕໍ່ໄປນີ້ຈະຖືກເຮັດສຳເນົາ ແລະ ຝັງໄວ້ໃນຊັບພະຍາກອນ/ອັອບເຈັກນີ້."
-
 msgid "This object has no resources to duplicate."
 msgstr "ອັອບເຈັກນີ້ບໍ່ມີຊັບພະຍາກອນທີ່ຈະເຮັດສຳເນົາ."
 
@@ -4251,6 +4171,9 @@ msgstr "ໂຫຼດຊັບພະຍາກອນຫຼົ້ມເຫຼວ."
 
 msgid "(Current)"
 msgstr "(ປັດຈຸບັນ)"
+
+msgid "Go to previous edited object in history."
+msgstr "ໄປທີ່ອັອບເຈັກທີ່ແກ້ໄຂກ່ອນໜ້າໃນປະຫວັດ."
 
 msgid "Expand Non-Default"
 msgstr "ຂະຫຍາຍສ່ວນທີ່ບໍ່ແມ່ນຄ່າເລີ່ມຕົ້ນ"
@@ -4282,20 +4205,20 @@ msgstr "ອິນສະເປັກເຕີ"
 msgid "Open Inspector Dock"
 msgstr "ເປີດແຖບອິນສະເປັກເຕີ"
 
-msgid "Create a new resource in memory and edit it."
-msgstr "ສ້າງຊັບພະຍາກອນໃໝ່ໃນໜ່ວຍຄວາມຈຳ ແລະ ແກ້ໄຂມັນ."
-
-msgid "Load an existing resource from disk and edit it."
-msgstr "ໂຫຼດຊັບພະຍາກອນທີ່ມີຢູ່ຈາກດິສກ໌ ແລະ ແກ້ໄຂມັນ."
+msgid "Go to next edited object in history."
+msgstr "ໄປທີ່ອັອບເຈັກທີ່ແກ້ໄຂຖັດໄປໃນປະຫວັດ."
 
 msgid "Save the currently edited resource."
 msgstr "ບັນທຶກຊັບພະຍາກອນທີ່ກຳລັງແກ້ໄຂຢູ່."
 
-msgid "Save As..."
-msgstr "ບັນທຶກເປັນ..."
-
 msgid "Extra resource options."
 msgstr "ຕົວເລືອກຊັບພະຍາກອນເພີ່ມເຕີມ."
+
+msgid "Create a new resource in memory and edit it."
+msgstr "ສ້າງຊັບພະຍາກອນໃໝ່ໃນໜ່ວຍຄວາມຈຳ ແລະ ແກ້ໄຂມັນ."
+
+msgid "Save Resource As..."
+msgstr "ບັນທຶກຊັບພະຍາກອນເປັນ..."
 
 msgid "Edit Resource from Clipboard"
 msgstr "ແກ້ໄຂຊັບພະຍາກອນຈາກຄລິບບອດ"
@@ -4303,23 +4226,11 @@ msgstr "ແກ້ໄຂຊັບພະຍາກອນຈາກຄລິບບອ
 msgid "Copy Resource"
 msgstr "ສຳເນົາຊັບພະຍາກອນ"
 
-msgid "Make Resource Built-In"
-msgstr "ເຮັດໃຫ້ຊັບພະຍາກອນເປັນແບບຝັງໃນ (Built-In)"
-
-msgid "Go to previous edited object in history."
-msgstr "ໄປທີ່ອັອບເຈັກທີ່ແກ້ໄຂກ່ອນໜ້າໃນປະຫວັດ."
-
-msgid "Go to next edited object in history."
-msgstr "ໄປທີ່ອັອບເຈັກທີ່ແກ້ໄຂຖັດໄປໃນປະຫວັດ."
-
-msgid "History of recently edited objects."
-msgstr "ປະຫວັດຂອງອັອບເຈັກທີ່ຫາກໍ່ແກ້ໄຂ."
-
-msgid "Open documentation for this object."
-msgstr "ເປີດເອກະສານຄວາມຊ່ວຍເຫຼືອສຳລັບອັອບເຈັກນີ້."
-
 msgid "Open Documentation"
 msgstr "ເປີດເອກະສານຄວາມຊ່ວຍເຫຼືອ"
+
+msgid "Make Resource Built-In"
+msgstr "ເຮັດໃຫ້ຊັບພະຍາກອນເປັນແບບຝັງໃນ (Built-In)"
 
 msgid "Filter Properties"
 msgstr "ກັ່ນຕອງຄຸນສົມບັດ"
@@ -4347,16 +4258,8 @@ msgid ""
 "of its nodes."
 msgstr "ບໍ່ສາມາດສ້າງອິນສະແຕນຊ໌ສາກ '%s' ໄດ້ ເພາະວ່າສາກປັດຈຸບັນມີຢູ່ໃນໜຶ່ງໃນໂນດຂອງມັນ."
 
-msgid "Instantiate Scene"
-msgid_plural "Instantiate Scenes"
-msgstr[0] "ສ້າງອິນສະແຕນຊ໌ສາກ"
-
 msgid "Error loading audio stream from %s"
 msgstr "ເກີດຂໍ້ຜິດພາດໃນການໂຫຼດສຽງຈາກ %s"
-
-msgid "Create AudioStreamPlayer"
-msgid_plural "Create AudioStreamPlayers"
-msgstr[0] "ສ້າງເຄື່ອງຫຼິ້ນສຽງ (AudioStreamPlayer)"
 
 msgid "Replace with Branch Scene"
 msgstr "ແທນທີ່ດ້ວຍສາກກິ່ງ (Branch Scene)"
@@ -4445,9 +4348,6 @@ msgstr ""
 "ບໍ່ສາມາດບັນທຶກກິ່ງທີ່ເປັນສ່ວນໜຶ່ງຂອງສາກສືບທອດໄດ້.\n"
 "ເພື່ອບັນທຶກກິ່ງນີ້ເປັນສາກຂອງມັນເອງ, ໃຫ້ເປີດສາກຕົ້ນສະບັບ, ຄລິກຂວາໃສ່ກິ່ງນີ້, ແລ້ວເລືອກ \"Save Branch "
 "as Scene\"."
-
-msgid "Save New Scene As..."
-msgstr "ບັນທຶກສາກໃໝ່ເປັນ..."
 
 msgid ""
 "Disabling \"Editable Children\" will cause all properties of this subscene's "
@@ -4765,6 +4665,9 @@ msgstr "ໂລຄໍ (Local)"
 msgid "Delete Related Animation Tracks"
 msgstr "ລຶບແທຣັກແອນິເມຊັນທີ່ກ່ຽວຂ້ອງ"
 
+msgid "Save New Scene As..."
+msgstr "ບັນທຶກສາກໃໝ່ເປັນ..."
+
 msgid "Clear Inheritance? (No Undo!)"
 msgstr "ລ້າງການສືບທອດບໍ? (ບໍ່ສາມາດຍົກເລີກການກະທຳໄດ້!)"
 
@@ -4839,14 +4742,6 @@ msgid "Toggle visibility of editor messages."
 msgstr "ເປີດ/ປິດ ການເບິ່ງເຫັນຂໍ້ຄວາມຈາກຕົວແກ້ໄຂ."
 
 msgid ""
-"The Android build template is already installed in this project and it won't "
-"be overwritten.\n"
-"Remove the \"%s\" directory manually before attempting this operation again."
-msgstr ""
-"ເທັມເພລັດສຳລັບ Android ຖືກຕິດຕັ້ງໃນໂປຣເຈັກນີ້ແລ້ວ ແລະ ຈະບໍ່ຖືກຂຽນທັບ.\n"
-"ໃຫ້ລຶບໂຟນເດີ \"%s\" ອອກດ້ວຍຕົນເອງກ່ອນທີ່ຈະລອງໃໝ່."
-
-msgid ""
 "This will set up your project for gradle Android builds by installing the "
 "source template to \"%s\".\n"
 "Note that in order to make gradle builds instead of using pre-built APKs, the "
@@ -4917,9 +4812,6 @@ msgid ""
 "Make it unique first."
 msgstr ""
 "ຊັບພະຍາກອນນີ້ບໍ່ສາມາດບັນທຶກໄດ້ເພາະມັນບໍ່ໄດ້ເປັນຂອງສາກທີ່ກຳລັງແກ້ໄຂຢູ່. ໃຫ້ເຮັດໃຫ້ມັນເປັນເອກະລັກກ່ອນ."
-
-msgid "Save Resource As..."
-msgstr "ບັນທຶກຊັບພະຍາກອນເປັນ..."
 
 msgid "Can't open file for writing:"
 msgstr "ບໍ່ສາມາດເປີດໄຟລ໌ເພື່ອຂຽນໄດ້:"
@@ -5099,11 +4991,6 @@ msgid ""
 "The current scene has no root node, but %d modified external resource(s) and/"
 "or plugin data were saved anyway."
 msgstr "ສາກປັດຈຸບັນບໍ່ມີໂນດຮາກ, ແຕ່ຊັບພະຍາກອນພາຍນອກ %d ຢ່າງ ຫຼື ຂໍ້ມູນປລັກອິນຖືກບັນທຶກແລ້ວ."
-
-msgid ""
-"A root node is required to save the scene. You can add a root node using the "
-"Scene tree dock."
-msgstr "ຕ້ອງມີໂນດຮາກເພື່ອບັນທຶກສາກ. ທ່ານສາມາດເພີ່ມໂນດຮາກໄດ້ໃນໜ້າຕ່າງສາກ."
 
 msgid "Save Scene As..."
 msgstr "ບັນທຶກສາກເປັນ..."
@@ -5434,9 +5321,6 @@ msgstr "ຕັ້ງຄ່າ Version Control..."
 msgid "Pack Project as ZIP..."
 msgstr "ແພັກໂປຣເຈັກເປັນ ZIP..."
 
-msgid "Install Android Build Template..."
-msgstr "ຕິດຕັ້ງເທັມເພລັດສຳລັບບິວດ໌ Android..."
-
 msgid "Open User Data Folder"
 msgstr "ເປີດໂຟນເດີຂໍ້ມູນຜູ້ໃຊ້"
 
@@ -5569,6 +5453,9 @@ msgstr "ຕັ້ງຄ່າໂປຣເຈັກ"
 msgid "Find in Files..."
 msgstr "ຄົ້ນຫາໃນໄຟລ໌..."
 
+msgid "Replace in Files..."
+msgstr "ແທນທີ່ໃນໄຟລ໌..."
+
 msgid "Export..."
 msgstr "ສົ່ງອອກ..."
 
@@ -5595,9 +5482,6 @@ msgstr "ແຖບຄຳສັ່ງ..."
 
 msgid "Take Screenshot"
 msgstr "ຖ່າຍຮູບໜ້າຈໍ"
-
-msgid "Toggle Fullscreen"
-msgstr "ເປີດ/ປິດ ເຕັມຈໍ"
 
 msgid "Search Help..."
 msgstr "ຄົ້ນຫາວິທີໃຊ້..."
@@ -5742,11 +5626,14 @@ msgstr "ເລືອກອັນປັດຈຸບັນ"
 msgid "Open Project Settings"
 msgstr "ເປີດການຕັ້ງຄ່າໂປຣເຈັກ"
 
-msgid "Ok"
-msgstr "ຕົກລົງ"
-
 msgid "Warning!"
 msgstr "ຄຳເຕືອນ!"
+
+msgid "Invalid Java SDK path in Editor Settings."
+msgstr "ເສັ້ນທາງ Java SDK ໃນ Editor Settings ບໍ່ຖືກຕ້ອງ."
+
+msgid "Invalid Android SDK path in Editor Settings."
+msgstr "ເສັ້ນທາງ Android SDK ໃນ Editor Settings ບໍ່ຖືກຕ້ອງ."
 
 msgid "Can't get filesystem access."
 msgstr "ບໍ່ສາມາດເຂົ້າເຖິງລະບົບໄຟລ໌ໄດ້."
@@ -5912,10 +5799,10 @@ msgstr "\"Shader Baker\" ບໍ່ສາມາດໃຊ້ງານໄດ້ກ�
 msgid ""
 "The editor is currently using a different renderer than what the target "
 "platform will use. \"Shader Baker\" won't be able to include core shaders. "
-"Switch to \"%s\" renderer temporarily to fix this."
+"Switch to the \"%s\" renderer temporarily to fix this."
 msgstr ""
-"ຕົວແກ້ໄຂກຳລັງໃຊ້ Renderer ທີ່ຕ່າງຈາກແພລັດຟອມປາຍທາງ. \"Shader Baker\" ຈະບໍ່ສາມາດຮວມ Core "
-"shaders ໄດ້. ໃຫ້ປ່ຽນໄປໃຊ້ Renderer \"%s\" ຊົ່ວຄາວເພື່ອແກ້ໄຂບັນຫານີ້."
+"ຕົວແກ້ໄຂກຳລັງໃຊ້ຕົວສະແດງຜົນທີ່ແຕກຕ່າງຈາກແພລັດຟອມປາຍທາງ. \"Shader Baker\" ຈະບໍ່ສາມາດລວມ "
+"core shaders ເຂົ້າໄປໄດ້. ກະລຸນາປ່ຽນໄປໃຊ້ຕົວສະແດງຜົນ \"%s\" ຊົ່ວຄາວເພື່ອແກ້ໄຂບັນຫານີ້."
 
 msgid "Target folder does not exist or is inaccessible: \"%s\""
 msgstr "ໂຟນເດີປາຍທາງບໍ່ມີຢູ່ ຫຼື ບໍ່ສາມາດເຂົ້າເຖິງໄດ້: \"%s\""
@@ -6021,6 +5908,12 @@ msgstr "ເປີດໃຊ້ງານໂມດູນກ້ອງແລ້ວ, �
 msgid "Invalid additional PList content: "
 msgstr "ເນື້ອໃນ PList ເພີ່ມເຕີມບໍ່ຖືກຕ້ອງ: "
 
+msgid "Export Icons"
+msgstr "ສົ່ງອອກໄອຄອນ"
+
+msgid "Could not open a directory at path \"%s\"."
+msgstr "ບໍ່ສາມາດເປີດໂຟນເດີຕາມເສັ້ນທາງ \"%s\" ໄດ້."
+
 msgid "Select device from the list"
 msgstr "ເລືອກອຸປະກອນຈາກລາຍຊື່"
 
@@ -6047,14 +5940,6 @@ msgstr "ການຮັນຫຼົ້ມເຫຼວ, ກະລຸນາເບ�
 
 msgid "\"Shader Baker\" is not supported when using the Compatibility renderer."
 msgstr "\"Shader Baker\" ບໍ່ຮອງຮັບເມື່ອໃຊ້ຕົວສະແດງຜົນ (renderer) ແບບ Compatibility."
-
-msgid ""
-"The editor is currently using a different renderer than what the target "
-"platform will use. \"Shader Baker\" won't be able to include core shaders. "
-"Switch to the \"%s\" renderer temporarily to fix this."
-msgstr ""
-"ຕົວແກ້ໄຂກຳລັງໃຊ້ຕົວສະແດງຜົນທີ່ແຕກຕ່າງຈາກແພລັດຟອມປາຍທາງ. \"Shader Baker\" ຈະບໍ່ສາມາດລວມ "
-"core shaders ເຂົ້າໄປໄດ້. ກະລຸນາປ່ຽນໄປໃຊ້ຕົວສະແດງຜົນ \"%s\" ຊົ່ວຄາວເພື່ອແກ້ໄຂບັນຫານີ້."
 
 msgid ""
 "A texture format must be selected to export the project. Please select at "
@@ -6439,6 +6324,9 @@ msgstr "ສົ່ງອອກໂປຣເຈັກສຳລັບທຸກຄ່
 msgid "All presets must have an export path defined for Export All to work."
 msgstr "ທຸກ presets ຕ້ອງມີການກຳນົດເສັ້ນທາງສົ່ງອອກເພື່ອໃຫ້ \"ສົ່ງອອກທັງໝົດ\" ເຮັດວຽກໄດ້."
 
+msgid "Advanced settings are always shown when searching."
+msgstr "ການຕັ້ງຄ່າຂັ້ນສູງຈະສະແດງສະເໝີເມື່ອມີການຄົ້ນຫາ."
+
 msgid "Hide encryption key"
 msgstr "ເຊື່ອງລະຫັດການເຂົ້າລະຫັດລັບ"
 
@@ -6483,13 +6371,6 @@ msgstr "ຄ່າທີ່ກຳນົດໄວ້"
 
 msgid "Add..."
 msgstr "ເພີ່ມ..."
-
-msgid ""
-"If checked, the preset will be available for use in one-click deploy.\n"
-"Only one preset per platform may be marked as runnable."
-msgstr ""
-"ຖ້າເລືອກໄວ້, preset ນີ້ຈະສາມາດໃຊ້ງານໄດ້ໃນການຕິດຕັ້ງແບບຄລິກດຽວ (one-click deploy).\n"
-"ສາມາດກຳນົດໃຫ້ເຮັດວຽກໄດ້ (runnable) ພຽງແຕ່ໜຶ່ງ preset ຕໍ່ແພລັດຟອມເທົ່ານັ້ນ."
 
 msgid "Advanced Options"
 msgstr "ຕົວເລືອກຂັ້ນສູງ"
@@ -6640,7 +6521,7 @@ msgid "Encryption Key (256-bits as hexadecimal):"
 msgstr "ລະຫັດການເຂົ້າລະຫັດລັບ (256 ບິດ ໃນຮູບແບບຖານສິບຫົກ):"
 
 msgid "Initialization vector seed"
-msgstr "Initialization vector seed"
+msgstr "ຄ່າ Seed ຂອງ Initialization vector"
 
 msgid ""
 "Note: Encryption key needs to be stored in the binary,\n"
@@ -6651,6 +6532,9 @@ msgstr ""
 
 msgid "More Info..."
 msgstr "ຂໍ້ມູນເພີ່ມເຕີມ..."
+
+msgid "Scripts"
+msgstr "ສະຄຣິບ"
 
 msgid "GDScript Export Mode:"
 msgstr "ໂໝດການສົ່ງອອກ GDScript:"
@@ -7153,8 +7037,8 @@ msgstr "ຍ້າຍ"
 msgid "No sub-resources found."
 msgstr "ບໍ່ພົບຊັບພະຍາກອນຍ່ອຍ."
 
-msgid "Open a list of sub-resources."
-msgstr "ເປີດລາຍຊື່ຊັບພະຍາກອນຍ່ອຍ."
+msgid "Type: %s"
+msgstr "ປະເພດ: %s"
 
 msgid "Search files..."
 msgstr "ຄົ້ນຫາໄຟລ໌..."
@@ -7445,16 +7329,8 @@ msgstr "ຕົວນຳເຂົ້າສະຕຣີມສຽງ: %s"
 msgid "Enable"
 msgstr "ເປີດໃຊ້ງານ"
 
-msgid "Enable looping."
-msgstr "ເປີດໃຊ້ການວົນຊ້ຳ."
-
 msgid "Offset:"
 msgstr "ໄລຍະເລື່ອນ (Offset):"
-
-msgid ""
-"Loop offset (from beginning). Note that if BPM is set, this setting will be "
-"ignored."
-msgstr "ໄລຍະເລື່ອນການວົນຊ້ຳ (ເລີ່ມຈາກຕົ້ນ). ໝາຍເຫດ: ຖ້າຕັ້ງຄ່າ BPM ໄວ້, ຄ່ານີ້ຈະຖືກລະເລີຍ."
 
 msgid "Loop:"
 msgstr "ວົນຊ້ຳ:"
@@ -7462,36 +7338,11 @@ msgstr "ວົນຊ້ຳ:"
 msgid "BPM:"
 msgstr "BPM:"
 
-msgid ""
-"Configure the Beats Per Measure (tempo) used for the interactive streams.\n"
-"This is required in order to configure beat information."
-msgstr ""
-"ຕັ້ງຄ່າຈັງຫວະຕໍ່ຫ້ອງສຽງ (Tempo) ທີ່ໃຊ້ສຳລັບສະຕຣີມແບບໂຕ້ຕອບ.\n"
-"ຈຳເປັນຕ້ອງຕັ້ງຄ່ານີ້ເພື່ອຈັດການຂໍ້ມູນຈັງຫວະ."
-
 msgid "Beat Count:"
 msgstr "ຈຳນວນຈັງຫວະ:"
 
-msgid ""
-"Configure the amount of Beats used for music-aware looping. If zero, it will "
-"be autodetected from the length.\n"
-"It is recommended to set this value (either manually or by clicking on a beat "
-"number in the preview) to ensure looping works properly."
-msgstr ""
-"ຕັ້ງຄ່າຈຳນວນຈັງຫວະທີ່ໃຊ້ສຳລັບການວົນຊ້ຳແບບຮັບຮູ້ສຽງເພງ. ຖ້າເປັນສູນ, "
-"ລະບົບຈະກວດສອບຈາກຄວາມຍາວໂດຍອັດຕະໂນມັດ.\n"
-"ແນະນຳໃຫ້ຕັ້ງຄ່ານີ້ (ຈະຕັ້ງເອງ ຫຼື ຄລິກໃສ່ເລກຈັງຫວະໃນຕົວຢ່າງກໍໄດ້) ເພື່ອໃຫ້ການວົນຊ້ຳເຮັດວຽກໄດ້ຢ່າງຖືກຕ້ອງ."
-
 msgid "Bar Beats:"
 msgstr "ຈັງຫວະຕໍ່ຫ້ອງ:"
-
-msgid ""
-"Configure the Beats Per Bar. This used for music-aware transitions between "
-"AudioStreams."
-msgstr "ຕັ້ງຄ່າຈັງຫວະຕໍ່ຫ້ອງ. ໃຊ້ສຳລັບການປ່ຽນຜ່ານລະຫວ່າງສະຕຣີມສຽງແບບຮັບຮູ້ດົນຕີ."
-
-msgid "Music Playback:"
-msgstr "ການຫຼິ້ນເພງ:"
 
 msgid "Preview:"
 msgstr "ຕົວຢ່າງ:"
@@ -7779,6 +7630,15 @@ msgid "(%d change)"
 msgid_plural "(%d changes)"
 msgstr[0] "(ປ່ຽນແປງ %d ຈຸດ)"
 
+msgid "Copy Value"
+msgstr "ສຳເນົາຄ່າ"
+
+msgid "Paste Value"
+msgstr "ວາງຄ່າ"
+
+msgid "Copy Property Path"
+msgstr "ສຳເນົາເສັ້ນທາງຄຸນສົມບັດ"
+
 msgid "Copy Section Values"
 msgstr "ສຳເນົາຄ່າໃນສ່ວນນີ້"
 
@@ -7866,15 +7726,6 @@ msgstr "ຍົກເລີກການປັກໝຸດ %s ແລ້ວ"
 msgid "Add metadata %s"
 msgstr "ເພີ່ມເມຕາດາຕ້າ %s"
 
-msgid "Copy Value"
-msgstr "ສຳເນົາຄ່າ"
-
-msgid "Paste Value"
-msgstr "ວາງຄ່າ"
-
-msgid "Copy Property Path"
-msgstr "ສຳເນົາເສັ້ນທາງຄຸນສົມບັດ"
-
 msgid "Edit Text:"
 msgstr "ແກ້ໄຂຂໍ້ຄວາມ:"
 
@@ -7961,17 +7812,17 @@ msgstr "Euler ຊົ່ວຄາວ"
 msgid "Temporary Euler %s"
 msgstr "Euler ຊົ່ວຄາວ %s"
 
-msgid "Assign..."
-msgstr "ກຳນົດຄ່າ..."
-
-msgid "Assign Node"
-msgstr "ກຳນົດໂນດ (Node)"
-
 msgid "Copy as Text"
 msgstr "ສຳເນົາເປັນຂໍ້ຄວາມ"
 
 msgid "Show Node in Tree"
 msgstr "ສະແດງໂນດໃນ Tree"
+
+msgid "Assign..."
+msgstr "ກຳນົດຄ່າ..."
+
+msgid "Assign Node"
+msgstr "ກຳນົດໂນດ (Node)"
 
 msgid "Node Path"
 msgstr "ເສັ້ນທາງໂນດ"
@@ -7987,21 +7838,27 @@ msgid ""
 "not be bound to a scene.\n"
 "Use a Texture2DParameter node instead and set the texture in the \"Shader "
 "Parameters\" tab."
-msgstr "ບໍ່ສາມາດສ້າງ ViewportTexture ໃນໂນດ Texture2D ໄດ້ ເພາະມັນຈະບໍ່ຜູກກັບສາກ."
+msgstr ""
+"ບໍ່ສາມາດສ້າງ ViewportTexture ໃນໂນດ Texture2D ໄດ້ ເພາະວ່າ texture ຈະບໍ່ຖືກຜູກໄວ້ກັບ "
+"scene.\n"
+"ໃຫ້ໃຊ້ໂນດ Texture2DParameter ແທນ ແລະ ຕັ້ງຄ່າ texture ໃນແຖບ \"Shader Parameters\"."
 
 msgid ""
 "Can't create a ViewportTexture on resources saved as a file.\n"
 "Resource needs to belong to a scene."
 msgstr ""
-"ບໍ່ສາມາດສ້າງ ViewportTexture ໃນ resource ທີ່ບັນທຶກເປັນໄຟລ໌ໄດ້. Resource "
-"ຕ້ອງເປັນຂອງສາກໃດໜຶ່ງ."
+"ບໍ່ສາມາດສ້າງ ViewportTexture ໃສ່ Resource ທີ່ບັນທຶກເປັນໄຟລ໌ໄດ້.\n"
+"Resource ຈຳເປັນຕ້ອງເປັນສ່ວນໜຶ່ງຂອງ scene."
 
 msgid ""
 "Can't create a ViewportTexture on this resource because it's not set as local "
 "to scene.\n"
 "Please switch on the 'local to scene' property on it (and all resources "
 "containing it up to a node)."
-msgstr "ບໍ່ສາມາດສ້າງ ViewportTexture ໄດ້ ເພາະ resource ນີ້ບໍ່ໄດ້ຕັ້ງເປັນ 'local to scene'."
+msgstr ""
+"ບໍ່ສາມາດສ້າງ ViewportTexture ໃສ່ Resource ນີ້ໄດ້ ເພາະວ່າມັນບໍ່ໄດ້ຖືກຕັ້ງຄ່າເປັນ local to "
+"scene.\n"
+"ກະລຸນາເປີດຄຸນສົມບັດ 'local to scene' ໃສ່ມັນ (ແລະ Resource ທັງໝົດທີ່ບັນຈຸມັນໄປຈົນຮອດໂນດ)."
 
 msgid "Pick a Viewport"
 msgstr "ເລືອກ Viewport"
@@ -8139,9 +7996,6 @@ msgstr "ຂະໜາດ: %s"
 msgid "Invalid file or broken link."
 msgstr "ໄຟລ໌ບໍ່ຖືກຕ້ອງ ຫຼື ລິ້ງເສຍ."
 
-msgid "Type: %s"
-msgstr "ປະເພດ: %s"
-
 msgid "Dimensions: %d × %d"
 msgstr "ຂະໜາດມິຕິ: %d × %d"
 
@@ -8153,9 +8007,6 @@ msgstr "ຄວາມຍາວ: %0.1f ວິນາທີ"
 
 msgid "Length: %0.3fs"
 msgstr "ຄວາມຍາວ: %0.3f ວິນາທີ"
-
-msgid "Advanced settings are always shown when searching."
-msgstr "ການຕັ້ງຄ່າຂັ້ນສູງຈະສະແດງສະເໝີເມື່ອມີການຄົ້ນຫາ."
 
 msgid "Event Configured"
 msgstr "ຕັ້ງຄ່າເຫດການ (Event) ແລ້ວ"
@@ -8254,12 +8105,17 @@ msgid ""
 "spaces and special characters).\n"
 "If left empty, the folder will be named after the plugin name converted to "
 "`snake_case`."
-msgstr "ທາງເລືອກ. ຊື່ໂຟນເດີຄວນໃຊ້ຮູບແບບ `snake_case`."
+msgstr ""
+"ທາງເລືອກ. ຊື່ໂຟນເດີໂດຍທົ່ວໄປຄວນໃຊ້ຮູບແບບ `snake_case` (ຫຼີກເວັ້ນການຍະຫວ່າງ ແລະ "
+"ອັກສອນພິເສດ).\n"
+"ຖ້າປ່ອຍວ່າງໄວ້, ໂຟນເດີຈະຖືກຕັ້ງຊື່ຕາມຊື່ຂອງປລັກອິນທີ່ປ່ຽນເປັນ `snake_case`."
 
 msgid ""
 "Optional. This description should be kept relatively short (up to 5 lines).\n"
 "It will display when hovering the plugin in the list of plugins."
-msgstr "ທາງເລືອກ. ຄຳອະທິບາຍຄວນສັ້ນ (ບໍ່ເກີນ 5 ແຖວ)."
+msgstr ""
+"ທາງເລືອກ. ຄຳອະທິບາຍນີ້ຄວນສັ້ນ (ບໍ່ເກີນ 5 ແຖວ).\n"
+"ມັນຈະສະແດງຂຶ້ນເມື່ອເອົາເມົ້າໄປຈໍ່ໃສ່ປລັກອິນໃນລາຍຊື່ປລັກອິນ."
 
 msgid "Author:"
 msgstr "ຜູ້ຂຽນ:"
@@ -8279,7 +8135,9 @@ msgid ""
 "Required. The scripting language to use for the script.\n"
 "Note that a plugin may use several languages at once by adding more scripts "
 "to the plugin."
-msgstr "ຈຳເປັນ. ພາສາທີ່ໃຊ້ຂຽນສະຄຣິບ."
+msgstr ""
+"ຈຳເປັນ. ພາສາຂຽນສະຄຣິບທີ່ຈະໃຊ້.\n"
+"ໝາຍເຫດ: ປລັກອິນສາມາດໃຊ້ໄດ້ຫຼາຍພາສາພ້ອມກັນ ໂດຍການເພີ່ມສະຄຣິບເຂົ້າໄປໃນປລັກອິນ."
 
 msgid "Script Name:"
 msgstr "ຊື່ສະຄຣິບ:"
@@ -8536,9 +8394,6 @@ msgstr "ການເປີດໂຄງການນີ້ຈະເປັນກາ
 msgid "Downgrading projects is not recommended."
 msgstr "ບໍ່ແນະນຳໃຫ້ດາວເກຣດໂຄງການ."
 
-msgid "Unknown version"
-msgstr "ບໍ່ຮູ້ເວີຊັນ"
-
 msgid "This project uses an unknown version of Godot."
 msgstr "ໂຄງການນີ້ໃຊ້ Godot ເວີຊັນທີ່ບໍ່ຮູ້ຈັກ."
 
@@ -8612,27 +8467,38 @@ msgid ""
 "Can't run project: Project has no main scene defined.\n"
 "Please edit the project and set the main scene in the Project Settings under "
 "the \"Application\" category."
-msgstr "ບໍ່ສາມາດລັນໂຄງການໄດ້: ຍັງບໍ່ໄດ້ກຳນົດສາກຫຼັກ (Main Scene)."
+msgstr ""
+"ບໍ່ສາມາດລັນໂປຣເຈັກໄດ້: ໂປຣເຈັກຍັງບໍ່ທັນໄດ້ກຳນົດ main scene.\n"
+"ກະລຸນາແກ້ໄຂໂປຣເຈັກ ແລະ ຕັ້ງຄ່າ main scene ໃນ Project Settings ພາຍໃຕ້ໝວດ "
+"\"Application\"."
 
 msgid ""
 "Can't run project: Assets need to be imported first.\n"
 "Please edit the project to trigger the initial import."
-msgstr "ບໍ່ສາມາດລັນໂຄງການໄດ້: ຕ້ອງນຳເຂົ້າ Asset ກ່ອນ."
+msgstr ""
+"ບໍ່ສາມາດລັນໂປຣເຈັກໄດ້: ຈຳເປັນຕ້ອງນຳເຂົ້າ (import) Asset ກ່ອນ.\n"
+"ກະລຸນາແກ້ໄຂໂປຣເຈັກເພື່ອໃຫ້ລະບົບເລີ່ມການນຳເຂົ້າໃນເບື້ອງຕົ້ນ."
 
 msgid ""
 "Can't open project at '%s'.\n"
 "Project file doesn't exist or is inaccessible."
-msgstr "ບໍ່ສາມາດເປີດໂຄງການທີ່ '%s' ໄດ້."
+msgstr ""
+"ບໍ່ສາມາດເປີດໂປຣເຈັກທີ່ '%s' ໄດ້.\n"
+"ໄຟລ໌ໂປຣເຈັກບໍ່ມີຢູ່ ຫຼື ບໍ່ສາມາດເຂົ້າເຖິງໄດ້."
 
 msgid ""
 "Can't open project at '%s'.\n"
 "Failed to start the editor."
-msgstr "ບໍ່ສາມາດເປີດໂຄງການທີ່ '%s' ໄດ້. ບໍ່ສາມາດເລີ່ມຕົວແກ້ໄຂໄດ້."
+msgstr ""
+"ບໍ່ສາມາດເປີດໂປຣເຈັກທີ່ '%s' ໄດ້.\n"
+"ເລີ່ມຕົ້ນຕົວແກ້ໄຂ (editor) ບໍ່ສຳເລັດ."
 
 msgid ""
 "You requested to open %d projects in parallel. Do you confirm?\n"
 "Note that usual checks for engine version compatibility will be bypassed."
-msgstr "ທ່ານຕ້ອງການເປີດ %d ໂຄງການພ້ອມກັນ ຫຼື ບໍ່?"
+msgstr ""
+"ທ່ານຕ້ອງການເປີດ %d ໂປຣເຈັກພ້ອມກັນ. ທ່ານຢືນຢັນຫຼືບໍ່?\n"
+"ໝາຍເຫດ: ການກວດສອບຄວາມເຂົ້າກັນໄດ້ຂອງເວີຊັນ engine ຈະຖືກຂ້າມໄປ."
 
 msgid ""
 "The selected project \"%s\" does not specify its supported Godot version in "
@@ -8646,12 +8512,13 @@ msgid ""
 "Warning: You won't be able to open the project with previous versions of the "
 "engine anymore."
 msgstr ""
-"ໂຄງການທີ່ເລືອກ \"%s\" ບໍ່ໄດ້ລະບຸເວີຊັນ Godot ທີ່ຮອງຮັບໃນໄຟລ໌ກຳນົດຄ່າ (\"project.godot\").\n"
-"ເສັ້ນທາງໂຄງການ: %s\n"
+"ໂປຣເຈັກ \"%s\" ທີ່ເລືອກບໍ່ໄດ້ລະບຸເວີຊັນ Godot ທີ່ຮອງຮັບໃນໄຟລ໌ຕັ້ງຄ່າ (\"project.godot\").\n"
 "\n"
-"ຖ້າທ່ານດຳເນີນການເປີດມັນ, ມັນຈະຖືກແປງເປັນຮູບແບບໄຟລ໌ກຳນົດຄ່າປັດຈຸບັນຂອງ Godot.\n"
+"ເສັ້ນທາງໂປຣເຈັກ: %s\n"
 "\n"
-"ຄຳເຕືອນ: ທ່ານຈະບໍ່ສາມາດເປີດໂຄງການນີ້ດ້ວຍເວີຊັນກ່ອນໜ້າຂອງເອນຈິນໄດ້ອີກຕໍ່ໄປ."
+"ຫາກທ່ານດຳເນີນການເປີດຕໍ່, ມັນຈະຖືກປ່ຽນເປັນຮູບແບບໄຟລ໌ຕັ້ງຄ່າຂອງ Godot ເວີຊັນປັດຈຸບັນ.\n"
+"\n"
+"ຄຳເຕືອນ: ທ່ານຈະບໍ່ສາມາດເປີດໂປຣເຈັກນີ້ດ້ວຍ engine ເວີຊັນເກົ່າໄດ້ອີກຕໍ່ໄປ."
 
 msgid ""
 "The selected project \"%s\" was generated by Godot 3.x, and needs to be "
@@ -8773,7 +8640,9 @@ msgstr "ລົບໂຄງການນີ້ອອກຈາກລາຍການ
 msgid ""
 "Remove all missing projects from the list?\n"
 "The project folders' contents won't be modified."
-msgstr "ລົບໂຄງການທີ່ຫາຍໄປທັງໝົດອອກຈາກລາຍການ ຫຼື ບໍ່?"
+msgstr ""
+"ລຶບໂປຣເຈັກທັງໝົດທີ່ຊອກບໍ່ເຫັນອອກຈາກລາຍຊື່ຫຼືບໍ່?\n"
+"ເນື້ອໃນໃນໂຟນເດີໂປຣເຈັກຈະບໍ່ຖືກແກ້ໄຂ."
 
 msgid ""
 "It looks like Godot crashed when opening this project the last time. If "
@@ -8857,7 +8726,9 @@ msgid ""
 "This field filters projects by name and last path component.\n"
 "To filter projects by name and full path, the query must contain at least one "
 "`/` character."
-msgstr "ຊ່ອງນີ້ໃຊ້ສຳລັບກອງລາຍການໂຄງການຕາມຊື່ ຫຼື ເສັ້ນທາງ."
+msgstr ""
+"ຊ່ອງນີ້ໃຊ້ກອງໂປຣເຈັກຕາມຊື່ ແລະ ສ່ວນທ້າຍຂອງເສັ້ນທາງ.\n"
+"ຫາກຕ້ອງການກອງຕາມຊື່ ແລະ ເສັ້ນທາງເຕັມ, ຄຳຄົ້ນຫາຕ້ອງມີເຄື່ອງໝາຍ `/` ຢ່າງໜ້ອຍໜຶ່ງຕົວ."
 
 msgid "Last Edited"
 msgstr "ແກ້ໄຂຫຼ້າສຸດ"
@@ -8905,9 +8776,6 @@ msgstr "ແກ້ໄຂແບບປົກກະຕິ"
 msgid "Edit in Recovery Mode"
 msgstr "ແກ້ໄຂໃນໂໝດກູ້ຄືນ"
 
-msgid "Backup project first"
-msgstr "ສຳຮອງຂໍ້ມູນໂຄງການກ່ອນ"
-
 msgid "Convert Full Project"
 msgstr "ແປງທັງໝົດໂຄງການ"
 
@@ -8924,7 +8792,15 @@ msgid ""
 "\n"
 "IMPORTANT: Make sure to backup your project before converting, as this "
 "operation makes it impossible to open it in older versions of Godot."
-msgstr "ທາງເລືອກນີ້ຈະແປງໂຄງການທັງໝົດຈາກ Godot 3 ເປັນ Godot 4."
+msgstr ""
+"ຕົວເລືອກນີ້ຈະເຮັດການແປງໂປຣເຈັກທັງໝົດ, ອັບເດດ scene, resource ແລະ ສະຄຣິບ ຈາກ Godot 3 "
+"ໃຫ້ໃຊ້ງານໄດ້ໃນ Godot 4.\n"
+"\n"
+"ໝາຍເຫດ: ນີ້ແມ່ນການແປງແບບພະຍາຍາມທີ່ສຸດ, ເຊິ່ງຈະຊ່ວຍໃຫ້ການອັບເກຣດງ່າຍຂຶ້ນ, "
+"ແຕ່ມັນອາດຈະບໍ່ພ້ອມໃຊ້ງານທັນທີ ແລະ ຍັງຄົງຕ້ອງມີການປັບແກ້ດ້ວຍຕົນເອງ.\n"
+"\n"
+"ສຳຄັນ: ໃຫ້ແນ່ໃຈວ່າໄດ້ສຳຮອງຂໍ້ມູນໂປຣເຈັກກ່ອນການແປງ, ເພາະການດຳເນີນການນີ້ຈະເຮັດໃຫ້ບໍ່ສາມາດເປີດໃນ "
+"Godot ເວີຊັນເກົ່າໄດ້."
 
 msgid "Error"
 msgstr "ຂໍ້ຜິດພາດ"
@@ -8977,9 +8853,6 @@ msgstr "ຮູບແບບ (Style)"
 msgid "Color Preset"
 msgstr "ຊຸດສີທີ່ກຳນົດໄວ້"
 
-msgid "Custom preset can be further configured in the editor."
-msgstr "ຊຸດສີກຳນົດເອງສາມາດປັບແຕ່ງເພີ່ມເຕີມໄດ້ໃນຕົວແກ້ໄຂ."
-
 msgid "Display Scale"
 msgstr "ມາດຕາສ່ວນການສະແດງຜົນ"
 
@@ -9013,7 +8886,18 @@ msgid ""
 "\n"
 "Full upgrade will take considerable amount of time, but afterwards saving/"
 "reimporting any scene/resource should not cause unintended changes."
-msgstr "ເຄື່ອງມືນີ້ຈະຊ່ວຍອັບເກຣດໂຄງການຂອງທ່ານໃຫ້ເຂົ້າກັບເວີຊັນໃໝ່."
+msgstr ""
+"Engine ເວີຊັນທີ່ຕ່າງກັນອາດມີຄວາມແຕກຕ່າງເລັກນ້ອຍໃນ Resource ຕ່າງໆ ເຊັ່ນ: ການເພີ່ມຟິວ ຫຼື "
+"ການລຶບຄຸນສົມບັດອອກ. ເມື່ອອັບເກຣດໂປຣເຈັກເປັນເວີຊັນໃໝ່, ການປ່ຽນແປງເຫຼົ່ານີ້ອາດເຮັດໃຫ້ເກີດຄວາມແຕກຕ່າງ "
+"(diff) ເມື່ອບັນທຶກ scene ຫຼື resource ຫຼື ເມື່ອນຳເຂົ້າໃໝ່.\n"
+"\n"
+"ເຄື່ອງມືນີ້ຈະຊ່ວຍໃຫ້ການປ່ຽນແປງເຫຼົ່ານີ້ຖືກດຳເນີນການທັງໝົດໃນຄັ້ງດຽວ. ມັນຈະ:\n"
+"- ສ້າງ UID cache ໃໝ່\n"
+"- ໂຫຼດ ແລະ ບັນທຶກທຸກໆ Resource (ທັງແບບ text ແລະ binary) ຄືນໃໝ່\n"
+"- ນຳເຂົ້າ (reimport) ທຸກໆ Resource ທີ່ສາມາດນຳເຂົ້າໄດ້ໃໝ່\n"
+"\n"
+"ການອັບເກຣດເຕັມຮູບແບບຈະໃຊ້ເວລາພໍສົມຄວນ, ແຕ່ຫຼັງຈາກນັ້ນການບັນທຶກ ຫຼື ການນຳເຂົ້າ scene/resource "
+"ໃໝ່ຈະບໍ່ເຮັດໃຫ້ເກີດການປ່ຽນແປງທີ່ບໍ່ຕັ້ງໃຈ."
 
 msgid "Restart & Upgrade"
 msgstr "ເລີ່ມລະບົບໃໝ່ ແລະ ອັບເກຣດ"
@@ -9196,9 +9080,6 @@ msgstr "ການຕິດຕັ້ງທາງໄກ"
 msgid "Project Run"
 msgstr "ການຣັນໂຄງການ"
 
-msgid "Suspend/Resume Embedded Project"
-msgstr "ຢຸດຊົ່ວຄາວ/ສືບຕໍ່ ໂຄງການທີ່ຝັງຢູ່"
-
 msgid "Next Frame"
 msgstr "ເຟຣມຖັດໄປ"
 
@@ -9213,12 +9094,6 @@ msgstr "ເກມກຳລັງເລີ່ມ..."
 
 msgid "Game running not embedded."
 msgstr "ເກມກຳລັງຣັນຢູ່ແບບບໍ່ຝັງຕົວ."
-
-msgid "Press play to start the game."
-msgstr "ກົດ Play ເພື່ອເລີ່ມເກມ."
-
-msgid "Embedding is disabled."
-msgstr "ການຝັງຕົວຖືກປິດໃຊ້ງານ."
 
 msgid "Game embedding not available on your OS."
 msgstr "ການຝັງຕົວຂອງເກມບໍ່ຮອງຮັບໃນລະບົບປະຕິບັດການຂອງທ່ານ."
@@ -9247,9 +9122,6 @@ msgstr "ການຝັງຕົວຂອງເກມບໍ່ສາມາດໃ
 
 msgid "Game embedding not available when the game starts in fullscreen."
 msgstr "ການຝັງຕົວຂອງເກມບໍ່ສາມາດໃຊ້ໄດ້ເມື່ອເກມເລີ່ມຕົ້ນແບບເຕັມຈໍ (fullscreen)."
-
-msgid "Game embedding not available in single window mode."
-msgstr "ການຝັງຕົວຂອງເກມບໍ່ສາມາດໃຊ້ໄດ້ໃນໂໝດໜ້າຕ່າງດຽວ."
 
 msgid "Game embedding not available when the game starts in headless mode."
 msgstr "ການຝັງຕົວຂອງເກມບໍ່ສາມາດໃຊ້ໄດ້ເມື່ອເກມເລີ່ມຕົ້ນໃນໂໝດ headless."
@@ -9323,17 +9195,38 @@ msgstr ""
 "rendering/rendering_device/driver ໃຫ້ເປັນໄດຣເວີ\n"
 "ທີ່ຮອງຮັບການສະແດງຜົນ HDR."
 
-msgid "%s+Alt+RMB: Show list of all nodes at position clicked."
-msgstr "%s+Alt+ຄລິກຂວາ: ສະແດງລາຍການໂນດທັງໝົດໃນຕຳແໜ່ງທີ່ຄລິກ."
+msgid "%s+Drag: Rotate selected node around pivot."
+msgstr "%s+ລາກ: ໝູນ node ທີ່ເລືອກອ້ອມຮອບຈຸດໝູນ (pivot)."
+
+msgid "V: Set selected node's pivot position."
+msgstr "V: ຕັ້ງຄ່າຕຳແໜ່ງ Pivot ຂອງໂນດທີ່ເລືອກ."
+
+msgid "Shift: Scale proportionally."
+msgstr "Shift: ປັບຂະໜາດຕາມອັດຕາສ່ວນ."
+
+msgid "Show list of selectable nodes at position clicked."
+msgstr "ສະແດງລາຍການໂນດທີ່ເລືອກໄດ້ໃນຕຳແໜ່ງທີ່ຄລິກ."
+
+msgid "Click to change object's pivot."
+msgstr "ຄລິກເພື່ອປ່ຽນ Pivot ຂອງວັດຖຸ."
+
+msgid "Shift: Set temporary pivot."
+msgstr "Shift: ຕັ້ງຄ່າ Pivot ຊົ່ວຄາວ."
+
+msgid ""
+"Click this button while holding Shift to put the temporary pivot in the "
+"center of the selected nodes."
+msgstr "ຄລິກປຸ່ມນີ້ໃນຂະນະທີ່ກົດ Shift ຄ້າງໄວ້ ເພື່ອວາງ Pivot ຊົ່ວຄາວໄວ້ກາງໂນດທີ່ເລືອກ."
+
+msgid ""
+"You can also use Pan View shortcut (Space by default) to pan in any mode."
+msgstr "ທ່ານຍັງສາມາດໃຊ້ທາງລັດ Pan View (ປົກກະຕິແມ່ນ Space) ເພື່ອເລື່ອນເບິ່ງໃນໂໝດໃດກໍໄດ້."
+
+msgid "Game"
+msgstr "ເກມ"
 
 msgid "Suspend"
 msgstr "ລະງັບຊົ່ວຄາວ"
-
-msgid ""
-"Force pause at SceneTree level. Stops all processing, but you can still "
-"interact with the project."
-msgstr ""
-"ບັງຄັບໃຫ້ຢຸດຊົ່ວຄາວໃນລະດັບ SceneTree. ຢຸດການປະມວນຜົນທັງໝົດ, ແຕ່ທ່ານຍັງສາມາດໂຕ້ຕອບກັບໂຄງການໄດ້."
 
 msgid "Change the game speed."
 msgstr "ປ່ຽນຄວາມໄວຂອງເກມ."
@@ -9341,47 +9234,11 @@ msgstr "ປ່ຽນຄວາມໄວຂອງເກມ."
 msgid "Speed State"
 msgstr "ສະຖານະຄວາມໄວ"
 
-msgid "Reset the game speed."
-msgstr "ຕັ້ງຄ່າຄວາມໄວເກມຄືນໃໝ່."
-
-msgid "Reset Speed"
-msgstr "ຣີເຊັດຄວາມໄວ"
-
 msgid "Input"
 msgstr "ອິນພຸດ"
 
-msgid "Allow game input."
-msgstr "ອະນຸຍາດໃຫ້ເກມຮັບອິນພຸດ."
-
-msgid ""
-"Disable game input and allow to select Node2Ds, Controls, and manipulate the "
-"2D camera."
-msgstr "ປິດອິນພຸດຂອງເກມ ແລະ ອະນຸຍາດໃຫ້ເລືອກ Node2Ds, Controls, ແລະ ຄວບຄຸມກ້ອງ 2D."
-
-msgid ""
-"Disable game input and allow to select Node3Ds and manipulate the 3D camera."
-msgstr "ປິດອິນພຸດຂອງເກມ ແລະ ອະນຸຍາດໃຫ້ເລືອກ Node3Ds ແລະ ຄວບຄຸມກ້ອງ 3D."
-
-msgid "Show list of selectable nodes at position clicked."
-msgstr "ສະແດງລາຍການໂນດທີ່ເລືອກໄດ້ໃນຕຳແໜ່ງທີ່ຄລິກ."
-
-msgid "Toggle Selection Visibility"
-msgstr "ເປີດ/ປິດ ການເບິ່ງເຫັນການເລືອກ"
-
-msgid "Selection Options"
-msgstr "ຕົວເລືອກການເລືອກ"
-
-msgid "Don't Select Locked Nodes"
-msgstr "ບໍ່ເລືອກໂນດທີ່ລັອກໄວ້"
-
-msgid "Select Group Over Children"
-msgstr "ເລືອກກຸ່ມແທນໂນດລູກ"
-
 msgid "Override the in-game camera."
 msgstr "ຄວບຄຸມກ້ອງໃນເກມດ້ວຍຕົນເອງ."
-
-msgid "Camera Override Options"
-msgstr "ຕົວເລືອກການ Override ກ້ອງ"
 
 msgid "Reset 2D Camera"
 msgstr "ຣີເຊັດກ້ອງ 2D"
@@ -9395,28 +9252,17 @@ msgstr "ຈັດການໃນເກມ"
 msgid "Manipulate From Editors"
 msgstr "ຈັດການຈາກ Editor"
 
-msgid "Game Window Options"
-msgstr "ຕົວເລືອກໜ້າຕ່າງເກມ"
+msgid "Don't Select Locked Nodes"
+msgstr "ບໍ່ເລືອກໂນດທີ່ລັອກໄວ້"
 
-msgid "Embed Game on Next Play"
-msgstr "ຝັງເກມໃນການຫຼິ້ນຄັ້ງຖັດໄປ"
-
-msgid "Make Game Workspace Floating on Next Play"
-msgstr "ເຮັດໃຫ້ພື້ນທີ່ເຮັດວຽກເກມເປັນແບບລອຍໃນການຫຼິ້ນຄັ້ງຖັດໄປ"
+msgid "Select Group Over Children"
+msgstr "ເລືອກກຸ່ມແທນໂນດລູກ"
 
 msgid "Embedded Window Sizing"
 msgstr "ການກຳນົດຂະໜາດໜ້າຕ່າງທີ່ຝັງ"
 
 msgid "Fixed Size"
 msgstr "ຂະໜາດຄົງທີ່"
-
-msgid ""
-"Embedded game size is based on project settings.\n"
-"The 'Keep Aspect' mode is used when the Game Workspace is smaller than the "
-"desired size."
-msgstr ""
-"ຂະໜາດເກມທີ່ຝັງຈະອີງຕາມການຕັ້ງຄ່າໂຄງການ.\n"
-"ໂໝດ 'Keep Aspect' ຈະຖືກໃຊ້ເມື່ອພື້ນທີ່ເຮັດວຽກເກມມີຂະໜາດນ້ອຍກວ່າຂະໜາດທີ່ຕ້ອງການ."
 
 msgid "Keep Aspect Ratio"
 msgstr "ຮັກສາອັດຕາສ່ວນພາບ"
@@ -9427,14 +9273,8 @@ msgstr "ຮັກສາອັດຕາສ່ວນພາບຂອງເກມທ
 msgid "Stretch to Fit"
 msgstr "ຢືດໃຫ້ພໍດີ"
 
-msgid "Embedded game size stretches to fit the Game Workspace."
-msgstr "ຂະໜາດເກມທີ່ຝັງຈະຢືດໃຫ້ພໍດີກັບພື້ນທີ່ເຮັດວຽກເກມ."
-
 msgid "Game Workspace"
 msgstr "ພື້ນທີ່ເຮັດວຽກເກມ"
-
-msgid "Game"
-msgstr "ເກມ"
 
 msgid "Clear All"
 msgstr "ລຶບທັງໝົດ"
@@ -9860,6 +9700,10 @@ msgid ""
 msgstr "ຄຸນສົມບັດທີ່ແກ້ໄຂຈະຖືກນຳໃຊ້ກັບ instance ທີ່ລະບາຍໃໝ່. ພວກມັນຈະຖືກເກັບໄວ້ໃນສາກປັດຈຸບັນ."
 
 msgid ""
+"The selected scene could not be found. It may have been moved or deleted."
+msgstr "ບໍ່ພົບສາກທີ່ເລືອກ. ມັນອາດຈະຖືກຍ້າຍ ຫຼື ລຶບອອກແລ້ວ."
+
+msgid ""
 "Pin the current node.\n"
 "When enabled, the painting parent node will not change when selecting other "
 "nodes in the scene."
@@ -9870,17 +9714,8 @@ msgstr ""
 msgid "Pinned Node: %s"
 msgstr "ໂນດທີ່ປັກໝຸດ: %s"
 
-msgid ""
-"The selected scene could not be found. It may have been moved or deleted."
-msgstr "ບໍ່ພົບສາກທີ່ເລືອກ. ມັນອາດຈະຖືກຍ້າຍ ຫຼື ລຶບອອກແລ້ວ."
-
 msgid "Advanced Settings"
 msgstr "ການຕັ້ງຄ່າຂັ້ນສູງ"
-
-msgid ""
-"Hold Alt while painting to temporarily switch to the previously used paint "
-"snap mode."
-msgstr "ກົດ Alt ຄ້າງໄວ້ໃນຂະນະທີ່ລະບາຍ ເພື່ອສະຫຼັບໄປໃຊ້ໂໝດ snap ທີ່ໃຊ້ກ່ອນໜ້ານີ້ຊົ່ວຄາວ."
 
 msgid "Pin Node"
 msgstr "ປັກໝຸດໂນດ"
@@ -9892,14 +9727,6 @@ msgstr "ເມື່ອເປີດໃຊ້, ໂນດຫຼັກທີ່ໃ�
 
 msgid "Scene Picker"
 msgstr "ຕົວເລືອກສາກ"
-
-msgid ""
-"When enabled, you can select scenes from the FileSystem dock, Scene dock, or "
-"2D editor's viewport.\n"
-"Holding Ctrl enables picking from the 2D editor's viewport."
-msgstr ""
-"ເມື່ອເປີດໃຊ້, ທ່ານສາມາດເລືອກສາກຈາກ FileSystem, Scene dock, ຫຼື Viewport 2D.\n"
-"ການກົດ Ctrl ຄ້າງໄວ້ຈະຊ່ວຍໃຫ້ເລືອກຈາກ Viewport 2D ໄດ້."
 
 msgid "Edit Properties"
 msgstr "ແກ້ໄຂຄຸນສົມບັດ"
@@ -9918,13 +9745,6 @@ msgstr "ສະແນັບເຂົ້າກາງຫ້ອງຕາຕະລາ
 
 msgid "Allow Overlapping"
 msgstr "ອະນຸຍາດໃຫ້ຊ້ອນທັບກັນ"
-
-msgid ""
-"Allow painting over existing painted scenes.\n"
-"Hold Shift while painting to temporarily toggle this option."
-msgstr ""
-"ອະນຸຍາດໃຫ້ລະບາຍທັບສາກທີ່ມີຢູ່ແລ້ວ.\n"
-"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ລະບາຍເພື່ອສະຫຼັບຕົວເລືອກນີ້ຊົ່ວຄາວ."
 
 msgid "This skeleton has no bones, create some children Bone2D nodes."
 msgstr "Skeleton ນີ້ບໍ່ມີກະດູກ, ກະລຸນາສ້າງໂນດ Bone2D ເປັນໂນດລູກ."
@@ -10021,911 +9841,6 @@ msgstr "ອັບເດດຕົວຢ່າງ"
 
 msgid "Settings:"
 msgstr "ການຕັ້ງຄ່າ:"
-
-msgid "Merge TileSetAtlasSource"
-msgstr "ຮວມ TileSetAtlasSource"
-
-msgid "%s (ID: %d)"
-msgstr "%s (ID: %d)"
-
-msgid "Atlas Merging"
-msgstr "ການຮວມແອດລັສ (Atlas)"
-
-msgid "Merge (Keep original Atlases)"
-msgstr "ຮວມ (ຮັກສາແອດລັສຕົ້ນສະບັບໄວ້)"
-
-msgid "Merge"
-msgstr "ຮວມ"
-
-msgid "Next Line After Column"
-msgstr "ຂຶ້ນແຖວໃໝ່ຫຼັງຈາກຖັນນີ້"
-
-msgid "Please select two atlases or more."
-msgstr "ກະລຸນາເລືອກແອດລັສສອງອັນຂຶ້ນໄປ."
-
-msgid ""
-"Source: %d\n"
-"Atlas coordinates: %s\n"
-"Alternative: 0"
-msgstr ""
-"Source: %d\n"
-"ພິກັດ Atlas: %s\n"
-"Alternative: 0"
-
-msgid ""
-"Source: %d\n"
-"Atlas coordinates: %s\n"
-"Alternative: %d"
-msgstr ""
-"Source: %d\n"
-"ພິກັດ Atlas: %s\n"
-"Alternative: %d"
-
-msgid "Center View"
-msgstr "ປັບມຸມເບິ່ງໃຫ້ຢູ່ສູນກາງ"
-
-msgid ""
-"The selected atlas source has no valid texture. Assign a texture in the "
-"TileSet bottom tab."
-msgstr ""
-"Atlas source ທີ່ເລືອກບໍ່ມີ texture ທີ່ຖືກຕ້ອງ. ກະລຸນາໃສ່ texture ໃນແຖບ TileSet ດ້ານລຸ່ມ."
-
-msgid "Base Tiles"
-msgstr "Tile ພື້ນຖານ"
-
-msgid "Alternative Tiles"
-msgstr "Tile ທາງເລືອກ"
-
-msgid "Reset Polygons"
-msgstr "ຣີເຊັດ Polygon"
-
-msgid "Clear Polygons"
-msgstr "ລ້າງ Polygon"
-
-msgid "Rotate Polygons Right"
-msgstr "ໝູນ Polygon ໄປທາງຂວາ"
-
-msgid "Rotate Polygons Left"
-msgstr "ໝູນ Polygon ໄປທາງຊ້າຍ"
-
-msgid "Flip Polygons Horizontally"
-msgstr "ພິກ Polygon ຕາມແນວນອນ"
-
-msgid "Flip Polygons Vertically"
-msgstr "ພິກ Polygon ຕາມແນວຕັ້ງ"
-
-msgid "Edit Polygons"
-msgstr "ແກ້ໄຂ Polygon"
-
-msgid "Expand editor"
-msgstr "ຂະຫຍາຍ Editor"
-
-msgid "Add polygon tool"
-msgstr "ເຄື່ອງມືເພີ່ມ Polygon"
-
-msgid "Edit points tool"
-msgstr "ເຄື່ອງມືແກ້ໄຂຈຸດ"
-
-msgid "Delete points tool"
-msgstr "ເຄື່ອງມືລຶບຈຸດ"
-
-msgid "Advanced"
-msgstr "ຂັ້ນສູງ"
-
-msgid "Reset to default tile shape"
-msgstr "ຣີເຊັດເປັນຮູບຮ່າງ tile ເລີ່ມຕົ້ນ"
-
-msgid "Rotate Right"
-msgstr "ໝູນຂວາ"
-
-msgid "Rotate Left"
-msgstr "ໝູນຊ້າຍ"
-
-msgid "Flip Horizontally"
-msgstr "ພິກແນວນອນ"
-
-msgid "Flip Vertically"
-msgstr "ພິກແນວຕັ້ງ"
-
-msgid "Toggle Grid Snap"
-msgstr "ເປີດ/ປິດ ການສະແນັບເຂົ້າຕາຕະລາງ"
-
-msgid "Disable Snap"
-msgstr "ປິດການສະແນັບ"
-
-msgid "Half-Pixel Snap"
-msgstr "ສະແນັບເຄິ່ງພິກເຊລ"
-
-msgid "Grid Snap"
-msgstr "ສະແນັບເຂົ້າຕາຕະລາງ"
-
-msgid "Subdivision"
-msgstr "ການແບ່ງຍ່ອຍ"
-
-msgid "Painting Tiles Property"
-msgstr "ຄຸນສົມບັດການລະບາຍ Tile"
-
-msgid "Painting:"
-msgstr "ກຳລັງລະບາຍ:"
-
-msgid "Polygon %d"
-msgstr "Polygon %d"
-
-msgid "One Way"
-msgstr "ທາງດຽວ"
-
-msgid "One Way Margin"
-msgstr "ຂອບທາງດຽວ"
-
-msgid "Linear Velocity"
-msgstr "ຄວາມໄວແນວຊື່ (Linear)"
-
-msgid "Angular Velocity"
-msgstr "ຄວາມໄວເຊີງມຸມ (Angular)"
-
-msgid "No terrains"
-msgstr "ບໍ່ມີ Terrain"
-
-msgid "No terrain"
-msgstr "ບໍ່ມີ Terrain"
-
-msgid "Painting Terrain Set"
-msgstr "ຊຸດ Terrain ທີ່ກຳລັງລະບາຍ"
-
-msgid "Painting Terrain"
-msgstr "Terrain ທີ່ກຳລັງລະບາຍ"
-
-msgid "Pick"
-msgstr "ເລືອກ (Pick)"
-
-msgid "Drawing Rect:"
-msgstr "ກຳລັງແຕ້ມສີ່ຫຼ່ຽມ:"
-
-msgid "Can't rotate patterns when using non-square tile grid."
-msgstr "ບໍ່ສາມາດໝູນລວດລາຍ (pattern) ໄດ້ເມື່ອໃຊ້ຕາຕະລາງ tile ທີ່ບໍ່ແມ່ນສີ່ຫຼ່ຽມຈັດຕຸລັດ."
-
-msgid "Shift: Draw line."
-msgstr "Shift: ແຕ້ມເສັ້ນຊື່."
-
-msgid "%s+Shift: Draw rectangle."
-msgstr "%s+Shift: ແຕ້ມຮູບສີ່ຫຼ່ຽມ."
-
-msgid "No Texture Atlas Source (ID: %d)"
-msgstr "ບໍ່ພົບ Texture Atlas Source (ID: %d)"
-
-msgid "Scene Collection Source (ID: %d)"
-msgstr "Scene Collection Source (ID: %d)"
-
-msgid "Empty Scene Collection Source (ID: %d)"
-msgstr "Scene Collection Source ວ່າງເປົ່າ (ID: %d)"
-
-msgid "Unknown Type Source (ID: %d)"
-msgstr "ບໍ່ຮູ້ຈັກປະເພດ Source (ID: %d)"
-
-msgid "Add TileSet pattern"
-msgstr "ເພີ່ມລວດລາຍ (pattern) TileSet"
-
-msgid "Remove TileSet patterns"
-msgstr "ລຶບລວດລາຍ TileSet"
-
-msgid "Index: %d"
-msgstr "ດັດຊະນີ: %d"
-
-msgid "Tile with Invalid Scene"
-msgstr "Tile ທີ່ມີສາກທີ່ບໍ່ຖືກຕ້ອງ"
-
-msgid ""
-"The selected scene collection source has no scenes. Add scenes in the TileSet "
-"bottom tab."
-msgstr "Scene collection source ທີ່ເລືອກບໍ່ມີສາກ. ກະລຸນາເພີ່ມສາກໃນແຖບ TileSet ດ້ານລຸ່ມ."
-
-msgid "Delete tiles"
-msgstr "ລຶບ tile"
-
-msgid "Change selection"
-msgstr "ປ່ຽນການເລືອກ"
-
-msgid "Move tiles"
-msgstr "ຍ້າຍ tile"
-
-msgid "Paint tiles"
-msgstr "ລະບາຍ tile"
-
-msgid "Paste tiles"
-msgstr "ວາງ tile"
-
-msgid "Selection Tool"
-msgstr "ເຄື່ອງມືເລືອກ"
-
-msgid "Paint Tool"
-msgstr "ເຄື່ອງມືລະບາຍ"
-
-msgid "Line Tool"
-msgstr "ເຄື່ອງມືແຕ້ມເສັ້ນ"
-
-msgid "Rect Tool"
-msgstr "ເຄື່ອງມືແຕ້ມສີ່ຫຼ່ຽມ"
-
-msgid "Bucket Tool"
-msgstr "ເຄື່ອງມືຖັງສີ"
-
-msgid "Alternatively hold %s with other tools to pick tile."
-msgstr "ຫຼື ກົດ %s ຄ້າງໄວ້ໃນຂະນະທີ່ໃຊ້ເຄື່ອງມືອື່ນເພື່ອເລືອກ (pick) tile."
-
-msgid "Alternatively use RMB to erase tiles."
-msgstr "ຫຼື ໃຊ້ຄລິກຂວາເພື່ອລຶບ tile."
-
-msgid "Erase"
-msgstr "ລຶບ"
-
-msgid "Rotate Tile Left"
-msgstr "ໝູນ tile ໄປທາງຊ້າຍ"
-
-msgid "Rotate Tile Right"
-msgstr "ໝູນ tile ໄປທາງຂວາ"
-
-msgid "Flip Tile Horizontally"
-msgstr "ພິກ tile ຕາມແນວນອນ"
-
-msgid "Flip Tile Vertically"
-msgstr "ພິກ tile ຕາມແນວຕັ້ງ"
-
-msgid "Contiguous"
-msgstr "ຕໍ່ເນື່ອງກັນ"
-
-msgid "Place Random Tile"
-msgstr "ວາງ tile ແບບສຸ່ມ"
-
-msgid ""
-"Modifies the chance of painting nothing instead of a randomly selected tile."
-msgstr "ປັບປ່ຽນໂອກາດທີ່ຈະບໍ່ລະບາຍສິ່ງໃດເລີຍແທນທີ່ຈະເປັນ tile ທີ່ຖືກສຸ່ມເລືອກ."
-
-msgid "Scattering:"
-msgstr "ການກະຈາຍ:"
-
-msgid "Tiles"
-msgstr "Tiles"
-
-msgid ""
-"This TileMap's TileSet has no Tile Source configured. Go to the TileSet "
-"bottom panel to add one."
-msgstr "TileSet ຂອງ TileMap ນີ້ຍັງບໍ່ໄດ້ກຳນົດ Tile Source. ໄປທີ່ແຖບ TileSet ດ້ານລຸ່ມເພື່ອເພີ່ມ."
-
-msgid "Sort sources"
-msgstr "ຈັດລຽງ source"
-
-msgid "Sort by ID (Ascending)"
-msgstr "ຈັດລຽງຕາມ ID (ນ້ອຍໄປຫາຫຼາຍ)"
-
-msgid "Sort by ID (Descending)"
-msgstr "ຈັດລຽງຕາມ ID (ຫຼາຍໄປຫານ້ອຍ)"
-
-msgid "Invalid source selected."
-msgstr "Source ທີ່ເລືອກບໍ່ຖືກຕ້ອງ."
-
-msgid "Patterns"
-msgstr "ລວດລາຍ (Patterns)"
-
-msgid "Drag and drop or paste a TileMap selection here to store a pattern."
-msgstr "ລາກ ແລະ ວາງ ຫຼື ວາງ tile ທີ່ເລືອກມາໃສ່ນີ້ເພື່ອບັນທຶກເປັນລວດລາຍ (pattern)."
-
-msgid "Paint terrain"
-msgstr "ລະບາຍ terrain"
-
-msgid "Matches Corners and Sides"
-msgstr "ກົງກັບມຸມ ແລະ ຂ້າງ"
-
-msgid "Matches Corners Only"
-msgstr "ກົງກັບມຸມເທົ່ານັ້ນ"
-
-msgid "Matches Sides Only"
-msgstr "ກົງກັບຂ້າງເທົ່ານັ້ນ"
-
-msgid "Terrain Set %d (%s)"
-msgstr "ຊຸດ Terrain %d (%s)"
-
-msgid ""
-"Connect mode: paints a terrain, then connects it with the surrounding tiles "
-"with the same terrain."
-msgstr "ໂໝດເຊື່ອມຕໍ່: ລະບາຍ terrain, ແລ້ວເຊື່ອມຕໍ່ມັນກັບ tile ອ້ອມຂ້າງທີ່ມີ terrain ດຽວກັນ."
-
-msgid ""
-"Path mode: paints a terrain, then connects it to the previous tile painted "
-"within the same stroke."
-msgstr "ໂໝດເສັ້ນທາງ: ລະບາຍ terrain, ແລ້ວເຊື່ອມຕໍ່ມັນກັບ tile ກ່ອນໜ້າທີ່ລະບາຍໃນຄັ້ງດຽວກັນ."
-
-msgid "Terrains"
-msgstr "Terrains"
-
-msgid "No Layers"
-msgstr "ບໍ່ມີ Layer"
-
-msgid "Replace Tiles with Proxies"
-msgstr "ປ່ຽນແທນ Tile ດ້ວຍ Proxy"
-
-msgid "Extract TileMap layers as individual TileMapLayer nodes"
-msgstr "ແຍກ layer ຂອງ TileMap ອອກເປັນໂນດ TileMapLayer ແຕ່ລະອັນ"
-
-msgid "Can't edit multiple layers at once."
-msgstr "ບໍ່ສາມາດແກ້ໄຂຫຼາຍ layer ພ້ອມກັນໄດ້."
-
-msgid "The selected TileMap has no layer to edit."
-msgstr "TileMap ທີ່ເລືອກບໍ່ມີ layer ໃຫ້ແກ້ໄຂ."
-
-msgid "The edited layer is disabled or invisible"
-msgstr "Layer ທີ່ກຳລັງແກ້ໄຂຖືກປິດໃຊ້ງານ ຫຼື ບໍ່ເຫັນ"
-
-msgid ""
-"The edited TileMap or TileMapLayer node has no TileSet resource.\n"
-"Create or load a TileSet resource in the Tile Set property in the inspector."
-msgstr ""
-"ໂນດ TileMap ຫຼື TileMapLayer ທີ່ກຳລັງແກ້ໄຂບໍ່ມີ TileSet resource.\n"
-"ກະລຸນາສ້າງ ຫຼື ໂຫລດ TileSet resource ໃນຄຸນສົມບັດ Tile Set ໃນ inspector."
-
-msgid "TileMap"
-msgstr "TileMap"
-
-msgid "Open TileMap Dock"
-msgstr "ເປີດແຖບ TileMap"
-
-msgid "Select Next Tile Map Layer"
-msgstr "ເລືອກ Tile Map Layer ຖັດໄປ"
-
-msgid "Select Previous Tile Map Layer"
-msgstr "ເລືອກ Tile Map Layer ກ່ອນໜ້າ"
-
-msgid "TileMap Layers"
-msgstr "TileMap Layers"
-
-msgid "Select previous layer"
-msgstr "ເລືອກ layer ກ່ອນໜ້າ"
-
-msgid "Select next layer"
-msgstr "ເລືອກ layer ຖັດໄປ"
-
-msgid "Select all TileMapLayers in scene"
-msgstr "ເລືອກ TileMapLayer ທັງໝົດໃນສາກ"
-
-msgid "Highlight Selected TileMap Layer"
-msgstr "ເນັ້ນ Layer ຂອງ TileMap ທີ່ເລືອກ"
-
-msgid "Toggle grid visibility."
-msgstr "ເປີດ/ປິດ ການເບິ່ງເຫັນຕາຕະລາງ."
-
-msgid "Advanced settings."
-msgstr "ການຕັ້ງຄ່າຂັ້ນສູງ."
-
-msgid "Automatically Replace Tiles with Proxies"
-msgstr "ປ່ຽນແທນ tile ດ້ວຍ proxy ອັດຕະໂນມັດ"
-
-msgid "Remove Tile Proxies"
-msgstr "ລຶບ Tile Proxies"
-
-msgid "Create Alternative-level Tile Proxy"
-msgstr "ສ້າງ Tile Proxy ໃນລະດັບ Alternative"
-
-msgid "Create Coords-level Tile Proxy"
-msgstr "ສ້າງ Tile Proxy ໃນລະດັບ Coords"
-
-msgid "Create source-level Tile Proxy"
-msgstr "ສ້າງ Tile Proxy ໃນລະດັບ Source"
-
-msgid "Delete All Invalid Tile Proxies"
-msgstr "ລຶບ Tile Proxies ທີ່ບໍ່ຖືກຕ້ອງທັງໝົດ"
-
-msgid "Delete All Tile Proxies"
-msgstr "ລຶບ Tile Proxies ທັງໝົດ"
-
-msgid "Tile Proxies Management"
-msgstr "ການຈັດການ Tile Proxies"
-
-msgid "Source-level proxies"
-msgstr "Proxies ໃນລະດັບ Source"
-
-msgid "Coords-level proxies"
-msgstr "Proxies ໃນລະດັບ Coords"
-
-msgid "Alternative-level proxies"
-msgstr "Proxies ໃນລະດັບ Alternative"
-
-msgid "Add a new tile proxy:"
-msgstr "ເພີ່ມ tile proxy ໃໝ່:"
-
-msgid "From Source"
-msgstr "ຈາກ Source"
-
-msgid "From Coords"
-msgstr "ຈາກ Coords"
-
-msgid "From Alternative"
-msgstr "ຈາກ Alternative"
-
-msgid "To Source"
-msgstr "ໄປຫາ Source"
-
-msgid "To Coords"
-msgstr "ໄປຫາ Coords"
-
-msgid "To Alternative"
-msgstr "ໄປຫາ Alternative"
-
-msgid "Global actions:"
-msgstr "ຄຳສັ່ງທົ່ວໄປ:"
-
-msgid "Clear Invalid"
-msgstr "ລ້າງອັນທີ່ບໍ່ຖືກຕ້ອງ"
-
-msgid "Atlas"
-msgstr "ແອດລັສ (Atlas)"
-
-msgid "Base Tile"
-msgstr "Tile ພື້ນຖານ"
-
-msgid "Alternative Tile"
-msgstr "Tile ທາງເລືອກ"
-
-msgid ""
-"Selected tile:\n"
-"Source: %d\n"
-"Atlas coordinates: %s\n"
-"Alternative: %d"
-msgstr ""
-"Tile ທີ່ເລືອກ:\n"
-"Source: %d\n"
-"ພິກັດ Atlas: %s\n"
-"Alternative: %d"
-
-msgid "Rendering"
-msgstr "ການສະແດງຜົນ (Rendering)"
-
-msgid "Texture Origin"
-msgstr "ຈຸດກຳເນີດ Texture"
-
-msgid "Modulate"
-msgstr "ປັບສີ (Modulate)"
-
-msgid "Z Index"
-msgstr "Z Index"
-
-msgid "Y Sort Origin"
-msgstr "Y Sort Origin"
-
-msgid "Occlusion Layer %d"
-msgstr "Occlusion Layer %d"
-
-msgid "Probability"
-msgstr "ຄວາມເປັນໄປໄດ້"
-
-msgid "Physics"
-msgstr "ຟີຊິກ (Physics)"
-
-msgid "Physics Layer %d"
-msgstr "Physics Layer %d"
-
-msgid "No physics layers"
-msgstr "ບໍ່ມີ Physics Layer"
-
-msgid ""
-"Create and customize physics layers in the inspector of the TileSet resource."
-msgstr "ສ້າງ ແລະ ປັບແຕ່ງ physics layers ໃນ inspector ຂອງ TileSet resource."
-
-msgid "Navigation"
-msgstr "ການນຳທາງ (Navigation)"
-
-msgid "Navigation Layer %d"
-msgstr "Navigation Layer %d"
-
-msgid "No navigation layers"
-msgstr "ບໍ່ມີ Navigation Layer"
-
-msgid ""
-"Create and customize navigation layers in the inspector of the TileSet "
-"resource."
-msgstr "ສ້າງ ແລະ ປັບແຕ່ງ navigation layers ໃນ inspector ຂອງ TileSet resource."
-
-msgid "Custom Data"
-msgstr "ຂໍ້ມູນກຳນົດເອງ (Custom Data)"
-
-msgid "Custom Data %d"
-msgstr "Custom Data %d"
-
-msgid "No custom data layers"
-msgstr "ບໍ່ມີ Custom Data Layer"
-
-msgid ""
-"Create and customize custom data layers in the inspector of the TileSet "
-"resource."
-msgstr "ສ້າງ ແລະ ປັບແຕ່ງ custom data layers ໃນ inspector ຂອງ TileSet resource."
-
-msgid "Select a property editor"
-msgstr "ເລືອກ Property Editor"
-
-msgid "Hold Ctrl to create multiple tiles."
-msgstr "ກົດ Ctrl ຄ້າງໄວ້ເພື່ອສ້າງຫຼາຍ tile."
-
-msgid "Hold Shift to create big tiles."
-msgstr "ກົດ Shift ຄ້າງໄວ້ເພື່ອສ້າງ tile ຂະໜາດໃຫຍ່."
-
-msgid "Hold Shift to select multiple regions."
-msgstr "ກົດ Shift ຄ້າງໄວ້ເພື່ອເລືອກຫຼາຍພື້ນທີ່ (regions)."
-
-msgid ""
-"TileSet is in read-only mode. Make the resource unique to edit TileSet "
-"properties."
-msgstr "TileSet ຢູ່ໃນໂໝດອ່ານຢ່າງດຽວ. ເຮັດໃຫ້ resource ເປັນແບບ unique ເພື່ອແກ້ໄຂຄຸນສົມບັດ."
-
-msgid "Paint properties."
-msgstr "ລະບາຍຄຸນສົມບັດ."
-
-msgid "Create tiles"
-msgstr "ສ້າງ tile"
-
-msgid "Create a tile"
-msgstr "ສ້າງ tile ອັນດຽວ"
-
-msgid "Remove tiles"
-msgstr "ລຶບ tile"
-
-msgid "Move a tile"
-msgstr "ຍ້າຍ tile"
-
-msgid "Resize a tile"
-msgstr "ປັບຂະໜາດ tile"
-
-msgid "Remove tile"
-msgstr "ລຶບ tile"
-
-msgid "Create tile alternatives"
-msgstr "ສ້າງ tile ທາງເລືອກ"
-
-msgid "Remove Tiles Outside the Texture"
-msgstr "ລຶບ tile ທີ່ຢູ່ນອກ texture"
-
-msgid "Create tiles in non-transparent texture regions"
-msgstr "ສ້າງ tile ໃນພື້ນທີ່ texture ທີ່ບໍ່ໂປ່ງໃສ"
-
-msgid "Remove tiles in fully transparent texture regions"
-msgstr "ລຶບ tile ໃນພື້ນທີ່ texture ທີ່ໂປ່ງໃສທັງໝົດ"
-
-msgid ""
-"The tile's unique identifier within this TileSet. Each tile stores its source "
-"ID, so changing one may make tiles invalid."
-msgstr ""
-"ລະຫັດລະບຸຕົວຕົນສະເພາະຂອງ tile ໃນ TileSet ນີ້. ແຕ່ລະ tile ຈະເກັບ source ID ຂອງມັນໄວ້, "
-"ດັ່ງນັ້ນການປ່ຽນອັນໃດອັນໜຶ່ງອາດເຮັດໃຫ້ tile ບໍ່ຖືກຕ້ອງ."
-
-msgid ""
-"The human-readable name for the atlas. Use a descriptive name here for "
-"organizational purposes (such as \"terrain\", \"decoration\", etc.)."
-msgstr ""
-"ຊື່ທີ່ຄົນອ່ານເຂົ້າໃຈໄດ້ສຳລັບອັດລັສ (atlas). ໃຊ້ຊື່ທີ່ອະທິບາຍຈະແຈ້ງຢູ່ບ່ອນນີ້ເພື່ອຄວາມເປັນລະບຽບ (ເຊັ່ນ "
-"\"terrain\", \"decoration\", ແລະ ອື່ນໆ)."
-
-msgid "The image from which the tiles will be created."
-msgstr "ຮູບພາບທີ່ຈະຖືກນຳມາສ້າງເປັນໄທລ໌ (tiles)."
-
-msgid ""
-"The margins on the image's edges that should not be selectable as tiles (in "
-"pixels). Increasing this can be useful if you download a tilesheet image that "
-"has margins on the edges (e.g. for attribution)."
-msgstr ""
-"ຂອບຢູ່ແຄມຂອງຮູບພາບທີ່ບໍ່ຄວນຖືກເລືອກເປັນໄທລ໌ (ເປັນພິກເຊວ). ການເພີ່ມຄ່ານີ້ຈະມີປະໂຫຍດ "
-"ຫາກເຈົ້າດາວໂຫຼດຮູບ tilesheet ທີ່ມີຂອບຢູ່ແຄມ (ເຊັ່ນ ເພື່ອໃຫ້ເຄຣດິດຜູ້ສ້າງ)."
-
-msgid ""
-"The separation between each tile on the atlas in pixels. Increasing this can "
-"be useful if the tilesheet image you're using contains guides (such as "
-"outlines between every tile)."
-msgstr ""
-"ໄລຍະຫ່າງລະຫວ່າງແຕ່ລະໄທລ໌ໃນອັດລັສເປັນພິກເຊວ. ການເພີ່ມຄ່ານີ້ຈະມີປະໂຫຍດ ຫາກຮູບ tilesheet "
-"ທີ່ເຈົ້າໃຊ້ມີເສັ້ນນຳທາງ (ເຊັ່ນ ເສັ້ນຂອບລະຫວ່າງແຕ່ລະໄທລ໌)."
-
-msgid ""
-"The size of each tile on the atlas in pixels. In most cases, this should "
-"match the tile size defined in the TileMap property (although this is not "
-"strictly necessary)."
-msgstr ""
-"ຂະໜາດຂອງແຕ່ລະໄທລ໌ໃນອັດລັສເປັນພິກເຊວ. ສ່ວນຫຼາຍແລ້ວ, ຄ່ານີ້ຄວນຈະກົງກັບຂະໜາດໄທລ໌ "
-"ທີ່ກຳນົດໄວ້ໃນຄຸນສົມບັດຂອງ TileMap (ເຖິງແມ່ນວ່າຈະບໍ່ຈຳເປັນຕ້ອງຄືກັນແທ້ໆກໍຕາມ)."
-
-msgid ""
-"If checked, adds a 1-pixel transparent edge around each tile to prevent "
-"texture bleeding when filtering is enabled. It's recommended to leave this "
-"enabled unless you're running into rendering issues due to texture padding."
-msgstr ""
-"ຫາກໝາຍເລືອກ, ຈະເພີ່ມຂອບໂປ່ງໃສຂະໜາດ 1 ພິກເຊວ ອ້ອມຮອບແຕ່ລະໄທລ໌ເພື່ອປ້ອງກັນ ສີເທັກເຈີເຫຼື້ອມປົນກັນ "
-"(texture bleeding) ເມື່ອເປີດໃຊ້ filtering. ແນະນຳໃຫ້ເປີດໃຊ້ຄ່ານີ້ໄວ້ "
-"ເວັ້ນເສຍແຕ່ເຈົ້າຈະພົບບັນຫາການສະແດງຜົນເນື່ອງມາຈາກ texture padding."
-
-msgid ""
-"The position of the tile's top-left corner in the atlas. The position and "
-"size must be within the atlas and can't overlap another tile.\n"
-"Each painted tile has associated atlas coords, so changing this property may "
-"cause your TileMaps to not display properly."
-msgstr ""
-"ຕຳແໜ່ງຂອງມຸມຊ້າຍເທິງຂອງໄທລ໌ໃນອັດລັສ. ຕຳແໜ່ງ ແລະ ຂະໜາດຕ້ອງຢູ່ພາຍໃນອັດລັສ ແລະ "
-"ບໍ່ສາມາດຊ້ອນທັບກັບໄທລ໌ອື່ນໄດ້.\n"
-"ແຕ່ລະໄທລ໌ທີ່ແຕ້ມລົງໄປຈະມີພິກັດອັດລັສທີ່ກ່ຽວຂ້ອງ, ດັ່ງນັ້ນການປ່ຽນຄຸນສົມບັດນີ້ ອາດເຮັດໃຫ້ TileMaps "
-"ຂອງເຈົ້າສະແດງຜົນບໍ່ຖືກຕ້ອງ."
-
-msgid "The unit size of the tile."
-msgstr "ຂະໜາດຫົວໜ່ວຍຂອງໄທລ໌."
-
-msgid ""
-"Number of columns for the animation grid. If number of columns is lower than "
-"number of frames, the animation will automatically adjust row count."
-msgstr ""
-"ຈຳນວນຖັນສຳລັບຕາຕະລາງແອນິເມຊັນ. ຫາກຈຳນວນຖັນໜ້ອຍກວ່າຈຳນວນເຟຣມ, "
-"ແອນິເມຊັນຈະປັບຈຳນວນແຖວໃຫ້ໂດຍອັດຕະໂນມັດ."
-
-msgid "The space (in tiles) between each frame of the animation."
-msgstr "ໄລຍະຫ່າງ (ເປັນຫົວໜ່ວຍໄທລ໌) ລະຫວ່າງແຕ່ລະເຟຣມຂອງແອນິເມຊັນ."
-
-msgid "Animation speed in frames per second."
-msgstr "ຄວາມໄວແອນິເມຊັນເປັນເຟຣມຕໍ່ວິນາທີ."
-
-msgid ""
-"Determines how animation will start. In \"Default\" mode all tiles start "
-"animating at the same frame. In \"Random Start Times\" mode, each tile starts "
-"animation with a random offset."
-msgstr ""
-"ກຳນົດຮູບແບບການເລີ່ມຕົ້ນຂອງແອນິເມຊັນ. ໃນໂໝດ \"Default\" ທຸກໄທລ໌ຈະເລີ່ມ ແອນິເມຊັນຢູ່ເຟຣມດຽວກັນ. "
-"ໃນໂໝດ \"Random Start Times\", ແຕ່ລະໄທລ໌ ຈະເລີ່ມແອນິເມຊັນດ້ວຍການສຸ່ມເວລາເລີ່ມຕົ້ນ."
-
-msgid "If [code]true[/code], the tile is horizontally flipped."
-msgstr "ຫາກເປັນ [code]true[/code], ໄທລ໌ຈະຖືກພິກໃນແນວນອນ."
-
-msgid "If [code]true[/code], the tile is vertically flipped."
-msgstr "ຫາກເປັນ [code]true[/code], ໄທລ໌ຈະຖືກພິກໃນແນວຕັ້ງ."
-
-msgid ""
-"If [code]true[/code], the tile is rotated 90 degrees [i]counter-clockwise[/i] "
-"and then flipped vertically. In practice, this means that to rotate a tile by "
-"90 degrees clockwise without flipping it, you should enable [b]Flip H[/b] and "
-"[b]Transpose[/b]. To rotate a tile by 180 degrees clockwise, enable [b]Flip "
-"H[/b] and [b]Flip V[/b]. To rotate a tile by 270 degrees clockwise, enable "
-"[b]Flip V[/b] and [b]Transpose[/b]."
-msgstr ""
-"ຫາກເປັນ [code]true[/code], ໄທລ໌ຈະຖືກໝູນ 90 ອົງສາ [i]ທວນເຂັມໂມງ[/i] ແລ້ວພິກແນວຕັ້ງ. "
-"ໃນທາງປະຕິບັດ, ນີ້ໝາຍຄວາມວ່າການໝູນໄທລ໌ 90 ອົງສາຕາມເຂັມໂມງໂດຍບໍ່ພິກ, ເຈົ້າຄວນເປີດໃຊ້ [b]Flip H[/"
-"b] ແລະ [b]Transpose[/b]. ເພື່ອໝູນໄທລ໌ 180 ອົງສາຕາມເຂັມໂມງ, ໃຫ້ເປີດ [b]Flip H[/b] ແລະ "
-"[b]Flip V[/b]. ເພື່ອໝູນໄທລ໌ 270 ອົງສາຕາມເຂັມໂມງ, ໃຫ້ເປີດ [b]Flip V[/b] ແລະ "
-"[b]Transpose[/b]."
-
-msgid ""
-"The origin to use for drawing the tile. This can be used to visually offset "
-"the tile compared to the base tile."
-msgstr ""
-"ຈຸດກຳເນີດ (origin) ທີ່ຈະໃຊ້ໃນການແຕ້ມໄທລ໌. ສາມາດໃຊ້ເພື່ອປັບໄລຍະຫ່າງ (offset) "
-"ຂອງໄທລ໌ເມື່ອທຽບກັບໄທລ໌ພື້ນຖານ."
-
-msgid "The color multiplier to use when rendering the tile."
-msgstr "ຕົວຄູນສີທີ່ຈະໃຊ້ໃນເວລາປະມວນຜົນສະແດງໄທລ໌."
-
-msgid ""
-"The material to use for this tile. This can be used to apply a different "
-"blend mode or custom shaders to a single tile."
-msgstr ""
-"ວັດສະດຸ (material) ທີ່ຈະໃຊ້ສຳລັບໄທລ໌ນີ້. ສາມາດໃຊ້ເພື່ອຕັ້ງຄ່າ blend mode ທີ່ແຕກຕ່າງ ຫຼື ໃຊ້ custom "
-"shaders ກັບໄທລ໌ດຽວໄດ້."
-
-msgid ""
-"The sorting order for this tile. Higher values will make the tile render in "
-"front of others on the same layer. The index is relative to the TileMap's own "
-"Z index."
-msgstr ""
-"ລຳດັບການຈັດລຽງສຳລັບໄທລ໌ນີ້. ຄ່າທີ່ສູງກວ່າຈະເຮັດໃຫ້ໄທລ໌ສະແດງຜົນຢູ່ທາງໜ້າໄທລ໌ອື່ນໆ ໃນເລເຍີ (layer) "
-"ດຽວກັນ. ຄ່ານີ້ຈະອ້າງອີງຕາມ Z index ຂອງ TileMap ເອງ."
-
-msgid ""
-"The vertical offset to use for tile sorting based on its Y coordinate (in "
-"pixels). This allows using layers as if they were on different height for top-"
-"down games. Adjusting this can help alleviate issues with sorting certain "
-"tiles. Only effective if Y Sort Enabled is true on the TileMap layer the tile "
-"is placed on."
-msgstr ""
-"ໄລຍະຫ່າງແນວຕັ້ງທີ່ຈະໃຊ້ໃນການຈັດລຽງໄທລ໌ຕາມພິກັດ Y (ເປັນພິກເຊວ). ນີ້ຊ່ວຍໃຫ້ສາມາດ "
-"ໃຊ້ເລເຍີຄືກັບວ່າມັນຢູ່ຄວາມສູງທີ່ຕ່າງກັນສຳລັບເກມແນວ top-down. ການປັບຄ່ານີ້ສາມາດຊ່ວຍ "
-"ແກ້ໄຂບັນຫາການຈັດລຽງໄທລ໌ບາງອັນໄດ້. ຈະມີຜົນກໍຕໍ່ເມື່ອ Y Sort Enabled ເປັນ true ໃນເລເຍີຂອງ "
-"TileMap ທີ່ໄທລ໌ນັ້ນວາງຢູ່."
-
-msgid ""
-"The index of the terrain set this tile belongs to. [code]-1[/code] means it "
-"will not be used in terrains."
-msgstr ""
-"ລຳດັບ (index) ຂອງ terrain set ທີ່ໄທລ໌ນີ້ສັງກັດຢູ່. [code]-1[/code] ໝາຍເຖິງ ຈະບໍ່ຖືກນຳໃຊ້ໃນ "
-"terrains."
-
-msgid ""
-"The index of the terrain inside the terrain set this tile belongs to. "
-"[code]-1[/code] means it will not be used in terrains."
-msgstr ""
-"ລຳດັບ (index) ຂອງ terrain ພາຍໃນ terrain set ທີ່ໄທລ໌ນີ້ສັງກັດຢູ່. [code]-1[/code] "
-"ໝາຍເຖິງຈະບໍ່ຖືກນຳໃຊ້ໃນ terrains."
-
-msgid ""
-"The relative probability of this tile appearing when painting with \"Place "
-"Random Tile\" enabled."
-msgstr ""
-"ໂອກາດທີ່ກ່ຽວຂ້ອງ (relative probability) ທີ່ໄທລ໌ນີ້ຈະປາກົດຂຶ້ນ ເມື່ອແຕ້ມດ້ວຍການເປີດໃຊ້ \"Place "
-"Random Tile\"."
-
-msgid ""
-"The current atlas source has tiles outside the texture.\n"
-"You can clear it using \"%s\" option in the 3 dots menu."
-msgstr ""
-"ແຫຼ່ງອັດລັສ (atlas source) ປັດຈຸບັນມີໄທລ໌ທີ່ຢູ່ນອກເທັກເຈີ (texture).\n"
-"ເຈົ້າສາມາດລຶບມັນອອກໄດ້ໂດຍໃຊ້ຕົວເລືອກ \"%s\" ໃນເມນູ 3 ຈ້ຳ."
-
-msgid "Setup"
-msgstr "ຕັ້ງຄ່າ"
-
-msgid ""
-"Atlas setup. Add/Remove tiles tool (use the shift key to create big tiles, "
-"control for rectangle editing)."
-msgstr ""
-"ການຕັ້ງຄ່າອັດລັສ. ເຄື່ອງມື ເພີ່ມ/ລຶບ ໄທລ໌ (ໃຊ້ປຸ່ມ shift ເພື່ອສ້າງໄທລ໌ຂະໜາດໃຫຍ່, ປຸ່ມ control "
-"ສຳລັບການແກ້ໄຂແບບຮູບສີ່ແຈ)."
-
-msgid "Select tiles."
-msgstr "ເລືອກໄທລ໌."
-
-msgid "Paint"
-msgstr "ແຕ້ມ"
-
-msgid ""
-"No tiles selected.\n"
-"Select one or more tiles from the palette to edit its properties."
-msgstr ""
-"ບໍ່ມີໄທລ໌ທີ່ຖືກເລືອກ.\n"
-"ເລືອກໄທລ໌ໜຶ່ງອັນ ຫຼື ຫຼາຍກວ່ານັ້ນຈາກ palette ເພື່ອແກ້ໄຂຄຸນສົມບັດຂອງມັນ."
-
-msgid "Paint Properties:"
-msgstr "ຄຸນສົມບັດການແຕ້ມ:"
-
-msgid "Create Tiles in Non-Transparent Texture Regions"
-msgstr "ສ້າງໄທລ໌ໃນສ່ວນຂອງເທັກເຈີທີ່ບໍ່ໂປ່ງໃສ"
-
-msgid "Remove Tiles in Fully Transparent Texture Regions"
-msgstr "ລຶບໄທລ໌ໃນສ່ວນຂອງເທັກເຈີທີ່ໂປ່ງໃສທັງໝົດ"
-
-msgid "Create an Alternative Tile"
-msgstr "ສ້າງໄທລ໌ທາງເລືອກ (Alternative Tile)"
-
-msgid "Create a Tile"
-msgstr "ສ້າງໄທລ໌"
-
-msgid "Auto Create Tiles in Non-Transparent Texture Regions?"
-msgstr "ສ້າງໄທລ໌ໃນສ່ວນຂອງເທັກເຈີທີ່ບໍ່ໂປ່ງໃສໂດຍອັດຕະໂນມັດບໍ່?"
-
-msgid ""
-"The atlas's texture was modified.\n"
-"Would you like to automatically create tiles in the atlas?"
-msgstr ""
-"ເທັກເຈີຂອງອັດລັສຖືກປ່ຽນແປງ.\n"
-"ເຈົ້າຕ້ອງການສ້າງໄທລ໌ໃນອັດລັສໂດຍອັດຕະໂນມັດບໍ່?"
-
-msgid "Yes"
-msgstr "ແມ່ນ"
-
-msgid "No"
-msgstr "ບໍ່"
-
-msgid "Invalid texture selected."
-msgstr "ເທັກເຈີທີ່ເລືອກບໍ່ຖືກຕ້ອງ."
-
-msgid "Add a new atlas source"
-msgstr "ເພີ່ມແຫຼ່ງອັດລັສໃໝ່"
-
-msgid "Remove source"
-msgstr "ລຶບແຫຼ່ງຂໍ້ມູນອອກ"
-
-msgid "Add atlas source"
-msgstr "ເພີ່ມແຫຼ່ງອັດລັສ"
-
-msgid "TileSet"
-msgstr "TileSet"
-
-msgid "Open TileSet Dock"
-msgstr "ເປີດ Dock ຂອງ TileSet"
-
-msgid "Tile Sources"
-msgstr "ແຫຼ່ງຂໍ້ມູນໄທລ໌"
-
-msgid "Sort Sources"
-msgstr "ຈັດລຽງແຫຼ່ງຂໍ້ມູນ"
-
-msgid "A palette of tiles made from a texture."
-msgstr "ຊຸດຂອງໄທລ໌ທີ່ສ້າງມາຈາກເທັກເຈີ."
-
-msgid "Scenes Collection"
-msgstr "ຊຸດສະສົມສາກ (Scenes Collection)"
-
-msgid "A collection of scenes that can be instantiated and placed as tiles."
-msgstr "ຊຸດຂອງສາກ (scenes) ທີ່ສາມາດສ້າງ instance ແລະ ວາງເປັນໄທລ໌ໄດ້."
-
-msgid "Open Atlas Merging Tool"
-msgstr "ເປີດເຄື່ອງມືລວມອັດລັສ"
-
-msgid "Manage Tile Proxies"
-msgstr "ຈັດການ Tile Proxies"
-
-msgid ""
-"No TileSet source selected. Select or create a TileSet source.\n"
-"You can create a new source by using the Add button on the left or by "
-"dropping a tileset texture onto the source list."
-msgstr ""
-"ບໍ່ໄດ້ເລືອກແຫຼ່ງ TileSet. ກະລຸນາເລືອກ ຫຼື ສ້າງແຫຼ່ງ TileSet.\n"
-"ເຈົ້າສາມາດສ້າງແຫຼ່ງໃໝ່ໄດ້ໂດຍການໃຊ້ປຸ່ມ Add ຢູ່ທາງຊ້າຍ ຫຼື ໂດຍການລາກ tileset texture "
-"ມາໃສ່ໃນລາຍການແຫຼ່ງຂໍ້ມູນ."
-
-msgid "Add new patterns in the TileMap editing mode."
-msgstr "ເພີ່ມຮູບແບບ (patterns) ໃໝ່ໃນໂໝດການແກ້ໄຂ TileMap."
-
-msgid ""
-"Warning: Modifying a source ID will result in all TileMaps using that source "
-"to reference an invalid source instead. This may result in unexpected data "
-"loss. Change this ID carefully."
-msgstr ""
-"ຄຳເຕືອນ: ການປ່ຽນແປງ ID ຂອງແຫຼ່ງຂໍ້ມູນ ຈະເຮັດໃຫ້ TileMaps ທັງໝົດທີ່ໃຊ້ແຫຼ່ງນັ້ນ "
-"ໄປອ້າງອີງເຖິງແຫຼ່ງທີ່ບໍ່ຖືກຕ້ອງແທນ. ນີ້ອາດເຮັດໃຫ້ຂໍ້ມູນສູນຫາຍໂດຍບໍ່ຄາດຄິດ. ກະລຸນາປ່ຽນ ID "
-"ນີ້ດ້ວຍຄວາມລະມັດລະວັງ."
-
-msgid "Add a Scene Tile"
-msgstr "ເພີ່ມ Scene Tile"
-
-msgid "Remove a Scene Tile"
-msgstr "ລຶບ Scene Tile"
-
-msgid "Drag and drop scenes here or use the Add button."
-msgstr "ລາກ ແລະ ວາງສາກ (scenes) ໃສ່ນີ້ ຫຼື ໃຊ້ປຸ່ມ Add."
-
-msgid ""
-"The human-readable name for the scene collection. Use a descriptive name here "
-"for organizational purposes (such as \"obstacles\", \"decoration\", etc.)."
-msgstr ""
-"ຊື່ທີ່ຄົນອ່ານເຂົ້າໃຈໄດ້ສຳລັບຊຸດສະສົມສາກ. ໃຊ້ຊື່ທີ່ອະທິບາຍຈະແຈ້ງຢູ່ບ່ອນນີ້ເພື່ອຄວາມເປັນລະບຽບ (ເຊັ່ນ "
-"\"obstacles\", \"decoration\", ແລະ ອື່ນໆ)."
-
-msgid ""
-"ID of the scene tile in the collection. Each painted tile has associated ID, "
-"so changing this property may cause your TileMaps to not display properly."
-msgstr ""
-"ID ຂອງ scene tile ໃນຊຸດສະສົມ. ແຕ່ລະໄທລ໌ທີ່ແຕ້ມລົງໄປຈະມີ ID ທີ່ກ່ຽວຂ້ອງ, "
-"ດັ່ງນັ້ນການປ່ຽນຄຸນສົມບັດນີ້ອາດເຮັດໃຫ້ TileMaps ຂອງເຈົ້າສະແດງຜົນບໍ່ຖືກຕ້ອງ."
-
-msgid "Absolute path to the scene associated with this tile."
-msgstr "ທີ່ຢູ່ເຕັມ (Absolute path) ຂອງສາກທີ່ກ່ຽວຂ້ອງກັບໄທລ໌ນີ້."
-
-msgid ""
-"If [code]true[/code], a placeholder marker will be displayed on top of the "
-"scene's preview. The marker is displayed anyway if the scene has no valid "
-"preview."
-msgstr ""
-"ຫາກເປັນ [code]true[/code], ເຄື່ອງໝາຍບ່ອນວາງ (placeholder) ຈະຖືກສະແດງຢູ່ເທິງ "
-"ຕົວຢ່າງຂອງສາກ. ເຄື່ອງໝາຍຈະຖືກສະແດງຢູ່ແລ້ວຫາກສາກນັ້ນບໍ່ມີຕົວຢ່າງທີ່ຖືກຕ້ອງ."
-
-msgid "Scenes collection properties:"
-msgstr "ຄຸນສົມບັດຊຸດສະສົມສາກ:"
-
-msgid "Tile properties:"
-msgstr "ຄຸນສົມບັດໄທລ໌:"
-
-msgid "Eraser Tool"
-msgstr "ເຄື່ອງມືຢາງລຶບ"
-
-msgid "Picker Tool"
-msgstr "ເຄື່ອງມືດູດສີ/ເລືອກ"
-
-msgid ""
-"Source ID: %d\n"
-"Texture path: %s"
-msgstr ""
-"ID ແຫຼ່ງຂໍ້ມູນ: %d\n"
-"ທີ່ຢູ່ເທັກເຈີ: %s"
-
-msgid "Source ID: %d"
-msgstr "ID ແຫຼ່ງຂໍ້ມູນ: %d"
 
 msgid "Bone Picker:"
 msgstr "ເຄື່ອງມືເລືອກກະດູກ:"
@@ -11036,7 +9951,7 @@ msgid "Video RAM size: %s MB (%s)"
 msgstr "ຂະໜາດ Video RAM: %s MB (%s)"
 
 msgid "Bake SDF"
-msgstr "Bake SDF"
+msgstr "ອົບ (Bake) SDF"
 
 msgid ""
 "No faces detected during GPUParticlesCollisionSDF3D bake.\n"
@@ -11122,7 +10037,7 @@ msgstr ""
 "ການຈັດວາງຮູບ lightmap ລົງໃນ atlas ຫຼົ້ມເຫຼວ. ເຫດການນີ້ບໍ່ຄວນເກີດຂຶ້ນ ແລະ ຄວນມີການລາຍງານບັນຫາ."
 
 msgid "Bake Lightmaps"
-msgstr "Bake Lightmaps"
+msgstr "ອົບ (Bake) Lightmaps"
 
 msgid "Lightmap baking is not supported on this GPU (%s)."
 msgstr "ການ bake Lightmap ບໍ່ຮອງຮັບໃນ GPU ນີ້ (%s)."
@@ -11138,7 +10053,7 @@ msgstr ""
 "compile."
 
 msgid "LightMap Bake"
-msgstr "LightMap Bake"
+msgstr "ການອົບ (Bake) LightMap"
 
 msgid "Select lightmap bake file:"
 msgstr "ເລືອກໄຟລ໌ lightmap bake:"
@@ -11204,10 +10119,10 @@ msgid "Bounding Box"
 msgstr "Bounding Box"
 
 msgid "Capsule"
-msgstr "Capsule"
+msgstr "ຊົງແຄັບຊູນ (Capsule)"
 
 msgid "Cylinder"
-msgstr "Cylinder"
+msgstr "ຊົງກະບອກ (Cylinder)"
 
 msgid "Sphere"
 msgstr "ວົງມົນ (Sphere)"
@@ -11249,7 +10164,7 @@ msgstr ""
 "(unique) ກ່ອນ."
 
 msgid "Unwrap UV2"
-msgstr "Unwrap UV2"
+msgstr "ແຜ່ UV2 (Unwrap)"
 
 msgid "Contained Mesh is not of type ArrayMesh."
 msgstr "ເມັສທີ່ມີຢູ່ບໍ່ໄດ້ເປັນປະເພດ ArrayMesh."
@@ -11330,7 +10245,7 @@ msgid "Collision Shape Placement"
 msgstr "ການຈັດວາງຮູບຊົງຄໍລິຊັນ"
 
 msgid "Sibling"
-msgstr "Sibling"
+msgstr "ໂນດຂ້າງຄຽງ (Sibling)"
 
 msgid "Creates collision shapes as Sibling."
 msgstr "ສ້າງຮູບຊົງຄໍລິຊັນເປັນ Sibling."
@@ -11510,52 +10425,6 @@ msgid "Filter Meshes"
 msgstr "ກອງເມັສ (Filter Meshes)"
 
 msgid ""
-"The item's name, shown in the editor. It can also be used to look up the item "
-"later using [method MeshLibrary.find_item_by_name]."
-msgstr ""
-"ຊື່ຂອງລາຍການ, ສະແດງຢູ່ໃນ editor. ສາມາດໃຊ້ເພື່ອຄົ້ນຫາລາຍການໃນພາຍຫຼັງໂດຍໃຊ້ [method "
-"MeshLibrary.find_item_by_name]."
-
-msgid ""
-"The item's mesh. Used by other parts of the engine (e.g. [GridMap], which "
-"displays them in a 3D tile)."
-msgstr ""
-"ເມັສຂອງລາຍການ. ໃຊ້ໂດຍສ່ວນອື່ນໆຂອງ engine (ເຊັ່ນ [GridMap], ເຊິ່ງຈະສະແດງ ພວກມັນໃນຮູບແບບ "
-"3D tile)."
-
-msgid "The transform to apply to the item's mesh."
-msgstr "ການແປງຄ່າ (transform) ທີ່ຈະໃຊ້ກັບເມັສຂອງລາຍການ."
-
-msgid ""
-"The shadow casting mode used by the item's mesh. See [enum "
-"RenderingServer.ShadowCastingSetting]."
-msgstr ""
-"ໂໝດການເກີດເງົາທີ່ໃຊ້ໂດຍເມັສຂອງລາຍການ. ເບິ່ງ [enum "
-"RenderingServer.ShadowCastingSetting]."
-
-msgid ""
-"The item's collision shapes.\n"
-"The array should consist of [Shape3D] objects, each followed by a "
-"[Transform3D] that will be applied to it. For shapes that should not have a "
-"transform, use [constant Transform3D.IDENTITY]."
-msgstr ""
-"ຮູບຊົງຄໍລິຊັນຂອງລາຍການ.\n"
-"ອາເຣ (array) ຄວນປະກອບດ້ວຍວັດຖຸ [Shape3D], ເຊິ່ງແຕ່ລະອັນຈະຕາມດ້ວຍ [Transform3D] "
-"ທີ່ຈະໃຊ້ກັບມັນ. ສຳລັບຮູບຊົງທີ່ບໍ່ຕ້ອງການການແປງຄ່າ, ໃຫ້ໃຊ້ [constant Transform3D.IDENTITY]."
-
-msgid "The item's navigation mesh."
-msgstr "Navigation mesh ຂອງລາຍການ."
-
-msgid "The transform to apply to the item's navigation mesh."
-msgstr "ການແປງຄ່າ (transform) ທີ່ຈະໃຊ້ກັບ navigation mesh ຂອງລາຍການ."
-
-msgid "The item's navigation layers bitmask."
-msgstr "bitmask ຂອງ navigation layers ຂອງລາຍການ."
-
-msgid "The texture to use as the item's preview icon in the editor."
-msgstr "ເທັກເຈີທີ່ຈະໃຊ້ເປັນໄອຄອນຕົວຢ່າງຂອງລາຍການໃນ editor."
-
-msgid ""
 "No items found inside the MeshLibrary.\n"
 "You can add some by using the Add button on the left, or by importing them "
 "from a scene file via the Import menu."
@@ -11635,14 +10504,509 @@ msgstr "Populate"
 msgid "Unnamed Gizmo"
 msgstr "Gizmo ທີ່ບໍ່ມີຊື່"
 
-msgid "Transform Aborted."
-msgstr "ການແປງຄ່າຖືກຍົກເລີກ."
+msgid ""
+"Hold %s to highlight a vertex on the currently selected node,\n"
+"then drag to move the node and snap it to vertices on neighboring nodes.\n"
+"\n"
+"For nodes without a vertex-based representation,\n"
+"Snap Origin to Vertex is always used instead."
+msgstr ""
+"ກົດ %s ຄ້າງໄວ້ເພື່ອເນັ້ນ vertex ໃນ node ທີ່ເລືອກ,\n"
+"ຈາກນັ້ນລາກເພື່ອຍ້າຍ node ແລະ ໃຫ້ມັນ snap ເຂົ້າກັບ vertex ຂອງ node ໃກ້ຄຽງ.\n"
+"\n"
+"ສຳລັບ node ທີ່ບໍ່ມີຂໍ້ມູນ vertex,\n"
+"ຈະໃຊ້ Snap Origin to Vertex ແທນສະເໝີ."
+
+msgid ""
+"Hold %s to highlight another node's vertex,\n"
+"then click to teleport the selected node to the highlighted vertex."
+msgstr ""
+"ກົດ %s ຄ້າງໄວ້ເພື່ອເນັ້ນ vertex ຂອງ node ອື່ນ,\n"
+"ຈາກນັ້ນຄລິກເພື່ອຍ້າຍ node ທີ່ເລືອກໄປຍັງ vertex ທີ່ເນັ້ນໄວ້ທັນທີ."
+
+msgid ""
+"Snap to vertices of visual meshes.\n"
+"Hold Shift while vertex snapping to temporarily snap to collision shapes "
+"instead."
+msgstr ""
+"Snap ເຂົ້າກັບ vertex ຂອງ visual meshes.\n"
+"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ເຮັດ vertex snapping ເພື່ອ snap ເຂົ້າກັບ collision shapes "
+"ແທນຊົ່ວຄາວ."
+
+msgid ""
+"Snap to vertices of collision shapes.\n"
+"Hold Shift while vertex snapping to temporarily snap to mesh vertices instead."
+msgstr ""
+"Snap ເຂົ້າກັບ vertex ຂອງ collision shapes.\n"
+"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ເຮັດ vertex snapping ເພື່ອ snap ເຂົ້າກັບ mesh vertices "
+"ແທນຊົ່ວຄາວ."
+
+msgid "XForm Dialog"
+msgstr "XForm Dialog"
+
+msgid "Lock Selected"
+msgstr "ລັອກສິ່ງທີ່ເລືອກ"
+
+msgid "Unlock Selected"
+msgstr "ປົດລັອກສິ່ງທີ່ເລືອກ"
+
+msgid "Group Selected"
+msgstr "ຈັດກຸ່ມສິ່ງທີ່ເລືອກ"
+
+msgid "Ungroup Selected"
+msgstr "ຍົກເລີກການຈັດກຸ່ມສິ່ງທີ່ເລືອກ"
+
+msgid ""
+"Click to toggle between visibility states.\n"
+"\n"
+"Open eye: Gizmo is visible.\n"
+"Closed eye: Gizmo is hidden.\n"
+"Half-open eye: Gizmo is also visible through opaque surfaces (\"x-ray\")."
+msgstr ""
+"ຄລິກເພື່ອປ່ຽນສະຖານະການເບິ່ງເຫັນ.\n"
+"\n"
+"ຮູບຕາເປີດ: Gizmo ຈະເບິ່ງເຫັນໄດ້.\n"
+"ຮູບຕາປິດ: Gizmo ຈະຖືກເຊື່ອງ.\n"
+"ຮູບຕາເປີດເຄິ່ງໜຶ່ງ: Gizmo ຈະເບິ່ງເຫັນທະລຸພື້ນຜິວທຶບແສງໄດ້ (\"x-ray\")."
+
+msgid "Snap Nodes to Floor"
+msgstr "Snap Node ລົງໃສ່ພື້ນ"
+
+msgid "Couldn't find a solid floor to snap the selection to."
+msgstr "ບໍ່ພົບພື້ນຜິວທີ່ແຂງແກ່ນເພື່ອ snap ສິ່ງທີ່ເລືອກລົງໄປໃສ່."
+
+msgid "Add Preview Sun to Scene"
+msgstr "ເພີ່ມດວງອາທິດຈຳລອງໃສ່ໃນສາກ"
+
+msgid "Add Preview Environment to Scene"
+msgstr "ເພີ່ມສະພາບແວດລ້ອມຈຳລອງໃສ່ໃນສາກ"
+
+msgid "%s+Drag: Use snap."
+msgstr "%s+ລາກ: ໃຊ້ snap."
+
+msgid "LMB+Drag: Measure the distance between two points in 3D space."
+msgstr "ຄລິກຊ້າຍ+ລາກ: ແທກໄລຍະຫ່າງລະຫວ່າງສອງຈຸດໃນພື້ນທີ່ 3D."
+
+msgid "Shift+LMB+Drag: Show component measurements."
+msgstr "Shift+ເມົ້າຊ້າຍ+ລາກ: ສະແດງການວັດແທກສ່ວນປະກອບ."
+
+msgid ""
+"Scene contains\n"
+"DirectionalLight3D.\n"
+"Preview disabled."
+msgstr ""
+"ສາກມີ\n"
+"DirectionalLight3D.\n"
+"ປິດການເບິ່ງຕົວຢ່າງ."
+
+msgid "Preview disabled."
+msgstr "ປິດການເບິ່ງຕົວຢ່າງ."
+
+msgid ""
+"Scene contains\n"
+"WorldEnvironment.\n"
+"Preview disabled."
+msgstr ""
+"ສາກມີ\n"
+"WorldEnvironment.\n"
+"ປິດການເບິ່ງຕົວຢ່າງ."
+
+msgid "Set Preview Sun Direction"
+msgstr "ຕັ້ງຄ່າທິດທາງດວງອາທິດຈຳລອງ"
+
+msgid "Set Preview Sun Altitude"
+msgstr "ຕັ້ງຄ່າລະດັບຄວາມສູງດວງອາທິດຈຳລອງ"
+
+msgid "Set Preview Sun Azimuth"
+msgstr "ຕັ້ງຄ່າທິດທາງມຸມ (Azimuth) ດວງອາທິດຈຳລອງ"
+
+msgid "Set Preview Sun Color"
+msgstr "ຕັ້ງຄ່າສີດວງອາທິດຈຳລອງ"
+
+msgid "Set Preview Sun Energy"
+msgstr "ຕັ້ງຄ່າພະລັງງານ/ຄວາມສະຫວ່າງດວງອາທິດຈຳລອງ"
+
+msgid "Set Preview Sun Max Shadow Distance"
+msgstr "ຕັ້ງຄ່າໄລຍະເງົາສູງສຸດຂອງດວງອາທິດໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Sky Color"
+msgstr "ຕັ້ງຄ່າສີທ້ອງຟ້າຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Ground Color"
+msgstr "ຕັ້ງຄ່າສີພື້ນຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Energy"
+msgstr "ຕັ້ງຄ່າພະລັງງານຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Ambient Occlusion"
+msgstr "ຕັ້ງຄ່າ Ambient Occlusion ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Glow"
+msgstr "ຕັ້ງຄ່າການເຮືອງແສງ (Glow) ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Tonemap"
+msgstr "ຕັ້ງຄ່າ Tonemap ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Set Preview Environment Global Illumination"
+msgstr "ຕັ້ງຄ່າການສ່ອງສະຫວ່າງທົ່ວໂລກ (GI) ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
+
+msgid "Transform Mode"
+msgstr "ໂໝດປັບປ່ຽນຮູບຊົງ"
+
+msgid "Move Mode"
+msgstr "ໂໝດຍ້າຍ"
+
+msgid "Rotate Mode"
+msgstr "ໂໝດໝຸນ"
+
+msgid "Scale Mode"
+msgstr "ໂໝດປັບຂະໜາດ"
+
+msgid "Select Mode"
+msgstr "ໂໝດເລືອກ"
+
+msgid "Show List of Selectable Nodes"
+msgstr "ສະແດງລາຍການໂນດທີ່ເລືອກໄດ້"
+
+msgid "Ruler Mode"
+msgstr "ໂໝດໄມ້ບັນທັດ"
+
+msgid "Lock selected node, preventing selection and movement."
+msgstr "ລັອກໂນດທີ່ເລືອກໄວ້ ເພື່ອປ້ອງກັນການເລືອກ ແລະ ການເຄື່ອນຍ້າຍ."
+
+msgid "Lock"
+msgstr "ລັອກ"
+
+msgid "Unlock selected node, allowing selection and movement."
+msgstr "ປົດລັອກໂນດທີ່ເລືອກໄວ້ ເພື່ອໃຫ້ສາມາດເລືອກ ແລະ ເຄື່ອນຍ້າຍໄດ້."
+
+msgid "Unlock"
+msgstr "ປົດລັອກ"
+
+msgid ""
+"Groups the selected node with its children. This selects the parent when any "
+"child node is clicked in 2D and 3D view."
+msgstr ""
+"ຈັດກຸ່ມໂນດທີ່ເລືອກໄວ້ກັບໂນດລູກຂອງມັນ. ສິ່ງນີ້ຈະເຮັດໃຫ້ໂນດແມ່ຖືກເລືອກ ເມື່ອຄລິກໃສ່ໂນດລູກໃດໜຶ່ງໃນມຸມເບິ່ງ 2D "
+"ແລະ 3D."
+
+msgid "Group"
+msgstr "ກຸ່ມ"
+
+msgid ""
+"Ungroups the selected node from its children. Child nodes will be individual "
+"items in 2D and 3D view."
+msgstr ""
+"ຍົກເລີກການຈັດກຸ່ມໂນດທີ່ເລືອກອອກຈາກໂນດລູກຂອງມັນ. ໂນດລູກຈະກາຍເປັນລາຍການແຍກຕ່າງຫາກໃນມຸມເບິ່ງ 2D "
+"ແລະ 3D."
+
+msgid "Ungroup"
+msgstr "ຍົກເລີກກຸ່ມ"
+
+msgid "Use Local Space"
+msgstr "ໃຊ້ພື້ນທີ່ໂລໂຄລ (Local Space)"
+
+msgid "Use Trackball"
+msgstr "ໃຊ້ແທຣັກບອລ (Trackball)"
+
+msgid "Preserve Children Transform"
+msgstr "ຮັກສາການປ່ຽນຮູບຊົງຂອງໂນດລູກ"
+
+msgid ""
+"When enabled, transforming a node will preserve the global transform of its "
+"children.\n"
+"This also applies when editing transform properties in the Inspector."
+msgstr ""
+"ເມື່ອເປີດໃຊ້ງານ, ການປ່ຽນຮູບຊົງຂອງໂນດຈະຮັກສາຮູບຊົງແບບໂກລບອລ (Global) ຂອງໂນດລູກໄວ້.\n"
+"ສິ່ງນີ້ຍັງມີຜົນເມື່ອແກ້ໄຂຄຸນສົມບັດການແປງຮູບຊົງໃນ Inspector."
+
+msgid "Use Snap"
+msgstr "ໃຊ້ການຢຶດ (Snap)"
+
+msgid "Snap Vertex to Vertex"
+msgstr "ຢຶດຈຸດຍອດ (Vertex) ໃສ່ຈຸດຍອດ"
+
+msgid "Snap Origin to Vertex"
+msgstr "ຢຶດຈຸດກຳເນີດໃສ່ຈຸດຍອດ"
+
+msgid "Snap to Mesh Vertices"
+msgstr "ຢຶດໃສ່ຈຸດຍອດຂອງເມຊ (Mesh Vertices)"
+
+msgid "Snap to Collision Vertices"
+msgstr "ຢຶດໃສ່ຈຸດຍອດຂອງຄໍລິຊັນ (Collision Vertices)"
+
+msgid "Configure Snap..."
+msgstr "ກຳນົດຄ່າການຢຶດ (Snap)..."
+
+msgid ""
+"Toggle preview sunlight.\n"
+"If a DirectionalLight3D node is added to the scene, preview sunlight is "
+"disabled."
+msgstr ""
+"ເປີດ/ປິດ ຕົວຢ່າງແສງຕາເວັນ.\n"
+"ຖ້າມີໂນດ DirectionalLight3D ຖືກເພີ່ມເຂົ້າໃນສາກ, ແສງຕາເວັນຕົວຢ່າງຈະຖືກປິດໃຊ້ງານ."
+
+msgid "Toggle preview sunlight."
+msgstr "ເປີດ/ປິດ ຕົວຢ່າງແສງຕາເວັນ."
+
+msgid ""
+"Toggle preview environment.\n"
+"If a WorldEnvironment node is added to the scene, preview environment is "
+"disabled."
+msgstr ""
+"ເປີດ/ປິດ ຕົວຢ່າງສະພາບແວດລ້ອມ.\n"
+"ຖ້າມີໂນດ WorldEnvironment ຖືກເພີ່ມເຂົ້າໃນສາກ, ສະພາບແວດລ້ອມຕົວຢ່າງຈະຖືກປິດໃຊ້ງານ."
+
+msgid "Toggle preview environment."
+msgstr "ເປີດ/ປິດ ຕົວຢ່າງສະພາບແວດລ້ອມ."
+
+msgid "Edit Sun and Environment settings."
+msgstr "ແກ້ໄຂການຕັ້ງຄ່າແສງຕາເວັນ ແລະ ສະພາບແວດລ້ອມ."
+
+msgid "Bottom View"
+msgstr "ມຸມເບິ່ງດ້ານລຸ່ມ"
+
+msgid "Top View"
+msgstr "ມຸມເບິ່ງດ້ານເທິງ"
+
+msgid "Rear View"
+msgstr "ມຸມເບິ່ງດ້ານຫຼັງ"
+
+msgid "Front View"
+msgstr "ມຸມເບິ່ງດ້ານໜ້າ"
+
+msgid "Left View"
+msgstr "ມຸມເບິ່ງດ້ານຊ້າຍ"
+
+msgid "Right View"
+msgstr "ມຸມເບິ່ງດ້ານຂວາ"
+
+msgid "Orbit View Down"
+msgstr "ໝຸນມຸມເບິ່ງລົງ"
+
+msgid "Orbit View Left"
+msgstr "ໝຸນມຸມເບິ່ງໄປທາງຊ້າຍ"
+
+msgid "Orbit View Right"
+msgstr "ໝຸນມຸມເບິ່ງໄປທາງຂວາ"
+
+msgid "Orbit View Up"
+msgstr "ໝຸນມຸມເບິ່ງຂຶ້ນ"
+
+msgid "Orbit View 180"
+msgstr "ໝຸນມຸມເບິ່ງ 180 ອົງສາ"
+
+msgid "Switch Perspective/Orthogonal View"
+msgstr "ສະຫຼັບມຸມເບິ່ງ Perspective/Orthogonal"
+
+msgid "Insert Animation Key"
+msgstr "ແຊກຄີແອນິເມຊັນ"
+
+msgid "Focus Origin"
+msgstr "ໂຟກັສທີ່ຈຸດກຳເນີດ"
+
+msgid "Focus Selection"
+msgstr "ໂຟກັສທີ່ເລືອກ"
+
+msgid "Align Transform with View"
+msgstr "ຈັດວາງ Transform ໃຫ້ກົງກັບມຸມເບິ່ງ"
+
+msgid "Align Rotation with View"
+msgstr "ຈັດວາງການໝູນໃຫ້ກົງກັບມຸມເບິ່ງ"
+
+msgid "Toggle Freelook"
+msgstr "ເປີດ/ປິດ ມຸມເບິ່ງອິດສະຫຼະ"
+
+msgid "Decrease Field of View"
+msgstr "ຫຼຸດຂອບເຂດການເບິ່ງ"
+
+msgid "Increase Field of View"
+msgstr "ເພີ່ມຂອບເຂດການເບິ່ງ"
+
+msgid "Reset Field of View to Default"
+msgstr "ຄືນຄ່າຂອບເຂດການເບິ່ງເປັນຄ່າເລີ່ມຕົ້ນ"
+
+msgid "Transform"
+msgstr "ປັບປ່ຽນຮູບຊົງ"
+
+msgid "Snap Object to Floor"
+msgstr "ຢຶດວັດຖຸໃສ່ກັບພື້ນ"
+
+msgid "Transform Dialog..."
+msgstr "ກ່ອງໂຕ້ຕອບການປັບປ່ຽນຮູບຊົງ..."
 
 msgid "Vertex Snap"
 msgstr "Vertex Snap"
 
-msgid "Vertex Snap Canceled."
-msgstr "ຍົກເລີກ Vertex Snap ແລ້ວ."
+msgid "View"
+msgstr "ມຸມເບິ່ງ"
+
+msgid "1 Viewport"
+msgstr "1 ວິວພອດ"
+
+msgid "2 Viewports"
+msgstr "2 ວິວພອດ"
+
+msgid "2 Viewports (Alt)"
+msgstr "2 ວິວພອດ (ແບບສຳຮອງ)"
+
+msgid "3 Viewports"
+msgstr "3 ວິວພອດ"
+
+msgid "3 Viewports (Alt)"
+msgstr "3 ວິວພອດ (ແບບສຳຮອງ)"
+
+msgid "4 Viewports"
+msgstr "4 ວິວພອດ"
+
+msgid "Gizmos"
+msgstr "ກິດໂມ (Gizmos)"
+
+msgid "View Origin"
+msgstr "ເບິ່ງຈຸດກຳເນີດ"
+
+msgid "View Grid"
+msgstr "ສະແດງຕາຕະລາງ (Grid)"
+
+msgid "Preview Translation"
+msgstr "ຕົວຢ່າງການແປພາສາ"
+
+msgid "Settings..."
+msgstr "ການຕັ້ງຄ່າ..."
+
+msgid "Snap Settings"
+msgstr "ການຕັ້ງຄ່າການຢຶດ (Snap)"
+
+msgid "Translate Snap"
+msgstr "ຢຶດຕຳແໜ່ງ"
+
+msgid "Translate Snap:"
+msgstr "ຢຶດຕຳແໜ່ງ:"
+
+msgid "Rotate Snap"
+msgstr "ຢຶດການໝຸນ"
+
+msgid "Rotate Snap:"
+msgstr "ຢຶດການໝຸນ:"
+
+msgid "Scale Snap"
+msgstr "ຢຶດຂະໜາດ"
+
+msgid "Scale Snap:"
+msgstr "ຢຶດຂະໜາດ:"
+
+msgid "Viewport Settings"
+msgstr "ການຕັ້ງຄ່າວິວພອດ"
+
+msgid ""
+"FOV is defined as a vertical value, as the editor camera always uses the Keep "
+"Height aspect mode."
+msgstr ""
+"FOV ຖືກກຳນົດເປັນຄ່າແນວຕັ້ງ, ເນື່ອງຈາກກ້ອງຂອງຕົວແກ້ໄຂຈະໃຊ້ໂໝດຮັກສາຄວາມສູງ (Keep Height) ສະເໝີ."
+
+msgid "Perspective VFOV (deg.):"
+msgstr "Perspective VFOV (ອົງສາ):"
+
+msgid "View Z-Near:"
+msgstr "ໄລຍະໃກ້ (Z-Near):"
+
+msgid "View Z-Far:"
+msgstr "ໄລຍະໄກ (Z-Far):"
+
+msgid "Transform Change"
+msgstr "ປ່ຽນແປງຮູບຊົງ"
+
+msgid "Translate:"
+msgstr "ຍ້າຍຕຳແໜ່ງ:"
+
+msgid "Rotate (deg.):"
+msgstr "ໝຸນ (ອົງສາ):"
+
+msgid "Scale (ratio):"
+msgstr "ຂະໜາດ (ອັດຕາສ່ວນ):"
+
+msgid "Transform Type"
+msgstr "ປະເພດການປ່ຽນຮູບຊົງ"
+
+msgid "Pre"
+msgstr "ກ່ອນ (Pre)"
+
+msgid "Post"
+msgstr "ຫຼັງ (Post)"
+
+msgid "Preview Sun"
+msgstr "ຕົວຢ່າງແສງຕາເວັນ"
+
+msgid "Sun Direction"
+msgstr "ທິດທາງແສງຕາເວັນ"
+
+msgid "Angular Altitude"
+msgstr "ລະດັບຄວາມສູງຂອງມຸມ"
+
+msgid "Azimuth"
+msgstr "ທິດທາງ (Azimuth)"
+
+msgid "Sun Color"
+msgstr "ສີແສງຕາເວັນ"
+
+msgid "Sun Energy"
+msgstr "ພະລັງງານແສງຕາເວັນ"
+
+msgid "Shadow Max Distance"
+msgstr "ໄລຍະເງົາສູງສຸດ"
+
+msgid "Add Sun to Scene"
+msgstr "ເພີ່ມແສງຕາເວັນເຂົ້າໃນສາກ"
+
+msgid ""
+"Adds a DirectionalLight3D node matching the preview sun settings to the "
+"current scene.\n"
+"Hold Shift while clicking to also add the preview environment to the current "
+"scene."
+msgstr ""
+"ເພີ່ມໂນດ DirectionalLight3D ທີ່ມີຄ່າກົງກັບການຕັ້ງຄ່າແສງຕາເວັນຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນ.\n"
+"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ຄລິກ ເພື່ອເພີ່ມສະພາບແວດລ້ອມຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນນຳ."
+
+msgid "Preview Environment"
+msgstr "ຕົວຢ່າງສະພາບແວດລ້ອມ"
+
+msgid "Sky Color"
+msgstr "ສີທ້ອງຟ້າ"
+
+msgid "Ground Color"
+msgstr "ສີພື້ນ"
+
+msgid "Sky Energy"
+msgstr "ພະລັງງານທ້ອງຟ້າ"
+
+msgid "AO"
+msgstr "AO"
+
+msgid "Glow"
+msgstr "ການເຮືອງແສງ (Glow)"
+
+msgid "Tonemap"
+msgstr "Tonemap"
+
+msgid "GI"
+msgstr "GI"
+
+msgid "Post Process"
+msgstr "ຂະບວນການຫຼັງການປະມວນຜົນ"
+
+msgid "Add Environment to Scene"
+msgstr "ເພີ່ມສະພາບແວດລ້ອມເຂົ້າໃນສາກ"
+
+msgid ""
+"Adds a WorldEnvironment node matching the preview environment settings to the "
+"current scene.\n"
+"Hold Shift while clicking to also add the preview sun to the current scene."
+msgstr ""
+"ເພີ່ມໂນດ WorldEnvironment ທີ່ມີຄ່າກົງກັບການຕັ້ງຄ່າສະພາບແວດລ້ອມຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນ.\n"
+"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ຄລິກ ເພື່ອເພີ່ມແສງຕາເວັນຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນນຳ."
+
+msgid "Transform Aborted."
+msgstr "ການແປງຄ່າຖືກຍົກເລີກ."
 
 msgid "Reset Transform"
 msgstr "ຕັ້ງຄ່າ Transform ໃໝ່"
@@ -11745,12 +11109,6 @@ msgstr "ມຸມເບິ່ງຈາກທາງໜ້າ."
 msgid "Rear View."
 msgstr "ມຸມເບິ່ງຈາກທາງຫຼັງ."
 
-msgid "Align Transform with View"
-msgstr "ຈັດວາງ Transform ໃຫ້ກົງກັບມຸມເບິ່ງ"
-
-msgid "Align Rotation with View"
-msgstr "ຈັດວາງການໝູນໃຫ້ກົງກັບມຸມເບິ່ງ"
-
 msgid "Set Surface %d Override Material"
 msgstr "ຕັ້ງຄ່າ Material Override ສຳລັບ Surface %d"
 
@@ -11759,10 +11117,6 @@ msgstr "ຕັ້ງຄ່າ Material Override"
 
 msgid "Error instantiating scene from %s."
 msgstr "ເກີດຂໍ້ຜິດພາດໃນການສ້າງ instance ຂອງສາກຈາກ %s."
-
-msgid "Can't drop the file..."
-msgid_plural "Can't drop the files..."
-msgstr[0] "ບໍ່ສາມາດວາງໄຟລ໌ໄດ້..."
 
 msgid "Circular dependency found at %s."
 msgstr "ພົບການອ້າງອີງແບບວົງມົນ (Circular dependency) ທີ່ %s."
@@ -11856,9 +11210,6 @@ msgstr "ຕົວປັບຄວາມໄວ Freelook"
 
 msgid "Freelook Slow Modifier"
 msgstr "ຕົວປັບໃຫ້ Freelook ຊ້າລົງ"
-
-msgid "View"
-msgstr "ມຸມເບິ່ງ"
 
 msgid "Perspective"
 msgstr "ທັດສະນີຍະພາບ (Perspective)"
@@ -12080,9 +11431,6 @@ msgstr "ສະແດງ Gizmos"
 msgid "View Transform Gizmo"
 msgstr "ສະແດງ Transform Gizmo"
 
-msgid "View Grid"
-msgstr "ສະແດງຕາຕະລາງ (Grid)"
-
 msgid "View Information"
 msgstr "ສະແດງຂໍ້ມູນ"
 
@@ -12172,495 +11520,6 @@ msgstr "ລັອກການໝູນຂອງມຸມເບິ່ງແລ້
 msgid ""
 "To zoom further, change the camera's clipping planes (View → Settings...)"
 msgstr "ເພື່ອຊູມໃຫ້ໄກກວ່າເກົ່າ, ໃຫ້ປ່ຽນຄ່າ clipping planes ຂອງກ້ອງ (View → Settings...)"
-
-msgid ""
-"Hold %s to highlight a vertex on the currently selected node,\n"
-"then drag to move the node and snap it to vertices on neighboring nodes.\n"
-"\n"
-"For nodes without a vertex-based representation,\n"
-"Snap Origin to Vertex is always used instead."
-msgstr ""
-"ກົດ %s ຄ້າງໄວ້ເພື່ອເນັ້ນ vertex ໃນ node ທີ່ເລືອກ,\n"
-"ຈາກນັ້ນລາກເພື່ອຍ້າຍ node ແລະ ໃຫ້ມັນ snap ເຂົ້າກັບ vertex ຂອງ node ໃກ້ຄຽງ.\n"
-"\n"
-"ສຳລັບ node ທີ່ບໍ່ມີຂໍ້ມູນ vertex,\n"
-"ຈະໃຊ້ Snap Origin to Vertex ແທນສະເໝີ."
-
-msgid ""
-"Hold %s to highlight another node's vertex,\n"
-"then click to teleport the selected node to the highlighted vertex."
-msgstr ""
-"ກົດ %s ຄ້າງໄວ້ເພື່ອເນັ້ນ vertex ຂອງ node ອື່ນ,\n"
-"ຈາກນັ້ນຄລິກເພື່ອຍ້າຍ node ທີ່ເລືອກໄປຍັງ vertex ທີ່ເນັ້ນໄວ້ທັນທີ."
-
-msgid ""
-"Snap to vertices of visual meshes.\n"
-"Hold Shift while vertex snapping to temporarily snap to collision shapes "
-"instead."
-msgstr ""
-"Snap ເຂົ້າກັບ vertex ຂອງ visual meshes.\n"
-"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ເຮັດ vertex snapping ເພື່ອ snap ເຂົ້າກັບ collision shapes "
-"ແທນຊົ່ວຄາວ."
-
-msgid ""
-"Snap to vertices of collision shapes.\n"
-"Hold Shift while vertex snapping to temporarily snap to mesh vertices instead."
-msgstr ""
-"Snap ເຂົ້າກັບ vertex ຂອງ collision shapes.\n"
-"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ເຮັດ vertex snapping ເພື່ອ snap ເຂົ້າກັບ mesh vertices "
-"ແທນຊົ່ວຄາວ."
-
-msgid "XForm Dialog"
-msgstr "XForm Dialog"
-
-msgid "Lock Selected"
-msgstr "ລັອກສິ່ງທີ່ເລືອກ"
-
-msgid "Unlock Selected"
-msgstr "ປົດລັອກສິ່ງທີ່ເລືອກ"
-
-msgid "Group Selected"
-msgstr "ຈັດກຸ່ມສິ່ງທີ່ເລືອກ"
-
-msgid "Ungroup Selected"
-msgstr "ຍົກເລີກການຈັດກຸ່ມສິ່ງທີ່ເລືອກ"
-
-msgid ""
-"Click to toggle between visibility states.\n"
-"\n"
-"Open eye: Gizmo is visible.\n"
-"Closed eye: Gizmo is hidden.\n"
-"Half-open eye: Gizmo is also visible through opaque surfaces (\"x-ray\")."
-msgstr ""
-"ຄລິກເພື່ອປ່ຽນສະຖານະການເບິ່ງເຫັນ.\n"
-"\n"
-"ຮູບຕາເປີດ: Gizmo ຈະເບິ່ງເຫັນໄດ້.\n"
-"ຮູບຕາປິດ: Gizmo ຈະຖືກເຊື່ອງ.\n"
-"ຮູບຕາເປີດເຄິ່ງໜຶ່ງ: Gizmo ຈະເບິ່ງເຫັນທະລຸພື້ນຜິວທຶບແສງໄດ້ (\"x-ray\")."
-
-msgid "Snap Nodes to Floor"
-msgstr "Snap Node ລົງໃສ່ພື້ນ"
-
-msgid "Couldn't find a solid floor to snap the selection to."
-msgstr "ບໍ່ພົບພື້ນຜິວທີ່ແຂງແກ່ນເພື່ອ snap ສິ່ງທີ່ເລືອກລົງໄປໃສ່."
-
-msgid "Add Preview Sun to Scene"
-msgstr "ເພີ່ມດວງອາທິດຈຳລອງໃສ່ໃນສາກ"
-
-msgid "Add Preview Environment to Scene"
-msgstr "ເພີ່ມສະພາບແວດລ້ອມຈຳລອງໃສ່ໃນສາກ"
-
-msgid "Alt+RMB: Show list of all nodes at position clicked, including locked."
-msgstr "Alt+ຄລິກຂວາ: ສະແດງລາຍຊື່ node ທັງໝົດໃນຕຳແໜ່ງທີ່ຄລິກ, ລວມທັງອັນທີ່ຖືກລັອກ."
-
-msgid "%s+Drag: Rotate selected node around pivot."
-msgstr "%s+ລາກ: ໝູນ node ທີ່ເລືອກອ້ອມຮອບຈຸດໝູນ (pivot)."
-
-msgid "%s+Drag: Use snap."
-msgstr "%s+ລາກ: ໃຊ້ snap."
-
-msgid "LMB+Drag: Measure the distance between two points in 3D space."
-msgstr "ຄລິກຊ້າຍ+ລາກ: ແທກໄລຍະຫ່າງລະຫວ່າງສອງຈຸດໃນພື້ນທີ່ 3D."
-
-msgid ""
-"Scene contains\n"
-"DirectionalLight3D.\n"
-"Preview disabled."
-msgstr ""
-"ສາກມີ\n"
-"DirectionalLight3D.\n"
-"ປິດການເບິ່ງຕົວຢ່າງ."
-
-msgid "Preview disabled."
-msgstr "ປິດການເບິ່ງຕົວຢ່າງ."
-
-msgid ""
-"Scene contains\n"
-"WorldEnvironment.\n"
-"Preview disabled."
-msgstr ""
-"ສາກມີ\n"
-"WorldEnvironment.\n"
-"ປິດການເບິ່ງຕົວຢ່າງ."
-
-msgid "Set Preview Sun Direction"
-msgstr "ຕັ້ງຄ່າທິດທາງດວງອາທິດຈຳລອງ"
-
-msgid "Set Preview Sun Altitude"
-msgstr "ຕັ້ງຄ່າລະດັບຄວາມສູງດວງອາທິດຈຳລອງ"
-
-msgid "Set Preview Sun Azimuth"
-msgstr "ຕັ້ງຄ່າທິດທາງມຸມ (Azimuth) ດວງອາທິດຈຳລອງ"
-
-msgid "Set Preview Sun Color"
-msgstr "ຕັ້ງຄ່າສີດວງອາທິດຈຳລອງ"
-
-msgid "Set Preview Sun Energy"
-msgstr "ຕັ້ງຄ່າພະລັງງານ/ຄວາມສະຫວ່າງດວງອາທິດຈຳລອງ"
-
-msgid "Set Preview Sun Max Shadow Distance"
-msgstr "ຕັ້ງຄ່າໄລຍະເງົາສູງສຸດຂອງດວງອາທິດໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Sky Color"
-msgstr "ຕັ້ງຄ່າສີທ້ອງຟ້າຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Ground Color"
-msgstr "ຕັ້ງຄ່າສີພື້ນຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Energy"
-msgstr "ຕັ້ງຄ່າພະລັງງານຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Ambient Occlusion"
-msgstr "ຕັ້ງຄ່າ Ambient Occlusion ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Glow"
-msgstr "ຕັ້ງຄ່າການເຮືອງແສງ (Glow) ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Tonemap"
-msgstr "ຕັ້ງຄ່າ Tonemap ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Set Preview Environment Global Illumination"
-msgstr "ຕັ້ງຄ່າການສ່ອງສະຫວ່າງທົ່ວໂລກ (GI) ຂອງສະພາບແວດລ້ອມໃນຕົວຢ່າງ"
-
-msgid "Transform Mode"
-msgstr "ໂໝດປັບປ່ຽນຮູບຊົງ"
-
-msgid "Move Mode"
-msgstr "ໂໝດຍ້າຍ"
-
-msgid "Rotate Mode"
-msgstr "ໂໝດໝຸນ"
-
-msgid "Scale Mode"
-msgstr "ໂໝດປັບຂະໜາດ"
-
-msgid "Select Mode"
-msgstr "ໂໝດເລືອກ"
-
-msgid "Show List of Selectable Nodes"
-msgstr "ສະແດງລາຍການໂນດທີ່ເລືອກໄດ້"
-
-msgid "Lock selected node, preventing selection and movement."
-msgstr "ລັອກໂນດທີ່ເລືອກໄວ້ ເພື່ອປ້ອງກັນການເລືອກ ແລະ ການເຄື່ອນຍ້າຍ."
-
-msgid "Lock"
-msgstr "ລັອກ"
-
-msgid "Unlock selected node, allowing selection and movement."
-msgstr "ປົດລັອກໂນດທີ່ເລືອກໄວ້ ເພື່ອໃຫ້ສາມາດເລືອກ ແລະ ເຄື່ອນຍ້າຍໄດ້."
-
-msgid "Unlock"
-msgstr "ປົດລັອກ"
-
-msgid ""
-"Groups the selected node with its children. This selects the parent when any "
-"child node is clicked in 2D and 3D view."
-msgstr ""
-"ຈັດກຸ່ມໂນດທີ່ເລືອກໄວ້ກັບໂນດລູກຂອງມັນ. ສິ່ງນີ້ຈະເຮັດໃຫ້ໂນດແມ່ຖືກເລືອກ ເມື່ອຄລິກໃສ່ໂນດລູກໃດໜຶ່ງໃນມຸມເບິ່ງ 2D "
-"ແລະ 3D."
-
-msgid "Group"
-msgstr "ກຸ່ມ"
-
-msgid ""
-"Ungroups the selected node from its children. Child nodes will be individual "
-"items in 2D and 3D view."
-msgstr ""
-"ຍົກເລີກການຈັດກຸ່ມໂນດທີ່ເລືອກອອກຈາກໂນດລູກຂອງມັນ. ໂນດລູກຈະກາຍເປັນລາຍການແຍກຕ່າງຫາກໃນມຸມເບິ່ງ 2D "
-"ແລະ 3D."
-
-msgid "Ungroup"
-msgstr "ຍົກເລີກກຸ່ມ"
-
-msgid "Ruler Mode"
-msgstr "ໂໝດໄມ້ບັນທັດ"
-
-msgid "Use Local Space"
-msgstr "ໃຊ້ພື້ນທີ່ໂລໂຄລ (Local Space)"
-
-msgid "Use Snap"
-msgstr "ໃຊ້ການຢຶດ (Snap)"
-
-msgid "Use Trackball"
-msgstr "ໃຊ້ແທຣັກບອລ (Trackball)"
-
-msgid "Preserve Children Transform"
-msgstr "ຮັກສາການປ່ຽນຮູບຊົງຂອງໂນດລູກ"
-
-msgid ""
-"When enabled, transforming a node will preserve the global transform of its "
-"children.\n"
-"This also applies when editing transform properties in the Inspector."
-msgstr ""
-"ເມື່ອເປີດໃຊ້ງານ, ການປ່ຽນຮູບຊົງຂອງໂນດຈະຮັກສາຮູບຊົງແບບໂກລບອລ (Global) ຂອງໂນດລູກໄວ້.\n"
-"ສິ່ງນີ້ຍັງມີຜົນເມື່ອແກ້ໄຂຄຸນສົມບັດການແປງຮູບຊົງໃນ Inspector."
-
-msgid ""
-"Toggle preview sunlight.\n"
-"If a DirectionalLight3D node is added to the scene, preview sunlight is "
-"disabled."
-msgstr ""
-"ເປີດ/ປິດ ຕົວຢ່າງແສງຕາເວັນ.\n"
-"ຖ້າມີໂນດ DirectionalLight3D ຖືກເພີ່ມເຂົ້າໃນສາກ, ແສງຕາເວັນຕົວຢ່າງຈະຖືກປິດໃຊ້ງານ."
-
-msgid "Toggle preview sunlight."
-msgstr "ເປີດ/ປິດ ຕົວຢ່າງແສງຕາເວັນ."
-
-msgid ""
-"Toggle preview environment.\n"
-"If a WorldEnvironment node is added to the scene, preview environment is "
-"disabled."
-msgstr ""
-"ເປີດ/ປິດ ຕົວຢ່າງສະພາບແວດລ້ອມ.\n"
-"ຖ້າມີໂນດ WorldEnvironment ຖືກເພີ່ມເຂົ້າໃນສາກ, ສະພາບແວດລ້ອມຕົວຢ່າງຈະຖືກປິດໃຊ້ງານ."
-
-msgid "Toggle preview environment."
-msgstr "ເປີດ/ປິດ ຕົວຢ່າງສະພາບແວດລ້ອມ."
-
-msgid "Edit Sun and Environment settings."
-msgstr "ແກ້ໄຂການຕັ້ງຄ່າແສງຕາເວັນ ແລະ ສະພາບແວດລ້ອມ."
-
-msgid "Bottom View"
-msgstr "ມຸມເບິ່ງດ້ານລຸ່ມ"
-
-msgid "Top View"
-msgstr "ມຸມເບິ່ງດ້ານເທິງ"
-
-msgid "Rear View"
-msgstr "ມຸມເບິ່ງດ້ານຫຼັງ"
-
-msgid "Front View"
-msgstr "ມຸມເບິ່ງດ້ານໜ້າ"
-
-msgid "Left View"
-msgstr "ມຸມເບິ່ງດ້ານຊ້າຍ"
-
-msgid "Right View"
-msgstr "ມຸມເບິ່ງດ້ານຂວາ"
-
-msgid "Orbit View Down"
-msgstr "ໝຸນມຸມເບິ່ງລົງ"
-
-msgid "Orbit View Left"
-msgstr "ໝຸນມຸມເບິ່ງໄປທາງຊ້າຍ"
-
-msgid "Orbit View Right"
-msgstr "ໝຸນມຸມເບິ່ງໄປທາງຂວາ"
-
-msgid "Orbit View Up"
-msgstr "ໝຸນມຸມເບິ່ງຂຶ້ນ"
-
-msgid "Orbit View 180"
-msgstr "ໝຸນມຸມເບິ່ງ 180 ອົງສາ"
-
-msgid "Switch Perspective/Orthogonal View"
-msgstr "ສະຫຼັບມຸມເບິ່ງ Perspective/Orthogonal"
-
-msgid "Insert Animation Key"
-msgstr "ແຊກຄີແອນິເມຊັນ"
-
-msgid "Focus Origin"
-msgstr "ໂຟກັສທີ່ຈຸດກຳເນີດ"
-
-msgid "Focus Selection"
-msgstr "ໂຟກັສທີ່ເລືອກ"
-
-msgid "Toggle Freelook"
-msgstr "ເປີດ/ປິດ ມຸມເບິ່ງອິດສະຫຼະ"
-
-msgid "Decrease Field of View"
-msgstr "ຫຼຸດຂອບເຂດການເບິ່ງ (FOV)"
-
-msgid "Increase Field of View"
-msgstr "ເພີ່ມຂອບເຂດການເບິ່ງ (FOV)"
-
-msgid "Reset Field of View to Default"
-msgstr "ຄືນຄ່າຂອບເຂດການເບິ່ງເປັນຄ່າເລີ່ມຕົ້ນ"
-
-msgid "Transform"
-msgstr "ປັບປ່ຽນຮູບຊົງ"
-
-msgid "Snap Object to Floor"
-msgstr "ຢຶດວັດຖຸໃສ່ກັບພື້ນ"
-
-msgid "Transform Dialog..."
-msgstr "ກ່ອງໂຕ້ຕອບການປັບປ່ຽນຮູບຊົງ..."
-
-msgid "Snap Vertex to Vertex"
-msgstr "ຢຶດຈຸດຍອດ (Vertex) ໃສ່ຈຸດຍອດ"
-
-msgid "Snap Origin to Vertex"
-msgstr "ຢຶດຈຸດກຳເນີດໃສ່ຈຸດຍອດ"
-
-msgid "Snap to Mesh Vertices"
-msgstr "ຢຶດໃສ່ຈຸດຍອດຂອງເມຊ (Mesh Vertices)"
-
-msgid "Snap to Collision Vertices"
-msgstr "ຢຶດໃສ່ຈຸດຍອດຂອງຄໍລິຊັນ (Collision Vertices)"
-
-msgid "Configure Snap..."
-msgstr "ກຳນົດຄ່າການຢຶດ (Snap)..."
-
-msgid "1 Viewport"
-msgstr "1 ວິວພອດ"
-
-msgid "2 Viewports"
-msgstr "2 ວິວພອດ"
-
-msgid "2 Viewports (Alt)"
-msgstr "2 ວິວພອດ (ແບບສຳຮອງ)"
-
-msgid "3 Viewports"
-msgstr "3 ວິວພອດ"
-
-msgid "3 Viewports (Alt)"
-msgstr "3 ວິວພອດ (ແບບສຳຮອງ)"
-
-msgid "4 Viewports"
-msgstr "4 ວິວພອດ"
-
-msgid "Gizmos"
-msgstr "ກິດໂມ (Gizmos)"
-
-msgid "View Origin"
-msgstr "ເບິ່ງຈຸດກຳເນີດ"
-
-msgid "Preview Translation"
-msgstr "ຕົວຢ່າງການແປພາສາ"
-
-msgid "Settings..."
-msgstr "ການຕັ້ງຄ່າ..."
-
-msgid "Snap Settings"
-msgstr "ການຕັ້ງຄ່າການຢຶດ (Snap)"
-
-msgid "Translate Snap"
-msgstr "ຢຶດຕຳແໜ່ງ"
-
-msgid "Translate Snap:"
-msgstr "ຢຶດຕຳແໜ່ງ:"
-
-msgid "Rotate Snap"
-msgstr "ຢຶດການໝຸນ"
-
-msgid "Rotate Snap:"
-msgstr "ຢຶດການໝຸນ:"
-
-msgid "Scale Snap"
-msgstr "ຢຶດຂະໜາດ"
-
-msgid "Scale Snap:"
-msgstr "ຢຶດຂະໜາດ:"
-
-msgid "Viewport Settings"
-msgstr "ການຕັ້ງຄ່າວິວພອດ"
-
-msgid ""
-"FOV is defined as a vertical value, as the editor camera always uses the Keep "
-"Height aspect mode."
-msgstr ""
-"FOV ຖືກກຳນົດເປັນຄ່າແນວຕັ້ງ, ເນື່ອງຈາກກ້ອງຂອງຕົວແກ້ໄຂຈະໃຊ້ໂໝດຮັກສາຄວາມສູງ (Keep Height) ສະເໝີ."
-
-msgid "Perspective VFOV (deg.):"
-msgstr "Perspective VFOV (ອົງສາ):"
-
-msgid "View Z-Near:"
-msgstr "ໄລຍະໃກ້ (Z-Near):"
-
-msgid "View Z-Far:"
-msgstr "ໄລຍະໄກ (Z-Far):"
-
-msgid "Transform Change"
-msgstr "ປ່ຽນແປງຮູບຊົງ"
-
-msgid "Translate:"
-msgstr "ຍ້າຍຕຳແໜ່ງ:"
-
-msgid "Rotate (deg.):"
-msgstr "ໝຸນ (ອົງສາ):"
-
-msgid "Scale (ratio):"
-msgstr "ຂະໜາດ (ອັດຕາສ່ວນ):"
-
-msgid "Transform Type"
-msgstr "ປະເພດການປ່ຽນຮູບຊົງ"
-
-msgid "Pre"
-msgstr "ກ່ອນ (Pre)"
-
-msgid "Post"
-msgstr "ຫຼັງ (Post)"
-
-msgid "Preview Sun"
-msgstr "ຕົວຢ່າງແສງຕາເວັນ"
-
-msgid "Sun Direction"
-msgstr "ທິດທາງແສງຕາເວັນ"
-
-msgid "Angular Altitude"
-msgstr "ລະດັບຄວາມສູງຂອງມຸມ"
-
-msgid "Azimuth"
-msgstr "ທິດທາງ (Azimuth)"
-
-msgid "Sun Color"
-msgstr "ສີແສງຕາເວັນ"
-
-msgid "Sun Energy"
-msgstr "ພະລັງງານແສງຕາເວັນ"
-
-msgid "Shadow Max Distance"
-msgstr "ໄລຍະເງົາສູງສຸດ"
-
-msgid "Add Sun to Scene"
-msgstr "ເພີ່ມແສງຕາເວັນເຂົ້າໃນສາກ"
-
-msgid ""
-"Adds a DirectionalLight3D node matching the preview sun settings to the "
-"current scene.\n"
-"Hold Shift while clicking to also add the preview environment to the current "
-"scene."
-msgstr ""
-"ເພີ່ມໂນດ DirectionalLight3D ທີ່ມີຄ່າກົງກັບການຕັ້ງຄ່າແສງຕາເວັນຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນ.\n"
-"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ຄລິກ ເພື່ອເພີ່ມສະພາບແວດລ້ອມຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນນຳ."
-
-msgid "Preview Environment"
-msgstr "ຕົວຢ່າງສະພາບແວດລ້ອມ"
-
-msgid "Sky Color"
-msgstr "ສີທ້ອງຟ້າ"
-
-msgid "Ground Color"
-msgstr "ສີພື້ນ"
-
-msgid "Sky Energy"
-msgstr "ພະລັງງານທ້ອງຟ້າ"
-
-msgid "AO"
-msgstr "AO"
-
-msgid "Glow"
-msgstr "ການເຮືອງແສງ (Glow)"
-
-msgid "Tonemap"
-msgstr "Tonemap"
-
-msgid "GI"
-msgstr "GI"
-
-msgid "Post Process"
-msgstr "ຂະບວນການຫຼັງການປະມວນຜົນ"
-
-msgid "Add Environment to Scene"
-msgstr "ເພີ່ມສະພາບແວດລ້ອມເຂົ້າໃນສາກ"
-
-msgid ""
-"Adds a WorldEnvironment node matching the preview environment settings to the "
-"current scene.\n"
-"Hold Shift while clicking to also add the preview sun to the current scene."
-msgstr ""
-"ເພີ່ມໂນດ WorldEnvironment ທີ່ມີຄ່າກົງກັບການຕັ້ງຄ່າສະພາບແວດລ້ອມຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນ.\n"
-"ກົດ Shift ຄ້າງໄວ້ໃນຂະນະທີ່ຄລິກ ເພື່ອເພີ່ມແສງຕາເວັນຕົວຢ່າງເຂົ້າໃນສາກປັດຈຸບັນນຳ."
 
 msgid ""
 "Can't determine a save path for the occluder.\n"
@@ -12974,9 +11833,6 @@ msgstr "ເສັ້ນຫຼັກທຸກໆ:"
 msgid "X Primary Step"
 msgstr "ໄລຍະກ້າວຫຼັກແກນ X"
 
-msgid "steps"
-msgstr "ກ້າວ"
-
 msgid "Y Primary Step"
 msgstr "ໄລຍະກ້າວຫຼັກແກນ Y"
 
@@ -12988,42 +11844,6 @@ msgstr "ໄລຍະກ້າວການໝຸນ:"
 
 msgid "Scale Step:"
 msgstr "ໄລຍະກ້າວການປັບຂະໜາດ:"
-
-msgid ""
-"Children of a container get their position and size determined only by their "
-"parent."
-msgstr "ໂນດລູກຂອງຄອນເທນເນີ (Container) ຈະຖືກກຳນົດຕຳແໜ່ງ ແລະ ຂະໜາດໂດຍໂນດແມ່ຂອງມັນເທົ່ານັ້ນ."
-
-msgid "Move Node(s) to Position"
-msgstr "ຍ້າຍໂນດໄປຫາຕຳແໜ່ງ"
-
-msgid "Move Vertical Guide"
-msgstr "ຍ້າຍເສັ້ນນຳແນວຕັ້ງ"
-
-msgid "Create Vertical Guide"
-msgstr "ສ້າງເສັ້ນນຳແນວຕັ້ງ"
-
-msgid "Remove Vertical Guide"
-msgstr "ລົບເສັ້ນນຳແນວຕັ້ງ"
-
-msgid "Move Horizontal Guide"
-msgstr "ຍ້າຍເສັ້ນນຳແນວນອນ"
-
-msgid "Create Horizontal Guide"
-msgstr "ສ້າງເສັ້ນນຳແນວນອນ"
-
-msgid "Remove Horizontal Guide"
-msgstr "ລົບເສັ້ນນຳແນວນອນ"
-
-msgid "Create Horizontal and Vertical Guides"
-msgstr "ສ້າງເສັ້ນນຳແນວນອນ ແລະ ແນວຕັ້ງ"
-
-msgid ""
-"Can't modify anchor offsets when the parent has a size of 0. Disable the "
-"anchors mode in the toolbar."
-msgstr ""
-"ບໍ່ສາມາດແກ້ໄຂໄລຍະຫ່າງສະໝໍ (Anchor Offset) ເມື່ອໂນດແມ່ມີຂະໜາດເປັນ 0. "
-"ກະລຸນາປິດໂໝດສະໝໍໃນແຖບເຄື່ອງມື."
 
 msgid "Add 2D Node Here..."
 msgstr "ເພີ່ມໂນດ 2D ທີ່ນີ້..."
@@ -13037,35 +11857,8 @@ msgstr "ວາງໂນດທີ່ນີ້"
 msgid "Move Node(s) Here"
 msgstr "ຍ້າຍໂນດມາທີ່ນີ້"
 
-msgid "Set CanvasItem \"%s\" Pivot Offset to (%d, %d)"
-msgstr "ຕັ້ງຄ່າ Pivot Offset ຂອງ CanvasItem \"%s\" ເປັນ (%d, %d)"
-
-msgid "Rotate %d CanvasItems"
-msgstr "ໝຸນ %d CanvasItems"
-
-msgid "Rotate CanvasItem \"%s\" to %d degrees"
-msgstr "ໝຸນ CanvasItem \"%s\" ໄປ %d ອົງສາ"
-
-msgid "Move CanvasItem \"%s\" Anchor"
-msgstr "ຍ້າຍສະໝໍ (Anchor) ຂອງ CanvasItem \"%s\""
-
-msgid "Scale Node2D \"%s\" to (%s, %s)"
-msgstr "ປັບຂະໜາດ Node2D \"%s\" ເປັນ (%s, %s)"
-
-msgid "Resize Control \"%s\" to (%d, %d)"
-msgstr "ປັບຂະໜາດ Control \"%s\" ເປັນ (%d, %d)"
-
-msgid "Scale %d CanvasItems"
-msgstr "ປັບຂະໜາດ %d CanvasItems"
-
-msgid "Scale CanvasItem \"%s\" to (%s, %s)"
-msgstr "ປັບຂະໜາດ CanvasItem \"%s\" ເປັນ (%s, %s)"
-
-msgid "Move %d CanvasItems"
-msgstr "ຍ້າຍ %d CanvasItems"
-
-msgid "Move CanvasItem \"%s\" to (%d, %d)"
-msgstr "ຍ້າຍ CanvasItem \"%s\" ໄປທີ່ (%d, %d)"
+msgid "Move Node(s) to Position"
+msgstr "ຍ້າຍໂນດໄປຫາຕຳແໜ່ງ"
 
 msgid "px"
 msgstr "px"
@@ -13082,35 +11875,8 @@ msgstr "ກຳລັງໝຸນ:"
 msgid "Scaling:"
 msgstr "ກຳລັງປັບຂະໜາດ:"
 
-msgid "Alt+Drag: Move selected node."
-msgstr "Alt+ລາກ: ຍ້າຍໂນດທີ່ເລືອກ."
-
-msgid "%s+Alt+Drag: Scale selected node."
-msgstr "%s+Alt+ລາກ: ປັບຂະໜາດໂນດທີ່ເລືອກ."
-
-msgid "V: Set selected node's pivot position."
-msgstr "V: ຕັ້ງຄ່າຕຳແໜ່ງ Pivot ຂອງໂນດທີ່ເລືອກ."
-
 msgid "RMB: Add node at position clicked."
 msgstr "ຄລິກຂວາ: ເເພີ່ມໂນດໃນຕຳແໜ່ງທີ່ຄລິກ."
-
-msgid "Shift: Scale proportionally."
-msgstr "Shift: ປັບຂະໜາດຕາມອັດຕາສ່ວນ."
-
-msgid "Click to change object's pivot."
-msgstr "ຄລິກເພື່ອປ່ຽນ Pivot ຂອງວັດຖຸ."
-
-msgid "Shift: Set temporary pivot."
-msgstr "Shift: ຕັ້ງຄ່າ Pivot ຊົ່ວຄາວ."
-
-msgid ""
-"Click this button while holding Shift to put the temporary pivot in the "
-"center of the selected nodes."
-msgstr "ຄລິກປຸ່ມນີ້ໃນຂະນະທີ່ກົດ Shift ຄ້າງໄວ້ ເພື່ອວາງ Pivot ຊົ່ວຄາວໄວ້ກາງໂນດທີ່ເລືອກ."
-
-msgid ""
-"You can also use Pan View shortcut (Space by default) to pan in any mode."
-msgstr "ທ່ານຍັງສາມາດໃຊ້ທາງລັດ Pan View (ປົກກະຕິແມ່ນ Space) ເພື່ອເລື່ອນເບິ່ງໃນໂໝດໃດກໍໄດ້."
 
 msgid "LMB+Drag: Measure the distance between two points in 2D space."
 msgstr "ຄລິກຊ້າຍ+ລາກ: ແທກໄລຍະຫ່າງລະຫວ່າງສອງຈຸດໃນພື້ນທີ່ 2D."
@@ -13154,6 +11920,9 @@ msgstr "ຊູມເປັນ 800%"
 msgid "Zoom to 1600%"
 msgstr "ຊູມເປັນ 1600%"
 
+msgid "Center View"
+msgstr "ປັບມຸມເບິ່ງໃຫ້ຢູ່ສູນກາງ"
+
 msgid "Scene Paint Mode"
 msgstr "ໂໝດລະບາຍສີສາກ"
 
@@ -13165,6 +11934,13 @@ msgstr "ປ່ຽນ Pivot"
 
 msgid "Pan Mode"
 msgstr "ໂໝດເລື່ອນເບິ່ງ (Pan)"
+
+msgid ""
+"Groups the selected node with its children. This causes the parent to be "
+"selected when any child node is clicked in 2D and 3D view."
+msgstr ""
+"ຈັດກຸ່ມໂນດທີ່ເລືອກໄວ້ກັບໂນດລູກຂອງມັນ. ສິ່ງນີ້ຈະເຮັດໃຫ້ໂນດແມ່ຖືກເລືອກເມື່ອຄລິກໃສ່ໂນດລູກໃດໜຶ່ງໃນມຸມເບິ່ງ 2D "
+"ແລະ 3D."
 
 msgid "Use Smart Snap"
 msgstr "ໃຊ້ການຢຶດອັດສະລິຍະ (Smart Snap)"
@@ -13207,13 +11983,6 @@ msgstr "ຢຶດໃສ່ເສັ້ນນຳ"
 
 msgid "Smart Snapping"
 msgstr "ການຢຶດອັດສະລິຍະ"
-
-msgid ""
-"Groups the selected node with its children. This causes the parent to be "
-"selected when any child node is clicked in 2D and 3D view."
-msgstr ""
-"ຈັດກຸ່ມໂນດທີ່ເລືອກໄວ້ກັບໂນດລູກຂອງມັນ. ສິ່ງນີ້ຈະເຮັດໃຫ້ໂນດແມ່ຖືກເລືອກເມື່ອຄລິກໃສ່ໂນດລູກໃດໜຶ່ງໃນມຸມເບິ່ງ 2D "
-"ແລະ 3D."
 
 msgid "Skeleton Options"
 msgstr "ຕົວເລືອກໂຄງກະດູກ"
@@ -13327,14 +12096,6 @@ msgstr "ກຳລັງສ້າງອິນສະແຕນຊ໌: "
 msgid "Dropping a Texture file as a %s node..."
 msgstr "ກຳລັງວາງໄຟລ໌ພື້ນຜິວ (Texture) ເປັນໂນດ %s..."
 
-msgid "[b]Hold Alt + Shift:[/b] Add Texture as a different node type."
-msgstr "[b]ກົດ Alt + Shift ຄ້າງໄວ້:[/b] ເພື່ອເພີ່ມ Texture ເປັນປະເພດໂນດອື່ນ."
-
-msgid ""
-"All selected CanvasItems are either invisible or locked in some way and can't "
-"be transformed."
-msgstr "CanvasItems ທັງໝົດທີ່ເລືອກໄວ້ ອາດຈະເບິ່ງບໍ່ເຫັນ ຫຼື ຖືກລັອກໄວ້ ຈຶ່ງບໍ່ສາມາດປັບຮູບຊົງໄດ້."
-
 msgid "Method in target node must be specified."
 msgstr "ຕ້ອງລະບຸເມທອດ (Method) ໃນໂນດປາຍທາງ."
 
@@ -13396,6 +12157,12 @@ msgstr "ເມທອດຕົວຮັບ:"
 
 msgid "Receiver Method"
 msgstr "ເມທອດຕົວຮັບ"
+
+msgid "Pick"
+msgstr "ເລືອກ (Pick)"
+
+msgid "Advanced"
+msgstr "ຂັ້ນສູງ"
 
 msgid "Deferred"
 msgstr "ເລື່ອນເວລາ (Deferred)"
@@ -13505,6 +12272,9 @@ msgstr "ຈົບຊ້າ (Ease Out)"
 
 msgid "Smoothstep"
 msgstr "ໄລຍະກ້າວແບບກ້ຽງ (Smoothstep)"
+
+msgid "Toggle Grid Snap"
+msgstr "ເປີດ/ປິດ ການສະແນັບເຂົ້າຕາຕະລາງ"
 
 msgid "Snap Step"
 msgstr "ໄລຍະກ້າວການຢຶດ"
@@ -13782,51 +12552,23 @@ msgstr "ເປີດ/ປິດ ເສັ້ນຕາຕະລາງສະແດ�
 msgid "Styleboxes"
 msgstr "ກ່ອງຮູບແບບ (Styleboxes)"
 
-msgid "1 color"
-msgid_plural "{num} colors"
-msgstr[0] "{num} ສີ"
-
 msgid "No colors found."
 msgstr "ບໍ່ພົບສີ."
-
-msgid "1 constant"
-msgid_plural "{num} constants"
-msgstr[0] "{num} ຄ່າຄົງທີ່"
 
 msgid "No constants found."
 msgstr "ບໍ່ພົບຄ່າຄົງທີ່."
 
-msgid "1 font"
-msgid_plural "{num} fonts"
-msgstr[0] "{num} ຟອນ"
-
 msgid "No fonts found."
 msgstr "ບໍ່ພົບຟອນ."
-
-msgid "1 font size"
-msgid_plural "{num} font sizes"
-msgstr[0] "{num} ຂະໜາດຟອນ"
 
 msgid "No font sizes found."
 msgstr "ບໍ່ພົບຂະໜາດຟອນ."
 
-msgid "1 icon"
-msgid_plural "{num} icons"
-msgstr[0] "{num} ໄອຄອນ"
-
 msgid "No icons found."
 msgstr "ບໍ່ພົບໄອຄອນ."
 
-msgid "1 stylebox"
-msgid_plural "{num} styleboxes"
-msgstr[0] "{num} styleboxes"
-
 msgid "No styleboxes found."
 msgstr "ບໍ່ພົບ stylebox."
-
-msgid "{num} currently selected"
-msgid_plural "{num} currently selected"
-msgstr[0] "ເລືອກໄວ້ແລ້ວ {num} ລາຍການ"
 
 msgid "Nothing was selected for the import."
 msgstr "ບໍ່ມີຫຍັງຖືກເລືອກສຳລັບການນຳເຂົ້າ."
@@ -14575,10 +13317,6 @@ msgid "Node has one connection."
 msgid_plural "Node has {num} connections."
 msgstr[0] "ໂນດມີ {num} ການເຊື່ອມຕໍ່."
 
-msgid "Node is in this group:"
-msgid_plural "Node is in the following groups:"
-msgstr[0] "ໂນດຢູ່ໃນກຸ່ມເຫຼົ່ານີ້:"
-
 msgid "Click to show signals dock."
 msgstr "ຄລິກເພື່ອສະແດງແຖບສັນຍານ."
 
@@ -14741,6 +13479,9 @@ msgstr "ຊັບພະຍາກອນນີ້ບໍ່ມີແອນິເມ
 msgid "Animation Frames:"
 msgstr "ເຟຣມແອນິເມຊັນ:"
 
+msgid "Load"
+msgstr "ໂຫຼດ"
+
 msgid "Load Sheet"
 msgstr "ໂຫຼດແຜ່ນ (Sheet)"
 
@@ -14897,6 +13638,9 @@ msgstr "ໂໝດ Snap:"
 msgid "Pixel Snap"
 msgstr "Pixel Snap"
 
+msgid "Grid Snap"
+msgstr "ສະແນັບເຂົ້າຕາຕະລາງ"
+
 msgid "Offset X"
 msgstr "Offset X"
 
@@ -14907,10 +13651,10 @@ msgid "Step:"
 msgstr "ຂັ້ນຕອນ (Step):"
 
 msgid "Step X"
-msgstr "Step X"
+msgstr "ຂັ້ນ (Step) X"
 
 msgid "Step Y"
-msgstr "Step Y"
+msgstr "ຂັ້ນ (Step) Y"
 
 msgid "Separation:"
 msgstr "ໄລຍະຫ່າງ:"
@@ -14927,52 +13671,17 @@ msgstr "ແກ້ໄຂ Region"
 msgid "Write your logic in the _run() method."
 msgstr "ຂຽນໂລຈິກຂອງເຈົ້າໃນເມທອດ _run()."
 
-msgid "Replace in Files"
-msgstr "ແທນທີ່ໃນໄຟລ໌"
-
 msgid "Find in Files"
 msgstr "ຄົ້ນຫາໃນໄຟລ໌"
-
-msgid "Find:"
-msgstr "ຄົ້ນຫາ:"
-
-msgid "Folder:"
-msgstr "ໂຟນເດີ:"
 
 msgid "Select Folder"
 msgstr "ເລືອກໂຟນເດີ"
 
-msgid "Includes:"
-msgstr "ລວມເອົາ:"
-
-msgid "Include the files with the following expressions. Use \",\" to separate."
-msgstr "ລວມໄຟລ໌ດ້ວຍນິພົດຕໍ່ໄປນີ້. ໃຊ້ \",\" ເພື່ອແຍກ."
-
-msgid "example: scripts,scenes/*/test.gd"
-msgstr "ຕົວຢ່າງ: scripts,scenes/*/test.gd"
-
-msgid "Excludes:"
-msgstr "ຍົກເວັ້ນ:"
-
 msgid "Exclude the files with the following expressions. Use \",\" to separate."
 msgstr "ຍົກເວັ້ນໄຟລ໌ດ້ວຍນິພົດຕໍ່ໄປນີ້. ໃຊ້ \",\" ເພື່ອແຍກ."
 
-msgid "example: res://addons,scenes/test/*.gd"
-msgstr "ຕົວຢ່າງ: res://addons,scenes/test/*.gd"
-
-msgid "Filters:"
-msgstr "ຕົວຕອງ (Filters):"
-
-msgid ""
-"Include the files with the following extensions. Add or remove them in "
-"ProjectSettings."
-msgstr "ລວມໄຟລ໌ດ້ວຍນາມສະກຸນຕໍ່ໄປນີ້. ເພີ່ມ ຫຼື ລຶບອອກໄດ້ໃນ ProjectSettings."
-
-msgid "Find..."
-msgstr "ຄົ້ນຫາ..."
-
-msgid "Replace..."
-msgstr "ແທນທີ່..."
+msgid "Include the files with the following expressions. Use \",\" to separate."
+msgstr "ລວມໄຟລ໌ດ້ວຍນິພົດຕໍ່ໄປນີ້. ໃຊ້ \",\" ເພື່ອແຍກ."
 
 msgid "Searching..."
 msgstr "ກຳລັງຄົ້ນຫາ..."
@@ -14992,17 +13701,8 @@ msgstr "ພົບ %d ບ່ອນທີ່ກົງກັນໃນ %d ໄຟລ�
 msgid "%d matches in %d files"
 msgstr "ພົບ %d ບ່ອນທີ່ກົງກັນໃນ %d ໄຟລ໌"
 
-msgid "Keep Results"
-msgstr "ຮັກສາຜົນການຄົ້ນຫາໄວ້"
-
-msgid "Keep these results and show subsequent results in a new window"
-msgstr "ຮັກສາຜົນເຫຼົ່ານີ້ໄວ້ ແລະ ສະແດງຜົນການຄົ້ນຫາຄັ້ງຕໍ່ໄປໃນໜ້າຕ່າງໃໝ່"
-
-msgid "Replace all (no undo)"
-msgstr "ແທນທີ່ທັງໝົດ (ບໍ່ສາມາດຍ້ອນກັບໄດ້)"
-
-msgid "Toggle Search Results Bottom Panel"
-msgstr "ເປີດ/ປິດ ແຜງຜົນການຄົ້ນຫາດ້ານລຸ່ມ"
+msgid "Find:"
+msgstr "ຄົ້ນຫາ:"
 
 msgid "Path is empty."
 msgstr "ເສັ້ນທາງວ່າງເປົ່າ."
@@ -15018,9 +13718,6 @@ msgstr "ຊື່ເລີ່ມຕົ້ນດ້ວຍຈຸດ."
 
 msgid "Path is not local."
 msgstr "ເສັ້ນທາງບໍ່ໄດ້ຢູ່ໃນເຄື່ອງ (not local)."
-
-msgid "Base path is invalid."
-msgstr "ເສັ້ນທາງພື້ນຖານບໍ່ຖືກຕ້ອງ."
 
 msgid "A directory with the same name exists."
 msgstr "ມີໂຟນເດີທີ່ມີຊື່ດຽວກັນຢູ່ແລ້ວ."
@@ -15113,6 +13810,9 @@ msgstr "ເລືອກພໍ່ແມ່"
 msgid "Use Template"
 msgstr "ໃຊ້ແມ່ແບບ"
 
+msgid "Template"
+msgstr "ແມ່ແບບ (Template)"
+
 msgid "Built-in Script:"
 msgstr "ສະຄຣິບພາຍໃນ:"
 
@@ -15142,6 +13842,21 @@ msgstr "ບຸກມາກ"
 
 msgid "Emoji & Symbols"
 msgstr "ອີໂມຈິ ແລະ ສັນຍະລັກ"
+
+msgid "Open File in Inspector"
+msgstr "ເປີດໄຟລ໌ໃນອິນສະເປັກເຕີ"
+
+msgid "Inspect Native Shader Code..."
+msgstr "ກວດສອບໂຄດເນທີບເຊເດີ..."
+
+msgid "Unsaved file."
+msgstr "ໄຟລ໌ທີ່ຍັງບໍ່ໄດ້ບັນທຶກ."
+
+msgid "%s Class Reference"
+msgstr "ການອ້າງອີງຄລາສ %s"
+
+msgid "Toggle alphabetical sorting of the method list."
+msgstr "ເປີດ/ປິດ ການຈັດລຽງລາຍຊື່ເມທອດຕາມຕົວອັກສອນ."
 
 msgid "(truncated)"
 msgstr "(ຖືກຕັດອອກ)"
@@ -15205,9 +13920,6 @@ msgstr "ນຳເຂົ້າທີມ"
 msgid "Save Theme As..."
 msgstr "ບັນທຶກທີມເປັນ..."
 
-msgid "Make the script editor floating."
-msgstr "ເຮັດໃຫ້ຕົວແກ້ໄຂສະຄຣິບເປັນແບບລອຍ (floating)."
-
 msgid "Open '%s' in Godot online documentation."
 msgstr "ເປີດ '%s' ໃນເອກະສານອອນໄລນ໌ຂອງ Godot."
 
@@ -15220,11 +13932,8 @@ msgstr "ເອກະສານອອນໄລນ໌"
 msgid "Open Godot online documentation."
 msgstr "ເປີດເອກະສານອອນໄລນ໌ຂອງ Godot."
 
-msgid "Unsaved file."
-msgstr "ໄຟລ໌ທີ່ຍັງບໍ່ໄດ້ບັນທຶກ."
-
-msgid "%s Class Reference"
-msgstr "ການອ້າງອີງຄລາສ %s"
+msgid "Find..."
+msgstr "ຄົ້ນຫາ..."
 
 msgid "Find Next"
 msgstr "ຄົ້ນຫາຕໍ່ໄປ"
@@ -15232,23 +13941,11 @@ msgstr "ຄົ້ນຫາຕໍ່ໄປ"
 msgid "Find Previous"
 msgstr "ຄົ້ນຫາຜ່ານມາ"
 
-msgid "Filter Scripts"
-msgstr "ກັ່ນຕອງສະຄຣິບ"
-
-msgid "Toggle alphabetical sorting of the method list."
-msgstr "ເປີດ/ປິດ ການຈັດລຽງລາຍຊື່ເມທອດຕາມຕົວອັກສອນ."
-
-msgid "Sort"
-msgstr "ຈັດລຽງ"
-
 msgid "Next Script"
 msgstr "ສະຄຣິບຖັດໄປ"
 
 msgid "Previous Script"
 msgstr "ສະຄຣິບກ່ອນໜ້າ"
-
-msgid "Open..."
-msgstr "ເປີດ..."
 
 msgid "Save All"
 msgstr "ບັນທຶກທັງໝົດ"
@@ -15268,12 +13965,6 @@ msgstr "ປະຫວັດກ່ອນໜ້າ"
 msgid "History Next"
 msgstr "ປະຫວັດຖັດໄປ"
 
-msgid "Import Theme..."
-msgstr "ນຳເຂົ້າທີມ..."
-
-msgid "Reload Theme"
-msgstr "ໂຫຼດທີມຄືນໃໝ່"
-
 msgid "Close All"
 msgstr "ປິດທັງໝົດ"
 
@@ -15283,8 +13974,26 @@ msgstr "ປິດແຖບດ້ານລຸ່ມ"
 msgid "Close Docs"
 msgstr "ປິດເອກະສານ"
 
-msgid "Navigate to script list."
-msgstr "ໄປທີ່ລາຍຊື່ສະຄຣິບ."
+msgid "Toggle Files Panel"
+msgstr "ເປີດ/ປິດ ແຖບໄຟລ໌"
+
+msgid "Import Theme..."
+msgstr "ນຳເຂົ້າທີມ..."
+
+msgid "Reload Theme"
+msgstr "ໂຫຼດທີມຄືນໃໝ່"
+
+msgid "Open..."
+msgstr "ເປີດ..."
+
+msgid "New Shader Include..."
+msgstr "Shader Include ໃໝ່..."
+
+msgid "Load Shader File..."
+msgstr "ໂຫຼດໄຟລ໌ເຊເດີ..."
+
+msgid "Load Shader Include File..."
+msgstr "ໂຫຼດໄຟລ໌ Shader Include..."
 
 msgid "Site Search"
 msgstr "ຄົ້ນຫາໃນເວັບໄຊ"
@@ -15301,23 +14010,11 @@ msgstr "ໄປທີ່ເອກະສານທີ່ແກ້ໄຂຖັດໄ
 msgid "Discard"
 msgstr "ຖິ້ມ"
 
-msgid "Script Editor"
-msgstr "ຕົວແກ້ໄຂສະຄຣິບ"
-
-msgid "There are unsaved changes in the following built-in script(s):"
-msgstr "ມີການປ່ຽນແປງທີ່ຍັງບໍ່ໄດ້ບັນທຶກໃນສະຄຣິບພາຍໃນຕໍ່ໄປນີ້:"
-
-msgid "Save changes to the following script(s) before quitting?"
-msgstr "ຕ້ອງການບັນທຶກການປ່ຽນແປງໃນສະຄຣິບຕໍ່ໄປນີ້ກ່ອນຈະອອກບໍ່?"
-
 msgid "Reopen Closed Script"
 msgstr "ເປີດສະຄຣິບທີ່ປິດໄປຄືນໃໝ່"
 
 msgid "Clear Recent Scripts"
 msgstr "ລ້າງລາຍຊື່ສະຄຣິບທີ່ເປີດຫວ່າງມານີ້"
-
-msgid "Replace in Files..."
-msgstr "ແທນທີ່ໃນໄຟລ໌..."
 
 msgid "Uppercase"
 msgstr "ຕົວພິມໃຫຍ່"
@@ -15361,34 +14058,6 @@ msgstr "ເສັ້ນທາງ UID"
 
 msgid "file path"
 msgstr "ເສັ້ນທາງໄຟລ໌"
-
-msgid "Drop file path."
-msgid_plural "Drop file paths."
-msgstr[0] "ວາງເສັ້ນທາງໄຟລ໌."
-
-msgid "Hold %s: Add const preload by %s."
-msgid_plural "Hold %s: Add const preloads by %s."
-msgstr[0] "ກົດ %s ຄ້າງໄວ້: ເພີ່ມ const preload ໂດຍ %s."
-
-msgid "Hold %s+Shift: Add const preload by %s."
-msgid_plural "Hold %s+Shift: Add const preloads by %s."
-msgstr[0] "ກົດ %s+Shift ຄ້າງໄວ້: ເພີ່ມ const preload ໂດຍ %s."
-
-msgid "Hold Alt: Add @export var pointing to the resource."
-msgid_plural "Hold Alt: Add @export vars pointing to the resources."
-msgstr[0] "ກົດ Alt ຄ້າງໄວ້: ເພີ່ມ @export var ທີ່ຊີ້ໄປຫາຊັບພະຍາກອນ."
-
-msgid "Drop node path."
-msgid_plural "Drop node paths."
-msgstr[0] "ວາງເສັ້ນທາງໂນດ."
-
-msgid "Hold %s: Add @onready var pointing to the node path."
-msgid_plural "Hold %s: Add @onready vars pointing to the node paths."
-msgstr[0] "ກົດ %s ຄ້າງໄວ້: ເພີ່ມ @onready var ທີ່ຊີ້ໄປຫາເສັ້ນທາງໂນດ."
-
-msgid "Hold Alt: Add @export var pointing to the node."
-msgid_plural "Hold Alt: Add @export vars pointing to the nodes."
-msgstr[0] "ກົດ Alt ຄ້າງໄວ້: ເພີ່ມ @export var ທີ່ຊີ້ໄປຫາໂນດ."
 
 msgid "Drop property path."
 msgstr "ວາງເສັ້ນທາງຄຸນສົມບັດ (property)."
@@ -15462,6 +14131,9 @@ msgstr "ປ່ຽນການຫຍໍ້ໜ້າເປັນແທັບ"
 
 msgid "Auto Indent"
 msgstr "ຫຍໍ້ໜ້າອັດຕະໂນມັດ"
+
+msgid "Replace..."
+msgstr "ແທນທີ່..."
 
 msgid "Show Tooltip"
 msgstr "ສະແດງຄຳແນະນຳ"
@@ -15869,9 +14541,6 @@ msgstr "ຕັ້ງຄ່າໂປຣໄຟລ໌ທີ່ແກ້ໄຂໃໝ
 msgid "File saving failed."
 msgstr "ບັນທຶກໄຟລ໌ບໍ່ສຳເລັດ."
 
-msgid "Create a new profile?"
-msgstr "ສ້າງໂປຣໄຟລ໌ໃໝ່ບໍ?"
-
 msgid ""
 "This will scan all files in the current project to detect used classes.\n"
 "Note that the first scan may take a while, specially in larger projects."
@@ -15965,6 +14634,9 @@ msgstr "ລ້າງຕົວເຕັກກັ່ນຕອງການຄົ້
 
 msgid "3D Editor"
 msgstr "ຕົວແກ້ໄຂ 3D"
+
+msgid "Script Editor"
+msgstr "ຕົວແກ້ໄຂສະຄຣິບ"
 
 msgid "Scene Tree Editing"
 msgstr "ການແກ້ໄຂ Scene Tree"
@@ -16438,9 +15110,6 @@ msgstr "ເລືອກຕຳແໜ່ງ / ເປີດເຊເດີ"
 msgid "Invalid shader type selected."
 msgstr "ເລືອກປະເພດເຊເດີບໍ່ຖືກຕ້ອງ."
 
-msgid "Invalid base path."
-msgstr "ເສັ້ນທາງຫຼັກບໍ່ຖືກຕ້ອງ."
-
 msgid "Invalid extension for selected shader type."
 msgstr "ນາມສະກຸນໄຟລ໌ບໍ່ຖືກຕ້ອງສຳລັບປະເພດເຊເດີທີ່ເລືອກ."
 
@@ -16470,30 +15139,6 @@ msgstr "ເຊເດີພາຍໃນ:"
 
 msgid "Create Shader"
 msgstr "ສ້າງເຊເດີ"
-
-msgid "Save changes to the following shaders(s) before quitting?"
-msgstr "ບັນທຶກການປ່ຽນແປງຂອງເຊເດີຕໍ່ໄປນີ້ກ່ອນຈະອອກບໍ?"
-
-msgid "There are unsaved changes in the following built-in shaders(s):"
-msgstr "ມີການປ່ຽນແປງທີ່ບໍ່ໄດ້ບັນທຶກໃນເຊເດີພາຍໃນຕໍ່ໄປນີ້:"
-
-msgid "New Shader Include..."
-msgstr "Shader Include ໃໝ່..."
-
-msgid "Load Shader File..."
-msgstr "ໂຫຼດໄຟລ໌ເຊເດີ..."
-
-msgid "Load Shader Include File..."
-msgstr "ໂຫຼດໄຟລ໌ Shader Include..."
-
-msgid "Open File in Inspector"
-msgstr "ເປີດໄຟລ໌ໃນອິນສະເປັກເຕີ"
-
-msgid "Inspect Native Shader Code..."
-msgstr "ກວດສອບໂຄດເນທີບເຊເດີ..."
-
-msgid "Copy Shader Path"
-msgstr "ກັອບປີ້ເສັ້ນທາງເຊເດີ"
 
 msgid "Shader Editor"
 msgstr "ຕົວແກ້ໄຂເຊເດີ"
@@ -16553,14 +15198,14 @@ msgstr "ບັນທັດທີ່ສະແດງຕົວຢ່າງຕ້ອ
 msgid "Preview only available for bool, int, float, vec2, vec3, vec4."
 msgstr "ການສະແດງຕົວຢ່າງມີໃຫ້ໃຊ້ສຳລັບ bool, int, float, vec2, vec3, vec4 ເທົ່ານັ້ນ."
 
+msgid "Warnings should be fixed to prevent errors."
+msgstr "ຄວນແກ້ໄຂຄຳເຕືອນເພື່ອປ້ອງກັນຂໍ້ຜິດພາດ."
+
 msgid "Error at line %d:"
 msgstr "ຂໍ້ຜິດພາດຢູ່ບັນທັດ %d:"
 
 msgid "Error at line %d in include %s:%d:"
 msgstr "ຂໍ້ຜິດພາດຢູ່ບັນທັດ %d ໃນ include %s:%d:"
-
-msgid "Warnings should be fixed to prevent errors."
-msgstr "ຄວນແກ້ໄຂຄຳເຕືອນເພື່ອປ້ອງກັນຂໍ້ຜິດພາດ."
 
 msgid "Toggle Shader Preview"
 msgstr "ເປີດ/ປິດ ການສະແດງຕົວຢ່າງເຊເດີ"
@@ -16574,9 +15219,6 @@ msgstr "ໄປຫາການສະແດງຕົວຢ່າງເຊເດີ
 msgid "Go to Previous Shader Preview"
 msgstr "ໄປຫາການສະແດງຕົວຢ່າງເຊເດີກ່ອນໜ້າ"
 
-msgid "Shader Previews"
-msgstr "ການສະແດງຕົວຢ່າງເຊເດີ"
-
 msgid "Update Parameters"
 msgstr "ອັບເດດພາລາມິເຕີ"
 
@@ -16588,16 +15230,6 @@ msgstr ""
 
 msgid "Remove all line shader previews."
 msgstr "ລຶບການສະແດງຕົວຢ່າງເຊເດີທຸກບັນທັດອອກ."
-
-msgid ""
-"This shader has been modified on disk.\n"
-"What action should be taken?"
-msgstr ""
-"ເຊເດີນີ້ຖືກແກ້ໄຂໃນດິສກ໌.\n"
-"ຄວນດຳເນີນການແນວໃດ?"
-
-msgid "Resave"
-msgstr "ບັນທຶກທັບ"
 
 msgctxt "Locale"
 msgid "Script:"
@@ -16993,69 +15625,6 @@ msgstr "ປ່ຽນລັດສະໝີພາຍໃນຂອງ Torus"
 msgid "Change Torus Outer Radius"
 msgstr "ປ່ຽນລັດສະໝີພາຍນອກຂອງ Torus"
 
-msgid "Invalid type argument to convert(), use TYPE_* constants."
-msgstr "ອາກິວເມັນປະເພດບໍ່ຖືກຕ້ອງສຳລັບ convert(), ໃຫ້ໃຊ້ຄ່າຄົງທີ່ TYPE_*."
-
-msgid "Expected an integer between 0 and 2^32 - 1."
-msgstr "ຕ້ອງການຈຳນວນຖ້ວນລະຫວ່າງ 0 ຫາ 2^32 - 1."
-
-msgid "Expected a string of length 1 (a character)."
-msgstr "ຕ້ອງການຂໍ້ຄວາມທີ່ມີຄວາມຍາວ 1 (ຕົວອັກສອນດຽວ)."
-
-msgid "Range too big."
-msgstr "ຊ່ວງ (Range) ໃຫຍ່ເກີນໄປ."
-
-msgid "Cannot resize array."
-msgstr "ບໍ່ສາມາດປ່ຽນຂະໜາດອາເຣໄດ້."
-
-msgid "Step argument is zero!"
-msgstr "ອາກິວເມັນ Step ແມ່ນສູນ!"
-
-msgid "Not a script with an instance."
-msgstr "ບໍ່ແມ່ນສະຄຣິບທີ່ມີອິນສະແຕນຊ໌ (instance)."
-
-msgid "Not based on a script."
-msgstr "ບໍ່ໄດ້ອີງໃສ່ສະຄຣິບ."
-
-msgid "Not based on a resource file."
-msgstr "ບໍ່ໄດ້ອີງໃສ່ໄຟລ໌ຣີຊອດ."
-
-msgid "Invalid instance dictionary format (missing @path)."
-msgstr "ຮູບແບບ dictionary ຂອງອິນສະແຕນຊ໌ບໍ່ຖືກຕ້ອງ (ຂາດ @path)."
-
-msgid "Invalid instance dictionary format (can't load script at @path)."
-msgstr "ຮູບແບບ dictionary ຂອງອິນສະແຕນຊ໌ບໍ່ຖືກຕ້ອງ (ບໍ່ສາມາດໂຫຼດສະຄຣິບທີ່ @path)."
-
-msgid "Invalid instance dictionary format (invalid script at @path)."
-msgstr "ຮູບແບບ dictionary ຂອງອິນສະແຕນຊ໌ບໍ່ຖືກຕ້ອງ (ສະຄຣິບທີ່ @path ບໍ່ຖືກຕ້ອງ)."
-
-msgid "Invalid instance dictionary (invalid subclasses)."
-msgstr "dictionary ຂອງອິນສະແຕນຊ໌ບໍ່ຖືກຕ້ອງ (ຊັ້ນຮຽນຍ່ອຍບໍ່ຖືກຕ້ອງ)."
-
-msgid "Cannot instantiate GDScript class."
-msgstr "ບໍ່ສາມາດສ້າງອິນສະແຕນຊ໌ຈາກຄລາດ GDScript ໄດ້."
-
-msgid "Value of type '%s' can't provide a length."
-msgstr "ຄ່າຂອງປະເພດ '%s' ບໍ່ສາມາດບອກຄວາມຍາວໄດ້."
-
-msgid ""
-"Invalid type argument for is_instance_of(), use TYPE_* constants for built-in "
-"types."
-msgstr ""
-"ອາກິວເມັນປະເພດບໍ່ຖືກຕ້ອງສຳລັບ is_instance_of(), ໃຫ້ໃຊ້ຄ່າຄົງທີ່ TYPE_* ສຳລັບປະເພດພາຍໃນ."
-
-msgid "Type argument is a previously freed instance."
-msgstr "ອາກິວເມັນປະເພດແມ່ນອິນສະແຕນຊ໌ທີ່ຖືກຄືນໜ່ວຍຄວາມຈຳໄປແລ້ວ."
-
-msgid ""
-"Invalid type argument for is_instance_of(), should be a TYPE_* constant, a "
-"class or a script."
-msgstr ""
-"ອາກິວເມັນປະເພດບໍ່ຖືກຕ້ອງສຳລັບ is_instance_of(), ຄວນເປັນຄ່າຄົງທີ່ TYPE_*, ຄລາດ ຫຼື ສະຄຣິບ."
-
-msgid "Value argument is a previously freed instance."
-msgstr "ອາກິວເມັນຄ່າມີຄ່າເປັນອິນສະແຕນຊ໌ທີ່ຖືກຄືນໜ່ວຍຄວາມຈຳໄປແລ້ວ."
-
 msgid "Export Scene to glTF 2.0 File"
 msgstr "ສົ່ງອອກສາກເປັນໄຟລ໌ glTF 2.0"
 
@@ -17140,15 +15709,6 @@ msgstr "ລະບາຍສີ GridMap"
 msgid "GridMap Selection"
 msgstr "ການເລືອກໃນ GridMap"
 
-msgid ""
-"Change Grid Floor:\n"
-"Previous Plane (%s)\n"
-"Next Plane (%s)"
-msgstr ""
-"ປ່ຽນຊັ້ນຕາຕະລາງ:\n"
-"ແຜ່ນພຽງກ່ອນໜ້າ (%s)\n"
-"ແຜ່ນພຽງຖັດໄປ (%s)"
-
 msgid "GridMap"
 msgstr "GridMap"
 
@@ -17184,6 +15744,12 @@ msgstr "ໄລຍະການເລືອກ:"
 
 msgid "Selection"
 msgstr "ສ່ວນທີ່ເລືອກ"
+
+msgid "Erase"
+msgstr "ລຶບ"
+
+msgid "Paint"
+msgstr "ແຕ້ມ"
 
 msgid "Cursor Rotate X"
 msgstr "ໝູນເຊີເຊີແກນ X"
@@ -17365,18 +15931,6 @@ msgstr "ຊື່ຄລາດຕ້ອງເປັນຊື່ທີ່ຖືກ
 msgid "Not enough bytes for decoding bytes, or invalid format."
 msgstr "ໄບຕ໌ບໍ່ພຽງພໍສຳລັບການຖອດລະຫັດ, ຫຼື ຮູບແບບບໍ່ຖືກຕ້ອງ."
 
-msgid ""
-"Unable to load .NET runtime, no compatible version was found.\n"
-"Attempting to create/edit a project will lead to a crash.\n"
-"\n"
-"Please install the .NET SDK 8.0 or later from https://get.dot.net and restart "
-"Godot."
-msgstr ""
-"ບໍ່ສາມາດໂຫຼດ .NET runtime ໄດ້, ບໍ່ພົບເວີຊັນທີ່ເຂົ້າກັນໄດ້.\n"
-"ການພະຍາຍາມສ້າງ/ແກ້ໄຂໂປຣເຈັກຈະເຮັດໃຫ້ໂປຣແກຣມຄ້າງ.\n"
-"\n"
-"ກະລຸນາຕິດຕັ້ງ .NET SDK 8.0 ຫຼື ໃໝ່ກວ່າຈາກ https://get.dot.net ແລະ ເລີ່ມ Godot ໃໝ່."
-
 msgid "Failed to load .NET runtime"
 msgstr "ໂຫຼດ .NET runtime ບໍ່ສຳເລັດ"
 
@@ -17389,18 +15943,6 @@ msgstr ""
 
 msgid ".NET assemblies not found"
 msgstr "ບໍ່ພົບ .NET assemblies"
-
-msgid ""
-"Unable to load .NET runtime, specifically hostfxr.\n"
-"Attempting to create/edit a project will lead to a crash.\n"
-"\n"
-"Please install the .NET SDK 8.0 or later from https://get.dot.net and restart "
-"Godot."
-msgstr ""
-"ບໍ່ສາມາດໂຫຼດ .NET runtime ໄດ້, ໂດຍສະເພາະ hostfxr.\n"
-"ການພະຍາຍາມສ້າງ/ແກ້ໄຂໂປຣເຈັກຈະເຮັດໃຫ້ໂປຣແກຣມຄ້າງ.\n"
-"\n"
-"ກະລຸນາຕິດຕັ້ງ .NET SDK 8.0 ຫຼື ໃໝ່ກວ່າຈາກ https://get.dot.net ແລະ ເລີ່ມ Godot ໃໝ່."
 
 msgctxt "Network"
 msgid "Down"
@@ -17816,6 +16358,12 @@ msgid ""
 "Was the same reference returned by multiple getters on the source object?"
 msgstr "ມີການສົ່ງຄືນການອ້າງອີງດຽວກັນໂດຍ getter ຫຼາຍອັນໃນວັດຖຸຕົ້ນທາງບໍ່?"
 
+msgid "Yes"
+msgstr "ແມ່ນ"
+
+msgid "No"
+msgstr "ບໍ່"
+
 msgid "Sort By %s (Ascending)"
 msgstr "ລຽງລຳດັບຕາມ %s (ນ້ອຍຫາໃຫຍ່)"
 
@@ -18129,6 +16677,901 @@ msgstr ""
 msgid "OpenXR visibility mask must have an XRCamera3D node as their parent."
 msgstr "OpenXR visibility mask ຕ້ອງມີໂນດ XRCamera3D ເປັນແມ່."
 
+msgid "Merge TileSetAtlasSource"
+msgstr "ຮວມ TileSetAtlasSource"
+
+msgid "%s (ID: %d)"
+msgstr "%s (ID: %d)"
+
+msgid "Atlas Merging"
+msgstr "ການຮວມແອດລັສ (Atlas)"
+
+msgid "Merge (Keep original Atlases)"
+msgstr "ຮວມ (ຮັກສາແອດລັສຕົ້ນສະບັບໄວ້)"
+
+msgid "Merge"
+msgstr "ຮວມ"
+
+msgid "Next Line After Column"
+msgstr "ຂຶ້ນແຖວໃໝ່ຫຼັງຈາກຖັນນີ້"
+
+msgid "Please select two atlases or more."
+msgstr "ກະລຸນາເລືອກແອດລັສສອງອັນຂຶ້ນໄປ."
+
+msgid ""
+"Source: %d\n"
+"Atlas coordinates: %s\n"
+"Alternative: 0"
+msgstr ""
+"Source: %d\n"
+"ພິກັດ Atlas: %s\n"
+"Alternative: 0"
+
+msgid ""
+"Source: %d\n"
+"Atlas coordinates: %s\n"
+"Alternative: %d"
+msgstr ""
+"Source: %d\n"
+"ພິກັດ Atlas: %s\n"
+"Alternative: %d"
+
+msgid ""
+"The selected atlas source has no valid texture. Assign a texture in the "
+"TileSet bottom tab."
+msgstr ""
+"Atlas source ທີ່ເລືອກບໍ່ມີ texture ທີ່ຖືກຕ້ອງ. ກະລຸນາໃສ່ texture ໃນແຖບ TileSet ດ້ານລຸ່ມ."
+
+msgid "Base Tiles"
+msgstr "Tile ພື້ນຖານ"
+
+msgid "Alternative Tiles"
+msgstr "Tile ທາງເລືອກ"
+
+msgid "Reset Polygons"
+msgstr "ຣີເຊັດ Polygon"
+
+msgid "Clear Polygons"
+msgstr "ລ້າງ Polygon"
+
+msgid "Rotate Polygons Right"
+msgstr "ໝູນ Polygon ໄປທາງຂວາ"
+
+msgid "Rotate Polygons Left"
+msgstr "ໝູນ Polygon ໄປທາງຊ້າຍ"
+
+msgid "Flip Polygons Horizontally"
+msgstr "ພິກ Polygon ຕາມແນວນອນ"
+
+msgid "Flip Polygons Vertically"
+msgstr "ພິກ Polygon ຕາມແນວຕັ້ງ"
+
+msgid "Edit Polygons"
+msgstr "ແກ້ໄຂ Polygon"
+
+msgid "Expand editor"
+msgstr "ຂະຫຍາຍ Editor"
+
+msgid "Add polygon tool"
+msgstr "ເຄື່ອງມືເພີ່ມ Polygon"
+
+msgid "Edit points tool"
+msgstr "ເຄື່ອງມືແກ້ໄຂຈຸດ"
+
+msgid "Delete points tool"
+msgstr "ເຄື່ອງມືລຶບຈຸດ"
+
+msgid "Reset to default tile shape"
+msgstr "ຣີເຊັດເປັນຮູບຮ່າງ tile ເລີ່ມຕົ້ນ"
+
+msgid "Rotate Right"
+msgstr "ໝູນຂວາ"
+
+msgid "Rotate Left"
+msgstr "ໝູນຊ້າຍ"
+
+msgid "Flip Horizontally"
+msgstr "ພິກແນວນອນ"
+
+msgid "Flip Vertically"
+msgstr "ພິກແນວຕັ້ງ"
+
+msgid "Disable Snap"
+msgstr "ປິດການສະແນັບ"
+
+msgid "Half-Pixel Snap"
+msgstr "ສະແນັບເຄິ່ງພິກເຊລ"
+
+msgid "Subdivision"
+msgstr "ການແບ່ງຍ່ອຍ"
+
+msgid "Painting Tiles Property"
+msgstr "ຄຸນສົມບັດການລະບາຍ Tile"
+
+msgid "Painting:"
+msgstr "ກຳລັງລະບາຍ:"
+
+msgid "Polygon %d"
+msgstr "Polygon %d"
+
+msgid "One Way"
+msgstr "ທາງດຽວ"
+
+msgid "One Way Margin"
+msgstr "ຂອບທາງດຽວ"
+
+msgid "Linear Velocity"
+msgstr "ຄວາມໄວແນວຊື່ (Linear)"
+
+msgid "Angular Velocity"
+msgstr "ຄວາມໄວເຊີງມຸມ (Angular)"
+
+msgid "No terrains"
+msgstr "ບໍ່ມີ Terrain"
+
+msgid "No terrain"
+msgstr "ບໍ່ມີ Terrain"
+
+msgid "Painting Terrain Set"
+msgstr "ຊຸດ Terrain ທີ່ກຳລັງລະບາຍ"
+
+msgid "Painting Terrain"
+msgstr "Terrain ທີ່ກຳລັງລະບາຍ"
+
+msgid "Drawing Rect:"
+msgstr "ກຳລັງແຕ້ມສີ່ຫຼ່ຽມ:"
+
+msgid "Can't rotate patterns when using non-square tile grid."
+msgstr "ບໍ່ສາມາດໝູນລວດລາຍ (pattern) ໄດ້ເມື່ອໃຊ້ຕາຕະລາງ tile ທີ່ບໍ່ແມ່ນສີ່ຫຼ່ຽມຈັດຕຸລັດ."
+
+msgid "Shift: Draw line."
+msgstr "Shift: ແຕ້ມເສັ້ນຊື່."
+
+msgid "%s+Shift: Draw rectangle."
+msgstr "%s+Shift: ແຕ້ມຮູບສີ່ຫຼ່ຽມ."
+
+msgid "No Texture Atlas Source (ID: %d)"
+msgstr "ບໍ່ພົບ Texture Atlas Source (ID: %d)"
+
+msgid "Scene Collection Source (ID: %d)"
+msgstr "Scene Collection Source (ID: %d)"
+
+msgid "Empty Scene Collection Source (ID: %d)"
+msgstr "Scene Collection Source ວ່າງເປົ່າ (ID: %d)"
+
+msgid "Unknown Type Source (ID: %d)"
+msgstr "ບໍ່ຮູ້ຈັກປະເພດ Source (ID: %d)"
+
+msgid "Add TileSet pattern"
+msgstr "ເພີ່ມລວດລາຍ (pattern) TileSet"
+
+msgid "Remove TileSet patterns"
+msgstr "ລຶບລວດລາຍ TileSet"
+
+msgid "Index: %d"
+msgstr "ດັດຊະນີ: %d"
+
+msgid "Tile with Invalid Scene"
+msgstr "Tile ທີ່ມີສາກທີ່ບໍ່ຖືກຕ້ອງ"
+
+msgid ""
+"The selected scene collection source has no scenes. Add scenes in the TileSet "
+"bottom tab."
+msgstr "Scene collection source ທີ່ເລືອກບໍ່ມີສາກ. ກະລຸນາເພີ່ມສາກໃນແຖບ TileSet ດ້ານລຸ່ມ."
+
+msgid "Delete tiles"
+msgstr "ລຶບ tile"
+
+msgid "Change selection"
+msgstr "ປ່ຽນການເລືອກ"
+
+msgid "Move tiles"
+msgstr "ຍ້າຍ tile"
+
+msgid "Paint tiles"
+msgstr "ລະບາຍ tile"
+
+msgid "Paste tiles"
+msgstr "ວາງ tile"
+
+msgid "Selection Tool"
+msgstr "ເຄື່ອງມືເລືອກ"
+
+msgid "Paint Tool"
+msgstr "ເຄື່ອງມືລະບາຍ"
+
+msgid "Line Tool"
+msgstr "ເຄື່ອງມືແຕ້ມເສັ້ນ"
+
+msgid "Rect Tool"
+msgstr "ເຄື່ອງມືແຕ້ມສີ່ຫຼ່ຽມ"
+
+msgid "Bucket Tool"
+msgstr "ເຄື່ອງມືຖັງສີ"
+
+msgid "Alternatively hold %s with other tools to pick tile."
+msgstr "ຫຼື ກົດ %s ຄ້າງໄວ້ໃນຂະນະທີ່ໃຊ້ເຄື່ອງມືອື່ນເພື່ອເລືອກ (pick) tile."
+
+msgid "Alternatively use RMB to erase tiles."
+msgstr "ຫຼື ໃຊ້ຄລິກຂວາເພື່ອລຶບ tile."
+
+msgid "Rotate Tile Left"
+msgstr "ໝູນ tile ໄປທາງຊ້າຍ"
+
+msgid "Rotate Tile Right"
+msgstr "ໝູນ tile ໄປທາງຂວາ"
+
+msgid "Flip Tile Horizontally"
+msgstr "ພິກ tile ຕາມແນວນອນ"
+
+msgid "Flip Tile Vertically"
+msgstr "ພິກ tile ຕາມແນວຕັ້ງ"
+
+msgid "Contiguous"
+msgstr "ຕໍ່ເນື່ອງກັນ"
+
+msgid "Place Random Tile"
+msgstr "ວາງ tile ແບບສຸ່ມ"
+
+msgid ""
+"Modifies the chance of painting nothing instead of a randomly selected tile."
+msgstr "ປັບປ່ຽນໂອກາດທີ່ຈະບໍ່ລະບາຍສິ່ງໃດເລີຍແທນທີ່ຈະເປັນ tile ທີ່ຖືກສຸ່ມເລືອກ."
+
+msgid "Scattering:"
+msgstr "ການກະຈາຍ:"
+
+msgid "Tiles"
+msgstr "Tiles"
+
+msgid ""
+"This TileMap's TileSet has no Tile Source configured. Go to the TileSet "
+"bottom panel to add one."
+msgstr "TileSet ຂອງ TileMap ນີ້ຍັງບໍ່ໄດ້ກຳນົດ Tile Source. ໄປທີ່ແຖບ TileSet ດ້ານລຸ່ມເພື່ອເພີ່ມ."
+
+msgid "Sort sources"
+msgstr "ຈັດລຽງ source"
+
+msgid "Sort by ID (Ascending)"
+msgstr "ຈັດລຽງຕາມ ID (ນ້ອຍໄປຫາຫຼາຍ)"
+
+msgid "Sort by ID (Descending)"
+msgstr "ຈັດລຽງຕາມ ID (ຫຼາຍໄປຫານ້ອຍ)"
+
+msgid "Invalid source selected."
+msgstr "Source ທີ່ເລືອກບໍ່ຖືກຕ້ອງ."
+
+msgid "Patterns"
+msgstr "ລວດລາຍ (Patterns)"
+
+msgid "Drag and drop or paste a TileMap selection here to store a pattern."
+msgstr "ລາກ ແລະ ວາງ ຫຼື ວາງ tile ທີ່ເລືອກມາໃສ່ນີ້ເພື່ອບັນທຶກເປັນລວດລາຍ (pattern)."
+
+msgid "Paint terrain"
+msgstr "ລະບາຍ terrain"
+
+msgid "Matches Corners and Sides"
+msgstr "ກົງກັບມຸມ ແລະ ຂ້າງ"
+
+msgid "Matches Corners Only"
+msgstr "ກົງກັບມຸມເທົ່ານັ້ນ"
+
+msgid "Matches Sides Only"
+msgstr "ກົງກັບຂ້າງເທົ່ານັ້ນ"
+
+msgid "Terrain Set %d (%s)"
+msgstr "ຊຸດ Terrain %d (%s)"
+
+msgid ""
+"Connect mode: paints a terrain, then connects it with the surrounding tiles "
+"with the same terrain."
+msgstr "ໂໝດເຊື່ອມຕໍ່: ລະບາຍ terrain, ແລ້ວເຊື່ອມຕໍ່ມັນກັບ tile ອ້ອມຂ້າງທີ່ມີ terrain ດຽວກັນ."
+
+msgid ""
+"Path mode: paints a terrain, then connects it to the previous tile painted "
+"within the same stroke."
+msgstr "ໂໝດເສັ້ນທາງ: ລະບາຍ terrain, ແລ້ວເຊື່ອມຕໍ່ມັນກັບ tile ກ່ອນໜ້າທີ່ລະບາຍໃນຄັ້ງດຽວກັນ."
+
+msgid "Terrains"
+msgstr "ພື້ນຜິວ (Terrains)"
+
+msgid "No Layers"
+msgstr "ບໍ່ມີ Layer"
+
+msgid "Replace Tiles with Proxies"
+msgstr "ປ່ຽນແທນ Tile ດ້ວຍ Proxy"
+
+msgid "Extract TileMap layers as individual TileMapLayer nodes"
+msgstr "ແຍກ layer ຂອງ TileMap ອອກເປັນໂນດ TileMapLayer ແຕ່ລະອັນ"
+
+msgid "Can't edit multiple layers at once."
+msgstr "ບໍ່ສາມາດແກ້ໄຂຫຼາຍ layer ພ້ອມກັນໄດ້."
+
+msgid "The selected TileMap has no layer to edit."
+msgstr "TileMap ທີ່ເລືອກບໍ່ມີ layer ໃຫ້ແກ້ໄຂ."
+
+msgid "The edited layer is disabled or invisible"
+msgstr "Layer ທີ່ກຳລັງແກ້ໄຂຖືກປິດໃຊ້ງານ ຫຼື ບໍ່ເຫັນ"
+
+msgid ""
+"The edited TileMap or TileMapLayer node has no TileSet resource.\n"
+"Create or load a TileSet resource in the Tile Set property in the inspector."
+msgstr ""
+"ໂນດ TileMap ຫຼື TileMapLayer ທີ່ກຳລັງແກ້ໄຂບໍ່ມີ TileSet resource.\n"
+"ກະລຸນາສ້າງ ຫຼື ໂຫລດ TileSet resource ໃນຄຸນສົມບັດ Tile Set ໃນ inspector."
+
+msgid "TileMap"
+msgstr "TileMap"
+
+msgid "Open TileMap Dock"
+msgstr "ເປີດແຖບ TileMap"
+
+msgid "Select Next Tile Map Layer"
+msgstr "ເລືອກ Tile Map Layer ຖັດໄປ"
+
+msgid "Select Previous Tile Map Layer"
+msgstr "ເລືອກ Tile Map Layer ກ່ອນໜ້າ"
+
+msgid "TileMap Layers"
+msgstr "TileMap Layers"
+
+msgid "Select previous layer"
+msgstr "ເລືອກ layer ກ່ອນໜ້າ"
+
+msgid "Select next layer"
+msgstr "ເລືອກ layer ຖັດໄປ"
+
+msgid "Select all TileMapLayers in scene"
+msgstr "ເລືອກ TileMapLayer ທັງໝົດໃນສາກ"
+
+msgid "Highlight Selected TileMap Layer"
+msgstr "ເນັ້ນ Layer ຂອງ TileMap ທີ່ເລືອກ"
+
+msgid "Toggle grid visibility."
+msgstr "ເປີດ/ປິດ ການເບິ່ງເຫັນຕາຕະລາງ."
+
+msgid "Advanced settings."
+msgstr "ການຕັ້ງຄ່າຂັ້ນສູງ."
+
+msgid "Automatically Replace Tiles with Proxies"
+msgstr "ປ່ຽນແທນ tile ດ້ວຍ proxy ອັດຕະໂນມັດ"
+
+msgid "Remove Tile Proxies"
+msgstr "ລຶບ Tile Proxies"
+
+msgid "Create Alternative-level Tile Proxy"
+msgstr "ສ້າງ Tile Proxy ໃນລະດັບ Alternative"
+
+msgid "Create Coords-level Tile Proxy"
+msgstr "ສ້າງ Tile Proxy ໃນລະດັບ Coords"
+
+msgid "Create source-level Tile Proxy"
+msgstr "ສ້າງ Tile Proxy ໃນລະດັບ Source"
+
+msgid "Delete All Invalid Tile Proxies"
+msgstr "ລຶບ Tile Proxies ທີ່ບໍ່ຖືກຕ້ອງທັງໝົດ"
+
+msgid "Delete All Tile Proxies"
+msgstr "ລຶບ Tile Proxies ທັງໝົດ"
+
+msgid "Tile Proxies Management"
+msgstr "ການຈັດການ Tile Proxies"
+
+msgid "Source-level proxies"
+msgstr "Proxies ໃນລະດັບ Source"
+
+msgid "Coords-level proxies"
+msgstr "Proxies ໃນລະດັບ Coords"
+
+msgid "Alternative-level proxies"
+msgstr "Proxies ໃນລະດັບ Alternative"
+
+msgid "Add a new tile proxy:"
+msgstr "ເພີ່ມ tile proxy ໃໝ່:"
+
+msgid "From Source"
+msgstr "ຈາກ Source"
+
+msgid "From Coords"
+msgstr "ຈາກ Coords"
+
+msgid "From Alternative"
+msgstr "ຈາກ Alternative"
+
+msgid "To Source"
+msgstr "ໄປຫາ Source"
+
+msgid "To Coords"
+msgstr "ໄປຫາ Coords"
+
+msgid "To Alternative"
+msgstr "ໄປຫາ Alternative"
+
+msgid "Global actions:"
+msgstr "ຄຳສັ່ງທົ່ວໄປ:"
+
+msgid "Clear Invalid"
+msgstr "ລ້າງອັນທີ່ບໍ່ຖືກຕ້ອງ"
+
+msgid "Atlas"
+msgstr "ແອດລັສ (Atlas)"
+
+msgid "Base Tile"
+msgstr "Tile ພື້ນຖານ"
+
+msgid "Alternative Tile"
+msgstr "Tile ທາງເລືອກ"
+
+msgid ""
+"Selected tile:\n"
+"Source: %d\n"
+"Atlas coordinates: %s\n"
+"Alternative: %d"
+msgstr ""
+"Tile ທີ່ເລືອກ:\n"
+"Source: %d\n"
+"ພິກັດ Atlas: %s\n"
+"Alternative: %d"
+
+msgid "Rendering"
+msgstr "ການສະແດງຜົນ (Rendering)"
+
+msgid "Occlusion Layer %d"
+msgstr "Occlusion Layer %d"
+
+msgid "Physics"
+msgstr "ຟີຊິກ (Physics)"
+
+msgid "Physics Layer %d"
+msgstr "Physics Layer %d"
+
+msgid "No physics layers"
+msgstr "ບໍ່ມີ Physics Layer"
+
+msgid ""
+"Create and customize physics layers in the inspector of the TileSet resource."
+msgstr "ສ້າງ ແລະ ປັບແຕ່ງ physics layers ໃນ inspector ຂອງ TileSet resource."
+
+msgid "Navigation"
+msgstr "ການນຳທາງ (Navigation)"
+
+msgid "Navigation Layer %d"
+msgstr "Navigation Layer %d"
+
+msgid "No navigation layers"
+msgstr "ບໍ່ມີ Navigation Layer"
+
+msgid ""
+"Create and customize navigation layers in the inspector of the TileSet "
+"resource."
+msgstr "ສ້າງ ແລະ ປັບແຕ່ງ navigation layers ໃນ inspector ຂອງ TileSet resource."
+
+msgid "Custom Data"
+msgstr "ຂໍ້ມູນກຳນົດເອງ (Custom Data)"
+
+msgid "Custom Data %d"
+msgstr "ຂໍ້ມູນກຳນົດເອງ (Custom Data) %d"
+
+msgid "No custom data layers"
+msgstr "ບໍ່ມີ Custom Data Layer"
+
+msgid ""
+"Create and customize custom data layers in the inspector of the TileSet "
+"resource."
+msgstr "ສ້າງ ແລະ ປັບແຕ່ງ custom data layers ໃນ inspector ຂອງ TileSet resource."
+
+msgid "Select a property editor"
+msgstr "ເລືອກ Property Editor"
+
+msgid ""
+"TileSet is in read-only mode. Make the resource unique to edit TileSet "
+"properties."
+msgstr "TileSet ຢູ່ໃນໂໝດອ່ານຢ່າງດຽວ. ເຮັດໃຫ້ resource ເປັນແບບ unique ເພື່ອແກ້ໄຂຄຸນສົມບັດ."
+
+msgid "Paint properties."
+msgstr "ລະບາຍຄຸນສົມບັດ."
+
+msgid "Create tiles"
+msgstr "ສ້າງ tile"
+
+msgid "Create a tile"
+msgstr "ສ້າງ tile ອັນດຽວ"
+
+msgid "Remove tiles"
+msgstr "ລຶບ tile"
+
+msgid "Move a tile"
+msgstr "ຍ້າຍ tile"
+
+msgid "Resize a tile"
+msgstr "ປັບຂະໜາດ tile"
+
+msgid "Remove tile"
+msgstr "ລຶບ tile"
+
+msgid "Create tile alternatives"
+msgstr "ສ້າງ tile ທາງເລືອກ"
+
+msgid "Remove Tiles Outside the Texture"
+msgstr "ລຶບ tile ທີ່ຢູ່ນອກ texture"
+
+msgid "Create tiles in non-transparent texture regions"
+msgstr "ສ້າງ tile ໃນພື້ນທີ່ texture ທີ່ບໍ່ໂປ່ງໃສ"
+
+msgid "Remove tiles in fully transparent texture regions"
+msgstr "ລຶບ tile ໃນພື້ນທີ່ texture ທີ່ໂປ່ງໃສທັງໝົດ"
+
+msgid ""
+"The tile's unique identifier within this TileSet. Each tile stores its source "
+"ID, so changing one may make tiles invalid."
+msgstr ""
+"ລະຫັດລະບຸຕົວຕົນສະເພາະຂອງ tile ໃນ TileSet ນີ້. ແຕ່ລະ tile ຈະເກັບ source ID ຂອງມັນໄວ້, "
+"ດັ່ງນັ້ນການປ່ຽນອັນໃດອັນໜຶ່ງອາດເຮັດໃຫ້ tile ບໍ່ຖືກຕ້ອງ."
+
+msgid ""
+"The human-readable name for the atlas. Use a descriptive name here for "
+"organizational purposes (such as \"terrain\", \"decoration\", etc.)."
+msgstr ""
+"ຊື່ທີ່ຄົນອ່ານເຂົ້າໃຈໄດ້ສຳລັບອັດລັສ (atlas). ໃຊ້ຊື່ທີ່ອະທິບາຍຈະແຈ້ງຢູ່ບ່ອນນີ້ເພື່ອຄວາມເປັນລະບຽບ (ເຊັ່ນ "
+"\"terrain\", \"decoration\", ແລະ ອື່ນໆ)."
+
+msgid "The image from which the tiles will be created."
+msgstr "ຮູບພາບທີ່ຈະຖືກນຳມາສ້າງເປັນໄທລ໌ (tiles)."
+
+msgid ""
+"The margins on the image's edges that should not be selectable as tiles (in "
+"pixels). Increasing this can be useful if you download a tilesheet image that "
+"has margins on the edges (e.g. for attribution)."
+msgstr ""
+"ຂອບຢູ່ແຄມຂອງຮູບພາບທີ່ບໍ່ຄວນຖືກເລືອກເປັນໄທລ໌ (ເປັນພິກເຊວ). ການເພີ່ມຄ່ານີ້ຈະມີປະໂຫຍດ "
+"ຫາກເຈົ້າດາວໂຫຼດຮູບ tilesheet ທີ່ມີຂອບຢູ່ແຄມ (ເຊັ່ນ ເພື່ອໃຫ້ເຄຣດິດຜູ້ສ້າງ)."
+
+msgid ""
+"The separation between each tile on the atlas in pixels. Increasing this can "
+"be useful if the tilesheet image you're using contains guides (such as "
+"outlines between every tile)."
+msgstr ""
+"ໄລຍະຫ່າງລະຫວ່າງແຕ່ລະໄທລ໌ໃນອັດລັສເປັນພິກເຊວ. ການເພີ່ມຄ່ານີ້ຈະມີປະໂຫຍດ ຫາກຮູບ tilesheet "
+"ທີ່ເຈົ້າໃຊ້ມີເສັ້ນນຳທາງ (ເຊັ່ນ ເສັ້ນຂອບລະຫວ່າງແຕ່ລະໄທລ໌)."
+
+msgid ""
+"The size of each tile on the atlas in pixels. In most cases, this should "
+"match the tile size defined in the TileMap property (although this is not "
+"strictly necessary)."
+msgstr ""
+"ຂະໜາດຂອງແຕ່ລະໄທລ໌ໃນອັດລັສເປັນພິກເຊວ. ສ່ວນຫຼາຍແລ້ວ, ຄ່ານີ້ຄວນຈະກົງກັບຂະໜາດໄທລ໌ "
+"ທີ່ກຳນົດໄວ້ໃນຄຸນສົມບັດຂອງ TileMap (ເຖິງແມ່ນວ່າຈະບໍ່ຈຳເປັນຕ້ອງຄືກັນແທ້ໆກໍຕາມ)."
+
+msgid ""
+"If checked, adds a 1-pixel transparent edge around each tile to prevent "
+"texture bleeding when filtering is enabled. It's recommended to leave this "
+"enabled unless you're running into rendering issues due to texture padding."
+msgstr ""
+"ຫາກໝາຍເລືອກ, ຈະເພີ່ມຂອບໂປ່ງໃສຂະໜາດ 1 ພິກເຊວ ອ້ອມຮອບແຕ່ລະໄທລ໌ເພື່ອປ້ອງກັນ ສີເທັກເຈີເຫຼື້ອມປົນກັນ "
+"(texture bleeding) ເມື່ອເປີດໃຊ້ filtering. ແນະນຳໃຫ້ເປີດໃຊ້ຄ່ານີ້ໄວ້ "
+"ເວັ້ນເສຍແຕ່ເຈົ້າຈະພົບບັນຫາການສະແດງຜົນເນື່ອງມາຈາກ texture padding."
+
+msgid ""
+"The position of the tile's top-left corner in the atlas. The position and "
+"size must be within the atlas and can't overlap another tile.\n"
+"Each painted tile has associated atlas coords, so changing this property may "
+"cause your TileMaps to not display properly."
+msgstr ""
+"ຕຳແໜ່ງຂອງມຸມຊ້າຍເທິງຂອງໄທລ໌ໃນອັດລັສ. ຕຳແໜ່ງ ແລະ ຂະໜາດຕ້ອງຢູ່ພາຍໃນອັດລັສ ແລະ "
+"ບໍ່ສາມາດຊ້ອນທັບກັບໄທລ໌ອື່ນໄດ້.\n"
+"ແຕ່ລະໄທລ໌ທີ່ແຕ້ມລົງໄປຈະມີພິກັດອັດລັສທີ່ກ່ຽວຂ້ອງ, ດັ່ງນັ້ນການປ່ຽນຄຸນສົມບັດນີ້ ອາດເຮັດໃຫ້ TileMaps "
+"ຂອງເຈົ້າສະແດງຜົນບໍ່ຖືກຕ້ອງ."
+
+msgid "The unit size of the tile."
+msgstr "ຂະໜາດຫົວໜ່ວຍຂອງໄທລ໌."
+
+msgid ""
+"Number of columns for the animation grid. If number of columns is lower than "
+"number of frames, the animation will automatically adjust row count."
+msgstr ""
+"ຈຳນວນຖັນສຳລັບຕາຕະລາງແອນິເມຊັນ. ຫາກຈຳນວນຖັນໜ້ອຍກວ່າຈຳນວນເຟຣມ, "
+"ແອນິເມຊັນຈະປັບຈຳນວນແຖວໃຫ້ໂດຍອັດຕະໂນມັດ."
+
+msgid "The space (in tiles) between each frame of the animation."
+msgstr "ໄລຍະຫ່າງ (ເປັນຫົວໜ່ວຍໄທລ໌) ລະຫວ່າງແຕ່ລະເຟຣມຂອງແອນິເມຊັນ."
+
+msgid "Animation speed in frames per second."
+msgstr "ຄວາມໄວແອນິເມຊັນເປັນເຟຣມຕໍ່ວິນາທີ."
+
+msgid ""
+"Determines how animation will start. In \"Default\" mode all tiles start "
+"animating at the same frame. In \"Random Start Times\" mode, each tile starts "
+"animation with a random offset."
+msgstr ""
+"ກຳນົດຮູບແບບການເລີ່ມຕົ້ນຂອງແອນິເມຊັນ. ໃນໂໝດ \"Default\" ທຸກໄທລ໌ຈະເລີ່ມ ແອນິເມຊັນຢູ່ເຟຣມດຽວກັນ. "
+"ໃນໂໝດ \"Random Start Times\", ແຕ່ລະໄທລ໌ ຈະເລີ່ມແອນິເມຊັນດ້ວຍການສຸ່ມເວລາເລີ່ມຕົ້ນ."
+
+msgid "If [code]true[/code], the tile is horizontally flipped."
+msgstr "ຫາກເປັນ [code]true[/code], ໄທລ໌ຈະຖືກພິກໃນແນວນອນ."
+
+msgid "If [code]true[/code], the tile is vertically flipped."
+msgstr "ຫາກເປັນ [code]true[/code], ໄທລ໌ຈະຖືກພິກໃນແນວຕັ້ງ."
+
+msgid ""
+"If [code]true[/code], the tile is rotated 90 degrees [i]counter-clockwise[/i] "
+"and then flipped vertically. In practice, this means that to rotate a tile by "
+"90 degrees clockwise without flipping it, you should enable [b]Flip H[/b] and "
+"[b]Transpose[/b]. To rotate a tile by 180 degrees clockwise, enable [b]Flip "
+"H[/b] and [b]Flip V[/b]. To rotate a tile by 270 degrees clockwise, enable "
+"[b]Flip V[/b] and [b]Transpose[/b]."
+msgstr ""
+"ຫາກເປັນ [code]true[/code], ໄທລ໌ຈະຖືກໝູນ 90 ອົງສາ [i]ທວນເຂັມໂມງ[/i] ແລ້ວພິກແນວຕັ້ງ. "
+"ໃນທາງປະຕິບັດ, ນີ້ໝາຍຄວາມວ່າການໝູນໄທລ໌ 90 ອົງສາຕາມເຂັມໂມງໂດຍບໍ່ພິກ, ເຈົ້າຄວນເປີດໃຊ້ [b]Flip H[/"
+"b] ແລະ [b]Transpose[/b]. ເພື່ອໝູນໄທລ໌ 180 ອົງສາຕາມເຂັມໂມງ, ໃຫ້ເປີດ [b]Flip H[/b] ແລະ "
+"[b]Flip V[/b]. ເພື່ອໝູນໄທລ໌ 270 ອົງສາຕາມເຂັມໂມງ, ໃຫ້ເປີດ [b]Flip V[/b] ແລະ "
+"[b]Transpose[/b]."
+
+msgid ""
+"The origin to use for drawing the tile. This can be used to visually offset "
+"the tile compared to the base tile."
+msgstr ""
+"ຈຸດກຳເນີດ (origin) ທີ່ຈະໃຊ້ໃນການແຕ້ມໄທລ໌. ສາມາດໃຊ້ເພື່ອປັບໄລຍະຫ່າງ (offset) "
+"ຂອງໄທລ໌ເມື່ອທຽບກັບໄທລ໌ພື້ນຖານ."
+
+msgid "The color multiplier to use when rendering the tile."
+msgstr "ຕົວຄູນສີທີ່ຈະໃຊ້ໃນເວລາປະມວນຜົນສະແດງໄທລ໌."
+
+msgid ""
+"The material to use for this tile. This can be used to apply a different "
+"blend mode or custom shaders to a single tile."
+msgstr ""
+"ວັດສະດຸ (material) ທີ່ຈະໃຊ້ສຳລັບໄທລ໌ນີ້. ສາມາດໃຊ້ເພື່ອຕັ້ງຄ່າ blend mode ທີ່ແຕກຕ່າງ ຫຼື ໃຊ້ custom "
+"shaders ກັບໄທລ໌ດຽວໄດ້."
+
+msgid ""
+"The sorting order for this tile. Higher values will make the tile render in "
+"front of others on the same layer. The index is relative to the TileMap's own "
+"Z index."
+msgstr ""
+"ລຳດັບການຈັດລຽງສຳລັບໄທລ໌ນີ້. ຄ່າທີ່ສູງກວ່າຈະເຮັດໃຫ້ໄທລ໌ສະແດງຜົນຢູ່ທາງໜ້າໄທລ໌ອື່ນໆ ໃນເລເຍີ (layer) "
+"ດຽວກັນ. ຄ່ານີ້ຈະອ້າງອີງຕາມ Z index ຂອງ TileMap ເອງ."
+
+msgid ""
+"The vertical offset to use for tile sorting based on its Y coordinate (in "
+"pixels). This allows using layers as if they were on different height for top-"
+"down games. Adjusting this can help alleviate issues with sorting certain "
+"tiles. Only effective if Y Sort Enabled is true on the TileMap layer the tile "
+"is placed on."
+msgstr ""
+"ໄລຍະຫ່າງແນວຕັ້ງທີ່ຈະໃຊ້ໃນການຈັດລຽງໄທລ໌ຕາມພິກັດ Y (ເປັນພິກເຊວ). ນີ້ຊ່ວຍໃຫ້ສາມາດ "
+"ໃຊ້ເລເຍີຄືກັບວ່າມັນຢູ່ຄວາມສູງທີ່ຕ່າງກັນສຳລັບເກມແນວ top-down. ການປັບຄ່ານີ້ສາມາດຊ່ວຍ "
+"ແກ້ໄຂບັນຫາການຈັດລຽງໄທລ໌ບາງອັນໄດ້. ຈະມີຜົນກໍຕໍ່ເມື່ອ Y Sort Enabled ເປັນ true ໃນເລເຍີຂອງ "
+"TileMap ທີ່ໄທລ໌ນັ້ນວາງຢູ່."
+
+msgid ""
+"The index of the terrain set this tile belongs to. [code]-1[/code] means it "
+"will not be used in terrains."
+msgstr ""
+"ລຳດັບ (index) ຂອງ terrain set ທີ່ໄທລ໌ນີ້ສັງກັດຢູ່. [code]-1[/code] ໝາຍເຖິງ ຈະບໍ່ຖືກນຳໃຊ້ໃນ "
+"terrains."
+
+msgid ""
+"The index of the terrain inside the terrain set this tile belongs to. "
+"[code]-1[/code] means it will not be used in terrains."
+msgstr ""
+"ລຳດັບ (index) ຂອງ terrain ພາຍໃນ terrain set ທີ່ໄທລ໌ນີ້ສັງກັດຢູ່. [code]-1[/code] "
+"ໝາຍເຖິງຈະບໍ່ຖືກນຳໃຊ້ໃນ terrains."
+
+msgid ""
+"The relative probability of this tile appearing when painting with \"Place "
+"Random Tile\" enabled."
+msgstr ""
+"ໂອກາດທີ່ກ່ຽວຂ້ອງ (relative probability) ທີ່ໄທລ໌ນີ້ຈະປາກົດຂຶ້ນ ເມື່ອແຕ້ມດ້ວຍການເປີດໃຊ້ \"Place "
+"Random Tile\"."
+
+msgid ""
+"The current atlas source has tiles outside the texture.\n"
+"You can clear it using \"%s\" option in the 3 dots menu."
+msgstr ""
+"ແຫຼ່ງອັດລັສ (atlas source) ປັດຈຸບັນມີໄທລ໌ທີ່ຢູ່ນອກເທັກເຈີ (texture).\n"
+"ເຈົ້າສາມາດລຶບມັນອອກໄດ້ໂດຍໃຊ້ຕົວເລືອກ \"%s\" ໃນເມນູ 3 ຈ້ຳ."
+
+msgid "Setup"
+msgstr "ຕັ້ງຄ່າ"
+
+msgid ""
+"Atlas setup. Add/Remove tiles tool (use the shift key to create big tiles, "
+"control for rectangle editing)."
+msgstr ""
+"ການຕັ້ງຄ່າອັດລັສ. ເຄື່ອງມື ເພີ່ມ/ລຶບ ໄທລ໌ (ໃຊ້ປຸ່ມ shift ເພື່ອສ້າງໄທລ໌ຂະໜາດໃຫຍ່, ປຸ່ມ control "
+"ສຳລັບການແກ້ໄຂແບບຮູບສີ່ແຈ)."
+
+msgid "Select tiles."
+msgstr "ເລືອກໄທລ໌."
+
+msgid ""
+"No tiles selected.\n"
+"Select one or more tiles from the palette to edit its properties."
+msgstr ""
+"ບໍ່ມີໄທລ໌ທີ່ຖືກເລືອກ.\n"
+"ເລືອກໄທລ໌ໜຶ່ງອັນ ຫຼື ຫຼາຍກວ່ານັ້ນຈາກ palette ເພື່ອແກ້ໄຂຄຸນສົມບັດຂອງມັນ."
+
+msgid "Paint Properties:"
+msgstr "ຄຸນສົມບັດການແຕ້ມ:"
+
+msgid "Create Tiles in Non-Transparent Texture Regions"
+msgstr "ສ້າງໄທລ໌ໃນສ່ວນຂອງເທັກເຈີທີ່ບໍ່ໂປ່ງໃສ"
+
+msgid "Remove Tiles in Fully Transparent Texture Regions"
+msgstr "ລຶບໄທລ໌ໃນສ່ວນຂອງເທັກເຈີທີ່ໂປ່ງໃສທັງໝົດ"
+
+msgid "Create an Alternative Tile"
+msgstr "ສ້າງໄທລ໌ທາງເລືອກ (Alternative Tile)"
+
+msgid "Create a Tile"
+msgstr "ສ້າງໄທລ໌"
+
+msgid "Auto Create Tiles in Non-Transparent Texture Regions?"
+msgstr "ສ້າງໄທລ໌ໃນສ່ວນຂອງເທັກເຈີທີ່ບໍ່ໂປ່ງໃສໂດຍອັດຕະໂນມັດບໍ່?"
+
+msgid ""
+"The atlas's texture was modified.\n"
+"Would you like to automatically create tiles in the atlas?"
+msgstr ""
+"ເທັກເຈີຂອງອັດລັສຖືກປ່ຽນແປງ.\n"
+"ເຈົ້າຕ້ອງການສ້າງໄທລ໌ໃນອັດລັສໂດຍອັດຕະໂນມັດບໍ່?"
+
+msgid "Invalid texture selected."
+msgstr "ເທັກເຈີທີ່ເລືອກບໍ່ຖືກຕ້ອງ."
+
+msgid "Add a new atlas source"
+msgstr "ເພີ່ມແຫຼ່ງອັດລັສໃໝ່"
+
+msgid "Remove source"
+msgstr "ລຶບແຫຼ່ງຂໍ້ມູນອອກ"
+
+msgid "Add atlas source"
+msgstr "ເພີ່ມແຫຼ່ງອັດລັສ"
+
+msgid "TileSet"
+msgstr "TileSet"
+
+msgid "Open TileSet Dock"
+msgstr "ເປີດ Dock ຂອງ TileSet"
+
+msgid "Tile Sources"
+msgstr "ແຫຼ່ງຂໍ້ມູນໄທລ໌"
+
+msgid "Sort Sources"
+msgstr "ຈັດລຽງແຫຼ່ງຂໍ້ມູນ"
+
+msgid "A palette of tiles made from a texture."
+msgstr "ຊຸດຂອງໄທລ໌ທີ່ສ້າງມາຈາກເທັກເຈີ."
+
+msgid "Scenes Collection"
+msgstr "ຊຸດສະສົມສາກ (Scenes Collection)"
+
+msgid "A collection of scenes that can be instantiated and placed as tiles."
+msgstr "ຊຸດຂອງສາກ (scenes) ທີ່ສາມາດສ້າງ instance ແລະ ວາງເປັນໄທລ໌ໄດ້."
+
+msgid "Open Atlas Merging Tool"
+msgstr "ເປີດເຄື່ອງມືລວມອັດລັສ"
+
+msgid "Manage Tile Proxies"
+msgstr "ຈັດການ Tile Proxies"
+
+msgid ""
+"No TileSet source selected. Select or create a TileSet source.\n"
+"You can create a new source by using the Add button on the left or by "
+"dropping a tileset texture onto the source list."
+msgstr ""
+"ບໍ່ໄດ້ເລືອກແຫຼ່ງ TileSet. ກະລຸນາເລືອກ ຫຼື ສ້າງແຫຼ່ງ TileSet.\n"
+"ເຈົ້າສາມາດສ້າງແຫຼ່ງໃໝ່ໄດ້ໂດຍການໃຊ້ປຸ່ມ Add ຢູ່ທາງຊ້າຍ ຫຼື ໂດຍການລາກ tileset texture "
+"ມາໃສ່ໃນລາຍການແຫຼ່ງຂໍ້ມູນ."
+
+msgid "Add new patterns in the TileMap editing mode."
+msgstr "ເພີ່ມຮູບແບບ (patterns) ໃໝ່ໃນໂໝດການແກ້ໄຂ TileMap."
+
+msgid ""
+"Warning: Modifying a source ID will result in all TileMaps using that source "
+"to reference an invalid source instead. This may result in unexpected data "
+"loss. Change this ID carefully."
+msgstr ""
+"ຄຳເຕືອນ: ການປ່ຽນແປງ ID ຂອງແຫຼ່ງຂໍ້ມູນ ຈະເຮັດໃຫ້ TileMaps ທັງໝົດທີ່ໃຊ້ແຫຼ່ງນັ້ນ "
+"ໄປອ້າງອີງເຖິງແຫຼ່ງທີ່ບໍ່ຖືກຕ້ອງແທນ. ນີ້ອາດເຮັດໃຫ້ຂໍ້ມູນສູນຫາຍໂດຍບໍ່ຄາດຄິດ. ກະລຸນາປ່ຽນ ID "
+"ນີ້ດ້ວຍຄວາມລະມັດລະວັງ."
+
+msgid "Add a Scene Tile"
+msgstr "ເພີ່ມ Scene Tile"
+
+msgid "Remove a Scene Tile"
+msgstr "ລຶບ Scene Tile"
+
+msgid "Drag and drop scenes here or use the Add button."
+msgstr "ລາກ ແລະ ວາງສາກ (scenes) ໃສ່ນີ້ ຫຼື ໃຊ້ປຸ່ມ Add."
+
+msgid ""
+"The human-readable name for the scene collection. Use a descriptive name here "
+"for organizational purposes (such as \"obstacles\", \"decoration\", etc.)."
+msgstr ""
+"ຊື່ທີ່ຄົນອ່ານເຂົ້າໃຈໄດ້ສຳລັບຊຸດສະສົມສາກ. ໃຊ້ຊື່ທີ່ອະທິບາຍຈະແຈ້ງຢູ່ບ່ອນນີ້ເພື່ອຄວາມເປັນລະບຽບ (ເຊັ່ນ "
+"\"obstacles\", \"decoration\", ແລະ ອື່ນໆ)."
+
+msgid ""
+"ID of the scene tile in the collection. Each painted tile has associated ID, "
+"so changing this property may cause your TileMaps to not display properly."
+msgstr ""
+"ID ຂອງ scene tile ໃນຊຸດສະສົມ. ແຕ່ລະໄທລ໌ທີ່ແຕ້ມລົງໄປຈະມີ ID ທີ່ກ່ຽວຂ້ອງ, "
+"ດັ່ງນັ້ນການປ່ຽນຄຸນສົມບັດນີ້ອາດເຮັດໃຫ້ TileMaps ຂອງເຈົ້າສະແດງຜົນບໍ່ຖືກຕ້ອງ."
+
+msgid "Absolute path to the scene associated with this tile."
+msgstr "ທີ່ຢູ່ເຕັມ (Absolute path) ຂອງສາກທີ່ກ່ຽວຂ້ອງກັບໄທລ໌ນີ້."
+
+msgid ""
+"If [code]true[/code], a placeholder marker will be displayed on top of the "
+"scene's preview. The marker is displayed anyway if the scene has no valid "
+"preview."
+msgstr ""
+"ຫາກເປັນ [code]true[/code], ເຄື່ອງໝາຍບ່ອນວາງ (placeholder) ຈະຖືກສະແດງຢູ່ເທິງ "
+"ຕົວຢ່າງຂອງສາກ. ເຄື່ອງໝາຍຈະຖືກສະແດງຢູ່ແລ້ວຫາກສາກນັ້ນບໍ່ມີຕົວຢ່າງທີ່ຖືກຕ້ອງ."
+
+msgid "Scenes collection properties:"
+msgstr "ຄຸນສົມບັດຊຸດສະສົມສາກ:"
+
+msgid "Tile properties:"
+msgstr "ຄຸນສົມບັດໄທລ໌:"
+
+msgid "Eraser Tool"
+msgstr "ເຄື່ອງມືຢາງລຶບ"
+
+msgid "Picker Tool"
+msgstr "ເຄື່ອງມືດູດສີ/ເລືອກ"
+
+msgid ""
+"Source ID: %d\n"
+"Texture path: %s"
+msgstr ""
+"ID ແຫຼ່ງຂໍ້ມູນ: %d\n"
+"ທີ່ຢູ່ເທັກເຈີ: %s"
+
+msgid "Source ID: %d"
+msgstr "ID ແຫຼ່ງຂໍ້ມູນ: %d"
+
+msgid ""
+"The TileMap node is deprecated as it is superseded by the use of multiple "
+"TileMapLayer nodes.\n"
+"To convert a TileMap to a set of TileMapLayer nodes, open the TileMap bottom "
+"panel with this node selected, click the toolbox icon in the top-right corner "
+"and choose \"Extract TileMap layers as individual TileMapLayer nodes\"."
+msgstr ""
+"Node TileMap ຖືກຍົກເລີກການໃຊ້ງານແລ້ວ ເນື່ອງຈາກຖືກປ່ຽນແທນດ້ວຍການໃຊ້ TileMapLayer ຫຼາຍອັນ.\n"
+"ເພື່ອແປງ TileMap ເປັນ TileMapLayer, ໃຫ້ເປີດແຜງ TileMap ດ້ານລຸ່ມ, ຄລິກໄອຄອນ toolbox "
+"ມຸມຂວາເທິງ ແລ້ວເລືອກ \"Extract TileMap layers as individual TileMapLayer nodes\"."
+
+msgid ""
+"A Y-sorted layer has the same Z-index value as a not Y-sorted layer.\n"
+"This may lead to unwanted behaviors, as a layer that is not Y-sorted will be "
+"Y-sorted as a whole with tiles from Y-sorted layers."
+msgstr ""
+"ເລເຢີທີ່ຈັດລຽງແບບ Y-sort ມີຄ່າ Z-index ຄືກັນກັບເລເຢີທີ່ບໍ່ໄດ້ຈັດລຽງແບບ Y-sort.\n"
+"ນີ້ອາດຈະເຮັດໃຫ້ເກີດພຶດຕິກຳທີ່ບໍ່ຕ້ອງການ."
+
+msgid ""
+"A TileMap layer is set as Y-sorted, but Y-sort is not enabled on the TileMap "
+"node itself."
+msgstr ""
+"ເລເຢີຂອງ TileMap ຖືກຕັ້ງເປັນ Y-sorted, ແຕ່ບໍ່ໄດ້ເປີດໃຊ້ງານ Y-sort ຢູ່ທີ່ Node TileMap ເອງ."
+
+msgid ""
+"The TileMap node is set as Y-sorted, but Y-sort is not enabled on any of the "
+"TileMap's layers.\n"
+"This may lead to unwanted behaviors, as a layer that is not Y-sorted will be "
+"Y-sorted as a whole."
+msgstr ""
+"Node TileMap ຖືກຕັ້ງເປັນ Y-sorted, ແຕ່ບໍ່ມີເລເຢີໃດຂອງ TileMap ທີ່ເປີດໃຊ້ງານ Y-sort.\n"
+"ນີ້ອາດຈະເຮັດໃຫ້ເກີດພຶດຕິກຳທີ່ບໍ່ຕ້ອງການ."
+
+msgid ""
+"Isometric TileSet will likely not look as intended without Y-sort enabled for "
+"the TileMap and all of its layers."
+msgstr ""
+"Isometric TileSet ອາດຈະສະແດງຜົນບໍ່ຖືກຕ້ອງ ຫາກບໍ່ເປີດໃຊ້ງານ Y-sort ສຳລັບ TileMap ແລະ "
+"ເລເຢີທັງໝົດ."
+
 msgid "E constant (2.718282). Represents the base of the natural logarithm."
 msgstr "ຄ່າຄົງທີ່ E (2.718282). ເປັນຄ່າພື້ນຖານຂອງລໍກາຣິດທຳມະຊາດ."
 
@@ -18153,15 +17596,6 @@ msgstr "ຄ່າຄົງທີ່ Tau (6.283185) ຫຼື 360 ອົງສາ
 msgid "Sqrt2 constant (1.414214). Square root of 2."
 msgstr "ຄ່າຄົງທີ່ Sqrt2 (1.414214). ຮາກຂັ້ນສອງຂອງ 2."
 
-msgid "Drag and drop nodes here to attach them."
-msgstr "ລາກ ແລະ ຢອດໂນດໃສ່ນີ້ເພື່ອເຊື່ອມຕໍ່ພວກມັນ."
-
-msgid "Add Input"
-msgstr "ເພີ່ມອິນພຸດ"
-
-msgid "Add Output"
-msgstr "ເພີ່ມເອົາພຸດ"
-
 msgid "Int"
 msgstr "ຈຳນວນຖ້ວນ (Int)"
 
@@ -18176,6 +17610,15 @@ msgstr "Vector4"
 
 msgid "Sampler"
 msgstr "Sampler"
+
+msgid "Drag and drop nodes here to attach them."
+msgstr "ລາກ ແລະ ຢອດໂນດໃສ່ນີ້ເພື່ອເຊື່ອມຕໍ່ພວກມັນ."
+
+msgid "Add Input"
+msgstr "ເພີ່ມອິນພຸດ"
+
+msgid "Add Output"
+msgstr "ເພີ່ມເອົາພຸດ"
 
 msgid "[default]"
 msgstr "[ເລີ່ມຕົ້ນ]"
@@ -18625,18 +18068,6 @@ msgstr "ພາລາມິເຕີຂາເຂົ້າ '%s' ສຳລັບໂ
 msgid "'%s' input parameter for vertex shader mode."
 msgstr "ພາລາມິເຕີຂາເຂົ້າ '%s' ສຳລັບໂໝດ vertex shader."
 
-msgid "'%s' input parameter for start shader mode."
-msgstr "ພາລາມິເຕີຂາເຂົ້າ '%s' ສຳລັບໂໝດ start shader."
-
-msgid "'%s' input parameter for process shader mode."
-msgstr "ພາລາມິເຕີຂາເຂົ້າ '%s' ສຳລັບໂໝດ process shader."
-
-msgid "'%s' input parameter for start and process shader modes."
-msgstr "ພາລາມິເຕີຂາເຂົ້າ '%s' ສຳລັບໂໝດ start ແລະ process shader."
-
-msgid "'%s' input parameter for process and collide shader modes."
-msgstr "ພາລາມິເຕີຂາເຂົ້າ '%s' ສຳລັບໂໝດ process ແລະ collide shader."
-
 msgid ""
 "A node for help to multiply a position input vector by rotation using "
 "specific axis. Intended to work with emitters."
@@ -18975,9 +18406,6 @@ msgstr "ຄືນຄ່າຄວາມເລິກ (depth) ທີ່ໄດ້ຈ
 msgid "Reconstructs the World Position of the Node from the depth texture."
 msgstr "ສ້າງຕຳແໜ່ງໂລກ (World Position) ຂອງໂນດຄືນໃໝ່ຈາກ depth texture."
 
-msgid "Unpacks the Screen Normal Texture in World Space"
-msgstr "ແຍກ (Unpack) Screen Normal Texture ໃນ World Space"
-
 msgid "Perform the 2D texture lookup."
 msgstr "ດຳເນີນການຄົ້ນຫາເທັກເຈີ 2D."
 
@@ -19091,13 +18519,6 @@ msgstr ""
 
 msgid "Returns a random value between the minimum and maximum input values."
 msgstr "ຄືນຄ່າສຸ່ມລະຫວ່າງຄ່າຕ່ຳສຸດ ແລະ ສູງສຸດທີ່ປ້ອນເຂົ້າ."
-
-msgid ""
-"Builds a rotation matrix from the given axis and angle, multiply the input "
-"vector by it and returns both this vector and a matrix."
-msgstr ""
-"ສ້າງມາທຣິກການໝຸນຈາກແກນ ແລະ ມຸມທີ່ກຳນົດ, ຄູນເວັກເຕີຂາເຂົ້າດ້ວຍມາທຣິກນັ້ນ ແລະ ຄືນຄ່າທັງເວັກເຕີ ແລະ "
-"ມາທຣິກ."
 
 msgid "Vector function."
 msgstr "ຟັງຊັນເວັກເຕີ."
@@ -19486,9 +18907,6 @@ msgstr "ຕົວອັກສອນ '%s' ບໍ່ສາມາດເປັນຕ
 msgid "The package must have at least one '.' separator."
 msgstr "ຊື່ແພັກເກດຕ້ອງມີເຄື່ອງໝາຍຈ້ຳ '.' ຂັ້ນຢ່າງໜ້ອຍໜຶ່ງຈຸດ."
 
-msgid "Error creating keystores directory:"
-msgstr "ເກີດຂໍ້ຜິດພາດໃນການສ້າງໂຟນເດີ keystores:"
-
 msgid "Invalid package name:"
 msgstr "ຊື່ແພັກເກດບໍ່ຖືກຕ້ອງ:"
 
@@ -19602,11 +19020,6 @@ msgid "Custom Android source template not found."
 msgstr "ບໍ່ພົບແມ່ແບບຊອຣ໌ສ Android ແບບກຳນົດເອງ."
 
 msgid ""
-"Android build template not installed in the project. Install it from the "
-"Project menu."
-msgstr "ຍັງບໍ່ໄດ້ຕິດຕັ້ງແມ່ແບບການບິວດ໌ Android ໃນໂຄງການ. ກະລຸນາຕິດຕັ້ງຈາກເມນູ Project."
-
-msgid ""
 "Either Debug Keystore, Debug User AND Debug Password settings must be "
 "configured OR none of them."
 msgstr ""
@@ -19626,51 +19039,11 @@ msgstr ""
 msgid "Release keystore incorrectly configured in the export preset."
 msgstr "ຕັ້ງຄ່າ Release keystore ບໍ່ຖືກຕ້ອງໃນ export preset."
 
-msgid "A valid Java SDK path is required in Editor Settings."
-msgstr "ຕ້ອງການເສັ້ນທາງ Java SDK ທີ່ຖືກຕ້ອງໃນ Editor Settings."
-
-msgid "Invalid Java SDK path in Editor Settings."
-msgstr "ເສັ້ນທາງ Java SDK ໃນ Editor Settings ບໍ່ຖືກຕ້ອງ."
-
-msgid "Missing 'bin' directory!"
-msgstr "ບໍ່ພົບໂຟນເດີ 'bin'!"
-
-msgid "Unable to find 'java' command using the Java SDK path."
-msgstr "ບໍ່ພົບຄຳສັ່ງ 'java' ໂດຍໃຊ້ເສັ້ນທາງ Java SDK ນີ້."
-
-msgid "Please check the Java SDK directory specified in Editor Settings."
-msgstr "ກະລຸນາກວດສອບໂຟນເດີ Java SDK ທີ່ລະບຸໄວ້ໃນ Editor Settings."
-
-msgid "A valid Android SDK path is required in Editor Settings."
-msgstr "ຕ້ອງການເສັ້ນທາງ Android SDK ທີ່ຖືກຕ້ອງໃນ Editor Settings."
-
-msgid "Invalid Android SDK path in Editor Settings."
-msgstr "ເສັ້ນທາງ Android SDK ໃນ Editor Settings ບໍ່ຖືກຕ້ອງ."
-
-msgid "Missing 'platform-tools' directory!"
-msgstr "ບໍ່ພົບໂຟນເດີ 'platform-tools'!"
-
-msgid "Unable to find Android SDK platform-tools' adb command."
-msgstr "ບໍ່ພົບຄຳສັ່ງ adb ໃນ platform-tools ຂອງ Android SDK."
-
-msgid "Please check in the Android SDK directory specified in Editor Settings."
-msgstr "ກະລຸນາກວດສອບໃນໂຟນເດີ Android SDK ທີ່ລະບຸໄວ້ໃນ Editor Settings."
-
-msgid "Missing 'build-tools' directory!"
-msgstr "ບໍ່ພົບໂຟນເດີ 'build-tools'!"
-
 msgid "Unable to find Android SDK build-tools' apksigner command."
 msgstr "ບໍ່ພົບຄຳສັ່ງ apksigner ໃນ build-tools ຂອງ Android SDK."
 
-msgid ""
-"ETC2/ASTC texture compression is required for Android export. In Project "
-"Settings, search for 'ETC2' in the search field, or enable 'Advanced "
-"Settings' and go to Rendering > Textures > VRAM Compression to enable 'Import "
-"ETC2 ASTC'."
-msgstr ""
-"ຕ້ອງໃຊ້ການບີບອັດເທັກເຈີແບບ ETC2/ASTC ສຳລັບການສົ່ງອອກ Android. ໃນ Project Settings, "
-"ຄົ້ນຫາ 'ETC2' ຫຼື ເປີດ 'Advanced Settings' ແລ້ວໄປທີ່ Rendering > Textures > VRAM "
-"Compression ເພື່ອເປີດໃຊ້ 'Import ETC2 ASTC'."
+msgid "Please check in the Android SDK directory specified in Editor Settings."
+msgstr "ກະລຸນາກວດສອບໃນໂຟນເດີ Android SDK ທີ່ລະບຸໄວ້ໃນ Editor Settings."
 
 msgid "\"Use Gradle Build\" is required for transparent background on Android"
 msgstr "ຕ້ອງໃຊ້ \"Use Gradle Build\" ເພື່ອໃຫ້ພື້ນຫຼັງໂປ່ງໃສໃນ Android"
@@ -19699,9 +19072,6 @@ msgid ""
 msgstr ""
 "ຊື່ໂຄງການບໍ່ກົງກັບຮູບແບບທີ່ຕ້ອງການສຳລັບຊື່ແພັກເກດ ແລະ ຈະຖືກປ່ຽນເປັນ \"%s\". "
 "ກະລຸນາລະບຸຊື່ແພັກເກດໃຫ້ຊັດເຈນຖ້າຈຳເປັນ."
-
-msgid "AAB signing is not supported"
-msgstr "ບໍ່ຮອງຮັບການເຊັນ (sign) ໄຟລ໌ AAB"
 
 msgid "Signing debug APK..."
 msgstr "ກຳລັງເຊັນ debug APK..."
@@ -19769,13 +19139,6 @@ msgstr "ຊື່ໄຟລ໌ບໍ່ຖືກຕ້ອງ! Android APK ຕ້�
 
 msgid "Unsupported export format!"
 msgstr "ບໍ່ຮອງຮັບຮູບແບບການສົ່ງອອກນີ້!"
-
-msgid ""
-"Trying to build from a gradle built template, but no version info for it "
-"exists. Please reinstall from the 'Project' menu."
-msgstr ""
-"ກຳລັງພະຍາຍາມບິວດ໌ຈາກແມ່ແບບທີ່ສ້າງດ້ວຍ gradle, ແຕ່ບໍ່ພົບຂໍ້ມູນເວີຊັນ. ກະລຸນາຕິດຕັ້ງໃໝ່ຈາກເມນູ "
-"'Project'."
 
 msgid ""
 "Java SDK path must be configured in Editor Settings at 'export/android/"
@@ -19851,12 +19214,6 @@ msgstr "ບໍ່ສາມາດແຕກໄຟລ໌ APK ຊົ່ວຄາວ�
 
 msgid "Metal renderer require iOS 14+."
 msgstr "ຕົວເຣັນເດີ Metal ຕ້ອງການ iOS 14 ຂຶ້ນໄປ."
-
-msgid "Export Icons"
-msgstr "ສົ່ງອອກໄອຄອນ"
-
-msgid "Could not open a directory at path \"%s\"."
-msgstr "ບໍ່ສາມາດເປີດໂຟນເດີຕາມເສັ້ນທາງ \"%s\" ໄດ້."
 
 msgid "Debug Script Export"
 msgstr "ສົ່ງອອກສະຄຣິບ Debug"
@@ -20094,6 +19451,9 @@ msgstr "ບໍ່ສາມາດເຊັນດີເຣັກທໍຣີ %s."
 msgid "Cannot sign file %s."
 msgstr "ບໍ່ສາມາດເຊັນໄຟລ໌ %s."
 
+msgid "Could not open \"%s\"."
+msgstr "ບໍ່ສາມາດເປີດ \"%s\"."
+
 msgid "Relative symlinks are not supported, exported \"%s\" might be broken!"
 msgstr "ບໍ່ຮອງຮັບ relative symlinks, \"%s\" ທີ່ສົ່ງອອກອາດຈະເສຍຫາຍ!"
 
@@ -20121,6 +19481,12 @@ msgstr "`hdiutil create` ຫຼົ້ມເຫຼວ - ມີໄຟລ໌ນີ�
 msgid "`hdiutil create` failed."
 msgstr "`hdiutil create` ຫຼົ້ມເຫຼວ."
 
+msgid "Could not create directory \"%s\"."
+msgstr "ບໍ່ສາມາດສ້າງດີເຣັກທໍຣີ \"%s\"."
+
+msgid "Could not create directory: \"%s\"."
+msgstr "ບໍ່ສາມາດສ້າງດີເຣັກທໍຣີ: \"%s\"."
+
 msgid "Exporting for macOS"
 msgstr "ກຳລັງສົ່ງອອກສຳລັບ macOS"
 
@@ -20132,12 +19498,6 @@ msgstr "ບໍ່ພົບແທມເພຼດແອັບທີ່ຈະສົ
 
 msgid "Invalid export format."
 msgstr "ຮູບແບບການສົ່ງອອກບໍ່ຖືກຕ້ອງ."
-
-msgid "Could not create directory: \"%s\"."
-msgstr "ບໍ່ສາມາດສ້າງດີເຣັກທໍຣີ: \"%s\"."
-
-msgid "Could not create directory \"%s\"."
-msgstr "ບໍ່ສາມາດສ້າງດີເຣັກທໍຣີ \"%s\"."
 
 msgid ""
 "Relative symlinks are not supported on this OS, the exported project might be "
@@ -20153,9 +19513,6 @@ msgid ""
 msgstr ""
 "ບໍ່ສາມາດຕັ້ງຄ່າການອະນຸຍາດ Unix ສຳລັບໄຟລ໌ທີ່ຣັນໄດ້ \"%s\". ກະລຸນາໃຊ້ \"chmod +x\" "
 "ເພື່ອຕັ້ງຄ່າຫຼັງຈາກຍ້າຍ .app ທີ່ສົ່ງອອກໄປຍັງ macOS ຫຼື Linux."
-
-msgid "Could not open \"%s\"."
-msgstr "ບໍ່ສາມາດເປີດ \"%s\"."
 
 msgid ""
 "Requested template binary \"%s\" not found. It might be missing from your "
@@ -20598,8 +19955,8 @@ msgid ""
 "A PhysicalBone2D node should have a Joint2D-based child node to keep bones "
 "connected! Please add a Joint2D-based node as a child to this node!"
 msgstr ""
-"Node PhysicalBone2D ຄວນມີ Node ລູກທີ່ເປັນ Joint2D ເພື່ອໃຫ້ກະດູກເຊື່ອມຕໍ່ກັນ! ກະລຸນາເພີ່ມ Node "
-"ທີ່ເປັນ Joint2D ເປັນ Node ລູກ."
+"ໂນດ PhysicalBone2D ຄວນມີໂນດລູກທີ່ອີງຕາມ Joint2D ເພື່ອໃຫ້ກະດູກເຊື່ອມຕໍ່ກັນ! "
+"ກະລຸນາເພີ່ມໂນດທີ່ອີງຕາມ Joint2D ເປັນໂນດລູກໃຫ້ກັບໂນດນີ້!"
 
 msgid ""
 "PhysicsBody2D will not work correctly on a non-interpolated branch of the "
@@ -20636,47 +19993,6 @@ msgid ""
 msgstr "ກະດູກນີ້ບໍ່ມີທ່າ REST ທີ່ຖືກຕ້ອງ. ກະລຸນາໄປທີ່ Node Skeleton2D ແລ້ວຕັ້ງຄ່າມັນ."
 
 msgid ""
-"The TileMap node is deprecated as it is superseded by the use of multiple "
-"TileMapLayer nodes.\n"
-"To convert a TileMap to a set of TileMapLayer nodes, open the TileMap bottom "
-"panel with this node selected, click the toolbox icon in the top-right corner "
-"and choose \"Extract TileMap layers as individual TileMapLayer nodes\"."
-msgstr ""
-"Node TileMap ຖືກຍົກເລີກການໃຊ້ງານແລ້ວ ເນື່ອງຈາກຖືກປ່ຽນແທນດ້ວຍການໃຊ້ TileMapLayer ຫຼາຍອັນ.\n"
-"ເພື່ອແປງ TileMap ເປັນ TileMapLayer, ໃຫ້ເປີດແຜງ TileMap ດ້ານລຸ່ມ, ຄລິກໄອຄອນ toolbox "
-"ມຸມຂວາເທິງ ແລ້ວເລືອກ \"Extract TileMap layers as individual TileMapLayer nodes\"."
-
-msgid ""
-"A Y-sorted layer has the same Z-index value as a not Y-sorted layer.\n"
-"This may lead to unwanted behaviors, as a layer that is not Y-sorted will be "
-"Y-sorted as a whole with tiles from Y-sorted layers."
-msgstr ""
-"ເລເຢີທີ່ຈັດລຽງແບບ Y-sort ມີຄ່າ Z-index ຄືກັນກັບເລເຢີທີ່ບໍ່ໄດ້ຈັດລຽງແບບ Y-sort.\n"
-"ນີ້ອາດຈະເຮັດໃຫ້ເກີດພຶດຕິກຳທີ່ບໍ່ຕ້ອງການ."
-
-msgid ""
-"A TileMap layer is set as Y-sorted, but Y-sort is not enabled on the TileMap "
-"node itself."
-msgstr ""
-"ເລເຢີຂອງ TileMap ຖືກຕັ້ງເປັນ Y-sorted, ແຕ່ບໍ່ໄດ້ເປີດໃຊ້ງານ Y-sort ຢູ່ທີ່ Node TileMap ເອງ."
-
-msgid ""
-"The TileMap node is set as Y-sorted, but Y-sort is not enabled on any of the "
-"TileMap's layers.\n"
-"This may lead to unwanted behaviors, as a layer that is not Y-sorted will be "
-"Y-sorted as a whole."
-msgstr ""
-"Node TileMap ຖືກຕັ້ງເປັນ Y-sorted, ແຕ່ບໍ່ມີເລເຢີໃດຂອງ TileMap ທີ່ເປີດໃຊ້ງານ Y-sort.\n"
-"ນີ້ອາດຈະເຮັດໃຫ້ເກີດພຶດຕິກຳທີ່ບໍ່ຕ້ອງການ."
-
-msgid ""
-"Isometric TileSet will likely not look as intended without Y-sort enabled for "
-"the TileMap and all of its layers."
-msgstr ""
-"Isometric TileSet ອາດຈະສະແດງຜົນບໍ່ຖືກຕ້ອງ ຫາກບໍ່ເປີດໃຊ້ງານ Y-sort ສຳລັບ TileMap ແລະ "
-"ເລເຢີທັງໝົດ."
-
-msgid ""
 "Forward axis and primary rotation axis must not be parallel in setting %s."
 msgstr ""
 "ແກນດ້ານໜ້າ (Forward axis) ແລະ ແກນການໝຸນຫຼັກ (primary rotation axis) "
@@ -20710,9 +20026,6 @@ msgid ""
 msgstr ""
 "ແອນິເມຊັນ CPUParticles3D ຕ້ອງໃຊ້ StandardMaterial3D ທີ່ຕັ້ງ Billboard Mode ເປັນ "
 "\"Particle Billboard\"."
-
-msgid "Decals are only available when using the Forward+ or Mobile renderer."
-msgstr "Decals ສາມາດໃຊ້ໄດ້ສະເພາະເມື່ອໃຊ້ຕົວເຣັນເດີ Forward+ ຫຼື Mobile ເທົ່ານັ້ນ."
 
 msgid ""
 "The decal has no textures loaded into any of its texture properties, and will "
@@ -20751,13 +20064,6 @@ msgid "Nothing is visible because meshes have not been assigned to draw passes."
 msgstr "ບໍ່ມີຫຍັງສະແດງໃຫ້ເຫັນ ເນື່ອງຈາກບໍ່ໄດ້ກຳນົດ meshes ໃຫ້ກັບ draw passes."
 
 msgid ""
-"Particles animation requires the usage of a BaseMaterial3D whose Billboard "
-"Mode is set to \"Particle Billboard\"."
-msgstr ""
-"ແອນິເມຊັນອະນຸພາກ ຕ້ອງໃຊ້ BaseMaterial3D ທີ່ຕັ້ງ Billboard Mode ເປັນ \"Particle "
-"Billboard\"."
-
-msgid ""
 "Using Trail meshes with a skin causes Skin to override Trail poses. Suggest "
 "removing the Skin."
 msgstr ""
@@ -20791,8 +20097,9 @@ msgid ""
 "collision for this GPUParticlesCollisionSDF3D.\n"
 "To resolve this, enable at least one bit in the Bake Mask property."
 msgstr ""
-"Bake Mask ບໍ່ໄດ້ເປີດໃຊ້ບິດໃດໆ, ໝາຍຄວາມວ່າການ bake ຈະບໍ່ສ້າງການຕຳໃຫ້ກັບ "
-"GPUParticlesCollisionSDF3D ນີ້."
+"Bake Mask ບໍ່ມີບິດໃດຖືກເປີດໃຊ້, ເຊິ່ງໝາຍຄວາມວ່າການອົບ (baking) ຈະບໍ່ສ້າງຄໍລີຊັນ (collision) "
+"ໃດໆໃຫ້ກັບ GPUParticlesCollisionSDF3D ນີ້.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ເປີດໃຊ້ບິດຢ່າງໜ້ອຍໜຶ່ງບິດໃນຄຸນສົມບັດ Bake Mask."
 
 msgid ""
 "Detecting settings with no target set! IterateIK3D must have a target to work."
@@ -20928,16 +20235,19 @@ msgid ""
 "To resolve this, open the Project Settings and enable Rendering > Occlusion "
 "Culling > Use Occlusion Culling."
 msgstr ""
-"Occlusion culling ຖືກປິດໃຊ້ງານໃນການຕັ້ງຄ່າໂຄງການ. ໃຫ້ໄປທີ່ການຕັ້ງຄ່າໂຄງການແລ້ວເປີດໃຊ້ "
-"Rendering > Occlusion Culling > Use Occlusion Culling."
+"Occlusion culling ຖືກປິດໃຊ້ງານໃນ Project Settings, ເຊິ່ງໝາຍຄວາມວ່າຈະບໍ່ມີການປະມວນຜົນ "
+"occlusion culling ໃນ root viewport.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ເປີດ Project Settings ແລະ ເປີດໃຊ້ Rendering > Occlusion Culling > Use "
+"Occlusion Culling."
 
 msgid ""
 "The Bake Mask has no bits enabled, which means baking will not produce any "
 "occluder meshes for this OccluderInstance3D.\n"
 "To resolve this, enable at least one bit in the Bake Mask property."
 msgstr ""
-"Bake Mask ບໍ່ໄດ້ເປີດໃຊ້ບິດໃດໆ, ໝາຍຄວາມວ່າການ bake ຈະບໍ່ສ້າງ occluder meshes ໃຫ້ກັບ "
-"OccluderInstance3D ນີ້."
+"Bake Mask ບໍ່ມີບິດໃດຖືກເປີດໃຊ້, ເຊິ່ງໝາຍຄວາມວ່າການອົບ (baking) ຈະບໍ່ສ້າງ occluder meshes "
+"ໃຫ້ກັບ OccluderInstance3D ນີ້.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ເປີດໃຊ້ບິດຢ່າງໜ້ອຍໜຶ່ງບິດໃນຄຸນສົມບັດ Bake Mask."
 
 msgid ""
 "No occluder mesh is defined in the Occluder property, so no occlusion culling "
@@ -20946,7 +20256,11 @@ msgid ""
 "types or bake the scene meshes by selecting the OccluderInstance3D and "
 "pressing the Bake Occluders button at the top of the 3D editor viewport."
 msgstr ""
-"ບໍ່ໄດ້ກຳນົດ occluder mesh ໃນຄຸນສົມບັດ Occluder, ດັ່ງນັ້ນ OccluderInstance3D ນີ້ຈະບໍ່ເຮັດວຽກ."
+"ບໍ່ມີ occluder mesh ຖືກກຳນົດໃນຄຸນສົມບັດ Occluder, ດັ່ງນັ້ນຈະບໍ່ມີການປະມວນຜົນ occlusion "
+"culling ໂດຍໃຊ້ OccluderInstance3D ນີ້.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ຕັ້ງຄຸນສົມບັດ Occluder ເປັນປະເພດ primitive occluder ຫຼື ອົບ (bake) scene "
+"meshes ໂດຍການເລືອກ OccluderInstance3D ແລ້ວກົດປຸ່ມ Bake Occluders ຢູ່ເທິງສຸດຂອງ "
+"viewport 3D editor."
 
 msgid ""
 "The occluder mesh has less than 3 vertices, so no occlusion culling will be "
@@ -21001,7 +20315,10 @@ msgid ""
 "Please only use it as a child of Area3D, StaticBody3D, RigidBody3D, "
 "CharacterBody3D, etc. to give them a shape."
 msgstr ""
-"CollisionPolygon3D ມີໄວ້ເພື່ອໃຫ້ຮູບຊົງການຕຳແກ່ Node ທີ່ສືບທອດມາຈາກ CollisionObject3D."
+"CollisionPolygon3D ມີໄວ້ເພື່ອໃຫ້ຮູບຊົງຄໍລີຊັນ (collision shape) ແກ່ໂນດທີ່ສືບທອດມາຈາກ "
+"CollisionObject3D ເທົ່ານັ້ນ.\n"
+"ກະລຸນາໃຊ້ເປັນໂນດລູກຂອງ Area3D, StaticBody3D, RigidBody3D, CharacterBody3D ແລະ ອື່ນໆ "
+"ເພື່ອກຳນົດຮູບຊົງໃຫ້ພວກມັນ."
 
 msgid "An empty CollisionPolygon3D has no effect on collision."
 msgstr "CollisionPolygon3D ທີ່ວ່າງເປົ່າຈະບໍ່ມີຜົນຕໍ່ການຕຳ."
@@ -21012,8 +20329,9 @@ msgid ""
 "Please make its scale uniform (i.e. the same on all axes), and change its "
 "polygon's vertices instead."
 msgstr ""
-"CollisionPolygon3D ທີ່ປັບຂະໜາດບໍ່ສະໝ່ຳສະເໝີອາດເຮັດວຽກຜິດພາດ. "
-"ກະລຸນາປັບຂະໜາດໃຫ້ສະໝ່ຳສະເໝີກັນທຸກແກນ."
+"ໂນດ CollisionPolygon3D ທີ່ມີການປັບຂະໜາດ (scale) ບໍ່ສະເໝີກັນ "
+"ອາດຈະເຮັດວຽກບໍ່ຖືກຕ້ອງຕາມທີ່ຄາດໄວ້.\n"
+"ກະລຸນາປັບຂະໜາດໃຫ້ສະເໝີກັນ (ຄືກັນທຸກແກນ), ແລະ ໄປປ່ຽນຄ່າ vertices ຂອງ polygon ແທນ."
 
 msgid ""
 "CollisionShape3D only serves to provide a collision shape to a "
@@ -21021,7 +20339,10 @@ msgid ""
 "Please only use it as a child of Area3D, StaticBody3D, RigidBody3D, "
 "CharacterBody3D, etc. to give them a shape."
 msgstr ""
-"CollisionShape3D ມີໄວ້ເພື່ອໃຫ້ຮູບຊົງການຕຳແກ່ Node ທີ່ສືບທອດມາຈາກ CollisionObject3D."
+"CollisionShape3D ມີໄວ້ເພື່ອໃຫ້ຮູບຊົງຄໍລີຊັນ (collision shape) ແກ່ໂນດທີ່ສືບທອດມາຈາກ "
+"CollisionObject3D ເທົ່ານັ້ນ.\n"
+"ກະລຸນາໃຊ້ເປັນໂນດລູກຂອງ Area3D, StaticBody3D, RigidBody3D, CharacterBody3D ແລະ ອື່ນໆ "
+"ເພື່ອກຳນົດຮູບຊົງໃຫ້ພວກມັນ."
 
 msgid ""
 "A shape must be provided for CollisionShape3D to function. Please create a "
@@ -21034,7 +20355,10 @@ msgid ""
 "It will likely not behave well for %ss (except when frozen and freeze_mode "
 "set to FREEZE_MODE_STATIC)."
 msgstr ""
-"ConcavePolygonShape3D ຖືກອອກແບບມາໃຫ້ໃຊ້ກັບວັດຖຸຄົງທີ່ (static). ມັນອາດຈະເຮັດວຽກບໍ່ດີກັບ %s."
+"ເມື່ອນຳໃຊ້ສຳລັບຄໍລີຊັນ, ConcavePolygonShape3D ຖືກອອກແບບມາໃຫ້ໃຊ້ກັບໂນດ CollisionObject3D "
+"ແບບຄົງທີ່ (static) ເຊັ່ນ StaticBody3D.\n"
+"ມັນອາດຈະເຮັດວຽກບໍ່ດີກັບ %ss (ຍົກເວັ້ນເມື່ອຖືກ freeze ແລະ ຕັ້ງຄ່າ freeze_mode ເປັນ "
+"FREEZE_MODE_STATIC)."
 
 msgid ""
 "WorldBoundaryShape3D doesn't support RigidBody3D in another mode than static."
@@ -21045,15 +20369,19 @@ msgid ""
 "static CollisionObject3D nodes like StaticBody3D.\n"
 "It will likely not behave well for CharacterBody3Ds."
 msgstr ""
-"ConcavePolygonShape3D ຖືກອອກແບບມາໃຫ້ໃຊ້ກັບວັດຖຸຄົງທີ່. ມັນອາດຈະເຮັດວຽກບໍ່ດີກັບ "
-"CharacterBody3D."
+"ເມື່ອນຳໃຊ້ສຳລັບຄໍລີຊັນ, ConcavePolygonShape3D ຖືກອອກແບບມາໃຫ້ໃຊ້ກັບໂນດ CollisionObject3D "
+"ແບບຄົງທີ່ (static) ເຊັ່ນ StaticBody3D.\n"
+"ມັນອາດຈະເຮັດວຽກບໍ່ດີກັບ CharacterBody3Ds."
 
 msgid ""
 "A non-uniformly scaled CollisionShape3D node will probably not function as "
 "expected.\n"
 "Please make its scale uniform (i.e. the same on all axes), and change the "
 "size of its shape resource instead."
-msgstr "CollisionShape3D ທີ່ປັບຂະໜາດບໍ່ສະໝ່ຳສະເໝີອາດເຮັດວຽກຜິດພາດ."
+msgstr ""
+"ໂນດ CollisionShape3D ທີ່ມີການປັບຂະໜາດ (scale) ບໍ່ສະເໝີກັນ "
+"ອາດຈະເຮັດວຽກບໍ່ຖືກຕ້ອງຕາມທີ່ຄາດໄວ້.\n"
+"ກະລຸນາປັບຂະໜາດໃຫ້ສະເໝີກັນ (ຄືກັນທຸກແກນ), ແລະ ໄປປ່ຽນຂະໜາດຂອງ shape resource ແທນ."
 
 msgid "Node A and Node B must be PhysicsBody3Ds"
 msgstr "Node A ແລະ Node B ຕ້ອງເປັນ PhysicsBody3D"
@@ -21074,13 +20402,17 @@ msgid ""
 "PhysicsBody3D will not work correctly on a non-interpolated branch of the "
 "SceneTree.\n"
 "Check the node's inherited physics_interpolation_mode."
-msgstr "PhysicsBody3D ຈະເຮັດວຽກບໍ່ຖືກຕ້ອງໃນກິ່ງທີ່ບໍ່ມີອິນເຕີໂພເລຊັນ."
+msgstr ""
+"PhysicsBody3D ຈະເຮັດວຽກບໍ່ຖືກຕ້ອງໃນກິ່ງຂອງ SceneTree ທີ່ບໍ່ມີການເຮັດ interpolation.\n"
+"ກະລຸນາກວດສອບ physics_interpolation_mode ທີ່ສືບທອດມາຂອງໂນດ."
 
 msgid ""
 "Scale changes to RigidBody3D will be overridden by the physics engine when "
 "running.\n"
 "Please change the size in children collision shapes instead."
-msgstr "ການປັບຂະໜາດຂອງ RigidBody3D ຈະຖືກຂຽນທັບໂດຍຟິຊິກເອັນຈິນ."
+msgstr ""
+"ການປ່ຽນແປງຂະໜາດ (Scale) ຂອງ RigidBody3D ຈະຖືກແທນທີ່ດ້ວຍ physics engine ໃນເວລາລັນ.\n"
+"ກະລຸນາປ່ຽນຂະໜາດໃນ collision shapes ຂອງໂນດລູກແທນ."
 
 msgid ""
 "This node cannot interact with other objects unless a Shape3D is assigned."
@@ -21141,22 +20473,28 @@ msgid ""
 "To resolve this, set the End distance to 0 or to a value greater than the "
 "Begin distance."
 msgstr ""
-"ໄລຍະສິ້ນສຸດການເບິ່ງເຫັນ (End distance) ຕ່ຳກວ່າໄລຍະເລີ່ມຕົ້ນ (Begin distance), "
-"ເຮັດໃຫ້ວັດຖຸເບິ່ງບໍ່ເຫັນເລີຍ."
+"ໄລຍະສິ້ນສຸດ (End distance) ຂອງ visibility range ໃນ GeometryInstance3D "
+"ຖືກຕັ້ງຄ່າທີ່ບໍ່ແມ່ນສູນ, ແຕ່ມັນຕ່ຳກວ່າໄລຍະເລີ່ມຕົ້ນ (Begin distance).\n"
+"ນີ້ໝາຍຄວາມວ່າ GeometryInstance3D ຈະບໍ່ສາມາດເຫັນໄດ້.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ຕັ້ງໄລຍະສິ້ນສຸດເປັນ 0 ຫຼື ໃຫ້ມີຄ່າຫຼາຍກວ່າໄລຍະເລີ່ມຕົ້ນ."
 
 msgid ""
 "The GeometryInstance3D is configured to fade in smoothly over distance, but "
 "the fade transition distance is set to 0.\n"
 "To resolve this, increase Visibility Range Begin Margin above 0."
 msgstr ""
-"ກຳນົດໃຫ້ມີການຄ່ອຍໆສະແດງ (fade in) ແຕ່ໄລຍະປ່ຽນຜ່ານຖືກຕັ້ງເປັນ 0. ກະລຸນາເພີ່ມ Begin Margin."
+"GeometryInstance3D ຖືກຕັ້ງຄ່າໃຫ້ຄ່ອຍໆສະແດງຜົນ (fade in) ຕາມໄລຍະຫ່າງ, ແຕ່ໄລຍະການ fade "
+"ຖືກຕັ້ງເປັນ 0.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ເພີ່ມຄ່າ Visibility Range Begin Margin ໃຫ້ຫຼາຍກວ່າ 0."
 
 msgid ""
 "The GeometryInstance3D is configured to fade out smoothly over distance, but "
 "the fade transition distance is set to 0.\n"
 "To resolve this, increase Visibility Range End Margin above 0."
 msgstr ""
-"ກຳນົດໃຫ້ມີການຄ່ອຍໆຈາງຫາຍ (fade out) ແຕ່ໄລຍະປ່ຽນຜ່ານຖືກຕັ້ງເປັນ 0. ກະລຸນາເພີ່ມ End Margin."
+"GeometryInstance3D ຖືກຕັ້ງຄ່າໃຫ້ຄ່ອຍໆຫາຍໄປ (fade out) ຕາມໄລຍະຫ່າງ, ແຕ່ໄລຍະການ fade "
+"ຖືກຕັ້ງເປັນ 0.\n"
+"ເພື່ອແກ້ໄຂ, ໃຫ້ເພີ່ມຄ່າ Visibility Range End Margin ໃຫ້ຫຼາຍກວ່າ 0."
 
 msgid ""
 "GeometryInstance3D transparency is only available when using the Forward+ "
@@ -21268,13 +20606,67 @@ msgid ""
 "The AnimationTree is inactive.\n"
 "Activate it in the inspector to enable playback; check node warnings if "
 "activation fails."
-msgstr "AnimationTree ປິດໃຊ້ງານຢູ່. ກະລຸນາເປີດໃຊ້ງານໃນ inspector ເພື່ອໃຫ້ຫຼິ້ນແອນິເມຊັນໄດ້."
+msgstr ""
+"AnimationTree ຍັງບໍ່ທັນຖືກເປີດໃຊ້ງານ.\n"
+"ໃຫ້ເປີດໃຊ້ງານໃນ inspector ເພື່ອໃຫ້ສາມາດຫຼິ້ນໄດ້; ກວດສອບຄຳເຕືອນຂອງໂນດຫາກການເປີດໃຊ້ງານຫຼົ້ມເຫຼວ."
 
 msgid ""
 "The AnimationTree node (or one of its ancestors) has its process mode set to "
 "Disabled.\n"
 "Change the process mode in the inspector to allow playback."
-msgstr "AnimationTree ຖືກຕັ້ງໂໝດການປະມວນຜົນເປັນ Disabled. ກະລຸນາປ່ຽນໃນ inspector."
+msgstr ""
+"ໂນດ AnimationTree (ຫຼື ໂນດບັນພະບຸລຸດຂອງມັນ) ຖືກຕັ້ງຄ່າ process mode ເປັນ Disabled.\n"
+"ປ່ຽນ process mode ໃນ inspector ເພື່ອອະນຸຍາດໃຫ້ຫຼິ້ນໄດ້."
+
+msgid "Create Horizontal and Vertical Guides"
+msgstr "ສ້າງເສັ້ນນຳແນວນອນ ແລະ ແນວຕັ້ງ"
+
+msgid ""
+"Can't modify anchor offsets when the parent has a size of 0. Disable the "
+"anchors mode in the toolbar."
+msgstr ""
+"ບໍ່ສາມາດແກ້ໄຂໄລຍະຫ່າງສະໝໍ (Anchor Offset) ເມື່ອໂນດແມ່ມີຂະໜາດເປັນ 0. "
+"ກະລຸນາປິດໂໝດສະໝໍໃນແຖບເຄື່ອງມື."
+
+msgid "Set CanvasItem \"%s\" Pivot Offset to (%d, %d)"
+msgstr "ຕັ້ງຄ່າ Pivot Offset ຂອງ CanvasItem \"%s\" ເປັນ (%d, %d)"
+
+msgid "Rotate %d CanvasItems"
+msgstr "ໝຸນ %d CanvasItems"
+
+msgid "Rotate CanvasItem \"%s\" to %d degrees"
+msgstr "ໝຸນ CanvasItem \"%s\" ໄປ %d ອົງສາ"
+
+msgid "Move CanvasItem \"%s\" Anchor"
+msgstr "ຍ້າຍສະໝໍ (Anchor) ຂອງ CanvasItem \"%s\""
+
+msgid "Scale Node2D \"%s\" to (%s, %s)"
+msgstr "ປັບຂະໜາດ Node2D \"%s\" ເປັນ (%s, %s)"
+
+msgid "Resize Control \"%s\" to (%d, %d)"
+msgstr "ປັບຂະໜາດ Control \"%s\" ເປັນ (%d, %d)"
+
+msgid "Scale %d CanvasItems"
+msgstr "ປັບຂະໜາດ %d CanvasItems"
+
+msgid "Scale CanvasItem \"%s\" to (%s, %s)"
+msgstr "ປັບຂະໜາດ CanvasItem \"%s\" ເປັນ (%s, %s)"
+
+msgid "Move %d CanvasItems"
+msgstr "ຍ້າຍ %d CanvasItems"
+
+msgid "Move CanvasItem \"%s\" to (%d, %d)"
+msgstr "ຍ້າຍ CanvasItem \"%s\" ໄປທີ່ (%d, %d)"
+
+msgid ""
+"Children of a container get their position and size determined only by their "
+"parent."
+msgstr "ໂນດລູກຂອງຄອນເທນເນີ (Container) ຈະຖືກກຳນົດຕຳແໜ່ງ ແລະ ຂະໜາດໂດຍໂນດແມ່ຂອງມັນເທົ່ານັ້ນ."
+
+msgid ""
+"All selected CanvasItems are either invisible or locked in some way and can't "
+"be transformed."
+msgstr "CanvasItems ທັງໝົດທີ່ເລືອກໄວ້ ອາດຈະເບິ່ງບໍ່ເຫັນ ຫຼື ຖືກລັອກໄວ້ ຈຶ່ງບໍ່ສາມາດປັບຮູບຊົງໄດ້."
 
 msgid "Top Orthogonal"
 msgstr "ມຸມເບິ່ງດ້ານເທິງແບບ Orthogonal"
@@ -21337,8 +20729,9 @@ msgid ""
 "placement behavior.\n"
 "If you don't intend to add a script, use a plain Control node instead."
 msgstr ""
-"Container ຈະບໍ່ມີປະໂຫຍດຫາກບໍ່ມີສະຄຣິບກຳນົດພຶດຕິກຳການຈັດວາງ Node ລູກ. ຫາກບໍ່ຕ້ອງການໃຊ້ສະຄຣິບ, "
-"ໃຫ້ໃຊ້ Node Control ແທນ."
+"Container ດ້ວຍຕົວມັນເອງຈະບໍ່ມີປະໂຫຍດ "
+"ຍົກເວັ້ນແຕ່ວ່າມີສະຄຣິບມາກຳນົດພຶດຕິກຳການວາງຕຳແໜ່ງຂອງໂນດລູກ.\n"
+"ຫາກທ່ານບໍ່ຕ້ອງການເພີ່ມສະຄຣິບ, ໃຫ້ໃຊ້ໂນດ Control ທຳມະດາແທນ."
 
 msgid ""
 "The Hint Tooltip won't be displayed as the control's Mouse Filter is set to "
@@ -21401,8 +20794,9 @@ msgid ""
 "Use a container as child (VBox, HBox, etc.), or a Control and set the custom "
 "minimum size manually."
 msgstr ""
-"ScrollContainer ຖືກອອກແບບມາໃຫ້ໃຊ້ກັບ Node ລູກພຽງອັນດຽວ. ກະລຸນາໃຊ້ container ເປັນ Node "
-"ລູກ."
+"ScrollContainer ຖືກອອກແບບມາໃຫ້ໃຊ້ກັບໂນດລູກປະເພດ control ພຽງຕົວດຽວ.\n"
+"ໃຫ້ໃຊ້ container ເປັນລູກ (VBox, HBox, ແລະ ອື່ນໆ) ຫຼື ໃຊ້ Control ແລ້ວຕັ້ງຄ່າ custom "
+"minimum size ດ້ວຍຕົນເອງ."
 
 msgid "Drag to resize"
 msgstr "ລາກເພື່ອປັບຂະໜາດ"
@@ -21411,12 +20805,16 @@ msgid ""
 "This node doesn't have a SubViewport as child, so it can't display its "
 "intended content.\n"
 "Consider adding a SubViewport as a child to provide something displayable."
-msgstr "Node ນີ້ບໍ່ມີ SubViewport ເປັນ Node ລູກ, ຈຶ່ງບໍ່ສາມາດສະແດງເນື້ອຫາໄດ້."
+msgstr ""
+"ໂນດນີ້ບໍ່ມີ SubViewport ເປັນໂນດລູກ, ດັ່ງນັ້ນມັນຈຶ່ງບໍ່ສາມາດສະແດງເນື້ອໃນທີ່ຕ້ອງການໄດ້.\n"
+"ລອງເພີ່ມ SubViewport ເປັນໂນດລູກເພື່ອໃຫ້ມີສິ່ງທີ່ສາມາດສະແດງຜົນໄດ້."
 
 msgid ""
 "The default mouse cursor shape of SubViewportContainer has no effect.\n"
 "Consider leaving it at its initial value `CURSOR_ARROW`."
-msgstr "ຮູບຮ່າງຂອງເຄີເຊີເມົ້າເລີ່ມຕົ້ນຂອງ SubViewportContainer ບໍ່ມີຜົນໃດໆ."
+msgstr ""
+"ຮູບຮ່າງຂອງຕົວກະພິບເມົ້າເລີ່ມຕົ້ນຂອງ SubViewportContainer ຈະບໍ່ມີຜົນຫຍັງ.\n"
+"ລອງປ່ອຍມັນໄວ້ທີ່ຄ່າເລີ່ມຕົ້ນ `CURSOR_ARROW`."
 
 msgid ""
 "STRETCH_TILE mode is not supported for an AtlasTexture with non-zero margin."
@@ -21467,7 +20865,9 @@ msgstr "ພົບ Node ທີ່ຫາຍໄປໂດຍບໍ່ຮູ້ຈັ
 msgid ""
 "This node is marked as deprecated and will be removed in future versions.\n"
 "Please check the Godot documentation for information about migration."
-msgstr "Node ນີ້ຖືກໝາຍວ່າເລີກໃຊ້ແລ້ວ ແລະ ຈະຖືກລົບອອກໃນເວີຊັນອະນາຄົດ."
+msgstr ""
+"ໂນດນີ້ຖືກໝາຍວ່າບໍ່ແນະນຳໃຫ້ໃຊ້ແລ້ວ (deprecated) ແລະ ຈະຖືກລຶບອອກໃນເວີຊັນອະນາຄົດ.\n"
+"ກະລຸນາກວດສອບເອກະສານຂອງ Godot ສຳລັບຂໍ້ມູນກ່ຽວກັບການຍ້າຍລະບົບ (migration)."
 
 msgid ""
 "This node is marked as experimental and may be subject to removal or major "
@@ -21485,8 +20885,9 @@ msgid ""
 "Consider using a script's process loop instead of relying on a Timer for very "
 "low wait times."
 msgstr ""
-"ການຕັ້ງເວລາລໍຖ້າທີ່ຕ່ຳຫຼາຍ (< 0.05 ວິນາທີ) ອາດຈະເຮັດວຽກບໍ່ແນ່ນອນ. ຄວນໃຊ້ process loop "
-"ໃນສະຄຣິບແທນ."
+"ການຕັ້ງເວລາລໍຖ້າທີ່ຕ່ຳຫຼາຍ (< 0.05 ວິນາທີ) ອາດຈະສະແດງຜົນແຕກຕ່າງກັນຢ່າງຫຼວງຫຼາຍ "
+"ຂຶ້ນຢູ່ກັບອັດຕາເຟຣມຂອງການສະແດງຜົນ ຫຼື ຟີຊິກ.\n"
+"ລອງໃຊ້ process loop ຂອງສະຄຣິບແທນການໃຊ້ Timer ສຳລັບການລໍຖ້າທີ່ຕ່ຳຫຼາຍ."
 
 msgid "Drag-and-drop data"
 msgstr "ຂໍ້ມູນລາກແລ້ວວາງ (Drag-and-drop data)"
@@ -21500,7 +20901,9 @@ msgid ""
 "An incoming node's name clashes with %s already in the scene (presumably, "
 "from a more nested instance).\n"
 "The less nested node will be renamed. Please fix and re-save the scene."
-msgstr "ຊື່ຂອງ Node ທີ່ເຂົ້າມາໃໝ່ຊ້ຳກັບ %s ທີ່ມີຢູ່ແລ້ວ. Node ຈະຖືກປ່ຽນຊື່ໃໝ່."
+msgstr ""
+"ຊື່ຂອງໂນດທີ່ນຳເຂົ້າມາຕຳກັບ %s ທີ່ມີຢູ່ແລ້ວໃນ scene (ອາດຈະມາຈາກ instance ທີ່ຊ້ອນກັນຢູ່).\n"
+"ໂນດທີ່ຊ້ອນກັນໜ້ອຍກວ່າຈະຖືກປ່ຽນຊື່. ກະລຸນາແກ້ໄຂ ແລະ ບັນທຶກ scene ໃໝ່."
 
 msgid "Division by zero error."
 msgstr "ຂໍ້ຜິດພາດ: ການຫານດ້ວຍສູນ."

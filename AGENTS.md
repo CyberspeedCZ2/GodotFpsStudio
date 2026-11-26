@@ -3,7 +3,7 @@
 ## Projekt
 
 - Repozitář: `GodotFpsStudio`, hlavní větev `main`, GitHub: `git@github.com:CyberspeedCZ2/GodotFpsStudio.git`.
-- Základem je kompletní zdrojový fork Godotu 4.7.2.
+- Základem je kompletní zdrojový fork Godotu 4.8 beta 5 (upstream commit `a661dfdbc`; do 2026-11-26 4.7.2).
 - Vývojový build cílí na macOS Apple Silicon. Hry mohou cílit na další platformy, ale exportní šablony nejsou součástí běžného editorového buildu.
 - Repo obsahuje zdrojový kód editoru a enginu, nikoli aktuální samostatný FPS herní projekt.
 - Herní projekt je samostatný repozitář `/Users/davidsoudil/Projects/Godot/project-hl-2-inspiration` na GitHubu `CyberspeedCZ2/project-hl-2-inspiration`. Jeho scény a herní obsah nepatří do tohoto repozitáře.
