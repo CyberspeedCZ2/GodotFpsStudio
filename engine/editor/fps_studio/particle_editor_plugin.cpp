@@ -5139,27 +5139,6 @@ void FPSStudioParticleEditorPlugin::_on_emitter_property_edited(const String &p_
 	}
 }
 
-static bool hide_files_toggle_button(Node *p_node, const String &p_tooltip_prefix) {
-	if (Button *button = Object::cast_to<Button>(p_node)) {
-		if (button->get_tooltip_text().begins_with(p_tooltip_prefix)) {
-			button->hide();
-			return true;
-		}
-	}
-	for (int i = 0; i < p_node->get_child_count(); i++) {
-		if (hide_files_toggle_button(p_node->get_child(i), p_tooltip_prefix)) {
-			return true;
-		}
-	}
-	return false;
-}
-
-void FPSStudioParticleEditorPlugin::_hide_code_editor_files_toggle() {
-	if (particle_code_editor) {
-		hide_files_toggle_button(particle_code_editor, TTR("Toggle Files Panel"));
-	}
-}
-
 Ref<Shader> FPSStudioParticleEditorPlugin::_get_particle_code_shader(Node *p_emitter) const {
 	GPUParticles3D *gpu = Object::cast_to<GPUParticles3D>(p_emitter);
 	if (!gpu) {

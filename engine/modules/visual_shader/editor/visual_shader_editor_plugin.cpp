@@ -2167,6 +2167,11 @@ void VisualShaderEditor::validate_script() {
 }
 
 void VisualShaderEditor::save_editor_layout() {
+	if (visual_shader.is_null()) {
+		// FPS Studio: the Particle workspace clears the editor (set_edited_resource(null))
+		// when the selected emitter has no node graph; there is no view to remember then.
+		return;
+	}
 	const String id_string = _get_cache_id_string();
 
 	const String offset_cache_key = _get_cache_key("offset");

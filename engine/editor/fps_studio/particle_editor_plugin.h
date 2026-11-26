@@ -625,7 +625,6 @@ class FPSStudioParticleEditorPlugin : public EditorPlugin {
 	void _create_particle_graph();
 	Ref<VisualShader> _get_particle_visual_shader(Node *p_emitter) const;
 	Ref<Shader> _get_particle_code_shader(Node *p_emitter) const;
-	void _hide_code_editor_files_toggle();
 	void _update_time_label();
 	void _mark_document_dirty();
 
