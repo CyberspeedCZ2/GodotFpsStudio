@@ -78,6 +78,8 @@ String get_preset_category(int p_preset);
 Vector<int> get_presets_in_display_order();
 // Builds the effect. Texture requests reference emitters of the new effect.
 ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures);
+// Releases the shader shared by the presets (editor shutdown).
+void finish();
 
 // Resource helpers shared with module presets.
 Ref<GradientTexture1D> make_color_ramp(const Vector<float> &p_offsets, const Vector<Color> &p_colors);

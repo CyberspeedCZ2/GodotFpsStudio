@@ -100,7 +100,7 @@ void RadialDamage3D::apply_damage() {
 	HashMap<ObjectID, Target> targets;
 	Vector<ObjectID> order;
 	for (int i = 0; i < count; i++) {
-		CollisionObject3D *body = Object::cast_to<CollisionObject3D>(results[i].collider);
+		CollisionObject3D *body = Object::cast_to<CollisionObject3D>(results[i].get_collider());
 		if (!body) {
 			continue;
 		}

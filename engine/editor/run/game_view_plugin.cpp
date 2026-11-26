@@ -2021,7 +2021,7 @@ GameView::GameView(Ref<GameViewDebugger> p_debugger, EmbeddedProcessBase *p_embe
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_EDITOR]->set_button_group(game_embed_group);
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_EDITOR]->set_theme_type_variation("FlatMenuButtonNoIconTint");
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_EDITOR]->connect(SceneStringName(pressed), callable_mp(this, &GameView::_game_embed_mode_pressed).bind(EmbedMode::EMBED_TYPE_EDITOR));
-	game_embed_mode_button[EmbedMode::EMBED_TYPE_EDITOR]->set_tooltip_text(TTRC("Run the game embedded in the Game workspace on the next run."));
+	game_embed_mode_button[EmbedMode::EMBED_TYPE_EDITOR]->set_tooltip_text(TTRC("Run the game in the Level view on the next run."));
 
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING] = memnew(Button);
 	game_hb->add_child(game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]);
@@ -2029,6 +2029,8 @@ GameView::GameView(Ref<GameViewDebugger> p_debugger, EmbeddedProcessBase *p_embe
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]->set_toggle_mode(true);
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]->set_button_group(game_embed_group);
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]->set_theme_type_variation("FlatMenuButtonNoIconTint");
+	// FPS Studio: the game runs in the Level view or in its own window; the floating Game workspace is not offered.
+	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]->hide();
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]->connect(SceneStringName(pressed), callable_mp(this, &GameView::_game_embed_mode_pressed).bind(EmbedMode::EMBED_TYPE_FLOATING));
 	game_embed_mode_button[EmbedMode::EMBED_TYPE_FLOATING]->set_tooltip_text(TTRC("Run the game in a floating window with the toolbar on the next run."));
 

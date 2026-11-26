@@ -293,8 +293,9 @@ void FPSStudioWorkspace::load_project_central_layout(
 
 	// Always open the Level workspace when the editor starts. The selected
 	// workspace from the previous session is intentionally not restored.
-	if (Node3DEditor::get_singleton()) {
-		callable_mp((EditorDock *)Node3DEditor::get_singleton(), &EditorDock::make_visible).call_deferred();
+	// Forced: a workspace such as Particle or Model does not allow automatic switching away.
+	if (Node3DEditor::get_singleton() && dock_manager) {
+		callable_mp(dock_manager, &EditorDockManager::force_focus_dock).call_deferred(Node3DEditor::get_singleton());
 	}
 
 	if (p_migrate_legacy_layout) {

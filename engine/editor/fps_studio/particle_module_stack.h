@@ -148,6 +148,8 @@ public:
 	static String get_module_name(int p_module);
 	static Ref<Material> get_draw_material(Node *p_emitter);
 	static Ref<Mesh> get_draw_mesh(Node *p_emitter);
+	// Releases the shared distortion shader (editor shutdown).
+	static void finish();
 
 	void edit(Node *p_emitter);
 	Node *get_edited_emitter() const;

@@ -164,3 +164,10 @@ Uživatel chtěl engine aktualizovat ze 4.7.2 na 4.8 beta. Sloučeno třícestn�
 - Headless ve 4.8 má okno 0×0 (viewport 2×2): HUD hry pak hlásí `p_size <= 0` (dělení nulou ve stretchi), v okně se to netýká.
 - 4.8 při prvním otevření přepíše `.import` soubory projektu (nové klíče). Zpět do 4.7.2 projekt pak už čistě nejde; herní repo je v Gitu.
 - Původní aplikace je v `Godot FPS Studio 4.7.2.app` (mimo Git). Remote `upstream` míří na godotengine/godot; další aktualizace stejným postupem (dva umělé commity se stromem `engine/` a `cherry-pick`).
+- **Testy jsou v repu**: `tools/tests/particle_runtime_test.gd` (68 kontrol, `--headless --path <kopie hry> -s <soubor>`) a doplněk `tools/tests/particle_editor_test/` (55 kontrol: záložky, všech 25 presetů, záložka Logic; zkopírovat do `addons/` kopie hry a zapnout v `project.godot`). Oba končí kódem 0 a řádkem `RT OK` / `ED OK`. Editor načítá rozložení až po prvním skenu souborů, test na to čeká.
+- **Chyby nalezené testy po přechodu (opraveno 2026-11-26)**:
+  - `RayResult`/`ShapeResult::collider` je ve 4.8 zastaralé a prázdné, číst přes `get_collider()`. Kvůli tomu `RadialDamage3D` nikoho nezasáhl (granát); stejná chyba byla v `particle_effect_3d.cpp` a `path_3d_editor_plugin.cpp`. Kompilátor na to dává jen varování o zastaralosti: po každé aktualizaci upstreamu projít varování v souborech forku.
+  - Editor má vždy začít v Levelu: `force_focus_dock`, obyčejné `make_visible()` záložky Particle a Model nepustí (`allow_switch_screen`).
+  - Dock Game znovu otevíral kód pro macOS při zachycení myši hrou (`embedded_process_macos.mm`); vypnutý dock už nejde otevřít (`open_dock`). Zkratka Game přepíná na Level, tlačítko plovoucího okna v liště hry je skryté.
+  - Pád při ukončení: `VisualShaderEditor::save_editor_layout` bez shaderu; shadery presetů a distorze ve statických proměnných (uvolňuje `FPSParticlePresets::finish()` a `FPSParticleModuleStack::finish()` v PREDELETE pluginu).
+  - `WorkerThreadPool` (bylo i ve 4.7.2): ukončení čekalo donekonečna, když při něm ve frontě zbyla úloha s nízkou prioritou (pečení kolize levelu); vlákna se teď po vyprázdnění fronty probudí (`_handle_runlevel`).

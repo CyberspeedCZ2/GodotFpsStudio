@@ -1233,6 +1233,10 @@ void FPSParticleModuleStack::_on_create_material_pressed() {
 // Heat haze and blast waves: a billboard that bends the picture behind it.
 static Ref<Shader> distortion_shader;
 
+void FPSParticleModuleStack::finish() {
+	distortion_shader.unref();
+}
+
 static Ref<Shader> get_distortion_shader() {
 	if (distortion_shader.is_null()) {
 		distortion_shader.instantiate();

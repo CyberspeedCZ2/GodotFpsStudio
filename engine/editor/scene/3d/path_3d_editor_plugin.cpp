@@ -1869,7 +1869,7 @@ bool Path3DEditorPlugin::_npc_route_segment_hits_static_collision(const Ref<Curv
 		parameters.collide_with_areas = false;
 		const int result_count = p_space->intersect_shape(parameters, results, 32);
 		for (int result_index = 0; result_index < result_count; result_index++) {
-			Object *collider = results[result_index].collider;
+			Object *collider = results[result_index].get_collider();
 			if (collider && (collider->is_class("StaticBody3D") || collider->is_class("CSGShape3D"))) {
 				return true;
 			}

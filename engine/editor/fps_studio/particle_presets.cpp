@@ -929,8 +929,11 @@ void light_as_water(EmitterBuilder &r_builder) {
 // Under water only: a billboard particle material that fades particles out at
 // the water surface. The pool sets the instance uniform water_surface_y on the
 // emitter when it spawns the effect (default: no surface, nothing clipped).
+// Shared by the presets; released by FPSParticlePresets::finish() before the rendering server goes away.
+static Ref<Shader> water_clip_shader;
+
 void clip_at_water_surface(EmitterBuilder &r_builder, bool p_keep_above = false, bool p_billboard = true, bool p_clip_vertical = true, bool p_clip_to_area = false) {
-	static Ref<Shader> shader;
+	Ref<Shader> &shader = water_clip_shader;
 	if (shader.is_null()) {
 		shader.instantiate();
 		shader->set_code(R"(shader_type spatial;
@@ -1377,6 +1380,10 @@ Ref<CurveTexture> make_curve_texture(const Vector<Vector2> &p_points, float p_ma
 	texture.instantiate();
 	texture->set_curve(curve);
 	return texture;
+}
+
+void finish() {
+	water_clip_shader.unref();
 }
 
 ParticleEffect3D *create_preset(int p_preset, Vector<TextureRequest> &r_textures) {

@@ -593,6 +593,16 @@ bool WorkerThreadPool::_handle_runlevel(ThreadData *p_thread_data, MutexLock<Bin
 					p_thread_data->pre_exited_languages = true;
 					runlevel_data.pre_exit_languages.num_idle_threads++;
 					control_cond_var.notify_all();
+					// FPS Studio: threads that checked while a low-priority task was still queued
+					// (a particle level collision bake at quit) went back to sleep without being
+					// counted as idle, and nothing woke them once the queue drained: the exit
+					// waited forever. Have them check again now that the queues are empty.
+					for (uint32_t i = 0; i < threads.size(); i++) {
+						if (!threads[i].pre_exited_languages && &threads[i] != p_thread_data) {
+							threads[i].cond_var.notify_one();
+							threads[i].signaled = true;
+						}
+					}
 				}
 			}
 		} break;

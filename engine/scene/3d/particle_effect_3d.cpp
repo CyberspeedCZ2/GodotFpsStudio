@@ -1843,7 +1843,7 @@ void ParticleEffect3D::_update_level_collision() {
 	Vector<Face3> faces;
 	HashSet<uint64_t> seen;
 	for (int i = 0; i < count; i++) {
-		Object *collider = results[i].collider;
+		Object *collider = results[i].get_collider();
 		if (!collider) {
 			continue;
 		}

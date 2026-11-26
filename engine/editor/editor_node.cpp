@@ -441,6 +441,9 @@ void EditorNode::shortcut_input(const Ref<InputEvent> &p_event) {
 			FileSystemDock::get_singleton()->focus_on_filter();
 		} else if (ED_IS_SHORTCUT("editor/editor_help", p_event)) {
 			emit_signal(SNAME("request_help_search"), "");
+		} else if (ED_IS_SHORTCUT("editor/editor_game", p_event) && Node3DEditor::get_singleton()) {
+			// FPS Studio: the game runs in the Level view; the Game dock is disabled.
+			editor_dock_manager->force_focus_dock(Node3DEditor::get_singleton());
 		} else if (ED_IS_SHORTCUT("editor/editor_next", p_event)) {
 			editor_main_screen->select_next();
 		} else if (ED_IS_SHORTCUT("editor/editor_prev", p_event)) {

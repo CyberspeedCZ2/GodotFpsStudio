@@ -7323,6 +7323,11 @@ void FPSStudioParticleEditorPlugin::_notification(int p_what) {
 		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(texture_preview_task);
 		texture_preview_task = -1;
 	}
+	if (p_what == NOTIFICATION_PREDELETE) {
+		// Shaders kept in statics must go before the rendering server does (crash at exit in 4.8).
+		FPSParticlePresets::finish();
+		FPSParticleModuleStack::finish();
+	}
 	if (p_what == NOTIFICATION_PREDELETE && preview_effect) {
 		preview_effect->queue_free();
 		preview_effect = nullptr;
