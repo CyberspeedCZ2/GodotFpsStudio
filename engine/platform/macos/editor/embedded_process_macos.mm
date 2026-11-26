@@ -40,6 +40,7 @@
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/run/game_view_plugin.h"
+#include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/settings/editor_settings.h"
 #include "scene/gui/control.h"
 #include "scene/main/window.h"
@@ -196,7 +197,12 @@ void EmbeddedProcessMacOS::mouse_set_mode(DisplayServerEnums::MouseMode p_mode) 
 	mouse_mode = p_mode;
 	// If the mouse is anything other than visible, we must ensure the Game view is active and the layer focused.
 	if (mouse_mode != DisplayServerEnums::MOUSE_MODE_VISIBLE) {
-		GameView::get_dock()->make_visible();
+		// FPS Studio: the embedded game is shown in the Level view; the Game dock stays disabled.
+		if (Node3DEditor::get_singleton()) {
+			Node3DEditor::get_singleton()->make_visible();
+		} else {
+			GameView::get_dock()->make_visible();
+		}
 		layer_host->grab_focus();
 	}
 	DisplayServer::get_singleton()->mouse_set_mode(p_mode);

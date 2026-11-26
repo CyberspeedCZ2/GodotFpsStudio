@@ -961,6 +961,11 @@ void EditorDockManager::open_dock(EditorDock *p_dock, bool p_set_current) {
 	ERR_FAIL_NULL(p_dock);
 	ERR_FAIL_COND_MSG(!all_docks.has(p_dock), vformat("Cannot open unknown dock '%s'.", p_dock->get_display_title()));
 
+	if (!p_dock->enabled) {
+		// FPS Studio: a disabled dock (the Game tab) must not come back through EditorDock::make_visible().
+		return;
+	}
+
 	if (p_dock->is_open) {
 		// Show the dock if it is already open.
 		if (p_set_current) {
