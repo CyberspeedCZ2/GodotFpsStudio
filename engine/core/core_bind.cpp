@@ -2339,7 +2339,11 @@ void EngineDebugger::clear_breakpoints() {
 
 EngineDebugger::~EngineDebugger() {
 	for (const KeyValue<StringName, Callable> &E : captures) {
-		::EngineDebugger::unregister_message_capture(E.key);
+		// FPS Studio: ::EngineDebugger::deinitialize() has usually cleared its captures by now, so a
+		// capture a script never unregistered (the Beehave add-on) printed "Capture not registered" at exit.
+		if (::EngineDebugger::has_capture(E.key)) {
+			::EngineDebugger::unregister_message_capture(E.key);
+		}
 	}
 	captures.clear();
 }
